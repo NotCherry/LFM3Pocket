@@ -14,4 +14,4 @@ Download an official quantized `LFM3-1.7B-Q4_K_M.gguf` model, start the app, imp
 
 ## Security and license
 
-No `INTERNET` permission and no telemetry. llama.cpp is downloaded at build time only. Source code of this app is Apache-2.0; model has its own Liquid AI license. Device inference is not guaranteed by CI compilation alone.
+No `INTERNET` permission and no telemetry. llama.cpp is downloaded at build time only. Source code of this app is MIT-licensed (see LICENSE); model has its own Liquid AI license. Device inference is not guaranteed by CI compilation alone.
