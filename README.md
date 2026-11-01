@@ -1,17 +1,20 @@
 # LFM3 Pocket
 
-Minimal, fully offline Android ARM64 chat application for [Liquid AI LFM3-1.7B GGUF](https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF) using native [llama.cpp](https://github.com/ggml-org/llama.cpp).
+On-device Android chat for Liquid AI LFM3 using native [llama.cpp](https://github.com/ggml-org/llama.cpp). Text inference stays on the phone. Optional web search uses a SearXNG endpoint configured by the user.
 
 ## Build
 
-GitHub Actions runs `.github/workflows/build-apk.yml`, checks out llama.cpp `v0.8.0` (minimum version with LFM3 support), installs Android SDK/NDK, builds `:app:assembleDebug`, and uploads a debug APK artifact.
+GitHub Actions builds the ARM64 phone APK, runs an x86_64 emulator smoke test through the JNI generation path, and uploads the phone APK artifact. It checks out llama.cpp `v0.8.0` for LFM3 and multimodal support.
 
-Locally, install JDK 17, Android SDK/NDK and Gradle 8.13; run `git clone --branch v0.8.0 --depth 1 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp` then `gradle :app:assembleDebug`.
+Locally, install JDK 17, Android SDK/NDK and Gradle 8.13; run `git clone --branch v0.8.0 --depth 1 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp` then `gradle :app:assemblePhoneDebug`.
 
 ## Usage
 
-Download an official quantized `LFM3-1.7B-Q4_K_M.gguf` model, start the app, import it using the Android document picker, then chat offline. Models are copied into private app storage. A model is not included in the APK. Recommended phone RAM: at least 4 GB, preferably 6+ GB.
+Import an official quantized LFM3 GGUF from the Android document picker to chat offline. For LFM3-Omni, import both `LFM3-Omni-2B-Q4_K_M.gguf` and its matching `mmproj-LFM3-Omni-2B-Q4_K_M.gguf`; then attach a photo or record a voice question. Model files are copied into private app storage and are not included in the APK. Recommended phone RAM: at least 4 GB, preferably 6+ GB.
+
+For current answers, open **Web search**, configure an HTTPS SearXNG `/search` endpoint with JSON enabled, and turn search on. Only questions sent while search is on are sent to that endpoint. Search results appear below the model's answer as clickable sources. Ordinary text chat remains local and works offline.
 
 ## Security and license
 
-No `INTERNET` permission and no telemetry. llama.cpp is downloaded at build time only. Source code of this app is MIT-licensed (see LICENSE); model has its own Liquid AI license. Device inference is not guaranteed by CI compilation alone.
+Internet access is used only for opt-in web search; search queries go to the configured SearXNG instance. Model inference and media processing run on-device. No telemetry. Source code is MIT-licensed (see LICENSE); each model has its own Liquid AI license. CI smoke testing does not guarantee performance on every phone.
+

@@ -1,5 +1,7 @@
 #include <jni.h>
 #include "llama.h"
+#include "mtmd.h"
+#include "mtmd-helper.h"
 
 #include <algorithm>
 #include <atomic>
@@ -13,12 +15,18 @@ namespace {
 std::once_flag backend_once;
 std::atomic<bool> cancel_requested{false};
 
-void setup_batch(llama_batch_ext * batch, const llama_token * tokens, int count, llama_pos start) {
+struct ModelHandle {
+    llama_model * model = nullptr;
+    mtmd_context * multimodal = nullptr;
+};
+
+void setup_batch(llama_batch_ext * batch, const llama_token * tokens, int count,
+                 llama_pos start, bool mrope) {
     llama_batch_ext_clear(batch);
     for (int i = 0; i < count; ++i) {
         const int index = llama_batch_ext_add_token(batch, 0, tokens[i]);
-        const llama_pos position = start + i;
-        llama_batch_ext_set_pos(batch, index, &position);
+        const llama_pos positions[4] = { start + i, 0, 0, 0 };
+        llama_batch_ext_set_pos(batch, index, positions);
     }
     llama_batch_ext_set_output_logits(batch, count - 1, true);
 }
@@ -81,7 +89,7 @@ void deliver(JNIEnv * env, jobject sink, jmethodID method, const std::u16string 
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_loadModel(
-        JNIEnv * env, jclass, jstring path) {
+        JNIEnv * env, jclass, jstring path, jstring mmproj_path) {
     std::call_once(backend_once, [] { llama_backend_init(); });
     const char * raw = env->GetStringUTFChars(path, nullptr);
     if (!raw) return 0;
@@ -89,14 +97,41 @@ Java_com_notcherry_lfm3pocket_NativeBridge_loadModel(
     env->ReleaseStringUTFChars(path, raw);
     llama_model_params params = llama_model_default_params();
     params.n_gpu_layers = 0;
-    llama_model * model = llama_model_load_from_file(filename.c_str(), params);
-    return reinterpret_cast<jlong>(model);
+    auto * state = new ModelHandle();
+    state->model = llama_model_load_from_file(filename.c_str(), params);
+    if (!state->model) {
+        delete state;
+        return 0;
+    }
+    if (mmproj_path && env->GetStringLength(mmproj_path) > 0) {
+        const char * raw_mmproj = env->GetStringUTFChars(mmproj_path, nullptr);
+        if (!raw_mmproj) {
+            llama_model_free(state->model);
+            delete state;
+            return 0;
+        }
+        mtmd_context_params mm_params = mtmd_context_params_default();
+        mm_params.use_gpu = false;
+        mm_params.n_threads = params.n_gpu_layers == 0 ? 4 : 2;
+        state->multimodal = mtmd_init_from_file(raw_mmproj, state->model, mm_params);
+        env->ReleaseStringUTFChars(mmproj_path, raw_mmproj);
+        if (!state->multimodal) {
+            llama_model_free(state->model);
+            delete state;
+            return 0;
+        }
+    }
+    return reinterpret_cast<jlong>(state);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_unloadModel(
         JNIEnv *, jclass, jlong handle) {
-    if (handle) llama_model_free(reinterpret_cast<llama_model *>(handle));
+    if (!handle) return;
+    auto * state = reinterpret_cast<ModelHandle *>(handle);
+    if (state->multimodal) mtmd_free(state->multimodal);
+    if (state->model) llama_model_free(state->model);
+    delete state;
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -111,10 +146,13 @@ Java_com_notcherry_lfm3pocket_NativeBridge_resetStop(JNIEnv *, jclass) {
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_generate(
-        JNIEnv * env, jclass, jlong handle, jstring prompt, jint max_tokens, jobject sink) {
+        JNIEnv * env, jclass, jlong handle, jstring prompt, jstring media_path,
+        jint max_tokens, jobject sink) {
     if (!handle) return make_string(env, "Model has not been loaded");
     if (!prompt || !sink) return make_string(env, "Missing prompt or callback");
-    llama_model * model = reinterpret_cast<llama_model *>(handle);
+    auto * state = reinterpret_cast<ModelHandle *>(handle);
+    llama_model * model = state->model;
+    const bool mrope = state->multimodal && mtmd_decode_use_mrope(state->multimodal);
     const llama_vocab * vocab = llama_model_get_vocab(model);
 
     const char * raw = env->GetStringUTFChars(prompt, nullptr);
@@ -166,18 +204,54 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generate(
         error = "Cannot locate Java token callback";
     } else {
         int position = 0;
-        while (position < converted && !cancel_requested.load()) {
-            int n = std::min(512, converted - position);
-            setup_batch(batch, tokens.data() + position, n, position);
-            if (llama_process(ctx, LLAMA_PROCESS_TYPE_DECODE, batch) != 0) {
-                error = "Model failed while evaluating the prompt";
-                break;
+        const bool has_media = media_path && env->GetStringLength(media_path) > 0;
+        if (has_media) {
+            if (!state->multimodal) {
+                error = "This model has no multimodal projector loaded";
+            } else {
+                const char * raw_media = env->GetStringUTFChars(media_path, nullptr);
+                mtmd_helper_bitmap_wrapper wrapper = mtmd_helper_bitmap_init_from_file(
+                        state->multimodal, raw_media, false, mtmd_helper_init_opt_default());
+                env->ReleaseStringUTFChars(media_path, raw_media);
+                if (!wrapper.bitmap) {
+                    error = "Could not read the selected image or audio file";
+                } else {
+                    const mtmd_bitmap * bitmaps[] = { wrapper.bitmap };
+                    mtmd_input_chunks * chunks = mtmd_input_chunks_init();
+                    mtmd_input_text text = { input.data(), input.size(), false, true };
+                    if (!chunks || mtmd_tokenize(state->multimodal, chunks, &text, bitmaps, 1) != 0) {
+                        error = "Could not prepare the selected media for LFM3";
+                    } else {
+                        llama_pos next_position = 0;
+                        if (mtmd_helper_eval_chunks(state->multimodal, ctx, chunks, 0, 0,
+                                                    512, true, &next_position) != 0) {
+                            error = "Model failed while evaluating the selected media";
+                        } else {
+                            position = static_cast<int>(next_position);
+                            if (position + 1 >= ctx_params.n_ctx) {
+                                error = "Selected media is too large for the 4096-token phone context";
+                            }
+                        }
+                    }
+                    if (chunks) mtmd_input_chunks_free(chunks);
+                    mtmd_bitmap_free(wrapper.bitmap);
+                    if (wrapper.video_ctx) mtmd_helper_video_free(wrapper.video_ctx);
+                }
             }
-            position += n;
+        } else {
+            while (position < converted && !cancel_requested.load()) {
+                int n = std::min(512, converted - position);
+                setup_batch(batch, tokens.data() + position, n, position, mrope);
+                if (llama_process(ctx, LLAMA_PROCESS_TYPE_DECODE, batch) != 0) {
+                    error = "Model failed while evaluating the prompt";
+                    break;
+                }
+                position += n;
+            }
         }
 
         for (int i = 0; error.empty() && !cancel_requested.load() &&
-                        i < max_tokens && converted + i < 4096; ++i) {
+                        i < max_tokens && position + i < 4096; ++i) {
             const llama_token next = llama_sampler_sample(sampler, ctx, -1);
             if (llama_vocab_is_eog(vocab, next)) break;
             llama_sampler_accept(sampler, next);
@@ -193,8 +267,8 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generate(
                 break;
             }
 
-            if (i + 1 == max_tokens || converted + i + 1 >= 4096) break;
-            setup_batch(batch, &next, 1, converted + i);
+            if (i + 1 == max_tokens || position + i + 1 >= 4096) break;
+            setup_batch(batch, &next, 1, position + i, mrope);
             if (llama_process(ctx, LLAMA_PROCESS_TYPE_DECODE, batch) != 0) {
                 error = "Model failed while decoding response";
                 break;
@@ -208,3 +282,4 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generate(
     llama_free(ctx);
     return error.empty() ? nullptr : make_string(env, error);
 }
+

@@ -11,7 +11,7 @@ android {
         targetSdk 35
         versionCode 1
         versionName '0.1.0'
-        ndk { abiFilters 'arm64-v8a' }
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         externalNativeBuild {
             cmake {
                 arguments '-DANDROID_STL=c++_shared',
@@ -27,6 +27,17 @@ android {
                           '-DLLAMA_BUILD_SERVER=OFF'
                 cppFlags '-std=c++17'
             }
+        }
+    }
+    flavorDimensions += 'runtime'
+    productFlavors {
+        phone {
+            dimension 'runtime'
+            ndk { abiFilters 'arm64-v8a' }
+        }
+        smoke {
+            dimension 'runtime'
+            ndk { abiFilters 'x86_64' }
         }
     }
     externalNativeBuild {
@@ -48,3 +59,9 @@ android {
         }
     }
 }
+
+dependencies {
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}
+
