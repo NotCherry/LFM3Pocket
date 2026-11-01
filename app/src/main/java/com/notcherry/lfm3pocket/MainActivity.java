@@ -30,7 +30,7 @@ public final class MainActivity extends Activity {
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final ArrayList<Message> messages = new ArrayList<>();
-    private long modelHandle = 0L;
+    private volatile long modelHandle = 0L;
     private boolean busy = false;
     private boolean generating = false;
     private boolean destroyed = false;
@@ -239,6 +239,7 @@ public final class MainActivity extends Activity {
         messages.add(new Message("user", userText));
         partial.setLength(0);
         final String fullPrompt = makePrompt();
+        NativeBridge.resetStop();
         busy = true;
         generating = true;
         updateControls();

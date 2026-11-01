@@ -104,12 +104,16 @@ Java_com_notcherry_lfm3pocket_NativeBridge_stop(JNIEnv *, jclass) {
     cancel_requested.store(true);
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_notcherry_lfm3pocket_NativeBridge_resetStop(JNIEnv *, jclass) {
+    cancel_requested.store(false);
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_generate(
         JNIEnv * env, jclass, jlong handle, jstring prompt, jint max_tokens, jobject sink) {
     if (!handle) return make_string(env, "Model has not been loaded");
     if (!prompt || !sink) return make_string(env, "Missing prompt or callback");
-    cancel_requested.store(false);
     llama_model * model = reinterpret_cast<llama_model *>(handle);
     const llama_vocab * vocab = llama_model_get_vocab(model);
 
@@ -119,14 +123,14 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generate(
     env->ReleaseStringUTFChars(prompt, raw);
 
     int count = llama_tokenize(vocab, input.data(), static_cast<int32_t>(input.size()),
-                               nullptr, 0, true, true);
+                               nullptr, 0, false, true);
     if (count < 0) count = -count;
     if (count <= 0) return make_string(env, "Prompt tokenizer returned no tokens");
     if (count + 1 >= 4096) return make_string(env, "Prompt is too long for the 4096-token context");
 
     std::vector<llama_token> tokens(count);
     int converted = llama_tokenize(vocab, input.data(), static_cast<int32_t>(input.size()),
-                                    tokens.data(), count, true, true);
+                                    tokens.data(), count, false, true);
     if (converted < 0) return make_string(env, "Failed to tokenize prompt");
     tokens.resize(static_cast<size_t>(converted));
 
