@@ -30,7 +30,10 @@ jobs:
       - name: Verify runner Android SDK
         run: |
           echo "Android SDK: $ANDROID_HOME"
-          sdkmanager --version
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          "$SDKMANAGER" --version
       - name: Install SDK packages
         run: |
           yes | sdkmanager --licenses >/dev/null || true
