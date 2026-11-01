@@ -3,9 +3,10 @@
 ## GitHub Actions
 
 - Build the `phone` flavor for `arm64-v8a` and upload `LFM3Pocket-arm64-debug`.
-- Build the `smoke` flavor for `x86_64`, launch an Android 35 emulator, and run `GenerationSmokeTest` against a small GGUF fetched for CI.
-- Assert that native inference streams text, Stop completes the first generation, and a retry generates output.
+- Build the `smoke` flavor and its instrumentation APK for `x86_64`.
 - Compile the `mtmd` multimodal library along with the JNI bridge.
+
+The `GenerationSmokeTest` can be run with `gradle :app:connectedSmokeDebugAndroidTest` on an Android emulator or device. GitHub's hosted emulator repeatedly lost core system services during boot in CI, so the workflow compiles the smoke-test APK but does not launch the emulator test.
 
 ## Device test (Android ARM64 and official LFM3 models)
 
