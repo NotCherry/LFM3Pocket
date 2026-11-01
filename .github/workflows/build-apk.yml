@@ -27,8 +27,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Verify runner Android SDK
+        run: |
+          echo "Android SDK: $ANDROID_HOME"
+          sdkmanager --version
       - name: Install SDK packages
         run: |
           yes | sdkmanager --licenses >/dev/null || true
