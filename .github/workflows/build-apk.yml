@@ -42,16 +42,18 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Assemble phone APK and run native generation smoke test
+      - name: Assemble phone and smoke APKs
+        run: |
+          gradle :app:assemblePhoneDebug :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
+      - name: Run native generation smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -memory 4096
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -memory 2048
           script: |
-            gradle :app:assemblePhoneDebug --no-daemon --stacktrace
             gradle :app:connectedSmokeDebugAndroidTest --no-daemon --stacktrace
       - name: Verify APK exists
         run: |
