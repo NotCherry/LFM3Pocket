@@ -1,20 +1,21 @@
 # Verification plan
 
-## In GitHub Actions
+## GitHub Actions
 
-- Checkout llama.cpp `v0.8.0` (first release documented to support LFM3).
-- Cross-compile native C++ for `arm64-v8a` with Android NDK 27.
-- Compile Java and package signed debug APK with no `INTERNET` permission.
-- Upload `LFM3Pocket-arm64-debug` artifact.
+- Build the `phone` flavor for `arm64-v8a` and upload `LFM3Pocket-arm64-debug`.
+- Build the `smoke` flavor and its instrumentation APK for `x86_64`.
+- Compile the `mtmd` multimodal library along with the JNI bridge.
 
-## Device test (requires Android ARM64 device and official GGUF)
+The `GenerationSmokeTest` can be run with `gradle :app:connectedSmokeDebugAndroidTest` on an Android emulator or device. GitHub's hosted emulator repeatedly lost core system services during boot in CI, so the workflow compiles the smoke-test APK but does not launch the emulator test.
 
-1. Install APK, open it, confirm no Internet permission is requested.
-2. Import official `LFM3-1.7B-Q4_K_M.gguf` using document picker.
-3. Confirm private storage import and native model load.
-4. Send a Polish prompt; confirm incremental output, unicode, and chat history.
-5. Tap Stop during generation, then send another prompt.
-6. Clear conversation; restart app; confirm saved model reload.
-7. Test airplane mode and measure memory/heat/battery.
+## Device test (Android ARM64 and official LFM3 models)
 
-CI compilation **does not** prove GGUF loading or phone-side inference. The app never bundles model weights.
+1. Import a text GGUF and verify load, Polish text output, Stop, retry, and saved-model reload.
+2. Import the official Omni GGUF and matching projector; ask a question about a gallery photo and a camera photo.
+3. Record a short Polish voice question and verify the local Omni model answers from its audio content.
+4. Configure an HTTPS SearXNG endpoint; verify search citations open, then disable search and verify offline chat.
+5. Deny microphone permission and verify typed/photo chat still works.
+6. Repeat import, generation, Stop, and retry under low-memory conditions; measure heat and battery use.
+
+CI's compact GGUF checks the JNI and generation lifecycle, not LFM3 quality or phone performance. Official model weights are not bundled in the APK.
+

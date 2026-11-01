@@ -42,17 +42,19 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Assemble ARM64 debug APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Assemble phone and smoke-test APKs
+        run: |
+          gradle :app:assemblePhoneDebug :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
       - name: Verify APK exists
         run: |
-          test -s app/build/outputs/apk/debug/app-debug.apk
-          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          test -s app/build/outputs/apk/phone/debug/app-phone-debug.apk
+          ls -lh app/build/outputs/apk/phone/debug/app-phone-debug.apk
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: LFM3Pocket-arm64-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/phone/debug/app-phone-debug.apk
           if-no-files-found: error
           retention-days: 30
+

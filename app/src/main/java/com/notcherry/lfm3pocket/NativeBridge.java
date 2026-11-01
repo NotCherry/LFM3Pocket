@@ -11,9 +11,11 @@ public final class NativeBridge {
         void onToken(String piece);
     }
 
-    public static native long loadModel(String privatePath);
+    public static native long loadModel(String privatePath, String privateMmprojPath);
     public static native void unloadModel(long handle);
-    public static native String generate(long handle, String prompt, int maxTokens, TokenSink sink);
+    public static native String generate(long handle, String prompt, String mediaPath,
+                                         int maxTokens, TokenSink sink);
     public static native void stop();
     public static native void resetStop();
 }
+
