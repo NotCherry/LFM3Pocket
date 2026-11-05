@@ -23,7 +23,7 @@ validate_gguf() {
 self_test() {
   local tmp
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
+  trap "rm -rf -- '$tmp'" EXIT
   printf 'GGUFtest' > "$tmp/good.gguf"
   printf 'BAD!test' > "$tmp/bad.gguf"
   validate_gguf "$tmp/good.gguf" || error 'valid GGUF signature rejected'
