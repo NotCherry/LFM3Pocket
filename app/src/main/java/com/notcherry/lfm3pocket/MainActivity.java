@@ -132,6 +132,7 @@ public final class MainActivity extends Activity {
         root.addView(heading);
 
         status = label("Starting...", 13, Color.DKGRAY);
+        status.setId(R.id.chat_status);
         status.setPadding(0, dp(5), 0, dp(6));
         root.addView(status);
 
@@ -149,6 +150,7 @@ public final class MainActivity extends Activity {
         searchButton = button("Web search: off");
         clearButton = button("Clear");
         stopButton = button("Stop");
+        stopButton.setId(R.id.chat_stop);
         actionControls.addView(searchButton, new LinearLayout.LayoutParams(0, dp(48), 1.5f));
         actionControls.addView(clearButton, new LinearLayout.LayoutParams(0, dp(48), 0.8f));
         actionControls.addView(stopButton, new LinearLayout.LayoutParams(0, dp(48), 0.8f));
@@ -158,6 +160,7 @@ public final class MainActivity extends Activity {
         scroller = new ScrollView(this);
         scroller.setFillViewport(true);
         transcript = label("Choose an LFM3-1.7B GGUF model to start. All inference runs on this device.\n", 16, Color.rgb(28, 32, 38));
+        transcript.setId(R.id.chat_transcript);
         transcript.setTextIsSelectable(true);
         transcript.setAutoLinkMask(Linkify.WEB_URLS);
         transcript.setLinksClickable(true);
@@ -179,12 +182,14 @@ public final class MainActivity extends Activity {
         LinearLayout inputRow = new LinearLayout(this);
         inputRow.setGravity(Gravity.BOTTOM);
         promptInput = new EditText(this);
+        promptInput.setId(R.id.chat_input);
         promptInput.setHint("Write a message...");
         promptInput.setMinLines(1);
         promptInput.setMaxLines(4);
         promptInput.setTextSize(16);
         promptInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         sendButton = button("Send");
+        sendButton.setId(R.id.chat_send);
         inputRow.addView(promptInput, new LinearLayout.LayoutParams(0, -2, 1f));
         inputRow.addView(sendButton, new LinearLayout.LayoutParams(dp(90), dp(56)));
         root.addView(inputRow);
