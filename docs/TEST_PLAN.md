@@ -11,7 +11,17 @@
 
 Run locally on a booted x86_64 emulator with `bash .github/scripts/run-jni-smoke.sh` (requires the Android SDK, Gradle 8.13, the llama.cpp checkout and native toolchain described in README). The script invokes `gradle :app:connectedSmokeDebugAndroidTest`, which installs the app and test APK and exercises load, token streaming, cancellation and retry through JNI.
 
-**Fixture limitation (#6):** The existing test downloads a compact public GGUF into the emulator if it is absent; pinning its revision/checksum and provisioning it outside the test are separate follow-up work. This test verifies the JNI execution lifecycle, **not** production LFM3-Omni correctness. Physical ARM64 model testing remains mandatory.
+**Deterministic smoke fixture (#6):** CI downloads the compact `stories15M-q4_0.gguf` on the **host** from pinned Hugging Face revision `499bc8821c6b12b4e53c5bffcb21ec206f212d81`, verifies SHA256 `66967fbece6dbe97886593fdbb73589584927e29119ec31f08090732d1861739`, caches it, and packages it as an `androidTest` asset. The emulator only reads the packaged asset; it never downloads a model.
+
+To provision locally before building/running the instrumentation APK:
+
+```bash
+bash .github/scripts/provision-smoke-model.sh
+bash .github/scripts/provision-smoke-model.sh --verify
+gradle :app:connectedSmokeDebugAndroidTest --no-daemon
+```
+
+Corrupted cached fixtures fail immediately; to intentionally verify rejection, use `bash .github/scripts/provision-smoke-model.sh --verify /path/to/bad.gguf`. The downloaded GGUF is intentionally gitignored. This fixture proves the JNI execution lifecycle, **not** production LFM3-Omni correctness. Real ARM64 hardware with official Omni weights remains the separate product acceptance gate.
 
 **Emulator caveat:** CI previously encountered Android boot instability. The new workflow uses a managed emulator runner with KVM and uploads logs on failure; actual CI success must be checked on the PR rather than assumed.
 
