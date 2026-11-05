@@ -5,7 +5,12 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.net.TrafficStats;
+import android.os.Process;
+import android.provider.Settings;
 
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -22,6 +27,8 @@ import org.junit.runner.RunWith;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.regex.Pattern;
 
 /**
  * Real emulator UI interactions using a deterministic fake model, never LFM3 weights.
@@ -102,4 +109,89 @@ public final class ChatUiE2eTest {
             assertFalse(device.findObject(By.res(packageName, "chat_stop")).isEnabled());
         }
     }
+    @Test public void airplaneModeTextChatDoesNotTransmitNetworkBytes() throws Exception {
+        String previousAirplane = device.executeShellCommand(
+                "settings get global airplane_mode_on").trim();
+        try {
+            // Android emulator: disable radio-backed networks. Some emulator builds
+            // retain virtual Ethernet; per-UID TX counters separately verify app isolation.
+            device.executeShellCommand("settings put global airplane_mode_on 1");
+            device.executeShellCommand(
+                    "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true");
+            device.executeShellCommand("svc wifi disable");
+            device.executeShellCommand("svc data disable");
+            assertEquals(1, Settings.Global.getInt(app.getContentResolver(),
+                    Settings.Global.AIRPLANE_MODE_ON, 0));
+
+            try (ActivityScenario<MainActivity> scenario =
+                         ActivityScenario.launch(MainActivity.class)) {
+                awaitEnabled("chat_send");
+                long uidTxBefore = TrafficStats.getUidTxBytes(Process.myUid());
+                assertTrue("UID network accounting must be available for offline assertion",
+                        uidTxBefore >= 0);
+
+                UiObject2 input = device.findObject(By.res(packageName, "chat_input"));
+                assertNotNull(input);
+                input.setText("Answer without internet");
+                awaitEnabled("chat_send").click();
+                awaitTranscript("FAKE_STREAM_BEGIN");
+                awaitEnabled("chat_stop").click();
+                awaitEnabled("chat_send");
+                assertEquals("Offline core chat must not transmit data for this app UID",
+                        uidTxBefore, TrafficStats.getUidTxBytes(Process.myUid()));
+            }
+        } finally {
+            String restored = "1".equals(previousAirplane) ? "1" : "0";
+            device.executeShellCommand("settings put global airplane_mode_on " + restored);
+            device.executeShellCommand(
+                    "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state " +
+                            ("1".equals(restored) ? "true" : "false"));
+            if ("0".equals(restored)) {
+                device.executeShellCommand("svc wifi enable");
+                device.executeShellCommand("svc data enable");
+            }
+        }
+    }
+
+    @Test public void denyingMicrophoneAndCameraPermissionDoesNotBlockTextChat()
+            throws Exception {
+        // The current camera implementation delegates to an external capture
+        // activity and intentionally does not request the CAMERA permission.
+        String[] requested = app.getPackageManager()
+                .getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
+                .requestedPermissions;
+        assertFalse(requested != null &&
+                Arrays.asList(requested).contains(Manifest.permission.CAMERA));
+        assertEquals(PackageManager.PERMISSION_DENIED,
+                app.checkSelfPermission(Manifest.permission.CAMERA));
+        assertEquals(PackageManager.PERMISSION_DENIED,
+                app.checkSelfPermission(Manifest.permission.RECORD_AUDIO));
+
+        try (ActivityScenario<MainActivity> scenario =
+                     ActivityScenario.launch(MainActivity.class)) {
+            awaitEnabled("chat_send");
+            awaitEnabled("voice_record").click();
+
+            // Android API 30's permission controller uses "Don't allow"; accept
+            // the standard "Deny" label too, without depending on its package name.
+            UiObject2 deny = device.wait(Until.findObject(By.text(
+                    Pattern.compile("(?i)(.*don.t allow.*|.*deny.*)"))), UI_TIMEOUT_MS);
+            assertNotNull("Microphone permission denial action was not shown", deny);
+            deny.click();
+            assertNotNull("Expected microphone denied status on actual Activity",
+                    device.wait(Until.findObject(By.res(packageName, "chat_status")
+                            .textContains("Microphone access is needed")), UI_TIMEOUT_MS));
+
+            UiObject2 input = device.findObject(By.res(packageName, "chat_input"));
+            assertNotNull(input);
+            input.setText("Text is still available");
+            awaitEnabled("chat_send").click();
+            awaitTranscript("FAKE_STREAM_BEGIN");
+            awaitEnabled("chat_stop").click();
+            awaitEnabled("chat_send");
+            assertEquals(PackageManager.PERMISSION_DENIED,
+                    app.checkSelfPermission(Manifest.permission.RECORD_AUDIO));
+        }
+    }
+
 }
