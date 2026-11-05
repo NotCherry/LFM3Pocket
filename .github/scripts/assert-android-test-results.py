@@ -94,7 +94,7 @@ def main() -> None:
         summary = os.environ.get("GITHUB_STEP_SUMMARY")
         if summary:
             with open(summary, "a", encoding="utf-8") as output:
-                output.write(f"### Android emulator tests: FAILED\\n\\n{exc}\\n")
+                output.write(f"### Android emulator tests: FAILED\n\n{exc}\n")
         sys.exit(1)
 
     line = f"Android emulator connected tests: {tests} executed, {failed} failed, {skipped} skipped"
@@ -102,7 +102,7 @@ def main() -> None:
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as output:
-            output.write(f"### Android emulator tests: PASSED\\n\\n{line}\\n")
+            output.write(f"### Android emulator tests: PASSED\n\n{line}\n")
 
 
 if __name__ == "__main__":
