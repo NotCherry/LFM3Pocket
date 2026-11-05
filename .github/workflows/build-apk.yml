@@ -49,6 +49,33 @@ jobs:
         run: |
           test -s app/build/outputs/apk/phone/debug/app-phone-debug.apk
           ls -lh app/build/outputs/apk/phone/debug/app-phone-debug.apk
+      - name: Enable KVM access for Android emulator
+        run: |
+          test -e /dev/kvm
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Execute JNI generation smoke test on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          emulator-boot-timeout: 600
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash .github/scripts/run-jni-smoke.sh
+      - name: Upload instrumented test results and emulator logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LFM3Pocket-android-jni-smoke-results
+          path: |
+            app/build/outputs/androidTest-results/connected/
+            app/build/reports/androidTests/connected/
+            app/build/ci-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
