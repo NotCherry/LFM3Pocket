@@ -1,0 +1,41 @@
+# Stage 1 acceptance matrix — LFM3 Pocket
+
+This is the authoritative **test-to-requirement map**, not a feature-completion claim. It tracks issue #4 and uses nine acceptance IDs (AT-01..AT-09). Stage 2 persistent **AI memory and reminders are excluded**; Stage 1 stores ordinary local conversation transcripts.
+
+## Evidence levels
+
+- **JVM**: isolated pure-Java unit contracts; no Android UI, JNI, hardware, or model.
+- **EMU-FAKE**: Android API 30 x86_64 emulator, real UI + deterministic injected fake; proves app integration, not model understanding.
+- **EMU-JNI**: Android API 30 x86_64 emulator, native llama.cpp JNI with pinned compact Stories15M GGUF; proves native execution lifecycle only.
+- **ARM64-OMNI**: physical ARM64 Android device, exact official Omni GGUF and matching projector with recorded hashes, multimodal cases, device details, logs, and measured results. This is mandatory for release-level claims involving actual Omni inference.
+- **MISSING**: owner and planned test identified, with no qualifying passing evidence.
+- **PARTIAL**: lower-level evidence exists, but the requirement's full release gate is not satisfied.
+- **VERIFIED**: every stated acceptance condition has qualifying test results linked in the device/evidence record (currently none).
+
+## Requirement-to-test mapping
+
+| ID | Stage 1 requirement | Owner issues | Automated test owner and evidence | Real-device / release gate | Status |
+| --- | --- | --- | --- | --- | --- |
+| AT-01 | Import local GGUF with SAF, validate model/projector compatibility, manage lifecycle without leaks | #15 #16 #17 #18 | **Existing:** `GenerationSmokeTest.nativeGenerationStreamsStopsAndCanRestart` (EMU-JNI only); **planned:** `ModelImportE2eTest` (F03–F06) | ARM64-OMNI verified model import, checksums, projector pairing, unload, memory | PARTIAL |
+| AT-02 | Local text chat displays streaming, Stop and retry, with recoverable UI state | #7 #8 #19 | **Existing:** `ChatUiE2eTest.launchStreamCancelAndRetryRecoversVisibleChatControls` (EMU-FAKE), `GenerationSmokeTest` (EMU-JNI), `AppContractsUnitTest` (JVM) | ARM64-OMNI text streaming, cancellation and retry with actual LFM3 model | PARTIAL |
+| AT-03 | Offline core chat works with denied permissions; SearXNG search is strictly opt-in | #10 #49 | **Pending:** `ChatUiE2eTest.airplaneModeTextChatDoesNotTransmitNetworkBytes` and `denyingMicrophoneAndCameraPermissionDoesNotBlockTextChat` in PR #58; **planned:** offline/privacy network inspection | ARM64 airplane mode, denied microphone, search opt-in isolation, traffic evidence | MISSING |
+| AT-04 | Real LFM3-Omni GGUF + projector on ARM64 supports claimed text/image/audio pathways | #12 #13 #16 | **Planned:** `ARM64_OmniDeviceProtocol` (T08/F01); EMU-JNI Stories15M explicitly does **not** qualify | Exact model SHA256, ARM64 device/Android version, text/photo/audio results and performance log | MISSING |
+| AT-05 | Turn-based push-to-talk voice input with safe runtime permission states and local user transcript | #21 #22 #23 #27 | **Planned:** `VoiceInputE2eTest` (V01–V03, V06) | ARM64-OMNI recorded Polish speech, locally interpreted content and saved transcript | MISSING |
+| AT-06 | Local model-generated spoken response, playback and Stop, without a cloud speech backend | #24 #26 #27 | **Planned:** `VoiceOutputE2eTest` (V04–V06) | ARM64-OMNI speech generation and audible output; measure latency, interruption, correctness | MISSING |
+| AT-07 | Gallery/camera still-image understanding; one combined speech + image turn | #28 #29 #30 #31 #32 | **Planned:** `VisionE2eTest` (I01–I05) | ARM64-OMNI matched projector, gallery/camera capture, visual grounding, combined turn | MISSING |
+| AT-08 | Allowlisted Android actions with validated arguments, denied unknown tools, and explicit confirmation for sensitive actions | #33 #34 #35 #36 #37 #38 #39 #40 #41 #42 #43 | **Existing:** `DependencyContractTest.deviceActionsHaveDeterministicTestResultsAndDefaultDeny` (EMU-FAKE only); **planned:** `AndroidActionE2eTest` (A01–A11) | Authorized real-device tool execution, prompt-injection/adversarial cases, safe denial | MISSING |
+| AT-09 | Private local transcript persistence across restart, deletion, no long-term AI memory; documented reproducible APK/privacy gates | #44 #45 #46 #47 #48 #49 #50 #51 #52 | **Planned:** `HistoryPersistenceE2eTest` (H01–H05), `PrivacyRegressionTest` (R01–R04); **existing:** ARM64 APK compilation only | Real-device history restart/deletion and private-media cleanup, release APK checks and logs | MISSING |
+
+## Currently observed CI evidence
+
+- [PR #55, Actions run #21](https://github.com/NotCherry/LFM3Pocket/actions/runs/42004864805): 5 executed instrumentation tests including the JNI smoke and deterministic fake contract tests.
+- [PR #56, Actions run #23](https://github.com/NotCherry/LFM3Pocket/actions/runs/42007764262): 6/6 Android tests, including black-box UI launch/stream/cancel/retry. **No official Omni device inference**.
+- [PR #57, Actions run #25](https://github.com/NotCherry/LFM3Pocket/actions/runs/42009363621): JVM contracts, ARM64 APK build, 6/6 emulator JNI/UI tests, JUnit result gate and downloadable evidence.
+- PR #58 is pending at matrix creation time; do not mark AT-03 partial until its test results are verified and merged.
+
+## Maintenance contract
+
+1. Every feature PR must identify its AT ID(s) and attach evidence at the correct tier. Missing physical ARM64-OMNI evidence stays **MISSING/PARTIAL**, not VERIFIED.
+2. Update the test owner and status only after a relevant test executes and passes in CI; manual ARM64 test reports must state **device model, Android version, exact GGUF/projector SHA256, steps, result, logs, latency and known limitations**.
+3. If emulator tests or hardware acceptance regress, reopen the relevant issue and demote the status; do not rely on a previously green workflow.
+4. CI validates that AT-01..AT-09 remain present with owners, evidence tiers and explicit status. A future release gate may require all nine VERIFIED only after physical-device validation is feasible.
