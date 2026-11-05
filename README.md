@@ -8,6 +8,10 @@ GitHub Actions builds the ARM64 phone APK, runs an x86_64 emulator smoke test th
 
 Locally, install JDK 17, Android SDK/NDK and Gradle 8.13; run `git clone --branch v0.8.0 --depth 1 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp` then `gradle :app:assemblePhoneDebug`.
 
+## App navigation
+
+The app opens in a minimal Kotlin/Compose navigation host. Tap **Open chat** to use the existing Java/JNI chat implementation. The host does not replace inference or change local-model privacy settings. This staged migration is covered by emulator navigation tests.
+
 ## Usage
 
 Import an official quantized LFM3 GGUF from the Android document picker to chat offline. For LFM3-Omni, import both `LFM3-Omni-2B-Q4_K_M.gguf` and its matching `mmproj-LFM3-Omni-2B-Q4_K_M.gguf`; then attach a photo or record a voice question. Model files are copied into private app storage and are not included in the APK. Recommended phone RAM: at least 4 GB, preferably 6+ GB.
