@@ -1,6 +1,5 @@
 package com.notcherry.lfm3pocket;
 
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -15,8 +14,6 @@ import org.junit.runner.RunWith;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,10 +24,10 @@ public final class GenerationSmokeTest {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         String modelPath = InstrumentationRegistry.getArguments().getString("modelPath");
         File modelFile = modelPath == null || modelPath.trim().isEmpty()
-                ? new File(context.getCacheDir(), "stories15M-q4_0.gguf")
+                ? copyPackagedSmokeModel(context)
                 : new File(modelPath);
-        if (!modelFile.isFile()) downloadSmokeModel(modelFile);
-        assertTrue("Smoke GGUF must exist", modelFile.isFile());
+        assertTrue("Smoke GGUF must exist (run provision-smoke-model.sh before building androidTest)",
+                modelFile.isFile());
 
         long handle = NativeBridge.loadModel(modelFile.getAbsolutePath(), null);
         assertTrue("Native engine failed to load smoke GGUF", handle != 0L);
@@ -85,27 +82,23 @@ public final class GenerationSmokeTest {
         }
     }
 
-    private static void downloadSmokeModel(File destination) throws Exception {
-        HttpURLConnection connection = (HttpURLConnection) new URL(
-                "https://huggingface.co/ggml-org/models-moved/resolve/main/tinyllamas/stories15M-q4_0.gguf?download=true")
-                .openConnection();
-        connection.setConnectTimeout(15000);
-        connection.setReadTimeout(30000);
-        try {
-            if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
-                throw new AssertionError("Could not download the CI smoke model (HTTP " +
-                        connection.getResponseCode() + ")");
+    /**
+     * The fixture is packaged into the instrumentation APK by the host build.
+     * The Android emulator never fetches GGUF weights over the network.
+     */
+    private static File copyPackagedSmokeModel(Context context) throws Exception {
+        File destination = new File(context.getCacheDir(), "stories15M-q4_0.gguf");
+        try (InputStream input = InstrumentationRegistry.getInstrumentation()
+                .getContext().getAssets().open("stories15M-q4_0.gguf");
+             FileOutputStream output = new FileOutputStream(destination)) {
+            byte[] buffer = new byte[64 * 1024];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                output.write(buffer, 0, count);
             }
-            try (InputStream input = connection.getInputStream();
-                 FileOutputStream output = new FileOutputStream(destination)) {
-                byte[] buffer = new byte[64 * 1024];
-                int count;
-                while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
-                output.getFD().sync();
-            }
-        } finally {
-            connection.disconnect();
+            output.getFD().sync();
         }
+        assertTrue("Packaged GGUF has incorrect size", destination.length() == 19077344L);
+        return destination;
     }
 }
-
