@@ -44,6 +44,10 @@ jobs:
         run: python3 .github/scripts/assert-android-test-results.py --self-test
       - name: Verify Stage 1 acceptance matrix completeness
         run: python3 .github/scripts/check-acceptance-matrix.py
+      - name: Verify ARM64 evidence collector negative controls
+        run: |
+          bash -n .github/scripts/collect-arm64-omni-evidence.sh
+          bash .github/scripts/collect-arm64-omni-evidence.sh --self-test
       - name: Execute JVM JUnit tests
         run: gradle :app:testSmokeDebugUnitTest --no-daemon --stacktrace
       - name: Upload JVM JUnit XML and reports
