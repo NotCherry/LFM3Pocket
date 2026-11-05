@@ -6,10 +6,16 @@ set -Eeuo pipefail
 mkdir -p app/build/ci-artifacts
 
 collect_diagnostics() {
+  local exit_code="${1:-0}"
   adb devices -l > app/build/ci-artifacts/adb-devices.txt 2>&1 || true
   adb logcat -d -v threadtime > app/build/ci-artifacts/emulator-logcat.txt 2>&1 || true
+  if [ "$exit_code" -ne 0 ]; then
+    # Best-effort screenshot of the last emulator state for failed UI assertions.
+    adb exec-out screencap -p > app/build/ci-artifacts/failure-screen.png 2>/dev/null || true
+    adb shell dumpsys activity activities > app/build/ci-artifacts/activity-dump.txt 2>&1 || true
+  fi
 }
-trap collect_diagnostics EXIT
+trap 'collect_diagnostics "$?"' EXIT
 
 adb wait-for-device
 test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
