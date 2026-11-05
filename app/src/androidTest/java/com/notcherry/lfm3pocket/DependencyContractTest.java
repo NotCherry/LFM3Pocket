@@ -11,7 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import java.util.Map;
+import java.util.Collections;
 
 /**
  * Contract tests intentionally exercise no JNI and do not require model weights.
@@ -104,17 +104,17 @@ public final class DependencyContractTest {
     @Test public void deviceActionsHaveDeterministicTestResultsAndDefaultDeny() {
         TestApp testApp = new TestApp();
         AndroidActionExecutor.ActionResult ok =
-                testApp.actionExecutor().execute("toggle_flashlight", Map.of("on", "true"));
+                testApp.actionExecutor().execute("toggle_flashlight", Collections.singletonMap("on", "true"));
         assertTrue(ok.succeeded);
         assertEquals("FAKE_RESULT", ok.status);
 
         AndroidActionExecutor.ActionResult reject =
-                testApp.actionExecutor().execute("unsupported", Map.of());
+                testApp.actionExecutor().execute("unsupported", Collections.emptyMap());
         assertFalse(reject.succeeded);
 
         Lfm3PocketApplication production = new Lfm3PocketApplication();
         AndroidActionExecutor.ActionResult deny =
-                production.actionExecutor().execute("toggle_flashlight", Map.of());
+                production.actionExecutor().execute("toggle_flashlight", Collections.emptyMap());
         assertFalse(deny.succeeded);
         assertEquals("NOT_IMPLEMENTED", deny.status);
     }
