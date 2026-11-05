@@ -174,6 +174,7 @@ public final class MainActivity extends Activity {
         photoButton = button("Photo");
         cameraButton = button("Camera");
         recordButton = button("Voice input");
+        recordButton.setId(R.id.voice_record);
         mediaControls.addView(photoButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
         mediaControls.addView(cameraButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
         mediaControls.addView(recordButton, new LinearLayout.LayoutParams(0, dp(46), 1.3f));
