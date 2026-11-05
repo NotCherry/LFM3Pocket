@@ -13,7 +13,7 @@ STATUSES = {"MISSING", "PARTIAL", "VERIFIED"}
 def verify(text: str) -> None:
     rows: dict[str, list[str]] = {}
     for raw in text.splitlines():
-        if not re.match(r"^\\| AT-\\d{2} \\|", raw):
+        if not re.match(r"^\| AT-\d{2} \|", raw):
             continue
         cols = [item.strip() for item in raw.strip().strip("|").split("|")]
         if len(cols) != 6:
@@ -32,7 +32,7 @@ def verify(text: str) -> None:
         _, requirement, owners, tests, hardware, status = cols
         if len(requirement) < 20:
             raise ValueError(f"{key}: missing concrete acceptance criterion")
-        if not re.search(r"#\\d+", owners):
+        if not re.search(r"#\d+", owners):
             raise ValueError(f"{key}: no owning implementation issue")
         if not any(label in tests for label in ("Existing:", "Planned:", "Pending:")):
             raise ValueError(f"{key}: no explicit existing/planned automated test")
@@ -49,7 +49,7 @@ def main() -> None:
     text = source.read_text(encoding="utf-8")
     verify(text)
     # Negative control: omitting one acceptance criterion must make the gate fail.
-    missing = "\\n".join(
+    missing = "\n".join(
         line for line in text.splitlines() if not line.startswith("| AT-09 |")
     )
     try:
