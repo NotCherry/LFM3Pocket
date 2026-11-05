@@ -42,6 +42,20 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Cache checksum-verified smoke GGUF
+        uses: actions/cache@v4
+        with:
+          path: app/src/androidTest/assets/stories15M-q4_0.gguf
+          key: smoke-model-stories15m-q4-66967fbece6dbe97886593fdbb73589584927e29119ec31f08090732d1861739
+      - name: Verify bad model checksums fail
+        run: |
+          printf 'invalid GGUF contents' > "$RUNNER_TEMP/invalid.gguf"
+          if bash .github/scripts/provision-smoke-model.sh --verify "$RUNNER_TEMP/invalid.gguf"; then
+            echo 'ERROR: corrupted model fixture was accepted' >&2
+            exit 1
+          fi
+      - name: Provision SHA256-verified smoke model
+        run: bash .github/scripts/provision-smoke-model.sh
       - name: Assemble phone and smoke-test APKs
         run: |
           gradle :app:assemblePhoneDebug :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
