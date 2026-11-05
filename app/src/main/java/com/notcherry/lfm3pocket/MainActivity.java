@@ -53,6 +53,7 @@ public final class MainActivity extends Activity {
     private final StringBuilder pendingTokens = new StringBuilder();
     private final Object pendingTokenLock = new Object();
     private boolean tokenUpdateScheduled = false;
+    private InferenceEngine inferenceEngine;
     private volatile long modelHandle = 0L;
     private boolean busy = false;
     private boolean generating = false;
@@ -88,6 +89,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        inferenceEngine = ((Lfm3PocketApplication) getApplication()).inferenceEngine();
         buildUi();
         updateControls();
         String previous = getPreferences(MODE_PRIVATE).getString("model", "");
@@ -195,7 +197,7 @@ public final class MainActivity extends Activity {
         cameraButton.setOnClickListener(v -> takePhoto());
         recordButton.setOnClickListener(v -> toggleRecording());
         clearButton.setOnClickListener(v -> {
-            if (generating) { NativeBridge.stop(); }
+            if (generating) { inferenceEngine.stop(); }
             messages.clear();
             partial.setLength(0);
             pendingMediaPath = "";
@@ -205,7 +207,7 @@ public final class MainActivity extends Activity {
         stopButton.setOnClickListener(v -> {
             if (recording) stopRecording();
             else {
-                NativeBridge.stop();
+                inferenceEngine.stop();
                 status.setText("Stopping generation...");
             }
         });
@@ -530,7 +532,7 @@ public final class MainActivity extends Activity {
         long next = 0;
         String error = null;
         try {
-            next = NativeBridge.loadModel(path, projector == null || projector.isEmpty() ? null : projector);
+            next = inferenceEngine.loadModel(path, projector == null || projector.isEmpty() ? null : projector);
             if (next == 0L) error = "Native engine could not load model (check RAM and GGUF compatibility)";
         } catch (Throwable e) {
             error = e.toString();
@@ -538,7 +540,7 @@ public final class MainActivity extends Activity {
         final long loaded = next;
         final String failure = error;
         if (loaded != 0L) {
-            if (modelHandle != 0L) NativeBridge.unloadModel(modelHandle);
+            if (modelHandle != 0L) inferenceEngine.unloadModel(modelHandle);
             modelHandle = loaded;
             getPreferences(MODE_PRIVATE).edit().putString("model", path).apply();
         }
@@ -571,7 +573,7 @@ public final class MainActivity extends Activity {
         partial.setLength(0);
         final boolean useSearch = searchEnabled;
         final String endpoint = searchEndpoint;
-        NativeBridge.resetStop();
+        inferenceEngine.resetStop();
         busy = true;
         generating = true;
         updateControls();
@@ -598,7 +600,7 @@ public final class MainActivity extends Activity {
             final List<WebSearch.Source> resultSources = sources;
             final String fullPrompt = makePrompt(resultSources, mediaPath);
             try {
-                error = NativeBridge.generate(modelHandle, fullPrompt,
+                error = inferenceEngine.generate(modelHandle, fullPrompt,
                         mediaPath.isEmpty() ? null : mediaPath, MAX_GENERATED_TOKENS,
                         piece -> queueTokenUpdate(piece));
             } catch (Throwable e) {
@@ -694,10 +696,10 @@ public final class MainActivity extends Activity {
     @Override protected void onDestroy() {
         destroyed = true;
         if (recording) stopRecording();
-        NativeBridge.stop();
+        inferenceEngine.stop();
         worker.execute(() -> {
             if (modelHandle != 0L) {
-                NativeBridge.unloadModel(modelHandle);
+                inferenceEngine.unloadModel(modelHandle);
                 modelHandle = 0L;
             }
         });
