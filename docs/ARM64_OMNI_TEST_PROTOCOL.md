@@ -49,3 +49,48 @@ The host script uses `adb` against a device explicitly selected by its operator 
 The script's `--self-test` creates temporary four-byte GGUF signature fixtures and validates rejection of bad input without requiring Android or network access. This proves input validation only, not Omni functionality.
 
 Link a signed-off redacted device report and its model checksums to issue #13 (F01) before promoting any real-device release requirement from PARTIAL/MISSING to VERIFIED.
+
+## Isolated installation when the phone already has another signing key
+
+`deviceCheck` uses the same production sources/JNI with application ID `com.notcherry.lfm3pocket.devicecheck` and label **LFM3 Pocket Device Test**. It installs beside the regular app, preserving that app's selected models/data. Its instrumentation runner is the ordinary AndroidJUnitRunner, with production dependencies; the probe explicitly rejects the scripted test Application. CI builds both isolated APKs in the ARM64 job. Record the actual APK hash, source commit and application ID; do not describe a local build as a downloaded CI artifact.
+
+Build/install only onto the explicitly selected physical phone:
+
+```bash
+gradle :app:assembleDeviceCheckDebug :app:assembleDeviceCheckDebugAndroidTest
+adb -s "$PHONE_SERIAL" install -r app/build/outputs/apk/deviceCheck/debug/app-deviceCheck-debug.apk
+adb -s "$PHONE_SERIAL" install -r app/build/outputs/apk/androidTest/deviceCheck/debug/app-deviceCheck-debug-androidTest.apk
+adb -s "$PHONE_SERIAL" shell run-as com.notcherry.lfm3pocket.devicecheck mkdir -p /data/user/0/com.notcherry.lfm3pocket.devicecheck/files/models
+adb -s "$PHONE_SERIAL" shell -T run-as com.notcherry.lfm3pocket.devicecheck dd of=/data/user/0/com.notcherry.lfm3pocket.devicecheck/files/models/LFM3-Omni-2B-Q4_K_M.gguf < /path/to/LFM3-Omni-2B-Q4_K_M.gguf
+adb -s "$PHONE_SERIAL" shell -T run-as com.notcherry.lfm3pocket.devicecheck dd of=/data/user/0/com.notcherry.lfm3pocket.devicecheck/files/models/mmproj-LFM3-Omni-2B-Q4_K_M.gguf < /path/to/mmproj-LFM3-Omni-2B-Q4_K_M.gguf
+adb -s "$PHONE_SERIAL" shell am instrument -w -r \
+  -e class com.notcherry.lfm3pocket.RealOmniProbeTest -e realOmni true \
+  com.notcherry.lfm3pocket.devicecheck.test/androidx.test.runner.AndroidJUnitRunner
+adb -s "$PHONE_SERIAL" shell run-as com.notcherry.lfm3pocket.devicecheck cat /data/user/0/com.notcherry.lfm3pocket.devicecheck/files/probe-text.json > probe-text.json
+```
+
+RealOmniProbeTest validates actual GGUF metadata, loads the real model/projector and records exact native text, errors and timings in app-private files named probe-<case>.json and probe-<case>-stream.txt. Use run-as cat to copy the report out of app storage. Optional `-e media PATH`, `-e prompt PROMPT`, `-e promptBase64 BASE64_UTF8_PROMPT`, and `-e caseId image` allow controlled non-private fixtures. Base64 is useful for prompts with shell-sensitive model tokens such as `<|im_start|>`. Host evidence collection supports `--package com.notcherry.lfm3pocket.devicecheck`. A successful native call does not grade language/vision/audio quality, prove the SAF/UI path or verify offline operation. Review recorded output against fixture ground truth and report each limitation separately. Never run the unfiltered fake UI suite with the production-dependency device runner.
+
+Wi-Fi ADB requires Wi-Fi connectivity; do not disconnect it during an unattended run or call such a run an airplane-mode test. Offline acceptance requires an on-phone/manual handoff or a working USB link.
+
+## Local x86_64 emulator run
+
+When a physical ARM64 phone is unavailable, the same isolated probe can load publisher-provided model weights in the local x86_64 emulator. This verifies the GGUF preflight and the x86_64 JNI/model/projector path and records real generated output. It does **not** satisfy ARM64 compatibility, real-phone performance, radio-off behavior, microphone/camera hardware behavior, or the physical-device release gate. Keep issue #13 PARTIAL until its ARM64 evidence is available.
+
+The deviceCheck flavor packages both arm64-v8a and x86_64 libraries. Use an emulator with at least 4 GB RAM and enough free data storage for both model files:
+
+```bash
+gradle :app:assembleDeviceCheckDebug :app:assembleDeviceCheckDebugAndroidTest
+adb -s emulator-5554 install -r app/build/outputs/apk/deviceCheck/debug/app-deviceCheck-debug.apk
+adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/deviceCheck/debug/app-deviceCheck-debug-androidTest.apk
+adb -s emulator-5554 shell run-as com.notcherry.lfm3pocket.devicecheck mkdir -p /data/user/0/com.notcherry.lfm3pocket.devicecheck/files/models
+adb -s emulator-5554 shell -T run-as com.notcherry.lfm3pocket.devicecheck dd of=/data/user/0/com.notcherry.lfm3pocket.devicecheck/files/models/LFM3-Omni-2B-Q4_K_M.gguf < /path/to/LFM3-Omni-2B-Q4_K_M.gguf
+adb -s emulator-5554 shell -T run-as com.notcherry.lfm3pocket.devicecheck dd of=/data/user/0/com.notcherry.lfm3pocket.devicecheck/files/models/mmproj-LFM3-Omni-2B-Q4_K_M.gguf < /path/to/mmproj-LFM3-Omni-2B-Q4_K_M.gguf
+adb -s emulator-5554 shell am instrument -w -r \
+  -e class com.notcherry.lfm3pocket.RealOmniProbeTest -e realOmni true \
+  -e allowEmulator true -e caseId emulator-text -e maxTokens 64 \
+  com.notcherry.lfm3pocket.devicecheck.test/androidx.test.runner.AndroidJUnitRunner
+adb -s emulator-5554 shell run-as com.notcherry.lfm3pocket.devicecheck cat /data/user/0/com.notcherry.lfm3pocket.devicecheck/files/probe-emulator-text.json > probe-emulator-text.json
+```
+
+The emulator opt-in is explicit. Reports label the environment as EMULATOR and record its ABI. Do not feed these results to the physical-device evidence collector or relabel them as ARM64 phone results.

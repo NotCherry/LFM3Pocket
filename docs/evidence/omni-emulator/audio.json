@@ -1,0 +1,20 @@
+{
+  "device": "sdk_gphone_x86_64",
+  "api": 30,
+  "deviceClass": "EMULATOR",
+  "abi": "x86_64",
+  "startedUtc": "2026-11-11T14:29:27.266Z",
+  "model": "LFM3-Omni-2B-Q4_K_M.gguf",
+  "projector": "mmproj-LFM3-Omni-2B-Q4_K_M.gguf",
+  "maxTokens": 96,
+  "phase": "complete",
+  "validationMs": 5109,
+  "loadMs": 663,
+  "decodeMs": 4996,
+  "firstTokenMs": 3930,
+  "prompt": "<|startoftext|><|im_start|>system\nYou are an accurate audio transcription assistant. Answer briefly.<|im_end|>\n<|im_start|>user\nTranscribe the speech in this recording exactly, then report the animal and number mentioned. <__media__><|im_end|>\n<|im_start|>assistant\n",
+  "media": "speech.wav",
+  "output": "<think></think>The secret animal is a blue cat, the number is seven.",
+  "error": null,
+  "quality": "REQUIRES_REVIEW"
+}

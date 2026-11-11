@@ -7,11 +7,11 @@ error() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 usage() {
   cat <<'HELP'
 Usage: collect-arm64-omni-evidence.sh --model MODEL.gguf --projector MMPROJ.gguf --apk APP.apk --out DIR
-       [--serial ADB_SERIAL] [--phase baseline|post] [--logcat]
+       [--serial ADB_SERIAL] [--package APP_ID] [--phase baseline|post] [--logcat]
        collect-arm64-omni-evidence.sh --self-test
 
 Requires adb, sha256sum, a *physical* ARM64 Android device and installed
-com.notcherry.lfm3pocket. Does not install files, upload data, screenshot,
+com.notcherry.lfm3pocket (or --package APP_ID). Does not install files, upload data, screenshot,
 record audio, or mark hardware validation PASS.
 HELP
 }
@@ -38,11 +38,12 @@ projector=''
 apk=''
 output=''
 serial=''
+package='com.notcherry.lfm3pocket'
 phase='baseline'
 capture_logcat=0
 while (($#)); do
   case "$1" in
-    --model|--projector|--apk|--out|--serial|--phase)
+    --model|--projector|--apk|--out|--serial|--phase|--package)
       (($#>=2)) || error "missing argument for $1"
       case "$1" in
         --model) model="$2";;
@@ -51,6 +52,7 @@ while (($#)); do
         --out) output="$2";;
         --serial) serial="$2";;
         --phase) phase="$2";;
+        --package) package="$2";;
       esac
       shift 2;;
     --logcat) capture_logcat=1; shift;;
@@ -67,6 +69,7 @@ validate_gguf "$projector" || error "invalid/missing GGUF projector file: $proje
 command -v adb >/dev/null || error 'adb not found'
 command -v sha256sum >/dev/null || error 'sha256sum not found'
 [[ -z "$serial" || "$serial" =~ ^[A-Za-z0-9._:-]+$ ]] || error 'unsafe adb serial'
+[[ "$package" =~ ^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$ ]] || error 'unsafe app package'
 
 adb_cmd=(adb)
 [[ -z "$serial" ]] || adb_cmd+=(-s "$serial")
@@ -76,7 +79,6 @@ current_serial="$("${adb_cmd[@]}" get-serialno)" || error 'unable to select adb 
 [[ "$(prop ro.kernel.qemu)" != 1 ]] || error 'emulator detected; requires real ARM64 phone'
 abi="$(prop ro.product.cpu.abilist)"
 [[ ",$abi," == *",arm64-v8a,"* ]] || error "device lacks arm64-v8a ABI: $abi"
-package='com.notcherry.lfm3pocket'
 "${adb_cmd[@]}" shell pm path "$package" | grep -q '^package:' ||
   error "$package is not installed on this device"
 mkdir -p -- "$output"
