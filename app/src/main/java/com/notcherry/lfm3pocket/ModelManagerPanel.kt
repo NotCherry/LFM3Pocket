@@ -28,6 +28,7 @@ class ModelManagerPanel(
         selection = Selection(model, projector, busy, loaded, failed)
     }
 
+    @OptIn(ExperimentalLayoutApi::class)
     @Composable override fun Content() {
         MaterialTheme {
             val state = selection
@@ -35,14 +36,14 @@ class ModelManagerPanel(
                 Text("Model: ${state.model.ifEmpty { "None selected" }}", maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("Projector: ${state.projector.ifEmpty { "None — text only" }}", maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(settingsSummary, style=MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { reload.run() }, enabled = !state.busy && state.model.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { reload.run() }, enabled = !state.busy && state.model.isNotEmpty(), contentPadding=PaddingValues(horizontal=8.dp)) {
                         Text(if (state.failed) "Retry load" else if (state.loaded) "Reload model" else "Load model")
                     }
-                    OutlinedButton(onClick = { unload.run() }, enabled = !state.busy && state.loaded) {
+                    OutlinedButton(onClick = { unload.run() }, enabled = !state.busy && state.loaded, contentPadding=PaddingValues(horizontal=8.dp)) {
                         Text("Unload model")
                     }
-                    TextButton(onClick={settings.run()},enabled=!state.busy) { Text("Settings") }
+                    TextButton(onClick={settings.run()},enabled=!state.busy,contentPadding=PaddingValues(horizontal=8.dp)) { Text("Settings") }
                 }
             }
         }
