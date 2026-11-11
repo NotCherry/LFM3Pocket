@@ -7,6 +7,29 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** Isolated instrumentation-only application. No model files or JNI are used for UI E2E. */
 public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
+    private volatile boolean capturePermission;
+    public void capturePermission(boolean value){capturePermission=value;}
+    @Override public boolean hasMicrophonePermission(){return capturePermission || super.hasMicrophonePermission();}
+    private final AtomicInteger captureOpened=new AtomicInteger(),captureClosed=new AtomicInteger();
+    private volatile boolean shortCapture;
+    private volatile CountDownLatch captured=new CountDownLatch(1),captureReleased=new CountDownLatch(1);
+    public void resetCapture(boolean tooShort){shortCapture=tooShort;captureOpened.set(0);captureClosed.set(0);captured=new CountDownLatch(1);captureReleased=new CountDownLatch(1);}
+    public int captureOpened(){return captureOpened.get();}
+    public void shortCapture(boolean value){shortCapture=value;captured=new CountDownLatch(1);}
+    public boolean awaitCaptured()throws InterruptedException{return captured.await(10,TimeUnit.SECONDS);}
+    public boolean awaitCaptureReleased()throws InterruptedException{return captureReleased.await(10,TimeUnit.SECONDS);}
+    @Override protected RecordingController.Source createRecordingSource(){
+        captureOpened.incrementAndGet();
+        return new RecordingController.Source(){
+            private boolean delivered;
+            public void start(){}
+            public int read(short[] buffer){
+                if(shortCapture || delivered)return 0;
+                java.util.Arrays.fill(buffer,(short)1200);delivered=true;captured.countDown();return buffer.length;
+            }
+            public void close(){captureClosed.incrementAndGet();captureReleased.countDown();}
+        };
+    }
     private volatile ScriptedInferenceEngine scripted = new ScriptedInferenceEngine();
 
     @Override protected InferenceEngine createInferenceEngine() {
