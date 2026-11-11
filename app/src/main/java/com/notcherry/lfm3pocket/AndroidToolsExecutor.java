@@ -9,11 +9,13 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
     private final AndroidActionExecutor timer;
     private final AndroidActionExecutor alarm;
     private final AndroidActionExecutor application;
+    private final AndroidActionExecutor settings;
 
     AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
                          AndroidActionExecutor timer, AndroidActionExecutor alarm,
-                         AndroidActionExecutor application) {
-        if (flashlight == null || volume == null || timer == null || alarm == null || application == null) {
+                         AndroidActionExecutor application, AndroidActionExecutor settings) {
+        if (flashlight == null || volume == null || timer == null || alarm == null
+                || application == null || settings == null) {
             throw new IllegalArgumentException("Missing action executor");
         }
         this.flashlight = flashlight;
@@ -21,6 +23,7 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
         this.timer = timer;
         this.alarm = alarm;
         this.application = application;
+        this.settings = settings;
     }
 
     @Override public ActionResult execute(String approvedToolName, Map<String, String> arguments) {
@@ -29,6 +32,7 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
         if ("set_timer".equals(approvedToolName)) return timer.execute(approvedToolName, arguments);
         if ("set_alarm".equals(approvedToolName)) return alarm.execute(approvedToolName, arguments);
         if ("open_application".equals(approvedToolName)) return application.execute(approvedToolName, arguments);
+        if ("open_settings".equals(approvedToolName)) return settings.execute(approvedToolName, arguments);
         return new ActionResult(false, "UNKNOWN_TOOL", "This Android action is not enabled.");
     }
 }

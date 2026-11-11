@@ -229,6 +229,29 @@ public final class ToolChatE2eTest {
         }
     }
 
+    @Test public void modelSettingsProposalShowsPageAndOpensOnlyAfterApproval() {
+        ToolRegistry.Parsed parsed=new ToolRegistry().parse(
+                "{\"tool\":\"open_settings\",\"arguments\":{\"page\":\"wifi\"}}");
+        assertTrue(parsed.isValid());
+        ToolCoordinator.Outcome proposal=app.toolCoordinator().propose(
+                parsed.request,ToolCoordinator.Source.MODEL_PROPOSAL);
+        assertEquals("PENDING_CONFIRMATION",proposal.status);
+        assertEquals(0,app.toolCalls());
+
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(activity->activity.presentToolOutcome(proposal));
+            assertTrue(find("tool_details").getText().contains("Open settings"));
+            assertTrue(find("tool_details").getText().contains("page: \"wifi\""));
+            assertTrue(find("tool_status").getText().contains("Needs your approval"));
+            find("tool_approve").click();
+            assertTrue(find("tool_status").getText().contains("Action complete"));
+            assertTrue(find("tool_result").getText().contains("Test handler executed"));
+            assertEquals(1,app.toolCalls());
+            assertTrue(app.lastToolRequest() instanceof ToolRegistry.SettingsRequest);
+            assertEquals("wifi",((ToolRegistry.SettingsRequest)app.lastToolRequest()).page);
+        }
+    }
+
     @Test public void flashlightProposalUsesChatApprovalAndShowsTheValidatedResult() {
         ToolRegistry.Parsed parsed=new ToolRegistry().parse(
                 "{\"tool\":\"toggle_flashlight\",\"arguments\":{\"on\":true}}");

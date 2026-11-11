@@ -33,7 +33,8 @@ public class Lfm3PocketApplication extends Application {
                     !(request instanceof ToolRegistry.VolumeRequest) &&
                     !(request instanceof ToolRegistry.TimerRequest) &&
                     !(request instanceof ToolRegistry.AlarmRequest) &&
-                    !(request instanceof ToolRegistry.ApplicationRequest)) {
+                    !(request instanceof ToolRegistry.ApplicationRequest) &&
+                    !(request instanceof ToolRegistry.SettingsRequest)) {
                 return new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
                         "This Android tool is not enabled yet");
             }
@@ -95,6 +96,7 @@ public class Lfm3PocketApplication extends Application {
         AndroidActionExecutor alarm = new AlarmActionExecutor(new AlarmController(new AndroidClockAlarm(this)));
         AndroidActionExecutor application = new ApplicationActionExecutor(
                 new InstalledAppController(new AndroidInstalledAppLauncher(this)));
-        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application);
+        AndroidActionExecutor settings = new SettingsActionExecutor(new SettingsPageController(new AndroidSettingsLauncher(this)));
+        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings);
     }
 }
