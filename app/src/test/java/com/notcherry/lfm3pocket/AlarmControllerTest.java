@@ -61,7 +61,7 @@ public final class AlarmControllerTest {
         AndroidActionExecutor unused = (name, arguments) ->
                 new AndroidActionExecutor.ActionResult(true, "WRONG_HANDLER", name);
         AndroidToolsExecutor dispatcher = new AndroidToolsExecutor(unused, unused, unused,
-                new AlarmActionExecutor(new AlarmController(launcher)), unused);
+                new AlarmActionExecutor(new AlarmController(launcher)), unused, unused);
         Map<String, String> args = new LinkedHashMap<>();
         args.put("hour", "8"); args.put("minute", "15"); args.put("label", "Standup");
 
