@@ -10,7 +10,7 @@ Locally, install JDK 17, Android SDK/NDK and Gradle 8.13; run `git clone --branc
 
 ## App navigation
 
-The app opens in a minimal Kotlin/Compose navigation host. Tap **Open chat** to use the existing Java/JNI chat implementation. The host does not replace inference or change local-model privacy settings. This staged migration is covered by emulator navigation tests.
+The app opens in a minimal Kotlin/Compose navigation host. Tap **Open chat** for Compose streaming chat. A session controller owns active context, cancellation, retry and Clear; JNI inference remains local. Old conversations are not injected into a new session. This staged migration is covered by emulator navigation tests.
 
 The chat model manager shows selected model/projector names, import progress and compatibility failures. Use **Unload model** to release native memory while retaining selected files, **Load model** or **Reload model** to load them again, and **Retry load** after a recoverable failure. Imports use the Android document picker and **Stop** cancels copying.
 
