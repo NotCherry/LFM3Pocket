@@ -180,9 +180,12 @@ Java_com_notcherry_lfm3pocket_NativeBridge_resetStop(JNIEnv *, jclass) {
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         JNIEnv * env, jclass, jlong handle, jbyteArray prompt, jstring media_path,
-        jint max_tokens, jobject sink) {
+        jint max_tokens, jint context_tokens, jint threads, jobject sink) {
     if (!handle) return make_string(env, "Model has not been loaded");
     if (!prompt || !sink) return make_string(env, "Missing prompt or callback");
+    if (context_tokens < 512 || context_tokens > 8192 || context_tokens % 256 != 0 ||
+        threads < 1 || threads > 8 || max_tokens < 1 || max_tokens > 2048 || max_tokens >= context_tokens)
+        return make_string(env, "Invalid inference resource limits");
     auto state = find_model(handle);
     if (!state) return make_string(env, "Model handle is retired or invalid");
     std::unique_lock<std::mutex> decode_lock(state->decode_mutex, std::try_to_lock);
@@ -202,7 +205,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
                                nullptr, 0, false, true);
     if (count < 0) count = -count;
     if (count <= 0) return make_string(env, "Prompt tokenizer returned no tokens");
-    if (count + 1 >= 4096) return make_string(env, "Prompt is too long for the 4096-token context");
+    if (count + 1 >= context_tokens) return make_string(env, "Prompt is too long for the selected context");
 
     std::vector<llama_token> tokens(count);
     int converted = llama_tokenize(vocab, input.data(), static_cast<int32_t>(input.size()),
@@ -213,11 +216,11 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.abort_callback = [](void * data) { return static_cast<std::atomic<bool> *>(data)->load(); };
     ctx_params.abort_callback_data = &state->cancelled;
-    ctx_params.n_ctx = 4096;
+    ctx_params.n_ctx = context_tokens;
     ctx_params.n_batch = 512;
     ctx_params.n_ubatch = 512;
     const unsigned cpu = std::thread::hardware_concurrency();
-    ctx_params.n_threads = static_cast<int32_t>(std::min(4u, std::max(1u, cpu)));
+    ctx_params.n_threads = static_cast<int32_t>(std::min(static_cast<unsigned>(threads), std::max(1u, cpu)));
     ctx_params.n_threads_batch = ctx_params.n_threads;
     llama_context * ctx = llama_init_from_model(model, ctx_params);
     if (!ctx) return make_string(env, "Unable to allocate context; insufficient RAM?");
@@ -269,7 +272,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
                         } else {
                             position = static_cast<int>(next_position);
                             if (position + 1 >= ctx_params.n_ctx) {
-                                error = "Selected media is too large for the 4096-token phone context";
+                                error = "Selected media is too large for the selected phone context";
                             }
                         }
                     }
@@ -291,7 +294,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         }
 
         for (int i = 0; error.empty() && !state->cancelled.load() &&
-                        i < max_tokens && position + i < 4096; ++i) {
+                        i < max_tokens && position + i < context_tokens; ++i) {
             const llama_token next = llama_sampler_sample(sampler, ctx, -1);
             if (llama_vocab_is_eog(vocab, next)) break;
             llama_sampler_accept(sampler, next);
@@ -307,7 +310,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
                 break;
             }
 
-            if (i + 1 == max_tokens || position + i + 1 >= 4096) break;
+            if (i + 1 == max_tokens || position + i + 1 >= context_tokens) break;
             setup_batch(batch, &next, 1, position + i, mrope);
             if (llama_process(ctx, LLAMA_PROCESS_TYPE_DECODE, batch) != 0) {
                 error = "Model failed while decoding response";

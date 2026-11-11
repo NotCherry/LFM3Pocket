@@ -59,6 +59,8 @@ public final class ModelImportE2eTest {
         choose(device,pkg,name,"import_model");
     }
     private void choose(UiDevice device, String pkg, String name,String control) throws Exception {
+        new UiScrollable(new UiSelector().resourceId(pkg + ":id/model_configuration_scroll"))
+                .scrollIntoView(new UiSelector().resourceId(pkg + ":id/" + control));
         UiObject2 button = device.wait(Until.findObject(By.res(pkg, control).enabled(true)), WAIT);
         assertNotNull(button); button.click();
         UiObject2 file = device.wait(Until.findObject(By.text(name)), 1500);
@@ -72,6 +74,10 @@ public final class ModelImportE2eTest {
                     .childSelector(new UiSelector().text("LFM test files")));
             assertTrue("SAF fixture root in storage drawer", root.waitForExists(WAIT));
             root.click();
+            device.wait(Until.hasObject(By.res(java.util.regex.Pattern.compile(".*:id/dir_list"))), WAIT);
+            // DocumentsUI uses a grid: the requested fixture may be below the fold on a small phone.
+            new UiScrollable(new UiSelector().resourceIdMatches(".*:id/dir_list"))
+                    .scrollIntoView(new UiSelector().text(name));
             file = device.wait(Until.findObject(By.text(name)), WAIT);
         }
         if (file == null) {
