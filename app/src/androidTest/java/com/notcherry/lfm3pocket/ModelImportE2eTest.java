@@ -13,7 +13,7 @@ import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class)
 public final class ModelImportE2eTest {
     private static final long WAIT = 12000;
-    @Test public void safPickerImportsModelAndRejectsCorruptReplacement() {
+    @Test public void safPickerImportsModelAndRejectsCorruptReplacement() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         TestLfm3PocketApplication app = (TestLfm3PocketApplication) context.getApplicationContext();
         app.scriptedEngine().resetForTest();
@@ -34,17 +34,28 @@ public final class ModelImportE2eTest {
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_send").enabled(true)), WAIT));
         }
     }
-    private void choose(UiDevice device, String pkg, String name) {
+    private void choose(UiDevice device, String pkg, String name) throws Exception {
         UiObject2 button = device.wait(Until.findObject(By.res(pkg, "import_model").enabled(true)), WAIT);
         assertNotNull(button); button.click();
         UiObject2 file = device.wait(Until.findObject(By.text(name)), 1500);
         if (file == null) {
             UiObject2 drawer = device.wait(Until.findObject(By.descContains("Show roots")), WAIT);
-            assertNotNull("SAF storage drawer", drawer); drawer.click();
-            UiObject2 root = device.wait(Until.findObject(By.text("LFM test files")), WAIT);
-            assertNotNull("SAF fixture root", root); root.click();
+            assertNotNull("SAF storage drawer", drawer);
+            device.waitForIdle();
+            device.findObject(new UiSelector().descriptionContains("Show roots")).click();
+            UiObject root = device.findObject(new UiSelector()
+                    .resourceIdMatches(".*:id/roots_list")
+                    .childSelector(new UiSelector().text("LFM test files")));
+            assertTrue("SAF fixture root in storage drawer", root.waitForExists(WAIT));
+            root.click();
             file = device.wait(Until.findObject(By.text(name)), WAIT);
         }
-        assertNotNull("SAF document " + name, file); file.click();
+        if (file == null) {
+            java.io.ByteArrayOutputStream hierarchy = new java.io.ByteArrayOutputStream();
+            device.dumpWindowHierarchy(hierarchy);
+            fail("SAF document " + name + " not found. " + hierarchy.toString("UTF-8"));
+        }
+        device.waitForIdle();
+        device.findObject(new UiSelector().text(name)).click();
     }
 }
