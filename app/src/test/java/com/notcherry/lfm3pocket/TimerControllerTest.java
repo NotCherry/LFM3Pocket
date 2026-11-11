@@ -70,13 +70,13 @@ public final class TimerControllerTest {
         AndroidActionExecutor unused = (name, arguments) ->
                 new AndroidActionExecutor.ActionResult(true, "WRONG_HANDLER", name);
         AndroidToolsExecutor executor = new AndroidToolsExecutor(unused, unused,
-                new TimerActionExecutor(new TimerController(launcher)));
+                new TimerActionExecutor(new TimerController(launcher)), unused);
         java.util.Map<String, String> args = new java.util.LinkedHashMap<>();
         args.put("seconds", "45");
         args.put("label", "Tea");
 
         AndroidActionExecutor.ActionResult dispatched = executor.execute("set_timer", args);
-        AndroidActionExecutor.ActionResult unknown = executor.execute("set_alarm", args);
+        AndroidActionExecutor.ActionResult unknown = executor.execute("open_application", args);
 
         assertEquals("TIMER_REQUEST_OPENED", dispatched.status);
         assertEquals(45, launcher.seconds);

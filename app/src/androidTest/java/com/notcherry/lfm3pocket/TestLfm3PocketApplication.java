@@ -60,6 +60,11 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
                 return new AndroidActionExecutor.ActionResult(true,"TEST_TIMER_REQUEST_OPENED",
                         "Timer request sent to the Android clock for "+timer.seconds+" seconds. Check the clock app to verify it started.");
             }
+            if(request instanceof ToolRegistry.AlarmRequest && !failTool) {
+                ToolRegistry.AlarmRequest alarm=(ToolRegistry.AlarmRequest)request;
+                return new AndroidActionExecutor.ActionResult(true,"TEST_ALARM_REQUEST_OPENED",
+                        String.format(java.util.Locale.ROOT,"Alarm request sent to the Android clock for %02d:%02d. Check Clock to verify it was set.",alarm.hour,alarm.minute));
+            }
             return new AndroidActionExecutor.ActionResult(!failTool,
                     failTool ? "TEST_FAILED" : "TEST_PERFORMED", failTool ? "Test handler failed" : "Test handler executed");
         };

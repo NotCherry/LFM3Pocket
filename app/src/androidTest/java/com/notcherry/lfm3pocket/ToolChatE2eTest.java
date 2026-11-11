@@ -48,14 +48,18 @@ public final class ToolChatE2eTest {
     }
 
     @Test public void approvedProposalShowsArgumentsAndOnlyReportsSuccessAfterHandlerReturns() {
-        ToolCoordinator.Outcome proposal=alarmProposal();
+        ToolRegistry.Parsed parsed=new ToolRegistry().parse(
+                "{\"tool\":\"set_volume\",\"arguments\":{\"stream\":\"music\",\"percent\":40}}");
+        assertTrue(parsed.isValid());
+        ToolCoordinator.Outcome proposal=app.toolCoordinator().propose(
+                parsed.request,ToolCoordinator.Source.MODEL_PROPOSAL);
         assertEquals("PENDING_CONFIRMATION",proposal.status);
         assertEquals(0,app.toolCalls());
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity->activity.presentToolOutcome(proposal));
-            assertTrue(find("tool_details").getText().contains("Alarm request"));
-            assertTrue(find("tool_details").getText().contains("hour: 7"));
-            assertTrue(find("tool_risk").getText().contains("confirmation"));
+            assertTrue(find("tool_details").getText().contains("Audio volume"));
+            assertTrue(find("tool_details").getText().contains("percent: 40"));
+            assertTrue(find("tool_risk").getText().contains("safe action"));
             assertTrue(find("tool_status").getText().contains("Needs your approval"));
             find("tool_approve").click();
             assertTrue(find("tool_status").getText().contains("Action complete"));
@@ -145,6 +149,44 @@ public final class ToolChatE2eTest {
             assertEquals("Tea break",request.label);
             assertNull(device.wait(Until.findObject(By.res(pkg,"tool_approve")),1000));
         }
+    }
+
+    @Test public void persistentAlarmProposalNeedsAppConfirmationAndShowsExactClockRequest() {
+        ToolRegistry.Parsed parsed=new ToolRegistry().parse(
+                "{\"tool\":\"set_alarm\",\"arguments\":{\"hour\":8,\"minute\":15,\"label\":\"Standup\"}}");
+        assertTrue(parsed.isValid());
+        ToolCoordinator.Outcome proposal=app.toolCoordinator().propose(
+                parsed.request,ToolCoordinator.Source.MODEL_PROPOSAL);
+        assertEquals("PENDING_CONFIRMATION",proposal.status);
+        assertEquals(0,app.toolCalls());
+
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(activity->activity.presentToolOutcome(proposal));
+            assertTrue(find("tool_details").getText().contains("Alarm request"));
+            assertTrue(find("tool_details").getText().contains("hour: 8"));
+            assertTrue(find("tool_details").getText().contains("minute: 15"));
+            assertTrue(find("tool_details").getText().contains("Standup"));
+            assertTrue(find("tool_risk").getText().contains("confirmation"));
+            assertTrue(find("tool_status").getText().contains("Needs your approval"));
+            find("tool_approve").click();
+            assertTrue(find("tool_status").getText().contains("Action complete"));
+            assertTrue(find("tool_result").getText().contains("Alarm request sent"));
+            assertTrue(find("tool_result").getText().contains("08:15"));
+            assertTrue(find("tool_result").getText().contains("Check Clock"));
+            assertFalse(find("tool_result").getText().toLowerCase().contains("alarm created"));
+            assertEquals("Approval invokes exactly one validated alarm request",1,app.toolCalls());
+            assertTrue(app.lastToolRequest() instanceof ToolRegistry.AlarmRequest);
+            ToolRegistry.AlarmRequest request=(ToolRegistry.AlarmRequest)app.lastToolRequest();
+            assertEquals(8,request.hour);
+            assertEquals(15,request.minute);
+            assertEquals("Standup",request.label);
+            assertNull(device.wait(Until.findObject(By.res(pkg,"tool_approve")),1000));
+        }
+        List<HistoryToolOutcome> saved=HistoryDatabase.get(
+                InstrumentationRegistry.getInstrumentation().getTargetContext()).history().toolOutcomes(historyConversationId);
+        assertEquals(1,saved.size());
+        assertEquals("set_alarm",saved.get(0).getTool());
+        assertEquals("TEST_ALARM_REQUEST_OPENED",saved.get(0).getStatus());
     }
 
     @Test public void flashlightProposalUsesChatApprovalAndShowsTheValidatedResult() {

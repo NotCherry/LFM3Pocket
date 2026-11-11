@@ -25,9 +25,9 @@ public final class ToolConsentE2eTest {
             assertNotNull(device.wait(Until.findObject(By.res(pkg,"tool_details").textContains("Alarm request")),12000));
             scenario.recreate();
             assertEquals(0,app.toolCalls());
-            click("tool_approve");status("TEST_PERFORMED");assertEquals(1,app.toolCalls());
+            click("tool_approve");status("TEST_ALARM_REQUEST_OPENED");assertEquals(1,app.toolCalls());
             assertFalse(device.findObject(By.res(pkg,"tool_approve")).isEnabled());
-            scenario.recreate();status("TEST_PERFORMED");assertEquals(1,app.toolCalls());
+            scenario.recreate();status("TEST_ALARM_REQUEST_OPENED");assertEquals(1,app.toolCalls());
         }
     }
     @Test public void rejectionIsVisibleAndPerformsNoAction(){
