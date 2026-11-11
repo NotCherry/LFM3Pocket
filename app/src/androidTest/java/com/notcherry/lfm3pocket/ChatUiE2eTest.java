@@ -103,6 +103,11 @@ public final class ChatUiE2eTest {
             assertTrue(transcript.getText().contains("First prompt"));
             assertTrue(transcript.getText().contains("Retry prompt"));
             assertEquals(2, app.scriptedEngine().callCount());
+            assertTrue(app.scriptedEngine().lastPrompt().contains("First prompt"));
+            assertTrue(app.scriptedEngine().lastPrompt().contains("FAKE_STREAM_BEGIN"));
+            assertTrue(app.scriptedEngine().lastPrompt().contains("Retry prompt"));
+            assertEquals("Cancelled partial response must appear exactly once", 1,
+                    transcript.getText().split("FAKE_STREAM_BEGIN", -1).length - 1);
             awaitEnabled("chat_send");
             assertFalse(device.findObject(By.res(packageName, "chat_stop")).isEnabled());
         }
