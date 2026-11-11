@@ -50,6 +50,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private ChatSession session;
     private ChatPanel chatPanel;
     private ToolCoordinator toolCoordinator;
+    private HistoryRepository historyRepository;
+    private String historyConversationId="default";
+    private String historyTitle="LFM3 Pocket";
     private InferenceEngine inferenceEngine;
     private volatile long modelHandle = 0L;
     private boolean busy = false;
@@ -77,6 +80,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         inferenceEngine = ((Lfm3PocketApplication) getApplication()).newInferenceSession();
+        historyRepository = new HistoryRepository(HistoryDatabase.get(this));
+        historyConversationId=getPreferences(MODE_PRIVATE).getString("history_conversation_id","default");
+        historyTitle=getPreferences(MODE_PRIVATE).getString("history_title","LFM3 Pocket");
         recordingController = new RecordingController(new File(getCacheDir(), "recordings"),
                 ((Lfm3PocketApplication)getApplication())::newRecordingSource,
                 () -> ((Lfm3PocketApplication)getApplication()).hasMicrophonePermission(),
@@ -92,7 +98,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 });
         session = new ChatSession(inferenceEngine, worker,
                 (task, delay) -> mainHandler.postDelayed(task, delay), () -> modelHandle,
-                WebSearch::search, (text, message, running) -> {
+                WebSearch::search, turn -> {
+                    HistoryRepository.Status resultStatus=HistoryRepository.Status.valueOf(turn.status.name());
+                    historyRepository.completeTurn(new HistoryRepository.Turn(turn.id,
+                            historyConversationId,historyTitle,turn.userText,turn.assistantText,
+                            turn.speechTranscript,resultStatus,turn.completedAt,null));
+                }, (text, message, running) -> {
                     if (destroyed) return;
                     generating = running;
                     busy = running;
@@ -601,6 +612,21 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         Runnable approve = pending ? () -> resolveToolOutcome(proposal, actionRequest, true) : null;
         Runnable reject = pending ? () -> resolveToolOutcome(proposal, actionRequest, false) : null;
         chatPanel.renderToolCard(details, risk, toolOutcomeLabel(outcome), result, pending, approve, reject);
+        if(!pending && request!=null && outcome.result!=null) persistToolOutcome(proposal,request,outcome);
+    }
+
+    private void persistToolOutcome(ToolCoordinator.Proposal proposal,ToolRegistry.Request request,
+                                   ToolCoordinator.Outcome outcome) {
+        String requestId=proposal==null?java.util.UUID.randomUUID().toString():proposal.id;
+        String arguments=new org.json.JSONObject(request.arguments).toString();
+        HistoryRepository.ToolExecution execution=new HistoryRepository.ToolExecution(requestId,
+                request.tool.wireName,arguments,outcome.result.succeeded,outcome.result.status,
+                outcome.result.message,System.currentTimeMillis());
+        try {
+            worker.execute(() -> historyRepository.appendToolOutcome(historyConversationId,historyTitle,execution));
+        } catch(java.util.concurrent.RejectedExecutionException ignored) {
+            // Activity teardown owns no UI work; the in-flight generation path remains unaffected.
+        }
     }
 
     private static String toolOutcomeLabel(ToolCoordinator.Outcome outcome) {

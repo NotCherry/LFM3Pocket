@@ -28,3 +28,6 @@ timeout 30m gradle :app:connectedSmokeDebugAndroidTest --no-daemon --stacktrace
 
 # Verify DataStore durability across an actual force-stop/new process.
 bash .github/scripts/verify-settings-restart.sh
+
+# Verify completed chat records survive an actual force-stop/new process.
+bash .github/scripts/verify-history-restart.sh

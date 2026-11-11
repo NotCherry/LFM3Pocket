@@ -17,8 +17,8 @@ data class HistoryConversation(
 
 @Entity(tableName="messages",foreignKeys=[ForeignKey(entity=HistoryConversation::class,
     parentColumns=["id"],childColumns=["conversationId"],onDelete=ForeignKey.CASCADE)],
-    indices=[Index(value=["conversationId","sequence"],unique=true)])
-data class HistoryMessage(
+    indices=[Index(value=["conversationId","sequence"],unique=true),Index(value=["turnId"],unique=true)])
+data class HistoryMessage @JvmOverloads constructor(
     @PrimaryKey val id:String,
     val conversationId:String,
     val sequence:Long,
@@ -26,6 +26,8 @@ data class HistoryMessage(
     val text:String,
     val speechTranscript:String?,
     val createdAt:Long,
+    val turnId:String?=null,
+    val turnStatus:String="COMPLETED",
 ) {
     init {
         require(id.isNotBlank() && conversationId.isNotBlank() && sequence>=0 && createdAt>=0)
@@ -53,8 +55,14 @@ data class HistoryToolOutcome(
 @Dao
 interface HistoryDao {
     @Insert fun insertConversation(value:HistoryConversation)
+    @Query("SELECT * FROM conversations WHERE id=:id LIMIT 1") fun conversation(id:String):HistoryConversation?
+    @Query("UPDATE conversations SET updatedAt=MAX(updatedAt,:time) WHERE id=:id") fun touchConversation(id:String,time:Long)
     @Insert fun insertMessage(value:HistoryMessage)
+    @Query("SELECT MAX(sequence) FROM messages WHERE conversationId=:id") fun lastSequence(id:String):Long?
+    @Query("SELECT * FROM messages WHERE turnId=:id LIMIT 1") fun messageForTurn(id:String):HistoryMessage?
+    @Query("SELECT * FROM messages WHERE conversationId=:id AND role='assistant' ORDER BY sequence DESC LIMIT 1") fun latestAssistant(id:String):HistoryMessage?
     @Insert fun insertToolOutcome(value:HistoryToolOutcome)
+    @Query("SELECT * FROM tool_outcomes WHERE requestId=:id LIMIT 1") fun toolOutcome(id:String):HistoryToolOutcome?
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC,id ASC") fun conversations():List<HistoryConversation>
     @Query("SELECT * FROM messages WHERE conversationId=:id ORDER BY sequence ASC") fun messages(id:String):List<HistoryMessage>
     @Query("DELETE FROM conversations WHERE id=:id") fun deleteConversation(id:String):Int
@@ -62,7 +70,7 @@ interface HistoryDao {
     fun toolOutcomes(id:String):List<HistoryToolOutcome>
 }
 
-@Database(entities=[HistoryConversation::class,HistoryMessage::class,HistoryToolOutcome::class],version=2,exportSchema=true)
+@Database(entities=[HistoryConversation::class,HistoryMessage::class,HistoryToolOutcome::class],version=3,exportSchema=true)
 abstract class HistoryDatabase:RoomDatabase() {
     abstract fun history():HistoryDao
     companion object {
@@ -75,9 +83,16 @@ abstract class HistoryDatabase:RoomDatabase() {
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_tool_outcomes_requestId` ON `tool_outcomes` (`requestId`)")
             }
         }
+        @JvmField val MIGRATION_2_3:Migration=object:Migration(2,3){
+            override fun migrate(db:SupportSQLiteDatabase){
+                db.execSQL("ALTER TABLE `messages` ADD COLUMN `turnId` TEXT")
+                db.execSQL("ALTER TABLE `messages` ADD COLUMN `turnStatus` TEXT NOT NULL DEFAULT 'COMPLETED'")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_messages_turnId` ON `messages` (`turnId`)")
+            }
+        }
         @JvmStatic fun get(context:Context):HistoryDatabase=instance ?: synchronized(this){
             instance ?: Room.databaseBuilder(context.applicationContext,HistoryDatabase::class.java,NAME)
-                .addMigrations(MIGRATION_1_2).build().also { instance=it }
+                .addMigrations(MIGRATION_1_2,MIGRATION_2_3).build().also { instance=it }
         }
     }
 }
