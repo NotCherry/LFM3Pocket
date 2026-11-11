@@ -185,14 +185,14 @@ public final class ChatUiE2eTest {
         }
     }
 
-    @Test public void denyingMicrophoneAndCameraPermissionDoesNotBlockTextChat()
+    @Test public void textChatDoesNotRequestCameraPermissionAndSurvivesPermissionDenial()
             throws Exception {
-        // The current camera implementation delegates to an external capture
-        // activity and intentionally does not request the CAMERA permission.
+        // Declaring CAMERA supports explicit flashlight use. Text chat must not
+        // trigger the runtime dialog or require that permission.
         String[] requested = app.getPackageManager()
                 .getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
                 .requestedPermissions;
-        assertFalse(requested != null &&
+        assertTrue("Flashlight needs CAMERA declared in the manifest", requested != null &&
                 Arrays.asList(requested).contains(Manifest.permission.CAMERA));
         assertEquals(PackageManager.PERMISSION_DENIED,
                 app.checkSelfPermission(Manifest.permission.CAMERA));
@@ -221,6 +221,9 @@ public final class ChatUiE2eTest {
             awaitTranscript("FAKE_STREAM_BEGIN");
             awaitEnabled("chat_stop").click();
             awaitEnabled("chat_send");
+            assertEquals("Text chat must not request camera access for flashlight use",
+                    PackageManager.PERMISSION_DENIED,
+                    app.checkSelfPermission(Manifest.permission.CAMERA));
             assertEquals(PackageManager.PERMISSION_DENIED,
                     app.checkSelfPermission(Manifest.permission.RECORD_AUDIO));
         }

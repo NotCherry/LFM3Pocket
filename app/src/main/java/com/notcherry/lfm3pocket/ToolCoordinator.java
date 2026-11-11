@@ -33,7 +33,7 @@ public final class ToolCoordinator {
         expire();
         if(request==null)return denied("INVALID_REQUEST","No validated request");
         if(source!=Source.USER_ACTION && source!=Source.MODEL_PROPOSAL)return denied("UNTRUSTED_SOURCE","Untrusted content cannot authorize Android actions");
-        if(!permitted(request))return denied("PERMISSION_DENIED","Required permission or policy is unavailable");
+        if(!permitted(request))return permissionDenied(request);
         // USER_ACTION means an explicit app control with these exact arguments, not any ordinary chat message.
         if(source==Source.USER_ACTION && risk(request)==Risk.SAFE)return execute(request);
         if(pending.size()>=32)return denied("TOO_MANY_REQUESTS","Resolve pending actions first");
@@ -48,7 +48,7 @@ public final class ToolCoordinator {
         Proposal p=pending.remove(id);
         if(p==null)return denied(completed.containsKey(id)?"ALREADY_RESOLVED":"UNKNOWN_PROPOSAL","Approval cannot be reused");
         Outcome result=clock.getAsLong()>=p.expires?denied("EXPIRED","Action approval expired")
-                :!permitted(p.request)?denied("PERMISSION_DENIED","Permission or policy changed before execution"):execute(p.request);
+                :!permitted(p.request)?permissionDenied(p.request):execute(p.request);
         remember(id,result);return result;
     }
     public synchronized Outcome reject(String id){
@@ -64,6 +64,12 @@ public final class ToolCoordinator {
         return new Outcome(result.status,null,result);
     }
     private static Outcome denied(String code,String message){return new Outcome(code,null,new AndroidActionExecutor.ActionResult(false,code,message));}
+    private static Outcome permissionDenied(ToolRegistry.Request request) {
+        String message = request != null && request.tool == ToolRegistry.Tool.FLASHLIGHT
+                ? "Grant Camera permission in Android app settings to control the flashlight."
+                : "Required permission or policy is unavailable.";
+        return denied("PERMISSION_DENIED",message);
+    }
     private void remember(String id,Outcome outcome){completed.put(id,outcome);while(completed.size()>64)completed.remove(completed.keySet().iterator().next());}
     private void expire(){for(Proposal p:new ArrayList<>(pending.values()))if(clock.getAsLong()>=p.expires){pending.remove(p.id);remember(p.id,denied("EXPIRED","Action approval expired"));}}
     public static String title(ToolRegistry.Request request){

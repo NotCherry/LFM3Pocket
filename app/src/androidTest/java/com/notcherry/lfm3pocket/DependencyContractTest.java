@@ -114,8 +114,8 @@ public final class DependencyContractTest {
 
         Lfm3PocketApplication production = new Lfm3PocketApplication();
         AndroidActionExecutor.ActionResult deny =
-                production.actionExecutor().execute("toggle_flashlight", Collections.emptyMap());
+                production.actionExecutor().execute("toggle_flashlight", Collections.singletonMap("on", "true"));
         assertFalse(deny.succeeded);
-        assertEquals("NOT_IMPLEMENTED", deny.status);
+        assertEquals("PERMISSION_DENIED", deny.status);
     }
 }
