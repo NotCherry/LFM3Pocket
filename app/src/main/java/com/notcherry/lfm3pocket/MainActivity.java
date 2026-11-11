@@ -38,6 +38,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class MainActivity extends androidx.activity.ComponentActivity {
+    public static final String EXTRA_HISTORY_CONVERSATION_ID="history_conversation_id";
+    public static final String EXTRA_HISTORY_TITLE="history_title";
     private static final int PICK_MODEL = 42;
     private static final int PICK_MMPROJ = 43;
     private static final int PICK_PHOTO = 44;
@@ -81,8 +83,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         super.onCreate(state);
         inferenceEngine = ((Lfm3PocketApplication) getApplication()).newInferenceSession();
         historyRepository = new HistoryRepository(HistoryDatabase.get(this));
-        historyConversationId=getPreferences(MODE_PRIVATE).getString("history_conversation_id","default");
-        historyTitle=getPreferences(MODE_PRIVATE).getString("history_title","LFM3 Pocket");
+        android.content.SharedPreferences historyPreferences=getPreferences(MODE_PRIVATE);
+        String requestedConversation=getIntent().getStringExtra(EXTRA_HISTORY_CONVERSATION_ID);
+        String requestedTitle=getIntent().getStringExtra(EXTRA_HISTORY_TITLE);
+        historyConversationId=requestedConversation==null || requestedConversation.isBlank()
+                ? historyPreferences.getString("history_conversation_id",java.util.UUID.randomUUID().toString())
+                : requestedConversation;
+        historyTitle=requestedTitle==null || requestedTitle.isBlank()
+                ? historyPreferences.getString("history_title","New conversation") : requestedTitle;
+        historyPreferences.edit().putString("history_conversation_id",historyConversationId)
+                .putString("history_title",historyTitle).apply();
         recordingController = new RecordingController(new File(getCacheDir(), "recordings"),
                 ((Lfm3PocketApplication)getApplication())::newRecordingSource,
                 () -> ((Lfm3PocketApplication)getApplication()).hasMicrophonePermission(),
@@ -99,6 +109,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         session = new ChatSession(inferenceEngine, worker,
                 (task, delay) -> mainHandler.postDelayed(task, delay), () -> modelHandle,
                 WebSearch::search, turn -> {
+                    if("New conversation".equals(historyTitle)) historyTitle=titleForQuestion(turn.userText);
                     HistoryRepository.Status resultStatus=HistoryRepository.Status.valueOf(turn.status.name());
                     historyRepository.completeTurn(new HistoryRepository.Turn(turn.id,
                             historyConversationId,historyTitle,turn.userText,turn.assistantText,
@@ -663,6 +674,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             pendingMediaPath = "";
             pendingMediaKind = "";
         }
+    }
+
+    private static String titleForQuestion(String question) {
+        String title=question==null?"New conversation":question.replaceAll("\\s+"," ").trim();
+        if(title.length()>60) title=title.substring(0,57)+"…";
+        return title.isEmpty()?"New conversation":title;
     }
 
     @Override protected void onDestroy() {
