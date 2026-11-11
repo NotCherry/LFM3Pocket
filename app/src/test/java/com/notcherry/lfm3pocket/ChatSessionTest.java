@@ -79,4 +79,19 @@ public class ChatSessionTest {
         ui.drain();
         assertEquals("Response complete · web search + local model",status[0]);
     }
+    @Test public void completedTurnIsPersistedOffUiBeforeCompletionIsReported(){
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();
+        List<ChatSession.CompletedTurn> saved=new ArrayList<>();String[] status={""};
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                saved::add,(text,message,running)->status[0]=message);
+        assertTrue(session.submit("Persist this question","","",false,"",32));
+        worker.drain();
+        assertEquals(1,saved.size());
+        assertEquals("Persist this question",saved.get(0).userText);
+        assertEquals("Answer 1",saved.get(0).assistantText);
+        assertEquals(ChatSession.TerminalState.COMPLETED,saved.get(0).status);
+        assertEquals("Completion must wait until the repository write finishes",
+                "Generating locally · offline…",status[0]);
+        ui.drain();assertEquals("Response complete · local model · offline",status[0]);
+    }
 }

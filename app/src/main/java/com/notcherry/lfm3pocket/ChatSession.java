@@ -9,6 +9,19 @@ public final class ChatSession {
     public interface Dispatcher { void post(Runnable work, long delayMs); }
     public interface Listener { void changed(String transcript, String status, boolean generating); }
     public interface Search { List<WebSearch.Source> search(String endpoint, String question) throws Exception; }
+    public interface Persistence { void save(CompletedTurn turn) throws Exception; }
+    public enum TerminalState { COMPLETED, CANCELLED, FAILED }
+    public static final class CompletedTurn {
+        public final String id,userText,assistantText;
+        public final String speechTranscript;
+        public final TerminalState status;
+        public final long completedAt;
+        CompletedTurn(String id,String userText,String assistantText,String speechTranscript,
+                      TerminalState status,long completedAt) {
+            this.id=id;this.userText=userText;this.assistantText=assistantText;
+            this.speechTranscript=speechTranscript;this.status=status;this.completedAt=completedAt;
+        }
+    }
     private static final class Message {
         final String role, text;
         final List<WebSearch.Source> sources;
@@ -18,14 +31,19 @@ public final class ChatSession {
     }
     private static final class Turn {
         final long id, handle;
+        final String persistenceId, question;
         final boolean webSearch;
-        volatile boolean cancelled;
-        Turn(long id,long handle,boolean webSearch) { this.id=id;this.handle=handle;this.webSearch=webSearch; }
+        volatile boolean cancelled,discarded;
+        Turn(long id,long handle,boolean webSearch,String question) {
+            this.id=id;this.handle=handle;this.webSearch=webSearch;this.question=question;
+            this.persistenceId=UUID.randomUUID().toString();
+        }
     }
     private final InferenceEngine engine;
     private final Executor worker;
     private final Dispatcher ui;
     private final Listener listener;
+    private final Persistence persistence;
     private final LongSupplier model;
     private final Search search;
     private final List<Message> messages=new ArrayList<>();
@@ -37,7 +55,12 @@ public final class ChatSession {
 
     public ChatSession(InferenceEngine engine,Executor worker,Dispatcher ui,LongSupplier model,
                        Search search,Listener listener) {
-        this.engine=engine;this.worker=worker;this.ui=ui;this.model=model;this.search=search;this.listener=listener;
+        this(engine,worker,ui,model,search,turn->{},listener);
+    }
+    public ChatSession(InferenceEngine engine,Executor worker,Dispatcher ui,LongSupplier model,
+                       Search search,Persistence persistence,Listener listener) {
+        this.engine=engine;this.worker=worker;this.ui=ui;this.model=model;this.search=search;
+        this.persistence=persistence;this.listener=listener;
     }
     public synchronized boolean isGenerating() { return active!=null; }
     public synchronized boolean submit(String text,String media,String kind,boolean useSearch,String endpoint,int maxTokens) {
@@ -46,7 +69,7 @@ public final class ChatSession {
         String question=text.trim().isEmpty() ? (kind.equals("photo")?"Describe this photo.":"Listen to this recording and answer.") : text.trim();
         messages.add(new Message("user",question+(media.isEmpty()?"":"\n["+kind+" attached]"),Collections.emptyList()));
         List<Message> history=new ArrayList<>(messages);
-        Turn turn=new Turn(++epoch,model.getAsLong(),useSearch);active=turn;
+        Turn turn=new Turn(++epoch,model.getAsLong(),useSearch,question);active=turn;
         pending.setLength(0);partial.setLength(0);scheduled=false;
         status=useSearch?"Searching web, then generating locally…":"Generating locally · offline…";emit();
         worker.execute(() -> generate(turn,question,media,useSearch,endpoint,maxTokens,history));
@@ -58,13 +81,13 @@ public final class ChatSession {
         status=active.webSearch?"Stopping local generation · web search mode…":"Stopping local generation · offline…";emit();
     }
     public synchronized void clear() {
-        if(active!=null) { active.cancelled=true;engine.stop(); }
+        if(active!=null) { active.cancelled=true;active.discarded=true;engine.stop(); }
         ++epoch;active=null;messages.clear();pending.setLength(0);partial.setLength(0);scheduled=false;
         status="Conversation cleared.";emit();
     }
     public synchronized void close() {
         closed=true;++epoch;
-        if(active!=null) { active.cancelled=true;engine.stop(); }
+        if(active!=null) { active.cancelled=true;active.discarded=true;engine.stop(); }
         active=null;pending.setLength(0);partial.setLength(0);
     }
     private synchronized boolean current(Turn turn) { return !closed && active==turn && epoch==turn.id; }
@@ -95,7 +118,17 @@ public final class ChatSession {
         }
         final List<WebSearch.Source> resultSources=new ArrayList<>(sources);
         final String failure=error,searchFailure=searchError;
-        ui.post(() -> finish(turn,resultSources,failure,useSearch,searchFailure),0);
+        TerminalState terminal=failure!=null?TerminalState.FAILED
+                :turn.cancelled?TerminalState.CANCELLED:TerminalState.COMPLETED;
+        String answer=partialFor(turn);
+        String saveFailure=null;
+        if(!turn.discarded && current(turn)) {
+            try { persistence.save(new CompletedTurn(turn.persistenceId,turn.question,answer,null,
+                    terminal,System.currentTimeMillis())); }
+            catch(Exception e) { saveFailure=e.getMessage()==null?e.toString():e.getMessage(); }
+        }
+        final String historyFailure=saveFailure;
+        ui.post(() -> finish(turn,resultSources,failure,useSearch,searchFailure,historyFailure),0);
     }
     private synchronized void queue(Turn turn,String piece) {
         if(!current(turn) || turn.cancelled) return;
@@ -109,7 +142,11 @@ public final class ChatSession {
             }
         },50);
     }
-    private synchronized void finish(Turn turn,List<WebSearch.Source> sources,String failure,boolean searched,String searchFailure) {
+    private synchronized String partialFor(Turn turn) {
+        if(!current(turn)) return "";
+        return partial.toString()+pending.toString();
+    }
+    private synchronized void finish(Turn turn,List<WebSearch.Source> sources,String failure,boolean searched,String searchFailure,String historyFailure) {
         if(!current(turn)) return;
         drain();
         if(partial.length()>0) messages.add(new Message("assistant",partial.toString(),sources));
@@ -118,6 +155,7 @@ public final class ChatSession {
         status=failure!=null?"Response failed · "+mode+": "+failure
                 :turn.cancelled?"Response stopped · "+mode
                 :"Response complete · "+mode;
+        if(historyFailure!=null) status+=" · history save failed";
         emit();
     }
     private void drain() { partial.append(pending);pending.setLength(0);scheduled=false; }

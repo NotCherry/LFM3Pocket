@@ -11,6 +11,8 @@ import androidx.test.uiautomator.Until;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import java.util.List;
+import java.util.UUID;
 import static org.junit.Assert.*;
 
 /** Exercises validated Android-action proposals through the real chat surface. */
@@ -19,11 +21,15 @@ public final class ToolChatE2eTest {
     private TestLfm3PocketApplication app;
     private UiDevice device;
     private String pkg;
+    private String historyConversationId;
 
     @Before public void prepare() {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         app=(TestLfm3PocketApplication)context.getApplicationContext();
         app.resetTools();
+        historyConversationId="tool-history-"+UUID.randomUUID();
+        assertTrue(context.getSharedPreferences("MainActivity",Context.MODE_PRIVATE).edit()
+                .putString("history_conversation_id",historyConversationId).commit());
         device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         pkg=context.getPackageName();
     }
@@ -58,6 +64,10 @@ public final class ToolChatE2eTest {
             assertNull("Resolved actions must remove approval controls",device.wait(
                     Until.findObject(By.res(pkg,"tool_approve")),1000));
         }
+        List<HistoryToolOutcome> saved=HistoryDatabase.get(
+                InstrumentationRegistry.getInstrumentation().getTargetContext()).history().toolOutcomes(historyConversationId);
+        assertEquals("Resolved chat action should be persisted once",1,saved.size());
+        assertEquals("TEST_PERFORMED",saved.get(0).getStatus());
     }
 
     @Test public void rejectedProposalIsVisibleAndNeverCallsHandler() {
