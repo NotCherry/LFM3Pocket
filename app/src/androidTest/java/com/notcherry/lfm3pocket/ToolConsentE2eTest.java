@@ -23,6 +23,8 @@ public final class ToolConsentE2eTest {
         ToolCoordinator.Outcome p=proposal();assertEquals(0,app.toolCalls());
         try(ActivityScenario<ToolConfirmationActivity> scenario=open(p.proposal.id)){
             assertNotNull(device.wait(Until.findObject(By.res(pkg,"tool_details").textContains("Alarm request")),12000));
+            scenario.recreate();
+            assertEquals(0,app.toolCalls());
             click("tool_approve");status("TEST_PERFORMED");assertEquals(1,app.toolCalls());
             assertFalse(device.findObject(By.res(pkg,"tool_approve")).isEnabled());
             scenario.recreate();status("TEST_PERFORMED");assertEquals(1,app.toolCalls());
