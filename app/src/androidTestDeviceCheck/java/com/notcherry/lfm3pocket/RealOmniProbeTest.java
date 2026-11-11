@@ -9,7 +9,7 @@ import org.junit.Test;
 import java.io.*;
 import static org.junit.Assert.*;
 
-/** Explicit physical-device qualification: real JNI/weights, no scripted engine or invented quality score. */
+/** Explicit real-weight qualification: production JNI, never a scripted model or invented quality score. */
 public final class RealOmniProbeTest {
     @Test public void recordActualNativeOutput()throws Exception{
         androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wakeUp();
@@ -25,19 +25,30 @@ public final class RealOmniProbeTest {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         Bundle args=InstrumentationRegistry.getArguments();
         assertEquals("Set -e realOmni true explicitly", "true",args.getString("realOmni"));
-        assertFalse("Physical hardware required",Build.FINGERPRINT.contains("generic") || Build.MODEL.contains("sdk_gphone"));
-        assertTrue(java.util.Arrays.asList(Build.SUPPORTED_ABIS).contains("arm64-v8a"));
+        boolean emulator=Build.FINGERPRINT.contains("generic") || Build.MODEL.contains("sdk_gphone");
+        assertFalse("Set -e allowEmulator true to explicitly run real weights on an emulator",
+                emulator && !"true".equals(args.getString("allowEmulator")));
+        java.util.List<String> abis=java.util.Arrays.asList(Build.SUPPORTED_ABIS);
+        assertTrue("Expected a supported 64-bit native build",abis.contains("arm64-v8a") || abis.contains("x86_64"));
+        if(emulator)assertTrue("Emulator runs require the x86_64 native library",abis.contains("x86_64"));
         assertEquals(Lfm3PocketApplication.class,context.getApplicationContext().getClass());
-        File directory=new File(context.getExternalFilesDir(null),"models");
+        File directory=new File(context.getFilesDir(),"models");
+        assertTrue("Create private model directory",directory.isDirectory() || directory.mkdirs());
         File model=new File(directory,"LFM3-Omni-2B-Q4_K_M.gguf");
         File projector=new File(directory,"mmproj-LFM3-Omni-2B-Q4_K_M.gguf");
         JSONObject report=new JSONObject();report.put("device",Build.MODEL);report.put("api",Build.VERSION.SDK_INT);
+        report.put("deviceClass",emulator?"EMULATOR":"ANDROID_DEVICE");
+        report.put("abi",Build.SUPPORTED_ABIS[0]);
         report.put("startedUtc",java.time.Instant.now().toString());
         report.put("model",model.getName());report.put("projector",projector.getName());
         String prompt=args.getString("prompt","<|startoftext|><|im_start|>system\nYou are a concise helpful assistant. Reply in the language of the user.<|im_end|>\n<|im_start|>user\nNapisz po polsku jedno zdanie o lokalnym przetwarzaniu.<|im_end|>\n<|im_start|>assistant\n");
+        String encodedPrompt=args.getString("promptBase64");
+        if(encodedPrompt!=null)prompt=new String(java.util.Base64.getDecoder().decode(encodedPrompt),java.nio.charset.StandardCharsets.UTF_8);
         String media=args.getString("media","");String caseId=args.getString("caseId","text");
+        int maxTokens=Integer.parseInt(args.getString("maxTokens","64"));
+        assertTrue(maxTokens>=1 && maxTokens<=512);report.put("maxTokens",maxTokens);
         assertTrue(caseId.matches("[a-z0-9-]{1,40}"));
-        File result=new File(context.getExternalFilesDir(null),"probe-"+caseId+".json");
+        File result=new File(context.getFilesDir(),"probe-"+caseId+".json");
         long handle=0;String error=null;StringBuilder output=new StringBuilder();
         long start=SystemClock.elapsedRealtime();final long[] first={0};
         try{
@@ -52,9 +63,13 @@ public final class RealOmniProbeTest {
             if(handle==0)error="Native model/projector load returned zero";
             else{
                 long decodeStart=SystemClock.elapsedRealtime();NativeBridge.resetModelStop(handle);
-                error=NativeBridge.generate(handle,prompt,media.isEmpty()?null:media,128,piece->{
-                    if(first[0]==0)first[0]=SystemClock.elapsedRealtime();output.append(piece);
-                });
+                try(FileOutputStream streamed=new FileOutputStream(new File(context.getFilesDir(),"probe-"+caseId+"-stream.txt"))){
+                    error=NativeBridge.generate(handle,prompt,media.isEmpty()?null:media,maxTokens,piece->{
+                        if(first[0]==0)first[0]=SystemClock.elapsedRealtime();output.append(piece);
+                        try{streamed.write(piece.getBytes(java.nio.charset.StandardCharsets.UTF_8));streamed.flush();}
+                        catch(IOException failure){throw new java.io.UncheckedIOException(failure);}
+                    });
+                }
                 report.put("decodeMs",SystemClock.elapsedRealtime()-decodeStart);
                 report.put("firstTokenMs",first[0]==0?JSONObject.NULL:first[0]-decodeStart);
             }

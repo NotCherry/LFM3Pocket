@@ -1,0 +1,20 @@
+{
+  "device": "sdk_gphone_x86_64",
+  "api": 30,
+  "deviceClass": "EMULATOR",
+  "abi": "x86_64",
+  "startedUtc": "2026-11-11T14:30:18.666Z",
+  "model": "LFM3-Omni-2B-Q4_K_M.gguf",
+  "projector": "mmproj-LFM3-Omni-2B-Q4_K_M.gguf",
+  "maxTokens": 128,
+  "phase": "complete",
+  "validationMs": 5043,
+  "loadMs": 611,
+  "decodeMs": 21294,
+  "firstTokenMs": 13663,
+  "prompt": "<|startoftext|><|im_start|>system\nYou are a helpful vision assistant. Describe the image content accurately.<|im_end|>\n<|im_start|>user\nWhat objects are shown and where are they located? <__media__><|im_end|>\n<|im_start|>assistant\n",
+  "media": "vision.png",
+  "output": "<think></think>The image contains two simple geometric shapes on a plain light‑gray background:\n\n1. **A red square** – located on the **left** side of the image. It is a four‑sided polygon with all sides equal and right angles, filled with a solid red color.\n\n2. **A blue circle** – located on the **right** side of the image. It is a perfectly round shape with a solid blue fill.\n\nThere are no other objects, text, or background details present.",
+  "error": null,
+  "quality": "REQUIRES_REVIEW"
+}

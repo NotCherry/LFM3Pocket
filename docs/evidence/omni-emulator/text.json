@@ -1,0 +1,20 @@
+{
+  "device": "sdk_gphone_x86_64",
+  "api": 30,
+  "deviceClass": "EMULATOR",
+  "abi": "x86_64",
+  "startedUtc": "2026-11-11T14:25:15.832Z",
+  "model": "LFM3-Omni-2B-Q4_K_M.gguf",
+  "projector": "mmproj-LFM3-Omni-2B-Q4_K_M.gguf",
+  "maxTokens": 64,
+  "phase": "complete",
+  "validationMs": 4997,
+  "loadMs": 674,
+  "decodeMs": 4846,
+  "firstTokenMs": 2143,
+  "prompt": "<|startoftext|><|im_start|>system\nYou are a concise helpful assistant. Reply in the language of the user.<|im_end|>\n<|im_start|>user\nNapisz po polsku jedno zdanie o lokalnym przetwarzaniu.<|im_end|>\n<|im_start|>assistant\n",
+  "media": "",
+  "output": "<think></think>Lokalne przetwarzanie obejmuje przetwarzanie danych w miejscu ich generowania, co zwiększa wydajność i skraca czas odpowiedzi.",
+  "error": null,
+  "quality": "REQUIRES_REVIEW"
+}
