@@ -5,6 +5,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# CI distributes debug APKs for phone testing. Keep -g while optimizing CPU
+# kernels; unoptimized ggml makes real-device inference misleadingly slow.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    add_compile_options("$<$<CONFIG:Debug>:-O2>")
+endif()
+
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
