@@ -28,11 +28,14 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         private volatile CountDownLatch releaseFirstTurn = new CountDownLatch(1);
         private volatile boolean stopRequested;
         private volatile String loadedPath;
+        private volatile boolean failLoad;
+        public void failNextLoad() { failLoad = true; }
 
         public void resetForTest() {
             turns.set(0);
             stopRequested = false;
             loadedPath = null;
+            failLoad = false;
             releaseFirstTurn = new CountDownLatch(1);
         }
 
@@ -40,6 +43,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         public String loadedPath() { return loadedPath; }
 
         @Override public long loadModel(String modelPath, String projectorPath) {
+            if (failLoad) { failLoad = false; return 0; }
             loadedPath = modelPath;
             return 13L; // Test-only fake handle; deliberately never opens the dummy file.
         }
