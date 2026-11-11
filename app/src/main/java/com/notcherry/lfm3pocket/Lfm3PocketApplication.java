@@ -14,6 +14,9 @@ public class Lfm3PocketApplication extends Application {
         java.io.File[] partials = new java.io.File(getFilesDir(), "models")
                 .listFiles((directory, name) -> name.endsWith(".partial"));
         if (partials != null) for (java.io.File partial : partials) partial.delete();
+        java.io.File[] recordings = new java.io.File(getCacheDir(), "recordings")
+                .listFiles((directory, name) -> name.endsWith(".partial"));
+        if (recordings != null) for (java.io.File partial : recordings) partial.delete();
     }
 
     private InferenceEngine inferenceEngine;
@@ -31,6 +34,19 @@ public class Lfm3PocketApplication extends Application {
 
     public final InferenceEngine newInferenceSession() {
         return createInferenceEngine();
+    }
+
+    public final RecordingController.Source newRecordingSource() throws Exception {
+        return createRecordingSource();
+    }
+
+    public boolean hasMicrophonePermission() {
+        return checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+
+    protected RecordingController.Source createRecordingSource() throws Exception {
+        return new AndroidMicrophone();
     }
 
     protected InferenceEngine createInferenceEngine() {

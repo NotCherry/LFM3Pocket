@@ -14,9 +14,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.media.AudioFormat;
-import android.media.AudioRecord;
-import android.media.MediaRecorder;
 import android.text.util.Linkify;
 import android.text.InputType;
 import android.view.Gravity;
@@ -34,7 +31,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.io.RandomAccessFile;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -48,7 +44,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final int TAKE_PHOTO = 45;
     private static final int REQUEST_AUDIO = 46;
     private static final int MAX_GENERATED_TOKENS = 512;
-    private static final int AUDIO_RATE = 16000;
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -60,9 +55,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean generating = false;
     private volatile boolean destroyed = false;
     private volatile AtomicBoolean importCancellation;
-    private volatile boolean recording = false;
-    private AudioRecord activeRecorder;
-    private File recordingFile;
+    private final ExecutorService audioWorker = Executors.newSingleThreadExecutor();
+    private RecordingController recordingController;
+    private boolean foreground;
+    private boolean microphoneRequested;
     private String pendingMediaPath = "";
     private String pendingMediaKind = "";
 
@@ -77,6 +73,19 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         inferenceEngine = ((Lfm3PocketApplication) getApplication()).newInferenceSession();
+        recordingController = new RecordingController(new File(getCacheDir(), "recordings"),
+                ((Lfm3PocketApplication)getApplication())::newRecordingSource,
+                () -> ((Lfm3PocketApplication)getApplication()).hasMicrophonePermission(),
+                audioWorker, task -> mainHandler.post(task), (captureState, message, completed) -> {
+                    if (destroyed) { if (completed != null) completed.delete(); return; }
+                    busy = recordingActive();
+                    status.setText(message);
+                    if (completed != null) {
+                        pendingMediaPath = completed.getAbsolutePath();
+                        pendingMediaKind = "voice recording";
+                    }
+                    updateControls();
+                });
         session = new ChatSession(inferenceEngine, worker,
                 (task, delay) -> mainHandler.postDelayed(task, delay), () -> modelHandle,
                 WebSearch::search, (text, message, running) -> {
@@ -188,10 +197,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         mmprojButton.setEnabled(!busy);
         photoButton.setEnabled(!busy);
         cameraButton.setEnabled(!busy);
-        recordButton.setText(recording ? "Stop recording" : "Voice input");
-        recordButton.setEnabled(!busy || recording);
+        RecordingController.State capture = recordingController.state();
+        recordButton.setText(capture == RecordingController.State.STOPPING ? "Finishing..."
+                : recordingActive() ? "Stop recording" : "Voice input");
+        recordButton.setEnabled(capture != RecordingController.State.STOPPING && (!busy || recordingActive()));
         chatPanel.updateControls(!busy && modelHandle != 0L,
-                generating || recording || importCancellation != null, !busy || generating);
+                generating || recordingActive() || importCancellation != null, !busy || generating);
         if (modelManager != null) {
             String model = getPreferences(MODE_PRIVATE).getString("model", "");
             String projector = getPreferences(MODE_PRIVATE).getString("mmproj", "");
@@ -324,120 +335,39 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         });
     }
 
+    private boolean recordingActive() {
+        RecordingController.State state = recordingController.state();
+        return state == RecordingController.State.STARTING || state == RecordingController.State.RECORDING
+                || state == RecordingController.State.STOPPING;
+    }
+
     private void toggleRecording() {
-        if (recording) {
-            stopRecording();
-            return;
-        }
-        if (busy) return;
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        if (recordingActive()) { recordingController.stop(); return; }
+        if (busy || !foreground) return;
+        if (!((Lfm3PocketApplication)getApplication()).hasMicrophonePermission()) {
+            microphoneRequested = true;
             requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQUEST_AUDIO);
             return;
         }
-        startRecording();
+        recordingController.start();
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_AUDIO) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) startRecording();
+        if (requestCode == REQUEST_AUDIO && microphoneRequested) {
+            microphoneRequested = false;
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED
+                    && foreground && !destroyed && !busy) recordingController.start();
             else status.setText("Microphone access is needed for voice input.");
         }
     }
 
-    private void startRecording() {
-        int minBytes = AudioRecord.getMinBufferSize(AUDIO_RATE, AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT);
-        if (minBytes <= 0) {
-            status.setText("This device cannot record microphone audio.");
-            return;
-        }
-        int bufferBytes = Math.max(minBytes, 8192);
-        try {
-            activeRecorder = new AudioRecord(MediaRecorder.AudioSource.MIC, AUDIO_RATE,
-                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferBytes);
-            final AudioRecord recorder = activeRecorder;
-            recordingFile = new File(getCacheDir(), "voice-" + System.currentTimeMillis() + ".wav");
-            final File outputFile = recordingFile;
-            recording = true;
-            busy = true;
-            updateControls();
-            status.setText("Recording voice input. Tap Stop recording when finished.");
-            worker.execute(() -> captureWav(recorder, outputFile, bufferBytes));
-        } catch (Exception e) {
-            recording = false;
-            busy = false;
-            status.setText("Could not start recording: " + e.getMessage());
-            updateControls();
-        }
-    }
+    @Override protected void onStart() { super.onStart(); foreground = true; }
 
-    private void stopRecording() {
-        recording = false;
-        AudioRecord recorder = activeRecorder;
-        if (recorder != null) {
-            try { recorder.stop(); } catch (IllegalStateException ignored) { }
-        }
-        status.setText("Finishing voice recording...");
-        updateControls();
-    }
-
-    private void captureWav(AudioRecord recorder, File file, int bufferBytes) {
-        long audioBytes = 0;
-        try (RandomAccessFile output = new RandomAccessFile(file, "rw")) {
-            output.setLength(0);
-            output.write(new byte[44]);
-            short[] samples = new short[Math.max(1024, bufferBytes / 2)];
-            byte[] pcm = new byte[samples.length * 2];
-            recorder.startRecording();
-            while (recording) {
-                int count = recorder.read(samples, 0, samples.length);
-                if (count > 0) {
-                    for (int i = 0; i < count; i++) {
-                        pcm[i * 2] = (byte) samples[i];
-                        pcm[i * 2 + 1] = (byte) (samples[i] >> 8);
-                    }
-                    output.write(pcm, 0, count * 2);
-                    audioBytes += count * 2L;
-                } else if (count < 0) {
-                    throw new IOException("Microphone read failed: " + count);
-                }
-            }
-            writeWavHeader(output, audioBytes);
-            output.getFD().sync();
-            activeRecorder = null;
-            recorder.release();
-            if (audioBytes < AUDIO_RATE * 2L / 4L) throw new IOException("Recording was too short");
-            setPendingMedia(file.getAbsolutePath(), "voice recording");
-        } catch (Exception e) {
-            activeRecorder = null;
-            try { recorder.release(); } catch (Exception ignored) { }
-            runOnUiThread(() -> {
-                recording = false;
-                busy = false;
-                status.setText("Voice recording failed: " + e.getMessage());
-                updateControls();
-            });
-        }
-    }
-
-    private static void writeWavHeader(RandomAccessFile file, long dataBytes) throws IOException {
-        file.seek(0);
-        file.writeBytes("RIFF"); writeLe32(file, dataBytes + 36);
-        file.writeBytes("WAVEfmt "); writeLe32(file, 16);
-        writeLe16(file, 1); writeLe16(file, 1);
-        writeLe32(file, AUDIO_RATE); writeLe32(file, AUDIO_RATE * 2L);
-        writeLe16(file, 2); writeLe16(file, 16);
-        file.writeBytes("data"); writeLe32(file, dataBytes);
-    }
-
-    private static void writeLe16(RandomAccessFile file, long value) throws IOException {
-        file.write((int) value & 0xff); file.write((int) (value >> 8) & 0xff);
-    }
-
-    private static void writeLe32(RandomAccessFile file, long value) throws IOException {
-        file.write((int) value & 0xff); file.write((int) (value >> 8) & 0xff);
-        file.write((int) (value >> 16) & 0xff); file.write((int) (value >> 24) & 0xff);
+    @Override protected void onStop() {
+        foreground = false;
+        if (recordingController != null && recordingActive()) recordingController.cancel();
+        super.onStop();
     }
 
     private void pickModel() {
@@ -571,7 +501,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void stopActiveWork() {
-        if (recording) stopRecording();
+        if (recordingActive()) recordingController.stop();
         else if (importCancellation != null) {
             importCancellation.set(true);
             status.setText("Cancelling import...");
@@ -592,7 +522,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         session.close();
         mainHandler.removeCallbacksAndMessages(null);
         if (importCancellation != null) importCancellation.set(true);
-        if (recording) stopRecording();
+        recordingController.close();
+        audioWorker.shutdown();
         inferenceEngine.stop();
         worker.execute(() -> {
             if (modelHandle != 0L) {
