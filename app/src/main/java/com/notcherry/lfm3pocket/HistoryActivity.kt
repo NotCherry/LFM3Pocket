@@ -56,6 +56,8 @@ class HistoryActivity : ComponentActivity() {
                     loading = loading,
                     error = error,
                     onOpen = ::openConversation,
+                    onDeleteConversation = ::deleteConversation,
+                    onDeleteAll = ::deleteAllConversations,
                     onBack = { if (selected != null) selected = null else finish() },
                     onNewChat = ::startNewChat,
                 )
@@ -64,7 +66,7 @@ class HistoryActivity : ComponentActivity() {
         refreshConversations()
     }
 
-    private fun refreshConversations() {
+    private fun refreshConversations(cleanupError: String? = null) {
         loading = true
         worker.execute {
             try {
@@ -73,7 +75,7 @@ class HistoryActivity : ComponentActivity() {
                     HistoryPreview(conversation.id, conversation.title,
                         last?.text?.replace('\n', ' ')?.take(120).orEmpty(), conversation.updatedAt)
                 }
-                main.post { conversations = rows; loading = false; error = null }
+                main.post { conversations = rows; loading = false; error = cleanupError }
             } catch (failure: Exception) {
                 main.post { loading = false; error = failure.message ?: "Could not read saved conversations" }
             }
@@ -88,6 +90,30 @@ class HistoryActivity : ComponentActivity() {
                 main.post { selected = transcript; error = null }
             } catch (failure: Exception) {
                 main.post { error = failure.message ?: "Could not open this conversation" }
+            }
+        }
+    }
+
+    private fun deleteConversation(id: String) {
+        worker.execute {
+            dao.deleteConversation(id)
+            val mediaClean = HistoryMediaCleanup.deleteTemporaryAttachments(this)
+            main.post {
+                if (selected?.conversation?.id == id) selected = null
+                refreshConversations(if (mediaClean) null else
+                    "Conversation deleted, but some temporary media could not be removed.")
+            }
+        }
+    }
+
+    private fun deleteAllConversations() {
+        worker.execute {
+            dao.deleteAllConversations()
+            val mediaClean = HistoryMediaCleanup.deleteTemporaryAttachments(this)
+            main.post {
+                selected = null
+                refreshConversations(if (mediaClean) null else
+                    "History deleted, but some temporary media could not be removed.")
             }
         }
     }
@@ -114,10 +140,14 @@ private fun HistoryScreen(
     loading: Boolean,
     error: String?,
     onOpen: (String) -> Unit,
+    onDeleteConversation: (String) -> Unit,
+    onDeleteAll: () -> Unit,
     onBack: () -> Unit,
     onNewChat: () -> Unit,
 ) {
     val tag = { name: String -> "$packageName:id/$name" }
+    var deleteTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var confirmDeleteAll by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(16.dp).semantics { testTagsAsResourceId = true }) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onBack, modifier = Modifier.testTag(tag("history_back"))) {
@@ -127,6 +157,9 @@ private fun HistoryScreen(
                 Text("New chat")
             }
         }
+        Text("History stays on this device and is excluded from Android backup. Conversation text and any saved speech transcript are retained; audio and image attachments are temporary and removed after processing.",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(vertical = 8.dp).testTag(tag("history_retention_notice")))
         if (selected == null) {
             Text("Saved conversations", style = MaterialTheme.typography.headlineSmall,
                 modifier = Modifier.testTag(tag("history_list_title")))
@@ -138,19 +171,34 @@ private fun HistoryScreen(
                 conversations.isEmpty() -> Text("No saved conversations yet.",
                     modifier = Modifier.padding(top = 20.dp).testTag(tag("history_empty")))
                 else -> LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                    item {
+                        TextButton(onClick = { confirmDeleteAll = true },
+                            modifier = Modifier.testTag(tag("history_delete_all"))) {
+                            Text("Delete all history")
+                        }
+                    }
                     items(conversations, key = { it.id }) { row ->
                         Card(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-                            Column(Modifier.padding(14.dp)) {
-                                TextButton(onClick = { onOpen(row.id) },
-                                    modifier = Modifier.testTag(tag("history_item"))) {
-                                    Text(row.title, style = MaterialTheme.typography.titleMedium)
+                            Row(Modifier.fillMaxWidth().padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column(Modifier.weight(1f)) {
+                                    TextButton(onClick = { onOpen(row.id) },
+                                        modifier = Modifier.testTag(tag("history_item"))) {
+                                        Text(row.title, style = MaterialTheme.typography.titleMedium)
+                                    }
+                                    Text(row.preview.ifBlank { "No message preview" }, maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(start = 12.dp, top = 4.dp)
+                                            .testTag(tag("history_item_preview")))
+                                    Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                                        .format(Date(row.updatedAt)), style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.padding(start = 12.dp, top = 4.dp)
+                                            .testTag(tag("history_item_timestamp")))
                                 }
-                                Text(row.preview.ifBlank { "No message preview" }, maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(top = 4.dp).testTag(tag("history_item_preview")))
-                                Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-                                    .format(Date(row.updatedAt)), style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(top = 4.dp).testTag(tag("history_item_timestamp")))
+                                TextButton(onClick = { deleteTarget = row.id to row.title },
+                                    modifier = Modifier.testTag(tag("history_delete_${row.id}"))) {
+                                    Text("Delete")
+                                }
                             }
                         }
                     }
@@ -201,5 +249,27 @@ private fun HistoryScreen(
         if (error != null && selected != null) {
             Text(error, modifier = Modifier.testTag(tag("history_error")))
         }
+    }
+    deleteTarget?.let { target ->
+        AlertDialog(onDismissRequest = { deleteTarget = null },
+            modifier = Modifier.semantics { testTagsAsResourceId = true },
+            title = { Text("Delete conversation?") },
+            text = { Text("Delete ‘${target.second}’ and all of its saved messages and action results?") },
+            confirmButton = { TextButton(onClick = {
+                onDeleteConversation(target.first); deleteTarget = null
+            }, modifier = Modifier.testTag(tag("history_confirm_delete"))) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null },
+                modifier = Modifier.testTag(tag("history_cancel_delete"))) { Text("Cancel") } })
+    }
+    if (confirmDeleteAll) {
+        AlertDialog(onDismissRequest = { confirmDeleteAll = false },
+            modifier = Modifier.semantics { testTagsAsResourceId = true },
+            title = { Text("Delete all history?") },
+            text = { Text("This permanently deletes every saved conversation on this device.") },
+            confirmButton = { TextButton(onClick = {
+                onDeleteAll(); confirmDeleteAll = false
+            }, modifier = Modifier.testTag(tag("history_confirm_delete_all"))) { Text("Delete all") } },
+            dismissButton = { TextButton(onClick = { confirmDeleteAll = false },
+                modifier = Modifier.testTag(tag("history_cancel_delete_all"))) { Text("Cancel") } })
     }
 }

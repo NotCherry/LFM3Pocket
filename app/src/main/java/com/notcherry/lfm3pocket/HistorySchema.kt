@@ -66,6 +66,7 @@ interface HistoryDao {
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC,id ASC") fun conversations():List<HistoryConversation>
     @Query("SELECT * FROM messages WHERE conversationId=:id ORDER BY sequence ASC") fun messages(id:String):List<HistoryMessage>
     @Query("DELETE FROM conversations WHERE id=:id") fun deleteConversation(id:String):Int
+    @Query("DELETE FROM conversations") fun deleteAllConversations():Int
     @Query("SELECT tool_outcomes.* FROM tool_outcomes INNER JOIN messages ON messages.id=tool_outcomes.messageId WHERE messages.conversationId=:id ORDER BY completedAt ASC,tool_outcomes.id ASC")
     fun toolOutcomes(id:String):List<HistoryToolOutcome>
 }

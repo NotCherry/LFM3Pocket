@@ -10,6 +10,7 @@ public final class ChatSession {
     public interface Listener { void changed(String transcript, String status, boolean generating); }
     public interface Search { List<WebSearch.Source> search(String endpoint, String question) throws Exception; }
     public interface Persistence { void save(CompletedTurn turn) throws Exception; }
+    public interface MediaCleanup { void delete(String path); }
     public enum TerminalState { COMPLETED, CANCELLED, FAILED }
     public static final class CompletedTurn {
         public final String id,userText,assistantText;
@@ -44,6 +45,7 @@ public final class ChatSession {
     private final Dispatcher ui;
     private final Listener listener;
     private final Persistence persistence;
+    private final MediaCleanup mediaCleanup;
     private final LongSupplier model;
     private final Search search;
     private final List<Message> messages=new ArrayList<>();
@@ -55,12 +57,16 @@ public final class ChatSession {
 
     public ChatSession(InferenceEngine engine,Executor worker,Dispatcher ui,LongSupplier model,
                        Search search,Listener listener) {
-        this(engine,worker,ui,model,search,turn->{},listener);
+        this(engine,worker,ui,model,search,turn->{},path->{},listener);
     }
     public ChatSession(InferenceEngine engine,Executor worker,Dispatcher ui,LongSupplier model,
                        Search search,Persistence persistence,Listener listener) {
+        this(engine,worker,ui,model,search,persistence,path->{},listener);
+    }
+    public ChatSession(InferenceEngine engine,Executor worker,Dispatcher ui,LongSupplier model,
+                       Search search,Persistence persistence,MediaCleanup mediaCleanup,Listener listener) {
         this.engine=engine;this.worker=worker;this.ui=ui;this.model=model;this.search=search;
-        this.persistence=persistence;this.listener=listener;
+        this.persistence=persistence;this.mediaCleanup=mediaCleanup;this.listener=listener;
     }
     public synchronized boolean isGenerating() { return active!=null; }
     public synchronized boolean submit(String text,String media,String kind,boolean useSearch,String endpoint,int maxTokens) {
@@ -92,6 +98,12 @@ public final class ChatSession {
     }
     private synchronized boolean current(Turn turn) { return !closed && active==turn && epoch==turn.id; }
     private void generate(Turn turn,String question,String media,boolean useSearch,String endpoint,int maxTokens,List<Message> history) {
+        try { generateTurn(turn,question,media,useSearch,endpoint,maxTokens,history); }
+        finally {
+            if(!media.isEmpty())try { mediaCleanup.delete(media); } catch(RuntimeException ignored) { }
+        }
+    }
+    private void generateTurn(Turn turn,String question,String media,boolean useSearch,String endpoint,int maxTokens,List<Message> history) {
         if(!current(turn)) return;
         List<WebSearch.Source> sources=Collections.emptyList();
         String searchError=null,error=null;

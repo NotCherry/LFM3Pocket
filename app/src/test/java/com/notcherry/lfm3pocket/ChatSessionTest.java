@@ -94,4 +94,14 @@ public class ChatSessionTest {
                 "Generating locally · offline…",status[0]);
         ui.drain();assertEquals("Response complete · local model · offline",status[0]);
     }
+    @Test public void temporaryMediaIsRemovedAfterInferenceFinishes(){
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();List<String> deleted=new ArrayList<>();
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                turn->{},deleted::add,(text,message,running)->{});
+        assertTrue(session.submit("Describe this","/private/cache/photo-1.img","photo",false,"",32));
+        assertTrue(deleted.isEmpty());
+        worker.drain();
+        assertEquals(Collections.singletonList("/private/cache/photo-1.img"),deleted);
+        assertEquals(1,engine.calls);
+    }
 }
