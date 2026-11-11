@@ -8,6 +8,14 @@ import java.util.Map;
  * of Application to supply fake engines; release builds always use native JNI.
  */
 public class Lfm3PocketApplication extends Application {
+    @Override public void onCreate() {
+        super.onCreate();
+        // No activity/import worker exists yet: discard remnants of a killed import.
+        java.io.File[] partials = new java.io.File(getFilesDir(), "models")
+                .listFiles((directory, name) -> name.endsWith(".partial"));
+        if (partials != null) for (java.io.File partial : partials) partial.delete();
+    }
+
     private InferenceEngine inferenceEngine;
     private AndroidActionExecutor actionExecutor;
 
