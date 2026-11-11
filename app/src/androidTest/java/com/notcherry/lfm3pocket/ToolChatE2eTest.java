@@ -144,4 +144,33 @@ public final class ToolChatE2eTest {
         assertEquals("toggle_flashlight",saved.get(0).getTool());
         assertEquals("TEST_PERFORMED",saved.get(0).getStatus());
     }
+
+    @Test public void safeMusicVolumeProposalShowsExactStreamAndPercentThroughChatApproval() {
+        ToolRegistry.Parsed parsed=new ToolRegistry().parse(
+                "{\"tool\":\"set_volume\",\"arguments\":{\"stream\":\"music\",\"percent\":35}}");
+        assertTrue(parsed.isValid());
+        ToolCoordinator.Outcome proposal=app.toolCoordinator().propose(
+                parsed.request,ToolCoordinator.Source.MODEL_PROPOSAL);
+        assertEquals("PENDING_CONFIRMATION",proposal.status);
+        assertEquals(0,app.toolCalls());
+
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(activity->activity.presentToolOutcome(proposal));
+            assertTrue(find("tool_details").getText().contains("Audio volume"));
+            assertTrue(find("tool_details").getText().contains("stream: \"music\""));
+            assertTrue(find("tool_details").getText().contains("percent: 35"));
+            assertTrue(find("tool_risk").getText().contains("safe action"));
+            assertTrue(find("tool_status").getText().contains("Needs your approval"));
+            find("tool_approve").click();
+            assertTrue(find("tool_status").getText().contains("Action complete"));
+            assertTrue(find("tool_result").getText().contains("Test handler executed"));
+            assertEquals(1,app.toolCalls());
+            assertNull(device.wait(Until.findObject(By.res(pkg,"tool_approve")),1000));
+        }
+        List<HistoryToolOutcome> saved=HistoryDatabase.get(
+                InstrumentationRegistry.getInstrumentation().getTargetContext()).history().toolOutcomes(historyConversationId);
+        assertEquals(1,saved.size());
+        assertEquals("set_volume",saved.get(0).getTool());
+        assertEquals("TEST_PERFORMED",saved.get(0).getStatus());
+    }
 }

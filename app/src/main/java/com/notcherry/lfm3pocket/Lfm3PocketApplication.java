@@ -29,7 +29,8 @@ public class Lfm3PocketApplication extends Application {
 
     protected ToolCoordinator.Handler createToolHandler() {
         return request -> {
-            if (!(request instanceof ToolRegistry.FlashlightRequest)) {
+            if (!(request instanceof ToolRegistry.FlashlightRequest) &&
+                    !(request instanceof ToolRegistry.VolumeRequest)) {
                 return new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
                         "This Android tool is not enabled yet");
             }
@@ -85,6 +86,8 @@ public class Lfm3PocketApplication extends Application {
         FlashlightController controller = new FlashlightController(new AndroidFlashlightCamera(this),
                 () -> checkSelfPermission(android.Manifest.permission.CAMERA)
                         == android.content.pm.PackageManager.PERMISSION_GRANTED);
-        return new FlashlightActionExecutor(controller);
+        AndroidActionExecutor flashlight = new FlashlightActionExecutor(controller);
+        AndroidActionExecutor volume = new VolumeActionExecutor(new VolumeController(new AndroidAudioVolume(this)));
+        return new AndroidToolsExecutor(flashlight, volume);
     }
 }
