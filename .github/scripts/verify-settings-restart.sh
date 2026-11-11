@@ -13,11 +13,6 @@ for phase in prepare verify; do
     -e settingsPhase "$phase" \
     com.notcherry.lfm3pocket.test/com.notcherry.lfm3pocket.UiE2eTestRunner > "$result"
   cat "$result"
-  python3 - "$result" <<'PY'
-from pathlib import Path
-import re,sys
-log=Path(sys.argv[1]).read_text()
-if not re.search(r"OK \(1 test\)",log) or any(s in log for s in ("FAILURES!!!","INSTRUMENTATION_FAILED","Process crashed")):
-    raise SystemExit("Settings process-restart instrumentation did not pass exactly one test")
-PY
+  python3 .github/scripts/assert-instrumentation-result.py "$result"
+
 done
