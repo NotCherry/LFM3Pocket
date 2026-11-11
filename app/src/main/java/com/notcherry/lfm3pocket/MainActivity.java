@@ -162,7 +162,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         searchButton = button("Web search: off");
         actionControls.addView(searchButton, new LinearLayout.LayoutParams(-1, dp(48)));
         controls.addView(actionControls);
-        root.addView(controls);
+        // Keep a readable transcript on small screens. Configuration can scroll independently.
+        root.removeView(modelManager);
+        LinearLayout configuration = new LinearLayout(this);
+        configuration.setOrientation(LinearLayout.VERTICAL);
+        configuration.addView(modelManager);
+        configuration.addView(controls);
+        ScrollView configurationScroll = new ScrollView(this);
+        configurationScroll.setId(R.id.model_configuration_scroll);
+        configurationScroll.addView(configuration);
+        root.addView(configurationScroll, new LinearLayout.LayoutParams(-1,
+                dp(Math.min(220, getResources().getConfiguration().screenHeightDp / 3))));
 
         chatPanel = new ChatPanel(this, this::send, this::stopActiveWork, () -> {
             pendingMediaPath = "";
