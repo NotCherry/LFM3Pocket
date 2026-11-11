@@ -9,6 +9,8 @@ public interface InferenceEngine {
         void onToken(String piece);
     }
 
+    default void configure(InferenceSettings settings) {}
+
     long loadModel(String modelPath, String projectorPath);
     void unloadModel(long handle);
     String generate(long handle, String prompt, String mediaPath, int maxTokens, TokenSink sink);

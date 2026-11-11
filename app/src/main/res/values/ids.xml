@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <item name="model_configuration_scroll" type="id" />
     <!-- Stable selectors for black-box Android UI instrumentation tests. -->
     <item name="chat_status" type="id" />
     <item name="chat_transcript" type="id" />
@@ -9,4 +10,11 @@
     <item name="voice_record" type="id" />
     <item name="import_model" type="id"/>
     <item name="import_projector" type="id"/>
+    <item name="settings_context" type="id"/>
+    <item name="settings_threads" type="id"/>
+    <item name="settings_tokens" type="id"/>
+    <item name="tool_details" type="id"/>
+    <item name="tool_status" type="id"/>
+    <item name="tool_approve" type="id"/>
+    <item name="tool_reject" type="id"/>
 </resources>

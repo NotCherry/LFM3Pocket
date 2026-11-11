@@ -42,6 +42,23 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
                 new AndroidActionExecutor.ActionResult(false, "TEST_DEFAULT_DENY", name);
     }
 
+    private final AtomicInteger toolCalls=new AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicLong toolTime=new java.util.concurrent.atomic.AtomicLong();
+    private volatile boolean failTool;
+    public void resetTools() { toolCalls.set(0);toolTime.set(0);failTool=false; }
+    public int toolCalls() { return toolCalls.get(); }
+    public void failTool(boolean value) { failTool=value; }
+    public void advanceToolTime(long millis) { toolTime.addAndGet(millis); }
+    @Override protected ToolCoordinator.Handler createToolHandler() {
+        return request -> {
+            toolCalls.incrementAndGet();
+            return new AndroidActionExecutor.ActionResult(!failTool,
+                    failTool ? "TEST_FAILED" : "TEST_PERFORMED", failTool ? "Test handler failed" : "Test handler executed");
+        };
+    }
+    @Override protected java.util.function.Predicate<ToolRegistry.Request> createToolPermissionCheck() { return request -> true; }
+    @Override protected java.util.function.LongSupplier createToolClock() { return toolTime::get; }
+
     public ScriptedInferenceEngine scriptedEngine() {
         return scripted;
     }
@@ -51,6 +68,9 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         private volatile CountDownLatch releaseFirstTurn = new CountDownLatch(1);
         private volatile boolean stopRequested;
         private volatile String loadedPath;
+        private volatile InferenceSettings configured=InferenceSettings.DEFAULT;
+        @Override public void configure(InferenceSettings settings) { configured=settings; }
+        public InferenceSettings configuredSettings() { return configured; }
         private volatile boolean failLoad;
         public void failNextLoad() { failLoad = true; }
         private volatile String lastPrompt;

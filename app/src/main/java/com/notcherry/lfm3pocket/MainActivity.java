@@ -43,7 +43,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final int PICK_PHOTO = 44;
     private static final int TAKE_PHOTO = 45;
     private static final int REQUEST_AUDIO = 46;
-    private static final int MAX_GENERATED_TOKENS = 512;
+
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -64,6 +64,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private TextView status;
     private ModelManagerPanel modelManager;
+    private InferenceSettings inferenceSettings=InferenceSettings.DEFAULT;
+    private InferenceSettingsStore settingsStore;
+    private boolean settingsLoaded;
     private Button modelButton, mmprojButton;
     private Button searchButton, photoButton, cameraButton, recordButton;
     private boolean searchEnabled = false;
@@ -96,8 +99,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     status.setText(message);
                     updateControls();
                 });
+        settingsStore=new InferenceSettingsStore(this);
         buildUi();
         updateControls();
+        settingsStore.load(settings -> {
+            if (destroyed) return;
+            inferenceSettings=settings;inferenceEngine.configure(settings);settingsLoaded=true;updateControls();
+        }, error -> {
+            if (destroyed) return;
+            inferenceSettings=InferenceSettings.DEFAULT;inferenceEngine.configure(inferenceSettings);
+            settingsLoaded=true;status.setText("Settings unavailable; using defaults: "+error);updateControls();
+        });
         String previous = getPreferences(MODE_PRIVATE).getString("model", "");
         mmprojPath = getPreferences(MODE_PRIVATE).getString("mmproj", "");
         searchEndpoint = getPreferences(MODE_PRIVATE).getString("search_endpoint", "");
@@ -153,14 +165,24 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         root.addView(status);
         controls.addView(modelControls);
         modelManager = new ModelManagerPanel(this,
-                this::reloadSelectedModel, this::unloadSelectedModel);
+                this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings);
         root.addView(modelManager);
         LinearLayout actionControls = new LinearLayout(this);
         actionControls.setOrientation(LinearLayout.HORIZONTAL);
         searchButton = button("Web search: off");
         actionControls.addView(searchButton, new LinearLayout.LayoutParams(-1, dp(48)));
         controls.addView(actionControls);
-        root.addView(controls);
+        // Keep a readable transcript on small screens. Configuration can scroll independently.
+        root.removeView(modelManager);
+        LinearLayout configuration = new LinearLayout(this);
+        configuration.setOrientation(LinearLayout.VERTICAL);
+        configuration.addView(modelManager);
+        configuration.addView(controls);
+        ScrollView configurationScroll = new ScrollView(this);
+        configurationScroll.setId(R.id.model_configuration_scroll);
+        configurationScroll.addView(configuration);
+        root.addView(configurationScroll, new LinearLayout.LayoutParams(-1,
+                dp(Math.min(220, getResources().getConfiguration().screenHeightDp / 3))));
 
         chatPanel = new ChatPanel(this, this::send, this::stopActiveWork, () -> {
             pendingMediaPath = "";
@@ -201,9 +223,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         recordButton.setText(capture == RecordingController.State.STOPPING ? "Finishing..."
                 : recordingActive() ? "Stop recording" : "Voice input");
         recordButton.setEnabled(capture != RecordingController.State.STOPPING && (!busy || recordingActive()));
-        chatPanel.updateControls(!busy && modelHandle != 0L,
+        chatPanel.updateControls(!busy && modelHandle != 0L && settingsLoaded,
                 generating || recordingActive() || importCancellation != null, !busy || generating);
+
         if (modelManager != null) {
+            modelManager.showSettings(settingsLoaded ? inferenceSettings.summary() : "Loading inference settings...");
             String model = getPreferences(MODE_PRIVATE).getString("model", "");
             String projector = getPreferences(MODE_PRIVATE).getString("mmproj", "");
             String description = status.getText().toString();
@@ -236,6 +260,46 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 updateControls();
             });
         });
+    }
+
+    private EditText settingInput(LinearLayout form,String labelText,int value,int id) {
+        TextView label=new TextView(this);label.setText(labelText);form.addView(label);
+        EditText field=new EditText(this);field.setId(id);field.setSingleLine(true);
+        field.setInputType(InputType.TYPE_CLASS_NUMBER);field.setText(Integer.toString(value));
+        form.addView(field);return field;
+    }
+
+    private void showInferenceSettings() {
+        if (busy || !settingsLoaded) return;
+        LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(20),dp(8),dp(20),0);
+        EditText context=settingInput(form,"Context tokens (512–8192, steps of 256)",
+                inferenceSettings.contextTokens,R.id.settings_context);
+        EditText threads=settingInput(form,"Decode threads (1–8, capped to available CPUs)",
+                inferenceSettings.threads,R.id.settings_threads);
+        EditText tokens=settingInput(form,"Max response tokens (1–2048, less than context)",
+                inferenceSettings.maxTokens,R.id.settings_tokens);
+        TextView error=new TextView(this);error.setTextColor(Color.RED);form.addView(error);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Inference settings")
+                .setMessage("Higher context uses more memory. Changes apply to the next response.")
+                .setView(form).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            try {
+                InferenceSettings next=new InferenceSettings(Integer.parseInt(context.getText().toString()),
+                        Integer.parseInt(threads.getText().toString()),Integer.parseInt(tokens.getText().toString()));
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+                settingsStore.save(next, () -> {
+                    if (destroyed) return;
+                    inferenceSettings=next;inferenceEngine.configure(next);updateControls();dialog.dismiss();
+                }, failure -> {
+                    if (destroyed) return;
+                    error.setText("Settings were not saved: "+failure);
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                });
+            } catch(NumberFormatException invalid) { error.setText("Enter whole numbers for all settings."); }
+            catch(IllegalArgumentException invalid) { error.setText(invalid.getMessage()); }
+        }));
+        dialog.show();
     }
 
     private void showSearchSettings() {
@@ -509,9 +573,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void send(String text) {
-        if (busy || modelHandle == 0L) return;
+        if (busy || modelHandle == 0L || !settingsLoaded) return;
         if (session.submit(text, pendingMediaPath, pendingMediaKind,
-                searchEnabled, searchEndpoint, MAX_GENERATED_TOKENS)) {
+                searchEnabled, searchEndpoint, inferenceSettings.maxTokens)) {
             pendingMediaPath = "";
             pendingMediaKind = "";
         }
@@ -520,6 +584,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     @Override protected void onDestroy() {
         destroyed = true;
         session.close();
+        settingsStore.close();
         mainHandler.removeCallbacksAndMessages(null);
         if (importCancellation != null) importCancellation.set(true);
         recordingController.close();

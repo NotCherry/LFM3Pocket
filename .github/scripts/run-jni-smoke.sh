@@ -25,3 +25,6 @@ adb logcat -c || true
 # returns failure on failed assertions. Unlike assembleSmokeDebugAndroidTest,
 # it actually exercises the JNI model load/generate/stop/retry path.
 timeout 30m gradle :app:connectedSmokeDebugAndroidTest --no-daemon --stacktrace
+
+# Verify DataStore durability across an actual force-stop/new process.
+bash .github/scripts/verify-settings-restart.sh
