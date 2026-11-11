@@ -192,4 +192,37 @@ public final class ChatUiE2eTest {
         }
     }
 
+    @Test public void recreateDuringGenerationStartsAnIndependentSession() {
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            awaitEnabled("chat_send");
+            device.findObject(By.res(packageName, "chat_input")).setText("Old activity turn");
+            awaitEnabled("chat_send").click();
+            awaitTranscript("FAKE_STREAM_BEGIN");
+            scenario.recreate();
+            awaitEnabled("chat_send");
+            assertFalse(device.findObject(By.res(packageName, "chat_transcript")).getText()
+                    .contains("Old activity turn"));
+            device.findObject(By.res(packageName, "chat_input")).setText("New activity turn");
+            awaitEnabled("chat_send").click();
+            awaitTranscript("FAKE_STREAM_BEGIN");
+            awaitEnabled("chat_stop").click();
+            awaitEnabled("chat_send");
+            assertEquals(1, app.scriptedEngine().callCount());
+        }
+    }
+
+    @Test public void clearingAnActiveTurnDoesNotResurrectStaleTokens() {
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            awaitEnabled("chat_send");
+            device.findObject(By.res(packageName, "chat_input")).setText("Discard this turn");
+            awaitEnabled("chat_send").click();
+            awaitTranscript("FAKE_STREAM_BEGIN");
+            device.findObject(By.text("Clear")).click();
+            awaitEnabled("chat_send");
+            UiObject2 transcript = awaitTranscript("No conversation yet.");
+            assertFalse(transcript.getText().contains("FAKE_STREAM_BEGIN"));
+            assertFalse(transcript.getText().contains("Discard this turn"));
+        }
+    }
+
 }

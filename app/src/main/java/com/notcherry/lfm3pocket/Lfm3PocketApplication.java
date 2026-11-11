@@ -29,6 +29,10 @@ public class Lfm3PocketApplication extends Application {
         return actionExecutor;
     }
 
+    public final InferenceEngine newInferenceSession() {
+        return createInferenceEngine();
+    }
+
     protected InferenceEngine createInferenceEngine() {
         return new NativeInferenceEngine();
     }

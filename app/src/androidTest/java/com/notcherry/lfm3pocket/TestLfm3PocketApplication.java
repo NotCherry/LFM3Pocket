@@ -7,9 +7,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** Isolated instrumentation-only application. No model files or JNI are used for UI E2E. */
 public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
-    private final ScriptedInferenceEngine scripted = new ScriptedInferenceEngine();
+    private volatile ScriptedInferenceEngine scripted = new ScriptedInferenceEngine();
 
     @Override protected InferenceEngine createInferenceEngine() {
+        scripted = new ScriptedInferenceEngine();
         return scripted;
     }
 
