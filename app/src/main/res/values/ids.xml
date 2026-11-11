@@ -9,4 +9,8 @@
     <item name="voice_record" type="id" />
     <item name="import_model" type="id"/>
     <item name="import_projector" type="id"/>
+    <item name="tool_details" type="id"/>
+    <item name="tool_status" type="id"/>
+    <item name="tool_approve" type="id"/>
+    <item name="tool_reject" type="id"/>
 </resources>
