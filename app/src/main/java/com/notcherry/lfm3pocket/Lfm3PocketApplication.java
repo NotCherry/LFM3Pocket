@@ -30,7 +30,8 @@ public class Lfm3PocketApplication extends Application {
     protected ToolCoordinator.Handler createToolHandler() {
         return request -> {
             if (!(request instanceof ToolRegistry.FlashlightRequest) &&
-                    !(request instanceof ToolRegistry.VolumeRequest)) {
+                    !(request instanceof ToolRegistry.VolumeRequest) &&
+                    !(request instanceof ToolRegistry.TimerRequest)) {
                 return new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
                         "This Android tool is not enabled yet");
             }
@@ -88,6 +89,7 @@ public class Lfm3PocketApplication extends Application {
                         == android.content.pm.PackageManager.PERMISSION_GRANTED);
         AndroidActionExecutor flashlight = new FlashlightActionExecutor(controller);
         AndroidActionExecutor volume = new VolumeActionExecutor(new VolumeController(new AndroidAudioVolume(this)));
-        return new AndroidToolsExecutor(flashlight, volume);
+        AndroidActionExecutor timer = new TimerActionExecutor(new TimerController(new AndroidClockTimer(this)));
+        return new AndroidToolsExecutor(flashlight, volume, timer);
     }
 }
