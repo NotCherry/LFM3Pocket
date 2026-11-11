@@ -49,6 +49,13 @@ public class ToolRegistryTest {
         assertFalse(registry.parse("{\"tool\":\"copy_text\",\"arguments\":{\"text\":\"\\u００７４\"}}").isValid());
         assertFalse(registry.parse("{\"tool\":\"copy_text\",\"arguments\":{\"text\":\"\\u0000\"}}").isValid());
     }
+    @Test public void labelsCannotSmuggleUnicodeLineSeparators(){
+        for(String separator:new String[]{"\u2028","\u2029","\n"}) {
+            String escaped=separator.equals("\n")?"\\n":separator;
+            assertFalse(registry.parse("{\"tool\":\"set_timer\",\"arguments\":{\"seconds\":60,\"label\":\"Tea"+escaped+"hidden\"}}").isValid());
+        }
+        assertTrue(registry.parse("{\"tool\":\"copy_text\",\"arguments\":{\"text\":\"Line 1\\nLine 2\"}}").isValid());
+    }
     @Test public void oversizedDeepAndRandomHostileInputFailsWithoutThrowing(){
         assertFalse(registry.parse(new String(new char[8193]).replace('\0','x')).isValid());
         assertFalse(registry.parse("{\"tool\":\"copy_text\",\"arguments\":{\"text\":[[[[[[[]]]]]]]}}").isValid());

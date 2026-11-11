@@ -91,7 +91,7 @@ public final class ToolRegistry {
     }
     private static void label(Map<String,Object> args){
         if(!args.containsKey("label"))args.put("label","");String label=text(args,"label",0,100);
-        for(int i=0;i<label.length();i++)if(Character.isISOControl(label.charAt(i)))bad("label must be one line");
+        for(int i=0;i<label.length();i++)if(Character.isISOControl(label.charAt(i)) || label.charAt(i)=='\u2028' || label.charAt(i)=='\u2029')bad("label must be one line");
     }
     private static void choice(Map<String,Object> args,String key,String... values){
         if(!Arrays.asList(values).contains(args.get(key)))bad(key+" is unsupported");
