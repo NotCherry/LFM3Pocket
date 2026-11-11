@@ -171,7 +171,7 @@ jobs:
         with:
           gradle-version: '8.13'
       - name: Build ARM64 APK
-        run: gradle :app:assemblePhoneDebug --no-daemon --stacktrace
+        run: gradle :app:assemblePhoneDebug :app:assembleDeviceCheckDebug :app:assembleDeviceCheckDebugAndroidTest --no-daemon --stacktrace
       - name: Assert ARM64 APK exists
         run: test -s app/build/outputs/apk/phone/debug/app-phone-debug.apk
       - name: Upload compiled ARM64 APK
@@ -180,5 +180,15 @@ jobs:
         with:
           name: LFM3Pocket-arm64-debug
           path: app/build/outputs/apk/phone/debug/app-phone-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload isolated physical-device test APKs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LFM3Pocket-arm64-device-check
+          path: |
+            app/build/outputs/apk/deviceCheck/debug/app-deviceCheck-debug.apk
+            app/build/outputs/apk/androidTest/deviceCheck/debug/app-deviceCheck-debug-androidTest.apk
           if-no-files-found: error
           retention-days: 30
