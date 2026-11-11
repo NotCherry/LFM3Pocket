@@ -28,8 +28,17 @@ public class Lfm3PocketApplication extends Application {
     }
 
     protected ToolCoordinator.Handler createToolHandler() {
-        return request -> new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
-                "This Android tool is not enabled yet");
+        return request -> {
+            if (!(request instanceof ToolRegistry.FlashlightRequest)) {
+                return new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
+                        "This Android tool is not enabled yet");
+            }
+            java.util.Map<String, String> arguments = new java.util.LinkedHashMap<>();
+            for (java.util.Map.Entry<String, Object> entry : request.arguments.entrySet()) {
+                arguments.put(entry.getKey(), String.valueOf(entry.getValue()));
+            }
+            return actionExecutor().execute(request.tool.wireName, arguments);
+        };
     }
 
     protected java.util.function.Predicate<ToolRegistry.Request> createToolPermissionCheck() {
@@ -73,9 +82,9 @@ public class Lfm3PocketApplication extends Application {
     }
 
     protected AndroidActionExecutor createActionExecutor() {
-        // Default deny until the validated, allowlisted tool registry is implemented.
-        return (approvedToolName, validatedArguments) ->
-                new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
-                        "No Android actions are enabled in this build");
+        FlashlightController controller = new FlashlightController(new AndroidFlashlightCamera(this),
+                () -> checkSelfPermission(android.Manifest.permission.CAMERA)
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED);
+        return new FlashlightActionExecutor(controller);
     }
 }

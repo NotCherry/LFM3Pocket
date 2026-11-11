@@ -116,4 +116,32 @@ public final class ToolChatE2eTest {
             assertEquals(1,app.toolCalls());
         }
     }
+
+    @Test public void flashlightProposalUsesChatApprovalAndShowsTheValidatedResult() {
+        ToolRegistry.Parsed parsed=new ToolRegistry().parse(
+                "{\"tool\":\"toggle_flashlight\",\"arguments\":{\"on\":true}}");
+        assertTrue(parsed.isValid());
+        ToolCoordinator.Outcome proposal=app.toolCoordinator().propose(
+                parsed.request,ToolCoordinator.Source.MODEL_PROPOSAL);
+        assertEquals("PENDING_CONFIRMATION",proposal.status);
+        assertEquals(0,app.toolCalls());
+
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(activity->activity.presentToolOutcome(proposal));
+            assertTrue(find("tool_details").getText().contains("Flashlight"));
+            assertTrue(find("tool_details").getText().contains("on: true"));
+            assertTrue(find("tool_risk").getText().contains("safe action"));
+            assertTrue(find("tool_status").getText().contains("Needs your approval"));
+            find("tool_approve").click();
+            assertTrue(find("tool_status").getText().contains("Action complete"));
+            assertTrue(find("tool_result").getText().contains("Test handler executed"));
+            assertEquals("Approval should invoke the installed fake handler exactly once",1,app.toolCalls());
+            assertNull(device.wait(Until.findObject(By.res(pkg,"tool_approve")),1000));
+        }
+        List<HistoryToolOutcome> saved=HistoryDatabase.get(
+                InstrumentationRegistry.getInstrumentation().getTargetContext()).history().toolOutcomes(historyConversationId);
+        assertEquals(1,saved.size());
+        assertEquals("toggle_flashlight",saved.get(0).getTool());
+        assertEquals("TEST_PERFORMED",saved.get(0).getStatus());
+    }
 }
