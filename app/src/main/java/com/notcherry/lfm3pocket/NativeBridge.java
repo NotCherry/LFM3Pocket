@@ -13,8 +13,13 @@ public final class NativeBridge {
 
     public static native long loadModel(String privatePath, String privateMmprojPath);
     public static native void unloadModel(long handle);
-    public static native String generate(long handle, String prompt, String mediaPath,
-                                         int maxTokens, TokenSink sink);
+    public static String generate(long handle, String prompt, String mediaPath,
+                                  int maxTokens, TokenSink sink) {
+        if (prompt == null || sink == null) return "Missing prompt or callback";
+        return generateUtf8(handle, PromptEncoding.encode(prompt), mediaPath, maxTokens, sink);
+    }
+    private static native String generateUtf8(long handle, byte[] prompt, String mediaPath,
+                                               int maxTokens, TokenSink sink);
     public static native void requestStop(long handle);
     public static native void resetModelStop(long handle);
     public static native void stop();

@@ -178,8 +178,8 @@ Java_com_notcherry_lfm3pocket_NativeBridge_resetStop(JNIEnv *, jclass) {
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_notcherry_lfm3pocket_NativeBridge_generate(
-        JNIEnv * env, jclass, jlong handle, jstring prompt, jstring media_path,
+Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
+        JNIEnv * env, jclass, jlong handle, jbyteArray prompt, jstring media_path,
         jint max_tokens, jobject sink) {
     if (!handle) return make_string(env, "Model has not been loaded");
     if (!prompt || !sink) return make_string(env, "Missing prompt or callback");
@@ -192,10 +192,11 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generate(
     const bool mrope = state->multimodal && mtmd_decode_use_mrope(state->multimodal);
     const llama_vocab * vocab = llama_model_get_vocab(model);
 
-    const char * raw = env->GetStringUTFChars(prompt, nullptr);
-    if (!raw) return make_string(env, "Cannot read prompt");
-    std::string input(raw);
-    env->ReleaseStringUTFChars(prompt, raw);
+    const jsize input_size = env->GetArrayLength(prompt);
+    std::string input(static_cast<size_t>(input_size), '\0');
+    if (input_size > 0) env->GetByteArrayRegion(prompt, 0, input_size,
+            reinterpret_cast<jbyte *>(input.data()));
+    if (env->ExceptionCheck()) return nullptr; // Propagate JNI allocation/access failures to Java.
 
     int count = llama_tokenize(vocab, input.data(), static_cast<int32_t>(input.size()),
                                nullptr, 0, false, true);
