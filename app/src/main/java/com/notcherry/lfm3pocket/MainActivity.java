@@ -41,7 +41,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public final class MainActivity extends Activity {
+public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final int PICK_MODEL = 42;
     private static final int PICK_MMPROJ = 43;
     private static final int PICK_PHOTO = 44;
@@ -71,6 +71,7 @@ public final class MainActivity extends Activity {
     private final StringBuilder partial = new StringBuilder();
 
     private TextView status;
+    private ModelManagerPanel modelManager;
     private TextView transcript;
     private ScrollView scroller;
     private EditText promptInput;
@@ -138,7 +139,6 @@ public final class MainActivity extends Activity {
         status = label("Starting...", 13, Color.DKGRAY);
         status.setId(R.id.chat_status);
         status.setPadding(0, dp(5), 0, dp(6));
-        root.addView(status);
 
         LinearLayout controls = new LinearLayout(this);
         controls.setOrientation(LinearLayout.VERTICAL);
@@ -150,7 +150,11 @@ public final class MainActivity extends Activity {
         mmprojButton.setId(R.id.import_projector);
         modelControls.addView(modelButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         modelControls.addView(mmprojButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        root.addView(status);
         controls.addView(modelControls);
+        modelManager = new ModelManagerPanel(this,
+                this::reloadSelectedModel, this::unloadSelectedModel);
+        root.addView(modelManager);
         LinearLayout actionControls = new LinearLayout(this);
         actionControls.setOrientation(LinearLayout.HORIZONTAL);
         searchButton = button("Web search: off");
@@ -243,6 +247,39 @@ public final class MainActivity extends Activity {
         sendButton.setEnabled(!busy && modelHandle != 0L);
         clearButton.setEnabled(!busy || generating);
         stopButton.setEnabled(generating || recording || importCancellation != null);
+        if (modelManager != null) {
+            String model = getPreferences(MODE_PRIVATE).getString("model", "");
+            String projector = getPreferences(MODE_PRIVATE).getString("mmproj", "");
+            String description = status.getText().toString();
+            modelManager.updateSelection(
+                    model.isEmpty() ? "" : getPreferences(MODE_PRIVATE).getString("model_name", new File(model).getName()),
+                    projector.isEmpty() ? "" : getPreferences(MODE_PRIVATE).getString("projector_name", new File(projector).getName()),
+                    busy, modelHandle != 0, description.startsWith("Model error") || description.startsWith("Import failed"));
+        }
+    }
+
+    private void reloadSelectedModel() {
+        if (busy) return;
+        String model = getPreferences(MODE_PRIVATE).getString("model", "");
+        if (!model.isEmpty()) loadModelInBackground(model,
+                getPreferences(MODE_PRIVATE).getString("mmproj", ""));
+    }
+
+    private void unloadSelectedModel() {
+        if (busy || modelHandle == 0) return;
+        busy = true;
+        status.setText("Unloading model...");
+        updateControls();
+        worker.execute(() -> {
+            inferenceEngine.unloadModel(modelHandle);
+            modelHandle = 0;
+            runOnUiThread(() -> {
+                if (destroyed) return;
+                busy = false;
+                status.setText("Model unloaded. Selected files remain available for reload.");
+                updateControls();
+            });
+        });
     }
 
     private void showSearchSettings() {
@@ -502,9 +539,13 @@ public final class MainActivity extends Activity {
                 String previousProjector = getPreferences(MODE_PRIVATE).getString("mmproj", "");
                 if (isProjector && previousModel.isEmpty()) throw new IOException("Import a model before its multimodal projector");
                 long expected = -1;
+                String importedName = "Imported GGUF";
                 try (Cursor cursor = getContentResolver().query(uri,
-                        new String[] { OpenableColumns.SIZE }, null, null, null)) {
-                    if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) expected = cursor.getLong(0);
+                        new String[] { OpenableColumns.SIZE, OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+                    if (cursor != null && cursor.moveToFirst()) {
+                        if (!cursor.isNull(0)) expected = cursor.getLong(0);
+                        if (!cursor.isNull(1)) importedName = cursor.getString(1);
+                    }
                 }
                 imported = new ModelImporter(new File(getFilesDir(), "models")).importFile(
                         () -> getContentResolver().openInputStream(uri), expected, cancellation,
@@ -516,7 +557,9 @@ public final class MainActivity extends Activity {
                 String projector = isProjector ? imported.getAbsolutePath() : "";
                 if (loadModelOnWorker(model, projector)) {
                     getPreferences(MODE_PRIVATE).edit().putString("model", model)
-                            .putString("mmproj", projector).apply();
+                            .putString("mmproj", projector)
+                            .putString(isProjector ? "projector_name" : "model_name", importedName).apply();
+                    if (!isProjector) getPreferences(MODE_PRIVATE).edit().remove("projector_name").apply();
                     // Only delete owned obsolete imports after the new selection loads.
                     deleteImportedModel(isProjector ? previousProjector : previousModel);
                     if (!isProjector) deleteImportedModel(previousProjector);

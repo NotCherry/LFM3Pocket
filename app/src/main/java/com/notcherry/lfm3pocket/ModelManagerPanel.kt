@@ -1,0 +1,45 @@
+package com.notcherry.lfm3pocket
+
+import android.content.Context
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.AbstractComposeView
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+
+/** Incremental Compose manager, paired with the existing tested SAF controls and status view. */
+class ModelManagerPanel(
+    context: Context,
+    private val reload: Runnable,
+    private val unload: Runnable,
+) : AbstractComposeView(context) {
+    private data class Selection(
+        val model: String = "", val projector: String = "",
+        val busy: Boolean = false, val loaded: Boolean = false, val failed: Boolean = false,
+    )
+    private var selection by mutableStateOf(Selection())
+
+    fun updateSelection(model: String, projector: String, busy: Boolean, loaded: Boolean, failed: Boolean) {
+        selection = Selection(model, projector, busy, loaded, failed)
+    }
+
+    @Composable override fun Content() {
+        MaterialTheme {
+            val state = selection
+            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Text("Model: ${state.model.ifEmpty { "None selected" }}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("Projector: ${state.projector.ifEmpty { "None — text only" }}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { reload.run() }, enabled = !state.busy && state.model.isNotEmpty()) {
+                        Text(if (state.failed) "Retry load" else if (state.loaded) "Reload model" else "Load model")
+                    }
+                    OutlinedButton(onClick = { unload.run() }, enabled = !state.busy && state.loaded) {
+                        Text("Unload model")
+                    }
+                }
+            }
+        }
+    }
+}
