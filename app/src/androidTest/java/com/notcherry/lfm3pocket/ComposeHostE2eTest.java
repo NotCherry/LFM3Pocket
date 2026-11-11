@@ -40,11 +40,9 @@ public final class ComposeHostE2eTest {
         app.scriptedEngine().resetForTest();
 
         // The real Java MainActivity restores the chosen model path on startup.
-        // Injected fake never reads these dummy bytes or loads JNI.
+        // Injected fake never reads these fixture metadata or loads JNI.
         File path = new File(context.getFilesDir(), "compose-host-e2e.gguf");
-        try (FileOutputStream output = new FileOutputStream(path)) {
-            output.write(new byte[] { 'G', 'G', 'U', 'F' });
-        }
+        TestGgufFixtures.model(path);
         assertTrue(context.getSharedPreferences("MainActivity", Context.MODE_PRIVATE)
                 .edit().clear().putString("model", path.getAbsolutePath())
                 .putBoolean("search_enabled", false).commit());

@@ -34,8 +34,32 @@ public final class ModelImportE2eTest {
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_send").enabled(true)), WAIT));
         }
     }
+    @Test public void metadataRejectsWrongRoleAndMismatchedPairBeforeAcceptingProperPair() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        TestLfm3PocketApplication app = (TestLfm3PocketApplication) context.getApplicationContext();
+        app.scriptedEngine().resetForTest();
+        context.getSharedPreferences("MainActivity",0).edit().clear().commit();
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        String pkg = context.getPackageName();
+        try(ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            choose(device,pkg,"projector.gguf");
+            assertNotNull(device.wait(Until.findObject(By.res(pkg,"chat_status").textContains("Model error")),WAIT));
+            assertEquals("",context.getSharedPreferences("MainActivity",0).getString("model",""));
+            choose(device,pkg,"valid.gguf");
+            assertNotNull(device.wait(Until.findObject(By.res(pkg,"chat_send").enabled(true)),WAIT));
+            choose(device,pkg,"wrong-family.gguf","import_projector");
+            assertNotNull(device.wait(Until.findObject(By.res(pkg,"chat_status").textContains("Cannot verify matching")),WAIT));
+            assertEquals("",context.getSharedPreferences("MainActivity",0).getString("mmproj",""));
+            choose(device,pkg,"projector.gguf","import_projector");
+            assertNotNull(device.wait(Until.findObject(By.res(pkg,"chat_status").textContains("Model and projector loaded")),WAIT));
+            assertFalse(context.getSharedPreferences("MainActivity",0).getString("mmproj","").isEmpty());
+        }
+    }
     private void choose(UiDevice device, String pkg, String name) throws Exception {
-        UiObject2 button = device.wait(Until.findObject(By.res(pkg, "import_model").enabled(true)), WAIT);
+        choose(device,pkg,name,"import_model");
+    }
+    private void choose(UiDevice device, String pkg, String name,String control) throws Exception {
+        UiObject2 button = device.wait(Until.findObject(By.res(pkg, control).enabled(true)), WAIT);
         assertNotNull(button); button.click();
         UiObject2 file = device.wait(Until.findObject(By.text(name)), 1500);
         if (file == null) {

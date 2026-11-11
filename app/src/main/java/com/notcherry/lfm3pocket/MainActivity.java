@@ -98,7 +98,6 @@ public final class MainActivity extends Activity {
         updateControls();
         String previous = getPreferences(MODE_PRIVATE).getString("model", "");
         mmprojPath = getPreferences(MODE_PRIVATE).getString("mmproj", "");
-        if (!mmprojPath.isEmpty() && !new File(mmprojPath).isFile()) mmprojPath = "";
         searchEndpoint = getPreferences(MODE_PRIVATE).getString("search_endpoint", "");
         searchEnabled = getPreferences(MODE_PRIVATE).getBoolean("search_enabled", false);
         if (!previous.isEmpty() && new File(previous).isFile()) {
@@ -550,6 +549,7 @@ public final class MainActivity extends Activity {
         long next = 0;
         String error = null;
         try {
+            GgufSelection.validate(new File(path), projector == null || projector.isEmpty() ? null : new File(projector));
             next = inferenceEngine.loadModel(path, projector == null || projector.isEmpty() ? null : projector);
             if (next == 0L) error = "Native engine could not load model (check RAM and GGUF compatibility)";
         } catch (Throwable e) {
@@ -572,7 +572,7 @@ public final class MainActivity extends Activity {
             status.setText(failure == null
                     ? (projector == null || projector.isEmpty()
                         ? "Text model ready  offline"
-                        : "LFM3 Omni ready  text, photo, and voice input")
+                        : "Model and projector loaded • offline")
                     : "Model error: " + failure);
             updateControls();
         });

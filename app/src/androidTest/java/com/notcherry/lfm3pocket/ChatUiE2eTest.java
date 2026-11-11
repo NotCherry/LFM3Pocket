@@ -49,11 +49,9 @@ public final class ChatUiE2eTest {
         packageName = context.getPackageName();
 
         // MainActivity restores an existing private model path on startup.
-        // The injected fake accepts this invalid stub without ever invoking JNI.
+        // The injected fake accepts this metadata-only fixture without ever invoking JNI.
         File file = new File(context.getFilesDir(), "ui-e2e-dummy.gguf");
-        try (FileOutputStream output = new FileOutputStream(file)) {
-            output.write(new byte[] { 'G', 'G', 'U', 'F' });
-        }
+        TestGgufFixtures.model(file);
         assertTrue(context.getSharedPreferences("MainActivity", Context.MODE_PRIVATE)
                 .edit().clear()
                 .putString("model", file.getAbsolutePath())
