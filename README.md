@@ -14,6 +14,8 @@ The app opens in a minimal Kotlin/Compose navigation host. Tap **Open chat** for
 
 The chat model manager shows selected model/projector names, import progress and compatibility failures. Use **Unload model** to release native memory while retaining selected files, **Load model** or **Reload model** to load them again, and **Retry load** after a recoverable failure. Imports use the Android document picker and **Stop** cancels copying.
 
+Open **Settings** in the model manager to choose context (512–8192 in steps of 256), text decode threads (1–8, capped to available CPUs), and response tokens (1–2048, below context). Defaults are 4096 / 4 / 512. Settings are stored privately with DataStore and apply to the next response. Projector encoder threads remain fixed at load time; these controls configure text decoding.
+
 ## Usage
 
 Import an official quantized LFM3 GGUF from the Android document picker to chat offline. For LFM3-Omni, import both `LFM3-Omni-2B-Q4_K_M.gguf` and its matching `mmproj-LFM3-Omni-2B-Q4_K_M.gguf`; then attach a photo or record a voice question. Model files are copied into private app storage and are not included in the APK. Recommended phone RAM: at least 4 GB, preferably 6+ GB.

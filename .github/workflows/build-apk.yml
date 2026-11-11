@@ -41,7 +41,9 @@ jobs:
         with:
           gradle-version: '8.13'
       - name: Prove regression gate rejects failing or missing test results
-        run: python3 .github/scripts/assert-android-test-results.py --self-test
+        run: |
+          python3 .github/scripts/assert-android-test-results.py --self-test
+          python3 .github/scripts/assert-instrumentation-result.py --self-test
       - name: Verify Stage 1 acceptance matrix completeness
         run: python3 .github/scripts/check-acceptance-matrix.py
       - name: Verify ARM64 evidence collector negative controls
