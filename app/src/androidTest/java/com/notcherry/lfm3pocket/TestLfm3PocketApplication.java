@@ -28,6 +28,9 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         private volatile CountDownLatch releaseFirstTurn = new CountDownLatch(1);
         private volatile boolean stopRequested;
         private volatile String loadedPath;
+        private volatile InferenceSettings configured=InferenceSettings.DEFAULT;
+        @Override public void configure(InferenceSettings settings) { configured=settings; }
+        public InferenceSettings configuredSettings() { return configured; }
         private volatile boolean failLoad;
         public void failNextLoad() { failLoad = true; }
         private volatile String lastPrompt;

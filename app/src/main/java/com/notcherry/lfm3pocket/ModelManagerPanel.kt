@@ -14,11 +14,14 @@ class ModelManagerPanel(
     context: Context,
     private val reload: Runnable,
     private val unload: Runnable,
+    private val settings: Runnable,
 ) : AbstractComposeView(context) {
     private data class Selection(
         val model: String = "", val projector: String = "",
         val busy: Boolean = false, val loaded: Boolean = false, val failed: Boolean = false,
     )
+    private var settingsSummary by mutableStateOf("Loading inference settings...")
+    fun showSettings(summary: String) { settingsSummary=summary }
     private var selection by mutableStateOf(Selection())
 
     fun updateSelection(model: String, projector: String, busy: Boolean, loaded: Boolean, failed: Boolean) {
@@ -31,6 +34,7 @@ class ModelManagerPanel(
             Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                 Text("Model: ${state.model.ifEmpty { "None selected" }}", maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("Projector: ${state.projector.ifEmpty { "None — text only" }}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(settingsSummary, style=MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { reload.run() }, enabled = !state.busy && state.model.isNotEmpty()) {
                         Text(if (state.failed) "Retry load" else if (state.loaded) "Reload model" else "Load model")
@@ -38,6 +42,7 @@ class ModelManagerPanel(
                     OutlinedButton(onClick = { unload.run() }, enabled = !state.busy && state.loaded) {
                         Text("Unload model")
                     }
+                    TextButton(onClick={settings.run()},enabled=!state.busy) { Text("Settings") }
                 }
             }
         }

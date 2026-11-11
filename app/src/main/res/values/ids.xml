@@ -9,4 +9,7 @@
     <item name="voice_record" type="id" />
     <item name="import_model" type="id"/>
     <item name="import_projector" type="id"/>
+    <item name="settings_context" type="id"/>
+    <item name="settings_threads" type="id"/>
+    <item name="settings_tokens" type="id"/>
 </resources>

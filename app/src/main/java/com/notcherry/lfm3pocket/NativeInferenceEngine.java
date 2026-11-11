@@ -3,6 +3,8 @@ package com.notcherry.lfm3pocket;
 /** Production adapter; native library remains an implementation detail. */
 public final class NativeInferenceEngine implements InferenceEngine {
     private volatile long ownedHandle;
+    private volatile InferenceSettings settings=InferenceSettings.DEFAULT;
+    @Override public void configure(InferenceSettings settings) { this.settings=settings; }
     @Override public long loadModel(String modelPath, String projectorPath) {
         long next = NativeBridge.loadModel(modelPath, projectorPath);
         if (next != 0) ownedHandle = next;
@@ -16,7 +18,9 @@ public final class NativeInferenceEngine implements InferenceEngine {
 
     @Override public String generate(long handle, String prompt, String mediaPath,
                                      int maxTokens, TokenSink sink) {
-        return NativeBridge.generate(handle, prompt, mediaPath, maxTokens, sink::onToken);
+        InferenceSettings current=settings;
+        return NativeBridge.generateWithSettings(handle,prompt,mediaPath,
+                new InferenceSettings(current.contextTokens,current.threads,Math.min(maxTokens,current.maxTokens)),sink::onToken);
     }
 
     @Override public void stop() {
