@@ -18,8 +18,9 @@ public final class ChatSession {
     }
     private static final class Turn {
         final long id, handle;
+        final boolean webSearch;
         volatile boolean cancelled;
-        Turn(long id,long handle) { this.id=id;this.handle=handle; }
+        Turn(long id,long handle,boolean webSearch) { this.id=id;this.handle=handle;this.webSearch=webSearch; }
     }
     private final InferenceEngine engine;
     private final Executor worker;
@@ -45,15 +46,16 @@ public final class ChatSession {
         String question=text.trim().isEmpty() ? (kind.equals("photo")?"Describe this photo.":"Listen to this recording and answer.") : text.trim();
         messages.add(new Message("user",question+(media.isEmpty()?"":"\n["+kind+" attached]"),Collections.emptyList()));
         List<Message> history=new ArrayList<>(messages);
-        Turn turn=new Turn(++epoch,model.getAsLong());active=turn;
+        Turn turn=new Turn(++epoch,model.getAsLong(),useSearch);active=turn;
         pending.setLength(0);partial.setLength(0);scheduled=false;
-        status=useSearch?"Searching the web...":"Generating locally...";emit();
+        status=useSearch?"Searching web, then generating locally…":"Generating locally · offline…";emit();
         worker.execute(() -> generate(turn,question,media,useSearch,endpoint,maxTokens,history));
         return true;
     }
     public synchronized void stop() {
         if(active==null) return;
-        active.cancelled=true;engine.stop();status="Stopping generation...";emit();
+        active.cancelled=true;engine.stop();
+        status=active.webSearch?"Stopping local generation · web search mode…":"Stopping local generation · offline…";emit();
     }
     public synchronized void clear() {
         if(active!=null) { active.cancelled=true;engine.stop(); }
@@ -76,6 +78,14 @@ public final class ChatSession {
             catch(Exception e) { searchError=e.getMessage(); }
         }
         if(current(turn) && !turn.cancelled) {
+            final String progress=useSearch
+                    ? (searchError==null?"Generating locally · using web results…":"Generating locally · web search unavailable…")
+                    : "Generating locally · offline…";
+            ui.post(() -> {
+                synchronized(ChatSession.this) {
+                    if(current(turn) && !turn.cancelled) { status=progress;emit(); }
+                }
+            },0);
             engine.resetStop();
             // stop() may race resetStop; the per-turn flag never gets reset.
             if(turn.cancelled) engine.stop();
@@ -104,8 +114,10 @@ public final class ChatSession {
         drain();
         if(partial.length()>0) messages.add(new Message("assistant",partial.toString(),sources));
         partial.setLength(0);active=null;
-        status=failure!=null?"Generation: "+failure : turn.cancelled?"Generation stopped. Model ready • offline"
-                : searched?(searchFailure==null?"Model ready • searched web":"Model ready • search unavailable") : "Model ready • offline";
+        String mode=searched?"web search + local model":"local model · offline";
+        status=failure!=null?"Response failed · "+mode+": "+failure
+                :turn.cancelled?"Response stopped · "+mode
+                :"Response complete · "+mode;
         emit();
     }
     private void drain() { partial.append(pending);pending.setLength(0);scheduled=false; }

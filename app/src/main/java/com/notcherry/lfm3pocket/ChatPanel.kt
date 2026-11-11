@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.dp
@@ -19,8 +20,9 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
                 private val clear: Runnable) : AbstractComposeView(context) {
     private data class Controls(val send: Boolean=false,val stop: Boolean=false,val clear: Boolean=true)
     private var transcript by mutableStateOf("No conversation yet.\n")
+    private var liveStatus by mutableStateOf("")
     private var controls by mutableStateOf(Controls())
-    fun render(text: String) { transcript=text }
+    fun render(text: String,status: String) { transcript=text;liveStatus=status }
     fun updateControls(canSend: Boolean,canStop: Boolean,canClear: Boolean) { controls=Controls(canSend,canStop,canClear) }
     private fun tag(name: String) = "${context.packageName}:id/$name"
 
@@ -40,6 +42,19 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
                 }
             }
             Column(Modifier.fillMaxSize().semantics { testTagsAsResourceId=true }) {
+                if(liveStatus.isNotBlank()) {
+                    val active=liveStatus.startsWith("Searching") || liveStatus.startsWith("Generating")
+                            || liveStatus.startsWith("Stopping")
+                    Row(Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=8.dp)
+                            .semantics {
+                                liveRegion=LiveRegionMode.Polite
+                            },
+                        verticalAlignment=Alignment.CenterVertically) {
+                        if(active) CircularProgressIndicator(Modifier.size(18.dp),strokeWidth=2.dp)
+                        Text(liveStatus,style=MaterialTheme.typography.bodyMedium,
+                            modifier=Modifier.padding(start=8.dp).testTag(tag("chat_live_status")))
+                    }
+                }
                 SelectionContainer(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)) {
                     Text(annotated,modifier=Modifier.fillMaxWidth().padding(8.dp).testTag(tag("chat_transcript")))
                 }

@@ -66,7 +66,10 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
     public static final class ScriptedInferenceEngine implements InferenceEngine {
         private final AtomicInteger turns = new AtomicInteger();
         private volatile CountDownLatch releaseFirstTurn = new CountDownLatch(1);
+        private volatile CountDownLatch releaseBeforeFirstToken = new CountDownLatch(0);
+        private volatile CountDownLatch generationStarted = new CountDownLatch(0);
         private volatile boolean stopRequested;
+        private volatile boolean failNextGeneration;
         private volatile String loadedPath;
         private volatile InferenceSettings configured=InferenceSettings.DEFAULT;
         @Override public void configure(InferenceSettings settings) { configured=settings; }
@@ -83,7 +86,20 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
             failLoad = false;
             lastPrompt = null;
             releaseFirstTurn = new CountDownLatch(1);
+            releaseBeforeFirstToken = new CountDownLatch(0);
+            generationStarted = new CountDownLatch(0);
+            failNextGeneration = false;
         }
+
+        public void holdFirstToken() {
+            releaseBeforeFirstToken = new CountDownLatch(1);
+            generationStarted = new CountDownLatch(1);
+        }
+        public boolean awaitGenerationStarted() throws InterruptedException {
+            return generationStarted.await(10,TimeUnit.SECONDS);
+        }
+        public void releaseFirstToken() { releaseBeforeFirstToken.countDown(); }
+        public void failNextGeneration() { failNextGeneration=true; }
 
         public int callCount() { return turns.get(); }
         public String loadedPath() { return loadedPath; }
@@ -100,7 +116,18 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
                                          int maxTokens, TokenSink sink) {
             lastPrompt = prompt;
             int turn = turns.incrementAndGet();
+            if (failNextGeneration) {
+                failNextGeneration=false;
+                return "Injected inference failure";
+            }
             if (turn == 1) {
+                generationStarted.countDown();
+                try {
+                    if (!releaseBeforeFirstToken.await(10,TimeUnit.SECONDS)) return "FAKE_FIRST_TOKEN_TIMEOUT";
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return "FAKE_INTERRUPTED_BEFORE_TOKEN";
+                }
                 sink.onToken("FAKE_STREAM_BEGIN");
                 try {
                     if (!releaseFirstTurn.await(15, TimeUnit.SECONDS)) return "FAKE_CANCEL_TIMEOUT";

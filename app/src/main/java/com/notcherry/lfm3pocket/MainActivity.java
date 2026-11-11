@@ -95,8 +95,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     if (destroyed) return;
                     generating = running;
                     busy = running;
-                    chatPanel.render(text);
+                    chatPanel.render(text,message);
                     status.setText(message);
+                    status.setVisibility(running ? View.GONE : View.VISIBLE);
                     updateControls();
                 });
         settingsStore=new InferenceSettingsStore(this);
