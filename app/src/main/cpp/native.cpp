@@ -7,18 +7,34 @@
 #include <atomic>
 #include <cstdint>
 #include <mutex>
+#include <memory>
+#include <unordered_map>
 #include <string>
 #include <thread>
 #include <vector>
 
 namespace {
 std::once_flag backend_once;
-std::atomic<bool> cancel_requested{false};
 
 struct ModelHandle {
     llama_model * model = nullptr;
     mtmd_context * multimodal = nullptr;
+    std::atomic<bool> cancelled{false};
+    std::mutex decode_mutex;
+    ~ModelHandle() {
+        if (multimodal) mtmd_free(multimodal);
+        if (model) llama_model_free(model);
+    }
 };
+std::mutex registry_mutex;
+std::unordered_map<jlong, std::shared_ptr<ModelHandle>> registry;
+jlong next_handle = 1;
+
+std::shared_ptr<ModelHandle> find_model(jlong id) {
+    std::lock_guard<std::mutex> lock(registry_mutex);
+    auto found = registry.find(id);
+    return found == registry.end() ? nullptr : found->second;
+}
 
 void setup_batch(llama_batch_ext * batch, const llama_token * tokens, int count,
                  llama_pos start, bool mrope) {
@@ -97,17 +113,14 @@ Java_com_notcherry_lfm3pocket_NativeBridge_loadModel(
     env->ReleaseStringUTFChars(path, raw);
     llama_model_params params = llama_model_default_params();
     params.n_gpu_layers = 0;
-    auto * state = new ModelHandle();
+    auto state = std::make_shared<ModelHandle>();
     state->model = llama_model_load_from_file(filename.c_str(), params);
     if (!state->model) {
-        delete state;
         return 0;
     }
     if (mmproj_path && env->GetStringLength(mmproj_path) > 0) {
         const char * raw_mmproj = env->GetStringUTFChars(mmproj_path, nullptr);
         if (!raw_mmproj) {
-            llama_model_free(state->model);
-            delete state;
             return 0;
         }
         mtmd_context_params mm_params = mtmd_context_params_default();
@@ -116,32 +129,52 @@ Java_com_notcherry_lfm3pocket_NativeBridge_loadModel(
         state->multimodal = mtmd_init_from_file(raw_mmproj, state->model, mm_params);
         env->ReleaseStringUTFChars(mmproj_path, raw_mmproj);
         if (!state->multimodal) {
-            llama_model_free(state->model);
-            delete state;
             return 0;
         }
     }
-    return reinterpret_cast<jlong>(state);
+    std::lock_guard<std::mutex> lock(registry_mutex);
+    const jlong id = next_handle++;
+    registry.emplace(id, std::move(state));
+    return id;
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_unloadModel(
         JNIEnv *, jclass, jlong handle) {
-    if (!handle) return;
-    auto * state = reinterpret_cast<ModelHandle *>(handle);
-    if (state->multimodal) mtmd_free(state->multimodal);
-    if (state->model) llama_model_free(state->model);
-    delete state;
+    std::shared_ptr<ModelHandle> state;
+    {
+        std::lock_guard<std::mutex> lock(registry_mutex);
+        auto found = registry.find(handle);
+        if (found == registry.end()) return;
+        state = found->second;
+        state->cancelled.store(true);
+        registry.erase(found);
+    }
+    // In-flight decode retains its own reference; destruction follows its return.
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_notcherry_lfm3pocket_NativeBridge_requestStop(JNIEnv *, jclass, jlong handle) {
+    if (auto state = find_model(handle)) state->cancelled.store(true);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_notcherry_lfm3pocket_NativeBridge_resetModelStop(JNIEnv *, jclass, jlong handle) {
+    if (auto state = find_model(handle)) state->cancelled.store(false);
+}
+
+// Legacy process-wide methods retained for the original smoke-test API only.
+// Production adapters exclusively call the model-scoped methods above.
+extern "C" JNIEXPORT void JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_stop(JNIEnv *, jclass) {
-    cancel_requested.store(true);
+    std::lock_guard<std::mutex> lock(registry_mutex);
+    for (auto & item : registry) item.second->cancelled.store(true);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_resetStop(JNIEnv *, jclass) {
-    cancel_requested.store(false);
+    std::lock_guard<std::mutex> lock(registry_mutex);
+    for (auto & item : registry) item.second->cancelled.store(false);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -150,7 +183,11 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generate(
         jint max_tokens, jobject sink) {
     if (!handle) return make_string(env, "Model has not been loaded");
     if (!prompt || !sink) return make_string(env, "Missing prompt or callback");
-    auto * state = reinterpret_cast<ModelHandle *>(handle);
+    auto state = find_model(handle);
+    if (!state) return make_string(env, "Model handle is retired or invalid");
+    std::unique_lock<std::mutex> decode_lock(state->decode_mutex, std::try_to_lock);
+    if (!decode_lock.owns_lock()) return make_string(env, "Model is already generating");
+    if (state->cancelled.load()) return nullptr;
     llama_model * model = state->model;
     const bool mrope = state->multimodal && mtmd_decode_use_mrope(state->multimodal);
     const llama_vocab * vocab = llama_model_get_vocab(model);
@@ -173,6 +210,8 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generate(
     tokens.resize(static_cast<size_t>(converted));
 
     llama_context_params ctx_params = llama_context_default_params();
+    ctx_params.abort_callback = [](void * data) { return static_cast<std::atomic<bool> *>(data)->load(); };
+    ctx_params.abort_callback_data = &state->cancelled;
     ctx_params.n_ctx = 4096;
     ctx_params.n_batch = 512;
     ctx_params.n_ubatch = 512;
@@ -239,7 +278,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generate(
                 }
             }
         } else {
-            while (position < converted && !cancel_requested.load()) {
+            while (position < converted && !state->cancelled.load()) {
                 int n = std::min(512, converted - position);
                 setup_batch(batch, tokens.data() + position, n, position, mrope);
                 if (llama_process(ctx, LLAMA_PROCESS_TYPE_DECODE, batch) != 0) {
@@ -250,7 +289,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generate(
             }
         }
 
-        for (int i = 0; error.empty() && !cancel_requested.load() &&
+        for (int i = 0; error.empty() && !state->cancelled.load() &&
                         i < max_tokens && position + i < 4096; ++i) {
             const llama_token next = llama_sampler_sample(sampler, ctx, -1);
             if (llama_vocab_is_eog(vocab, next)) break;
@@ -280,6 +319,6 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generate(
     llama_sampler_free(sampler);
     llama_batch_ext_free(batch);
     llama_free(ctx);
-    return error.empty() ? nullptr : make_string(env, error);
+    return error.empty() || state->cancelled.load() ? nullptr : make_string(env, error);
 }
 

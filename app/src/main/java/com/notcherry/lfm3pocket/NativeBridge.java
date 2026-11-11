@@ -15,6 +15,8 @@ public final class NativeBridge {
     public static native void unloadModel(long handle);
     public static native String generate(long handle, String prompt, String mediaPath,
                                          int maxTokens, TokenSink sink);
+    public static native void requestStop(long handle);
+    public static native void resetModelStop(long handle);
     public static native void stop();
     public static native void resetStop();
 }

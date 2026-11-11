@@ -86,7 +86,7 @@ public final class GenerationSmokeTest {
      * The fixture is packaged into the instrumentation APK by the host build.
      * The Android emulator never fetches GGUF weights over the network.
      */
-    private static File copyPackagedSmokeModel(Context context) throws Exception {
+    static File copyPackagedSmokeModel(Context context) throws Exception {
         File destination = new File(context.getCacheDir(), "stories15M-q4_0.gguf");
         try (InputStream input = InstrumentationRegistry.getInstrumentation()
                 .getContext().getAssets().open("stories15M-q4_0.gguf");
