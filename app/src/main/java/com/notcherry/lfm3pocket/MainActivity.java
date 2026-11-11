@@ -49,6 +49,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private ChatSession session;
     private ChatPanel chatPanel;
+    private ToolCoordinator toolCoordinator;
     private InferenceEngine inferenceEngine;
     private volatile long modelHandle = 0L;
     private boolean busy = false;
@@ -571,6 +572,62 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             importCancellation.set(true);
             status.setText("Cancelling import...");
         } else session.stop();
+    }
+
+    /** Presents a validated coordinator result in the conversation and keeps authorization in the coordinator. */
+    public void presentToolOutcome(ToolCoordinator.Outcome outcome) {
+        if (outcome == null) return;
+        ToolRegistry.Request request = outcome.proposal == null ? null : outcome.proposal.request;
+        presentToolOutcome(request, outcome);
+    }
+
+    /** Includes the request because immediate safe actions have no confirmation proposal to carry it. */
+    public void presentToolOutcome(ToolRegistry.Request request, ToolCoordinator.Outcome outcome) {
+        if (outcome == null || chatPanel == null) return;
+        toolCoordinator = ((Lfm3PocketApplication)getApplication()).toolCoordinator();
+        renderToolOutcome(outcome.proposal, request, outcome);
+    }
+
+    private void renderToolOutcome(ToolCoordinator.Proposal proposal, ToolRegistry.Request request,
+                                  ToolCoordinator.Outcome outcome) {
+        boolean pending = proposal != null && "PENDING_CONFIRMATION".equals(outcome.status);
+        if (proposal != null) request = proposal.request;
+        String details = request == null ? "Android action" : ToolCoordinator.describe(request);
+        ToolCoordinator.Risk actionRisk = proposal == null ? ToolCoordinator.risk(request) : proposal.risk;
+        String risk = request == null ? "Risk unavailable"
+                : actionRisk == ToolCoordinator.Risk.CONFIRM ? "Risk: confirmation required" : "Risk: safe action";
+        String result = outcome.result == null ? "" : outcome.result.message;
+        ToolRegistry.Request actionRequest = request;
+        Runnable approve = pending ? () -> resolveToolOutcome(proposal, actionRequest, true) : null;
+        Runnable reject = pending ? () -> resolveToolOutcome(proposal, actionRequest, false) : null;
+        chatPanel.renderToolCard(details, risk, toolOutcomeLabel(outcome), result, pending, approve, reject);
+    }
+
+    private static String toolOutcomeLabel(ToolCoordinator.Outcome outcome) {
+        switch (outcome.status) {
+            case "PENDING_CONFIRMATION": return "Needs your approval";
+            case "DECLINED": return "Declined";
+            case "EXPIRED": return "Approval expired";
+            case "PERMISSION_DENIED": return "Permission denied";
+            case "UNTRUSTED_SOURCE": return "Request blocked";
+            case "ALREADY_RESOLVED": return "Action already resolved";
+            case "UNKNOWN_PROPOSAL": return "Action no longer available";
+            default:
+                if (outcome.result == null) return "Action unavailable";
+                return outcome.result.succeeded ? "Action complete" : "Action failed";
+        }
+    }
+
+    private void resolveToolOutcome(ToolCoordinator.Proposal proposal, ToolRegistry.Request request, boolean approve) {
+        if (destroyed) return;
+        chatPanel.renderToolCard(ToolCoordinator.describe(request),
+                proposal.risk == ToolCoordinator.Risk.CONFIRM ? "Risk: confirmation required" : "Risk: safe action",
+                approve ? "Executing Android action…" : "Declining Android action…", "", false, null, null);
+        worker.execute(() -> {
+            ToolCoordinator.Outcome outcome = approve
+                    ? toolCoordinator.approve(proposal.id) : toolCoordinator.reject(proposal.id);
+            mainHandler.post(() -> { if (!destroyed) renderToolOutcome(proposal, request, outcome); });
+        });
     }
 
     private void send(String text) {

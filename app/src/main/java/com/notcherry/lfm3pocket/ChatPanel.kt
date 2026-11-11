@@ -19,10 +19,17 @@ import java.util.function.Consumer
 class ChatPanel(context: Context, private val send: Consumer<String>, private val stop: Runnable,
                 private val clear: Runnable) : AbstractComposeView(context) {
     private data class Controls(val send: Boolean=false,val stop: Boolean=false,val clear: Boolean=true)
+    private data class ToolCard(val details: String,val risk: String,val status: String,val result: String,
+                                val pending: Boolean,val approve: Runnable?,val reject: Runnable?)
     private var transcript by mutableStateOf("No conversation yet.\n")
     private var liveStatus by mutableStateOf("")
+    private var toolCard by mutableStateOf<ToolCard?>(null)
     private var controls by mutableStateOf(Controls())
     fun render(text: String,status: String) { transcript=text;liveStatus=status }
+    fun renderToolCard(details: String,risk: String,status: String,result: String,pending: Boolean,
+                       approve: Runnable?,reject: Runnable?) {
+        toolCard=ToolCard(details,risk,status,result,pending,approve,reject)
+    }
     fun updateControls(canSend: Boolean,canStop: Boolean,canClear: Boolean) { controls=Controls(canSend,canStop,canClear) }
     private fun tag(name: String) = "${context.packageName}:id/$name"
 
@@ -42,6 +49,21 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
                 }
             }
             Column(Modifier.fillMaxSize().semantics { testTagsAsResourceId=true }) {
+                toolCard?.let { card ->
+                    Card(Modifier.fillMaxWidth().padding(horizontal=8.dp, vertical=6.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                            Text("Android action",style=MaterialTheme.typography.titleMedium)
+                            Text(card.details,modifier=Modifier.testTag(tag("tool_details")))
+                            Text(card.risk,modifier=Modifier.testTag(tag("tool_risk")))
+                            Text(card.status,modifier=Modifier.testTag(tag("tool_status")))
+                            if(card.result.isNotBlank())Text(card.result,modifier=Modifier.testTag(tag("tool_result")))
+                            if(card.pending)Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                TextButton(onClick={card.reject?.run()},modifier=Modifier.testTag(tag("tool_reject"))) { Text("Reject") }
+                                Button(onClick={card.approve?.run()},modifier=Modifier.testTag(tag("tool_approve"))) { Text("Approve") }
+                            }
+                        }
+                    }
+                }
                 if(liveStatus.isNotBlank()) {
                     val active=liveStatus.startsWith("Searching") || liveStatus.startsWith("Generating")
                             || liveStatus.startsWith("Stopping")
