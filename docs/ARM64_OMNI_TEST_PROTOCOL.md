@@ -49,3 +49,24 @@ The host script uses `adb` against a device explicitly selected by its operator 
 The script's `--self-test` creates temporary four-byte GGUF signature fixtures and validates rejection of bad input without requiring Android or network access. This proves input validation only, not Omni functionality.
 
 Link a signed-off redacted device report and its model checksums to issue #13 (F01) before promoting any real-device release requirement from PARTIAL/MISSING to VERIFIED.
+
+## Isolated installation when the phone already has another signing key
+
+`deviceCheck` uses the same production sources/JNI with application ID `com.notcherry.lfm3pocket.devicecheck` and label **LFM3 Pocket Device Test**. It installs beside the regular app, preserving that app's selected models/data. Its instrumentation runner is the ordinary AndroidJUnitRunner, with production dependencies; the probe explicitly rejects the scripted test Application. CI builds both isolated APKs in the ARM64 job. Record the actual APK hash, source commit and application ID; do not describe a local build as a downloaded CI artifact.
+
+Build/install only onto the explicitly selected physical phone:
+
+```bash
+gradle :app:assembleDeviceCheckDebug :app:assembleDeviceCheckDebugAndroidTest
+adb -s "$PHONE_SERIAL" install -r app/build/outputs/apk/deviceCheck/debug/app-deviceCheck-debug.apk
+adb -s "$PHONE_SERIAL" install -r app/build/outputs/apk/androidTest/deviceCheck/debug/app-deviceCheck-debug-androidTest.apk
+adb -s "$PHONE_SERIAL" shell mkdir -p /sdcard/Android/data/com.notcherry.lfm3pocket.devicecheck/files/models
+# Copy the two publisher-checksummed Q4_K_M files into the above directory.
+adb -s "$PHONE_SERIAL" shell am instrument -w -r \
+  -e class com.notcherry.lfm3pocket.RealOmniProbeTest -e realOmni true \
+  com.notcherry.lfm3pocket.devicecheck.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+`RealOmniProbeTest` validates actual GGUF metadata, loads the real model/projector and records exact native text, errors and timings in the app's external files `probe-text.json`. Optional `-e media PATH`, `-e prompt PROMPT`, `-e caseId image` allow controlled non-private fixtures. Host evidence collection supports `--package com.notcherry.lfm3pocket.devicecheck`. A successful native call does not grade language/vision/audio quality, prove the SAF/UI path or verify offline operation. Review recorded output against fixture ground truth and report each limitation separately. Never run the unfiltered fake UI suite with the production-dependency device runner.
+
+Wi-Fi ADB requires Wi-Fi connectivity; do not disconnect it during an unattended run or call such a run an airplane-mode test. Offline acceptance requires an on-phone/manual handoff or a working USB link.
