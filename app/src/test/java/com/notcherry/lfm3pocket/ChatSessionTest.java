@@ -9,7 +9,7 @@ public class ChatSessionTest {
     static final class Queue implements Executor,ChatSession.Dispatcher {
         final List<Runnable> tasks=new ArrayList<>();
         public void execute(Runnable task){tasks.add(task);}
-        public void post(Runnable task,long delay){if(delay==0)tasks.add(0,task);else tasks.add(task);}
+        public void post(Runnable task,long delay){tasks.add(task);}
         void drain(){while(!tasks.isEmpty())tasks.remove(0).run();}
     }
     static final class Engine implements InferenceEngine {
@@ -64,5 +64,19 @@ public class ChatSessionTest {
         },(text,status,running)->{});
         assertTrue(owner[0].submit("Question","","",true,"https://search.example/search",32));
         worker.drain();ui.drain();assertEquals(0,engine.calls);assertFalse(owner[0].isGenerating());
+    }
+    @Test public void webModeShowsSearchThenLocalGenerationAndRetainsModeOnCompletion(){
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();String[] status={""};
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,
+                (endpoint,question)->Collections.emptyList(),
+                (text,message,running)->status[0]=message);
+        assertTrue(session.submit("Search this","","",true,
+                "https://search.example/search",32));
+        assertEquals("Searching web, then generating locally…",status[0]);
+        worker.drain();
+        ui.tasks.remove(0).run();
+        assertEquals("Generating locally · web search unavailable…",status[0]);
+        ui.drain();
+        assertEquals("Response complete · web search + local model",status[0]);
     }
 }

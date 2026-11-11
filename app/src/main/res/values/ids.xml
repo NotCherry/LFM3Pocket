@@ -3,6 +3,7 @@
     <item name="model_configuration_scroll" type="id" />
     <!-- Stable selectors for black-box Android UI instrumentation tests. -->
     <item name="chat_status" type="id" />
+    <item name="chat_live_status" type="id" />
     <item name="chat_transcript" type="id" />
     <item name="chat_input" type="id" />
     <item name="chat_send" type="id" />

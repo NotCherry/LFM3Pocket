@@ -73,7 +73,7 @@ public final class ChatUiE2eTest {
         return object;
     }
 
-    @Test public void launchStreamCancelAndRetryRecoversVisibleChatControls() {
+    @Test public void launchStreamCancelAndRetryRecoversVisibleChatControls() throws Exception {
         try (ActivityScenario<MainActivity> scenario =
                      ActivityScenario.launch(MainActivity.class)) {
             // Real Activity launch, async fake model load, and UI readiness.
@@ -84,15 +84,26 @@ public final class ChatUiE2eTest {
                     Until.findObject(By.res(packageName, "chat_input")), UI_TIMEOUT_MS);
             assertNotNull(input);
             input.setText("First prompt");
+            app.scriptedEngine().holdFirstToken();
             awaitEnabled("chat_send").click();
 
-            // The scripted model blocks on a latch after the first streamed piece.
+            // Progress and mode must be visible before the fake model emits its first token.
+            assertTrue(app.scriptedEngine().awaitGenerationStarted());
+            UiObject2 status=device.wait(Until.findObject(By.res(packageName,"chat_live_status")
+                    .textContains("Generating locally")),UI_TIMEOUT_MS);
+            assertNotNull("Local inference status should appear before the first token",status);
+            assertTrue(status.getText().contains("offline"));
+            app.scriptedEngine().releaseFirstToken();
+
+            // The scripted model now blocks after the first streamed piece.
             awaitTranscript("FAKE_STREAM_BEGIN");
             assertFalse(device.findObject(By.res(packageName, "chat_send")).isEnabled());
             awaitEnabled("chat_stop").click();
 
             // stop() releases the model; UI must recover before the next turn.
             awaitEnabled("chat_send");
+            assertNotNull(device.wait(Until.findObject(By.res(packageName,"chat_live_status")
+                    .textContains("Response stopped")),UI_TIMEOUT_MS));
             awaitTranscript("FAKE_STREAM_BEGIN");
             UiObject2 retryInput = device.findObject(By.res(packageName, "chat_input"));
             assertNotNull(retryInput);
@@ -100,6 +111,8 @@ public final class ChatUiE2eTest {
             awaitEnabled("chat_send").click();
 
             UiObject2 transcript = awaitTranscript("FAKE_RETRY_COMPLETE");
+            assertNotNull(device.wait(Until.findObject(By.res(packageName,"chat_live_status")
+                    .textContains("Response complete · local model")),UI_TIMEOUT_MS));
             assertTrue(transcript.getText().contains("First prompt"));
             assertTrue(transcript.getText().contains("Retry prompt"));
             assertEquals(2, app.scriptedEngine().callCount());
@@ -110,6 +123,22 @@ public final class ChatUiE2eTest {
                     transcript.getText().split("FAKE_STREAM_BEGIN", -1).length - 1);
             awaitEnabled("chat_send");
             assertFalse(device.findObject(By.res(packageName, "chat_stop")).isEnabled());
+        }
+    }
+    @Test public void inferenceFailureIsVisibleAndRestoresSendControl() throws Exception {
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            awaitEnabled("chat_send");
+            app.scriptedEngine().failNextGeneration();
+            UiObject2 input=device.findObject(By.res(packageName,"chat_input"));
+            assertNotNull(input);input.setText("Fail visibly");awaitEnabled("chat_send").click();
+            UiObject2 recovered=device.wait(Until.findObject(By.res(packageName,"chat_send").enabled(true)),UI_TIMEOUT_MS);
+            assertNotNull("Send must recover after failed inference",recovered);
+            assertEquals(1,app.scriptedEngine().callCount());
+            UiObject2 failure=device.wait(Until.findObject(By.res(packageName,"chat_live_status")
+                    .textContains("Response failed")),UI_TIMEOUT_MS);
+            assertNotNull("Generation failure should be shown in the chat",failure);
+            assertTrue(failure.getText().contains("offline"));
+            awaitEnabled("chat_send");
         }
     }
     @Test public void airplaneModeTextChatDoesNotTransmitNetworkBytes() throws Exception {
