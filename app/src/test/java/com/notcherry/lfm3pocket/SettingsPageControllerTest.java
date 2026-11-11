@@ -47,7 +47,7 @@ public final class SettingsPageControllerTest {
         SettingsActionExecutor settings = new SettingsActionExecutor(new SettingsPageController(launcher));
         AndroidActionExecutor unused = (name, arguments) ->
                 new AndroidActionExecutor.ActionResult(true, "WRONG_HANDLER", name);
-        AndroidToolsExecutor dispatcher = new AndroidToolsExecutor(unused, unused, unused, unused, unused, settings);
+        AndroidToolsExecutor dispatcher = new AndroidToolsExecutor(unused, unused, unused, unused, unused, settings, unused);
         Map<String, String> args = new LinkedHashMap<>(); args.put("page", "wifi");
 
         assertEquals("INVALID_ARGUMENTS", settings.execute("open_settings", Collections.emptyMap()).status);
