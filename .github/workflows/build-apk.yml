@@ -176,6 +176,10 @@ jobs:
         run: gradle :app:assemblePhoneDebug :app:assembleDeviceCheckDebug :app:assembleDeviceCheckDebugAndroidTest --no-daemon --stacktrace
       - name: Assert ARM64 APK exists
         run: test -s app/build/outputs/apk/phone/debug/app-phone-debug.apk
+      - name: Verify effective native CPU optimization
+        run: |
+          python3 .github/scripts/assert-native-optimization.py --self-test
+          python3 .github/scripts/assert-native-optimization.py app/.cxx
       - name: Upload compiled ARM64 APK
         if: success()
         uses: actions/upload-artifact@v4

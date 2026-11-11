@@ -2,6 +2,7 @@ plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
     id 'org.jetbrains.kotlin.plugin.compose'
+    id 'com.google.devtools.ksp'
 }
 
 android {
@@ -79,6 +80,12 @@ android {
 }
 
 dependencies {
+    // Room 2.8.5's migration-test reader uses serialization 1.8.1. Keep its
+    // core/json runtime aligned with the version pulled into the app graph.
+    implementation platform('org.jetbrains.kotlinx:kotlinx-serialization-bom:1.8.1')
+    implementation 'androidx.room:room-runtime:2.8.5'
+    ksp 'androidx.room:room-compiler:2.8.5'
+    androidTestImplementation 'androidx.room:room-testing:2.8.5'
     implementation 'androidx.datastore:datastore-preferences:1.1.7'
     implementation platform('androidx.compose:compose-bom:2025.04.01')
     implementation 'androidx.activity:activity-compose:1.10.1'
@@ -90,4 +97,7 @@ dependencies {
     androidTestImplementation 'androidx.test:core:1.6.1'
     androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
 }
+
+ksp { arg('room.schemaLocation', "$projectDir/schemas"); arg('room.generateKotlin', 'false') }
+android.sourceSets.androidTest.assets.srcDirs += files("$projectDir/schemas")
 
