@@ -8,6 +8,9 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Bitmap;
 import android.net.Uri;
+import android.database.Cursor;
+import android.provider.OpenableColumns;
+import java.util.concurrent.atomic.AtomicBoolean;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -57,7 +60,8 @@ public final class MainActivity extends Activity {
     private volatile long modelHandle = 0L;
     private boolean busy = false;
     private boolean generating = false;
-    private boolean destroyed = false;
+    private volatile AtomicBoolean importCancellation;
+    private volatile boolean destroyed = false;
     private volatile boolean recording = false;
     private AudioRecord activeRecorder;
     private File recordingFile;
@@ -141,7 +145,9 @@ public final class MainActivity extends Activity {
         LinearLayout modelControls = new LinearLayout(this);
         modelControls.setOrientation(LinearLayout.HORIZONTAL);
         modelButton = button("Import model");
+        modelButton.setId(R.id.import_model);
         mmprojButton = button("Import projector");
+        mmprojButton.setId(R.id.import_projector);
         modelControls.addView(modelButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         modelControls.addView(mmprojButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         controls.addView(modelControls);
@@ -212,7 +218,10 @@ public final class MainActivity extends Activity {
         });
         stopButton.setOnClickListener(v -> {
             if (recording) stopRecording();
-            else {
+            else if (importCancellation != null) {
+                importCancellation.set(true);
+                status.setText("Cancelling import...");
+            } else {
                 inferenceEngine.stop();
                 status.setText("Stopping generation...");
             }
@@ -231,7 +240,7 @@ public final class MainActivity extends Activity {
         recordButton.setEnabled(!busy || recording);
         sendButton.setEnabled(!busy && modelHandle != 0L);
         clearButton.setEnabled(!busy || generating);
-        stopButton.setEnabled(generating || recording);
+        stopButton.setEnabled(generating || recording || importCancellation != null);
     }
 
     private void showSearchSettings() {
@@ -480,51 +489,54 @@ public final class MainActivity extends Activity {
         busy = true;
         updateControls();
         status.setText(code == PICK_MODEL ? "Importing model into private storage..." : "Importing projector into private storage...");
+        AtomicBoolean cancellation = new AtomicBoolean();
+        importCancellation = cancellation;
+        updateControls();
         worker.execute(() -> {
-            File dir = new File(getFilesDir(), "models");
-            dir.mkdirs();
+            File imported = null;
             boolean isProjector = code == PICK_MMPROJ;
-            File temporary = new File(dir, isProjector ? "projector.partial" : "model.partial");
-            File destination = new File(dir, isProjector ? "selected-mmproj.gguf" : "selected-model.gguf");
-            try (InputStream input = getContentResolver().openInputStream(uri);
-                 FileOutputStream output = new FileOutputStream(temporary)) {
-                if (input == null) throw new Exception("Cannot read the selected document");
-                byte[] buffer = new byte[1024 * 1024];
-                long bytes = 0;
-                int n;
-                while ((n = input.read(buffer)) != -1) {
-                    output.write(buffer, 0, n);
-                    bytes += n;
+            try {
+                String previousModel = getPreferences(MODE_PRIVATE).getString("model", "");
+                String previousProjector = getPreferences(MODE_PRIVATE).getString("mmproj", "");
+                if (isProjector && previousModel.isEmpty()) throw new IOException("Import a model before its multimodal projector");
+                long expected = -1;
+                try (Cursor cursor = getContentResolver().query(uri,
+                        new String[] { OpenableColumns.SIZE }, null, null, null)) {
+                    if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) expected = cursor.getLong(0);
                 }
-                output.getFD().sync();
-                if (bytes < 1024 * 1024) throw new Exception("File is too small to be an LFM3 model");
-                try (FileInputStream check = new FileInputStream(temporary)) {
-                    byte[] magic = new byte[4];
-                    if (check.read(magic) != 4 || magic[0] != 'G' || magic[1] != 'G' ||
-                        magic[2] != 'U' || magic[3] != 'F') {
-                        throw new Exception("Selected file is not a GGUF model");
-                    }
+                imported = new ModelImporter(new File(getFilesDir(), "models")).importFile(
+                        () -> getContentResolver().openInputStream(uri), expected, cancellation,
+                        bytes -> runOnUiThread(() -> {
+                            if (!destroyed && !cancellation.get()) status.setText("Importing GGUF: " + (bytes / 1024 / 1024) + " MiB. Stop to cancel.");
+                        }));
+                if (destroyed || cancellation.get()) throw new IOException("Import cancelled");
+                String model = isProjector ? previousModel : imported.getAbsolutePath();
+                String projector = isProjector ? imported.getAbsolutePath() : "";
+                if (loadModelOnWorker(model, projector)) {
+                    getPreferences(MODE_PRIVATE).edit().putString("model", model)
+                            .putString("mmproj", projector).apply();
+                    // Only delete owned obsolete imports after the new selection loads.
+                    deleteImportedModel(isProjector ? previousProjector : previousModel);
+                    if (!isProjector) deleteImportedModel(previousProjector);
+                    imported = null;
                 }
-                if (destination.exists() && !destination.delete()) throw new Exception("Cannot replace old GGUF");
-                if (!temporary.renameTo(destination)) throw new Exception("Cannot save imported GGUF");
-                runOnUiThread(() -> status.setText("Loading model; this may take a while..."));
-                String model = isProjector
-                        ? getPreferences(MODE_PRIVATE).getString("model", "")
-                        : destination.getAbsolutePath();
-                String projector = isProjector ? destination.getAbsolutePath() : "";
-                if (model.isEmpty()) throw new Exception("Import a model before its multimodal projector");
-                getPreferences(MODE_PRIVATE).edit().putString("model", model)
-                        .putString("mmproj", projector).apply();
-                loadModelOnWorker(model, projector);
             } catch (Exception e) {
-                temporary.delete();
                 runOnUiThread(() -> {
-                    busy = false;
-                    status.setText("Import failed: " + e.getMessage());
-                    updateControls();
+                    if (!destroyed) status.setText("Import failed: " + e.getMessage());
+                });
+            } finally {
+                if (imported != null) imported.delete();
+                importCancellation = null;
+                runOnUiThread(() -> {
+                    if (!destroyed) { busy = false; updateControls(); }
                 });
             }
         });
+    }
+
+    private void deleteImportedModel(String path) {
+        File file = new File(path);
+        if (new File(getFilesDir(), "models").equals(file.getParentFile())) file.delete();
     }
 
     private void loadModelInBackground(String path, String projector) {
@@ -534,7 +546,7 @@ public final class MainActivity extends Activity {
         worker.execute(() -> loadModelOnWorker(path, projector));
     }
 
-    private void loadModelOnWorker(String path, String projector) {
+    private boolean loadModelOnWorker(String path, String projector) {
         long next = 0;
         String error = null;
         try {
@@ -545,12 +557,17 @@ public final class MainActivity extends Activity {
         }
         final long loaded = next;
         final String failure = error;
+        if (loaded != 0L && destroyed) {
+            inferenceEngine.unloadModel(loaded);
+            return false;
+        }
         if (loaded != 0L) {
             if (modelHandle != 0L) inferenceEngine.unloadModel(modelHandle);
             modelHandle = loaded;
             getPreferences(MODE_PRIVATE).edit().putString("model", path).apply();
         }
         runOnUiThread(() -> {
+            if (destroyed) return;
             busy = false;
             status.setText(failure == null
                     ? (projector == null || projector.isEmpty()
@@ -559,6 +576,7 @@ public final class MainActivity extends Activity {
                     : "Model error: " + failure);
             updateControls();
         });
+        return loaded != 0L;
     }
 
     private void send() {
@@ -701,6 +719,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
+        if (importCancellation != null) importCancellation.set(true);
         if (recording) stopRecording();
         inferenceEngine.stop();
         worker.execute(() -> {
