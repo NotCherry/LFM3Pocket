@@ -8,8 +8,8 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
-REQUIRED_CLASSES = ("GenerationSmokeTest", "ChatUiE2eTest")
-MIN_TESTS = 6
+REQUIRED_CLASSES = ("GenerationSmokeTest", "ChatUiE2eTest", "ComposeHostE2eTest", "NativeLifetimeTest")
+MIN_TESTS = 14
 
 
 def verify(directory: Path) -> tuple[int, int, int]:
@@ -53,9 +53,7 @@ def self_test() -> None:
         directory = Path(temp)
         root = ET.Element("testsuite")
         for i in range(MIN_TESTS):
-            name = "ChatUiE2eTest" if i == 0 else (
-                "GenerationSmokeTest" if i == 1 else "DependencyContractTest"
-            )
+            name = REQUIRED_CLASSES[i % len(REQUIRED_CLASSES)]
             ET.SubElement(root, "testcase", classname=f"com.notcherry.{name}", name=f"test{i}")
         path = directory / "TEST-negative-control.xml"
         ET.ElementTree(root).write(path, encoding="utf-8")
