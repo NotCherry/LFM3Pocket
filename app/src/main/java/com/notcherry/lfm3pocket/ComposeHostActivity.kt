@@ -16,6 +16,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -31,7 +35,11 @@ class ComposeHostActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 PocketNavigation(onOpenChat = {
-                    startActivity(Intent(this@ComposeHostActivity, MainActivity::class.java))
+                    startActivity(Intent(this@ComposeHostActivity, MainActivity::class.java)
+                        .putExtra(MainActivity.EXTRA_HISTORY_CONVERSATION_ID, java.util.UUID.randomUUID().toString())
+                        .putExtra(MainActivity.EXTRA_HISTORY_TITLE, "New conversation"))
+                }, onOpenHistory = {
+                    startActivity(Intent(this@ComposeHostActivity, HistoryActivity::class.java))
                 })
             }
         }
@@ -39,12 +47,12 @@ class ComposeHostActivity : ComponentActivity() {
 }
 
 @Composable
-private fun PocketNavigation(onOpenChat: () -> Unit) {
+private fun PocketNavigation(onOpenChat: () -> Unit, onOpenHistory: () -> Unit) {
     val controller = rememberNavController()
     NavHost(navController = controller, startDestination = "home") {
         composable("home") {
             Column(
-                modifier = Modifier.fillMaxSize().padding(24.dp),
+                modifier = Modifier.fillMaxSize().padding(24.dp).semantics { testTagsAsResourceId = true },
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text("LFM3 Pocket", style = MaterialTheme.typography.headlineMedium)
@@ -53,6 +61,10 @@ private fun PocketNavigation(onOpenChat: () -> Unit) {
                 Spacer(Modifier.height(20.dp))
                 Button(onClick = onOpenChat) {
                     Text("Open chat")
+                }
+                TextButton(onClick = onOpenHistory,
+                    modifier = Modifier.testTag("${LocalContext.current.packageName}:id/history_open")) {
+                    Text("History")
                 }
                 TextButton(onClick = { controller.navigate("about") }) {
                     Text("About offline mode")
