@@ -99,7 +99,7 @@ public final class ToolChatE2eTest {
 
     @Test public void completedSafeActionShowsItsArgumentsAndResultWithoutConsentControls() {
         ToolRegistry.Parsed parsed=new ToolRegistry().parse(
-                "{\"tool\":\"set_timer\",\"arguments\":{\"seconds\":30,\"label\":\"tea\"}}");
+                "{\"tool\":\"set_volume\",\"arguments\":{\"stream\":\"music\",\"percent\":35}}");
         assertTrue(parsed.isValid());
         ToolCoordinator.Outcome outcome=app.toolCoordinator().propose(
                 parsed.request,ToolCoordinator.Source.USER_ACTION);
@@ -107,13 +107,43 @@ public final class ToolChatE2eTest {
         assertEquals("Handler must finish before its result is displayed",1,app.toolCalls());
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity->activity.presentToolOutcome(parsed.request,outcome));
-            assertTrue(find("tool_details").getText().contains("Timer"));
-            assertTrue(find("tool_details").getText().contains("seconds: 30"));
+            assertTrue(find("tool_details").getText().contains("Audio volume"));
+            assertTrue(find("tool_details").getText().contains("stream: \"music\""));
+            assertTrue(find("tool_details").getText().contains("percent: 35"));
             assertTrue(find("tool_risk").getText().contains("safe action"));
             assertTrue(find("tool_status").getText().contains("Action complete"));
             assertTrue(find("tool_result").getText().contains("Test handler executed"));
             assertNull(device.wait(Until.findObject(By.res(pkg,"tool_approve")),1000));
             assertEquals(1,app.toolCalls());
+        }
+    }
+
+    @Test public void timerProposalRequiresChatApprovalAndShowsOpenedRequestWithoutClaimingCreation() {
+        ToolRegistry.Parsed parsed=new ToolRegistry().parse(
+                "{\"tool\":\"set_timer\",\"arguments\":{\"seconds\":75,\"label\":\"Tea break\"}}");
+        assertTrue(parsed.isValid());
+        ToolCoordinator.Outcome proposal=app.toolCoordinator().propose(
+                parsed.request,ToolCoordinator.Source.MODEL_PROPOSAL);
+        assertEquals("PENDING_CONFIRMATION",proposal.status);
+        assertEquals(0,app.toolCalls());
+
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(activity->activity.presentToolOutcome(proposal));
+            assertTrue(find("tool_details").getText().contains("Timer request"));
+            assertTrue(find("tool_details").getText().contains("seconds: 75"));
+            assertTrue(find("tool_details").getText().contains("Tea break"));
+            assertTrue(find("tool_status").getText().contains("Needs your approval"));
+            find("tool_approve").click();
+            assertTrue(find("tool_status").getText().contains("Action complete"));
+            assertTrue(find("tool_result").getText().contains("Timer request sent"));
+            assertTrue(find("tool_result").getText().contains("verify it started"));
+            assertFalse(find("tool_result").getText().toLowerCase().contains("timer created"));
+            assertEquals("A single approval invokes exactly one validated timer request",1,app.toolCalls());
+            assertTrue(app.lastToolRequest() instanceof ToolRegistry.TimerRequest);
+            ToolRegistry.TimerRequest request=(ToolRegistry.TimerRequest)app.lastToolRequest();
+            assertEquals(75,request.seconds);
+            assertEquals("Tea break",request.label);
+            assertNull(device.wait(Until.findObject(By.res(pkg,"tool_approve")),1000));
         }
     }
 

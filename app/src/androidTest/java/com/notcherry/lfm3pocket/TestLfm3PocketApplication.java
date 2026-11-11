@@ -45,13 +45,21 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
     private final AtomicInteger toolCalls=new AtomicInteger();
     private final java.util.concurrent.atomic.AtomicLong toolTime=new java.util.concurrent.atomic.AtomicLong();
     private volatile boolean failTool;
-    public void resetTools() { toolCalls.set(0);toolTime.set(0);failTool=false; }
+    private volatile ToolRegistry.Request lastToolRequest;
+    public void resetTools() { toolCalls.set(0);toolTime.set(0);failTool=false;lastToolRequest=null; }
     public int toolCalls() { return toolCalls.get(); }
+    public ToolRegistry.Request lastToolRequest() { return lastToolRequest; }
     public void failTool(boolean value) { failTool=value; }
     public void advanceToolTime(long millis) { toolTime.addAndGet(millis); }
     @Override protected ToolCoordinator.Handler createToolHandler() {
         return request -> {
             toolCalls.incrementAndGet();
+            lastToolRequest=request;
+            if(request instanceof ToolRegistry.TimerRequest && !failTool) {
+                ToolRegistry.TimerRequest timer=(ToolRegistry.TimerRequest)request;
+                return new AndroidActionExecutor.ActionResult(true,"TEST_TIMER_REQUEST_OPENED",
+                        "Timer request sent to the Android clock for "+timer.seconds+" seconds. Check the clock app to verify it started.");
+            }
             return new AndroidActionExecutor.ActionResult(!failTool,
                     failTool ? "TEST_FAILED" : "TEST_PERFORMED", failTool ? "Test handler failed" : "Test handler executed");
         };
