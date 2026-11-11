@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.text.DateFormat
@@ -206,7 +207,9 @@ private fun HistoryScreen(
             }
         } else {
             Text(selected.conversation.title, style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.testTag(tag("history_reader_title")))
+                modifier = Modifier.testTag(tag("history_reader_title")).semantics {
+                    contentDescription = selected.conversation.title
+                })
             LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag(tag("history_reader"))) {
                 items(selected.messages, key = { it.id }) { message ->
                     val role = when (message.role) {
@@ -222,12 +225,15 @@ private fun HistoryScreen(
                                 Text(message.text, modifier = Modifier
                                     .padding(top = 4.dp)
                                     .testTag(tag(if (message.role == "user") "history_message_user"
-                                        else if (message.role == "assistant") "history_message_assistant" else "history_message_tool")))
+                                        else if (message.role == "assistant") "history_message_assistant" else "history_message_tool"))
+                                    .semantics { contentDescription = message.text })
                             }
                             if (!message.speechTranscript.isNullOrBlank()) {
                                 Text("Speech transcript: ${message.speechTranscript}",
                                     style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(top = 6.dp))
+                                    modifier = Modifier.padding(top = 6.dp)
+                                        .testTag(tag("history_message_speech"))
+                                        .semantics { contentDescription = message.speechTranscript })
                             }
                             if (message.role == "assistant" && message.turnStatus != "COMPLETED") {
                                 Text("Turn ${message.turnStatus.lowercase()}",
@@ -239,7 +245,10 @@ private fun HistoryScreen(
                                 Text("${outcome.tool} · ${outcome.status}",
                                     style = MaterialTheme.typography.labelMedium)
                                 Text(outcome.argumentsJson, style = MaterialTheme.typography.bodySmall)
-                                Text(outcome.resultText, style = MaterialTheme.typography.bodyMedium)
+                                Text(outcome.resultText, style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.testTag(tag("history_tool_outcome_result")).semantics {
+                                        contentDescription = outcome.resultText
+                                    })
                             }
                         }
                     }

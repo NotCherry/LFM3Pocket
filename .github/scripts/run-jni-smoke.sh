@@ -31,3 +31,6 @@ bash .github/scripts/verify-settings-restart.sh
 
 # Verify completed chat records survive an actual force-stop/new process.
 bash .github/scripts/verify-history-restart.sh
+
+# Verify speech/tool records are visible after restart and can be deleted end-to-end.
+bash .github/scripts/verify-history-journey.sh
