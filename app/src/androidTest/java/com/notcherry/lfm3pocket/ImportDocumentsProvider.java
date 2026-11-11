@@ -35,16 +35,19 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
     }
     @Override public Cursor queryChildDocuments(String id, String[] projection, String sort) {
         MatrixCursor c = new MatrixCursor(projection == null ? DOC : projection);
-        row(c, "valid.gguf"); row(c, "damaged.gguf"); return c;
+        row(c, "valid.gguf"); row(c, "damaged.gguf");
+        row(c, "projector.gguf"); row(c, "wrong-family.gguf"); return c;
     }
     @Override public ParcelFileDescriptor openDocument(String id, String mode, CancellationSignal signal)
             throws FileNotFoundException {
-        if (!id.equals("valid.gguf") && !id.equals("damaged.gguf")) throw new FileNotFoundException(id);
+        if (!java.util.Arrays.asList("valid.gguf","damaged.gguf","projector.gguf","wrong-family.gguf").contains(id)) throw new FileNotFoundException(id);
         File f = new File(getContext().getCacheDir(), id);
-        try (RandomAccessFile out = new RandomAccessFile(f, "rw")) {
-            out.setLength(1024 * 1024);
-            out.seek(0);
-            out.write(new byte[]{(byte)(id.equals("valid.gguf") ? 'G' : 0), 'G', 'U', 'F', 3, 0, 0, 0});
+        try {
+            TestGgufFixtures.write(f,id.equals("projector.gguf") || id.equals("wrong-family.gguf"),
+                    id.equals("wrong-family.gguf") ? "LFM3-VL-2B" : "LFM3-Omni-2B");
+            if(id.equals("damaged.gguf")) try(RandomAccessFile out = new RandomAccessFile(f,"rw")) {
+                out.seek(0); out.write(0);
+            }
         } catch (IOException e) { throw new FileNotFoundException(e.toString()); }
         return ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY);
     }
