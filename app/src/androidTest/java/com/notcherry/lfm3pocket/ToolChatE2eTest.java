@@ -189,6 +189,46 @@ public final class ToolChatE2eTest {
         assertEquals("TEST_ALARM_REQUEST_OPENED",saved.get(0).getStatus());
     }
 
+    @Test public void modelInstalledAppProposalNeedsChatApprovalAndNamesTheExactPackage() {
+        ToolRegistry.Parsed parsed=new ToolRegistry().parse(
+                "{\"tool\":\"open_application\",\"arguments\":{\"package\":\"com.example.notes\"}}");
+        assertTrue(parsed.isValid());
+        ToolCoordinator.Outcome proposal=app.toolCoordinator().propose(
+                parsed.request,ToolCoordinator.Source.MODEL_PROPOSAL);
+        assertEquals("PENDING_CONFIRMATION",proposal.status);
+        assertEquals(0,app.toolCalls());
+
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(activity->activity.presentToolOutcome(proposal));
+            assertTrue(find("tool_details").getText().contains("Open app"));
+            assertTrue(find("tool_details").getText().contains("com.example.notes"));
+            assertTrue(find("tool_status").getText().contains("Needs your approval"));
+            find("tool_approve").click();
+            assertTrue(find("tool_status").getText().contains("Action complete"));
+            assertTrue(find("tool_result").getText().contains("Test handler executed"));
+            assertEquals(1,app.toolCalls());
+            assertTrue(app.lastToolRequest() instanceof ToolRegistry.ApplicationRequest);
+            assertEquals("com.example.notes",((ToolRegistry.ApplicationRequest)app.lastToolRequest()).packageName);
+            assertNull(device.wait(Until.findObject(By.res(pkg,"tool_approve")),1000));
+        }
+    }
+
+    @Test public void rejectedInstalledAppProposalDoesNotCallTheLauncherHandler() {
+        ToolRegistry.Parsed parsed=new ToolRegistry().parse(
+                "{\"tool\":\"open_application\",\"arguments\":{\"package\":\"com.example.notes\"}}");
+        assertTrue(parsed.isValid());
+        ToolCoordinator.Outcome proposal=app.toolCoordinator().propose(
+                parsed.request,ToolCoordinator.Source.MODEL_PROPOSAL);
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(activity->activity.presentToolOutcome(proposal));
+            assertTrue(find("tool_details").getText().contains("com.example.notes"));
+            find("tool_reject").click();
+            assertTrue(find("tool_status").getText().contains("Declined"));
+            assertTrue(find("tool_result").getText().contains("Action was not executed"));
+            assertEquals(0,app.toolCalls());
+        }
+    }
+
     @Test public void flashlightProposalUsesChatApprovalAndShowsTheValidatedResult() {
         ToolRegistry.Parsed parsed=new ToolRegistry().parse(
                 "{\"tool\":\"toggle_flashlight\",\"arguments\":{\"on\":true}}");
