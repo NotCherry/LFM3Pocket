@@ -14,9 +14,7 @@ public class Lfm3PocketApplication extends Application {
         java.io.File[] partials = new java.io.File(getFilesDir(), "models")
                 .listFiles((directory, name) -> name.endsWith(".partial"));
         if (partials != null) for (java.io.File partial : partials) partial.delete();
-        java.io.File[] recordings = new java.io.File(getCacheDir(), "recordings")
-                .listFiles((directory, name) -> name.endsWith(".partial"));
-        if (recordings != null) for (java.io.File partial : recordings) partial.delete();
+        HistoryMediaCleanup.deleteTemporaryAttachments(this);
     }
 
     private InferenceEngine inferenceEngine;

@@ -114,7 +114,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     historyRepository.completeTurn(new HistoryRepository.Turn(turn.id,
                             historyConversationId,historyTitle,turn.userText,turn.assistantText,
                             turn.speechTranscript,resultStatus,turn.completedAt,null));
-                }, (text, message, running) -> {
+                }, path -> HistoryMediaCleanup.deleteAttachment(this,path), (text, message, running) -> {
                     if (destroyed) return;
                     generating = running;
                     busy = running;
@@ -209,6 +209,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 dp(Math.min(220, getResources().getConfiguration().screenHeightDp / 3))));
 
         chatPanel = new ChatPanel(this, this::send, this::stopActiveWork, () -> {
+            HistoryMediaCleanup.deleteAttachment(this,pendingMediaPath);
             pendingMediaPath = "";
             pendingMediaKind = "";
             session.clear();
@@ -393,6 +394,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 output.getFD().sync();
                 setPendingMedia(photo.getAbsolutePath(), "photo");
             } catch (Exception e) {
+                photo.delete();
                 runOnUiThread(() -> {
                     busy = false;
                     status.setText("Photo import failed: " + e.getMessage());
@@ -409,6 +411,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             output.getFD().sync();
             setPendingMedia(photo.getAbsolutePath(), "photo");
         } catch (Exception e) {
+            photo.delete();
             status.setText("Camera photo failed: " + e.getMessage());
         }
     }
@@ -684,6 +687,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     @Override protected void onDestroy() {
         destroyed = true;
+        HistoryMediaCleanup.deleteAttachment(this,pendingMediaPath);
+        pendingMediaPath = "";
         session.close();
         settingsStore.close();
         mainHandler.removeCallbacksAndMessages(null);

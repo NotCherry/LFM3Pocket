@@ -63,4 +63,18 @@ public final class HistorySchemaTest {
         assertEquals("a",db.history().conversations().get(0).getId());assertEquals("b",db.history().conversations().get(1).getId());
         assertTrue(context.getDatabasePath(name).getAbsolutePath().startsWith(context.getDataDir().getAbsolutePath()+"/"));
     }
+    @Test public void deleteAllConversationsCascadesMessagesAndToolOutcomes(){
+        db=Room.inMemoryDatabaseBuilder(context,HistoryDatabase.class).build();HistoryDao dao=db.history();
+        dao.insertConversation(new HistoryConversation("first","First",1,1));
+        dao.insertConversation(new HistoryConversation("second","Second",2,2));
+        dao.insertMessage(new HistoryMessage("message-1","first",0,"assistant","Answer",null,1,"turn-1","COMPLETED"));
+        dao.insertMessage(new HistoryMessage("message-2","second",0,"assistant","Answer",null,2,"turn-2","COMPLETED"));
+        dao.insertToolOutcome(outcome("outcome-1","message-1","request-1"));
+        dao.insertToolOutcome(outcome("outcome-2","message-2","request-2"));
+
+        assertEquals(2,dao.deleteAllConversations());
+        assertTrue(dao.conversations().isEmpty());
+        assertTrue(dao.messages("first").isEmpty());assertTrue(dao.messages("second").isEmpty());
+        assertTrue(dao.toolOutcomes("first").isEmpty());assertTrue(dao.toolOutcomes("second").isEmpty());
+    }
 }
