@@ -8,8 +8,8 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
-REQUIRED_CLASSES = ("GenerationSmokeTest", "ChatUiE2eTest", "ComposeHostE2eTest", "ModelImportE2eTest", "NativeLifetimeTest", "ModelManagerE2eTest", "PromptEncodingNativeTest", "InferenceSettingsE2eTest", "NativeSettingsTest")
-MIN_TESTS = 20
+REQUIRED_CLASSES = ("GenerationSmokeTest", "ChatUiE2eTest", "ComposeHostE2eTest", "ModelImportE2eTest", "NativeLifetimeTest", "ModelManagerE2eTest", "PromptEncodingNativeTest", "InferenceSettingsE2eTest", "NativeSettingsTest", "ToolConsentE2eTest")
+MIN_TESTS = 24
 
 
 def verify(directory: Path) -> tuple[int, int, int]:

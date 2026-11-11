@@ -13,4 +13,8 @@
     <item name="settings_context" type="id"/>
     <item name="settings_threads" type="id"/>
     <item name="settings_tokens" type="id"/>
+    <item name="tool_details" type="id"/>
+    <item name="tool_status" type="id"/>
+    <item name="tool_approve" type="id"/>
+    <item name="tool_reject" type="id"/>
 </resources>
