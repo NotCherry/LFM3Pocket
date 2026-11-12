@@ -23,4 +23,8 @@
     <item name="camera_preview" type="id"/>
     <item name="camera_cancel" type="id"/>
     <item name="camera_capture" type="id"/>
+    <item name="chat_photo" type="id"/>
+    <item name="image_attachment" type="id"/>
+    <item name="image_preview" type="id"/>
+    <item name="image_remove" type="id"/>
 </resources>

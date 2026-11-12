@@ -2,28 +2,38 @@ package com.notcherry.lfm3pocket
 
 import android.content.Context
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.dp
 import java.util.function.Consumer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.graphics.Bitmap
+import java.io.File
 
 class ChatPanel(context: Context, private val send: Consumer<String>, private val stop: Runnable,
                 private val clear: Runnable) : AbstractComposeView(context) {
     private data class Controls(val send: Boolean=false,val stop: Boolean=false,val clear: Boolean=true)
     private data class ToolCard(val details: String,val risk: String,val status: String,val result: String,
                                 val pending: Boolean,val approve: Runnable?,val reject: Runnable?)
+    private data class Attachment(val path: String,val onRemove: Runnable)
     private var transcript by mutableStateOf("No conversation yet.\n")
     private var liveStatus by mutableStateOf("")
     private var toolCard by mutableStateOf<ToolCard?>(null)
+    private var attachment by mutableStateOf<Attachment?>(null)
     private var controls by mutableStateOf(Controls())
     fun render(text: String,status: String) { transcript=text;liveStatus=status }
     fun renderToolCard(details: String,risk: String,status: String,result: String,pending: Boolean,
@@ -31,6 +41,8 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
         toolCard=ToolCard(details,risk,status,result,pending,approve,reject)
     }
     fun updateControls(canSend: Boolean,canStop: Boolean,canClear: Boolean) { controls=Controls(canSend,canStop,canClear) }
+    fun showImageAttachment(path: String,onRemove: Runnable) { attachment=Attachment(path,onRemove) }
+    fun clearImageAttachment() { attachment=null }
     private fun tag(name: String) = "${context.packageName}:id/$name"
 
     @Composable override fun Content() {
@@ -39,7 +51,14 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
             val scroll=rememberScrollState()
             val focus=LocalFocusManager.current
             val keyboard=LocalSoftwareKeyboardController.current
+            var previewBitmap by remember(attachment?.path) { mutableStateOf<Bitmap?>(null) }
             LaunchedEffect(transcript) { scroll.scrollTo(scroll.maxValue) }
+            LaunchedEffect(attachment?.path) {
+                val path=attachment?.path
+                previewBitmap=if(path==null)null else withContext(Dispatchers.IO) {
+                    ImageAttachmentFiles.decodePreview(File(path))
+                }
+            }
             val annotated=remember(transcript) {
                 buildAnnotatedString {
                     append(transcript)
@@ -79,6 +98,19 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
                 }
                 SelectionContainer(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)) {
                     Text(annotated,modifier=Modifier.fillMaxWidth().padding(8.dp).testTag(tag("chat_transcript")))
+                }
+                attachment?.let { image ->
+                    Column(Modifier.fillMaxWidth().padding(horizontal=8.dp).testTag(tag("image_attachment"))) {
+                        Text("Image attached",style=MaterialTheme.typography.labelMedium)
+                        previewBitmap?.let { bitmap ->
+                            Image(bitmap.asImageBitmap(),contentDescription="Attached image preview",
+                                modifier=Modifier.fillMaxWidth().height(144.dp).testTag(tag("image_preview")),
+                                contentScale=ContentScale.Fit)
+                        } ?: Text("Loading image preview…")
+                        TextButton(onClick={image.onRemove.run()},modifier=Modifier.testTag(tag("image_remove"))) {
+                            Text("Remove image")
+                        }
+                    }
                 }
                 OutlinedTextField(value=input,onValueChange={input=it},placeholder={Text("Write a message...")},
                     minLines=1,maxLines=4,modifier=Modifier.fillMaxWidth().testTag(tag("chat_input")))

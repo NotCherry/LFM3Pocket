@@ -213,6 +213,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             HistoryMediaCleanup.deleteAttachment(this,pendingMediaPath);
             pendingMediaPath = "";
             pendingMediaKind = "";
+            chatPanel.clearImageAttachment();
             session.clear();
         });
         root.addView(chatPanel, new LinearLayout.LayoutParams(-1, 0, 1f));
@@ -220,6 +221,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         LinearLayout mediaControls = new LinearLayout(this);
         mediaControls.setOrientation(LinearLayout.HORIZONTAL);
         photoButton = button("Photo");
+        photoButton.setId(R.id.chat_photo);
         cameraButton = button("Camera");
         cameraButton.setId(R.id.chat_camera);
         recordButton = button("Voice input");
@@ -398,6 +400,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 int count;
                 while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
                 output.getFD().sync();
+                if (!ImageAttachmentFiles.isReadableImage(photo))
+                    throw new IOException("Selected file is not a readable image.");
                 setPendingMedia(photo.getAbsolutePath(), "photo");
             } catch (Exception e) {
                 photo.delete();
@@ -412,12 +416,29 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private void setPendingMedia(String path, String kind) {
         runOnUiThread(() -> {
+            if (!pendingMediaPath.isEmpty() && !pendingMediaPath.equals(path))
+                HistoryMediaCleanup.deleteAttachment(this, pendingMediaPath);
             pendingMediaPath = path;
             pendingMediaKind = kind;
+            if ("photo".equals(kind)) {
+                chatPanel.showImageAttachment(path, () -> removePendingImage(path));
+            } else {
+                chatPanel.clearImageAttachment();
+            }
             busy = false;
             status.setText(kind + " attached. Add a question and press Send.");
             updateControls();
         });
+    }
+
+    private void removePendingImage(String expectedPath) {
+        if (!expectedPath.equals(pendingMediaPath)) return;
+        HistoryMediaCleanup.deleteAttachment(this, pendingMediaPath);
+        pendingMediaPath = "";
+        pendingMediaKind = "";
+        chatPanel.clearImageAttachment();
+        status.setText("Photo removed. Add a question and press Send.");
+        updateControls();
     }
 
     String pendingMediaPathForTest() { return pendingMediaPath; }
@@ -686,6 +707,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 searchEnabled, searchEndpoint, inferenceSettings.maxTokens)) {
             pendingMediaPath = "";
             pendingMediaKind = "";
+            chatPanel.clearImageAttachment();
         }
     }
 

@@ -2,6 +2,7 @@ package com.notcherry.lfm3pocket;
 
 import android.database.Cursor;
 import android.database.MatrixCursor;
+import android.graphics.Bitmap;
 import android.os.CancellationSignal;
 import android.os.ParcelFileDescriptor;
 import android.provider.DocumentsContract.Document;
@@ -26,7 +27,9 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
     private void row(MatrixCursor c, String id) {
         c.newRow().add(Document.COLUMN_DOCUMENT_ID, id)
                 .add(Document.COLUMN_DISPLAY_NAME, id.equals("root") ? "LFM test files" : id)
-                .add(Document.COLUMN_MIME_TYPE, id.equals("root") ? Document.MIME_TYPE_DIR : "application/octet-stream")
+                .add(Document.COLUMN_MIME_TYPE, id.equals("root") ? Document.MIME_TYPE_DIR
+                        : id.endsWith(".jpg") ? "image/jpeg"
+                        : id.endsWith(".png") ? "image/png" : "application/octet-stream")
                 .add(Document.COLUMN_SIZE, id.equals("root") ? 0 : 1024 * 1024)
                 .add(Document.COLUMN_FLAGS, 0);
     }
@@ -36,17 +39,43 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
     @Override public Cursor queryChildDocuments(String id, String[] projection, String sort) {
         MatrixCursor c = new MatrixCursor(projection == null ? DOC : projection);
         row(c, "valid.gguf"); row(c, "damaged.gguf");
-        row(c, "projector.gguf"); row(c, "wrong-family.gguf"); return c;
+        row(c, "projector.gguf"); row(c, "wrong-family.gguf");
+        row(c, "valid-photo.jpg"); row(c, "replacement-photo.jpg"); row(c, "invalid-photo.jpg");
+        row(c, "truncated-photo.png"); return c;
     }
     @Override public ParcelFileDescriptor openDocument(String id, String mode, CancellationSignal signal)
             throws FileNotFoundException {
-        if (!java.util.Arrays.asList("valid.gguf","damaged.gguf","projector.gguf","wrong-family.gguf").contains(id)) throw new FileNotFoundException(id);
+        if (!java.util.Arrays.asList("valid.gguf","damaged.gguf","projector.gguf","wrong-family.gguf",
+                "valid-photo.jpg","replacement-photo.jpg","invalid-photo.jpg","truncated-photo.png").contains(id))
+            throw new FileNotFoundException(id);
         File f = new File(getContext().getCacheDir(), id);
         try {
-            TestGgufFixtures.write(f,id.equals("projector.gguf") || id.equals("wrong-family.gguf"),
-                    id.equals("wrong-family.gguf") ? "LFM3-VL-2B" : "LFM3-Omni-2B");
-            if(id.equals("damaged.gguf")) try(RandomAccessFile out = new RandomAccessFile(f,"rw")) {
-                out.seek(0); out.write(0);
+            if (id.endsWith(".png")) {
+                Bitmap bitmap = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888);
+                java.io.ByteArrayOutputStream encoded = new java.io.ByteArrayOutputStream();
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, encoded);
+                bitmap.recycle();
+                byte[] validHeader = encoded.toByteArray();
+                try (FileOutputStream output = new FileOutputStream(f)) {
+                    output.write(validHeader, 0, 33); // Valid PNG signature and IHDR, but no pixel data.
+                }
+            } else if (id.endsWith(".jpg")) {
+                try (FileOutputStream output = new FileOutputStream(f)) {
+                    if (id.equals("invalid-photo.jpg")) {
+                        output.write("not an image".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    } else {
+                        Bitmap bitmap = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888);
+                        bitmap.eraseColor(id.equals("valid-photo.jpg") ? 0xffd54a35 : 0xff2879bb);
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output);
+                        bitmap.recycle();
+                    }
+                }
+            } else {
+                TestGgufFixtures.write(f,id.equals("projector.gguf") || id.equals("wrong-family.gguf"),
+                        id.equals("wrong-family.gguf") ? "LFM3-VL-2B" : "LFM3-Omni-2B");
+                if(id.equals("damaged.gguf")) try(RandomAccessFile out = new RandomAccessFile(f,"rw")) {
+                    out.seek(0); out.write(0);
+                }
             }
         } catch (IOException e) { throw new FileNotFoundException(e.toString()); }
         return ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY);
