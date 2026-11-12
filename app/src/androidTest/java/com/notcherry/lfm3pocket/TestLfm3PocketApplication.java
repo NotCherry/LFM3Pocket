@@ -92,7 +92,9 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         private volatile boolean failLoad;
         public void failNextLoad() { failLoad = true; }
         private volatile String lastPrompt;
+        private volatile String lastMediaPath;
         public String lastPrompt() { return lastPrompt; }
+        public String lastMediaPath() { return lastMediaPath; }
 
         public void resetForTest() {
             turns.set(0);
@@ -100,6 +102,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
             loadedPath = null;
             failLoad = false;
             lastPrompt = null;
+            lastMediaPath = null;
             releaseFirstTurn = new CountDownLatch(1);
             releaseBeforeFirstToken = new CountDownLatch(0);
             generationStarted = new CountDownLatch(0);
@@ -130,6 +133,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         @Override public String generate(long handle, String prompt, String mediaPath,
                                          int maxTokens, TokenSink sink) {
             lastPrompt = prompt;
+            lastMediaPath = mediaPath;
             int turn = turns.incrementAndGet();
             if (failNextGeneration) {
                 failNextGeneration=false;

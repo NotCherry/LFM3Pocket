@@ -9,7 +9,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 REQUIRED_CLASSES = ("GenerationSmokeTest", "ChatUiE2eTest", "ComposeHostE2eTest", "ModelImportE2eTest", "ImageAttachmentE2eTest", "NativeLifetimeTest", "ModelManagerE2eTest", "PromptEncodingNativeTest", "InferenceSettingsE2eTest", "NativeSettingsTest", "ToolConsentE2eTest", "ToolChatE2eTest", "AdversarialAndroidActionE2eTest", "ZCameraCaptureE2eTest", "RecordingE2eTest", "HistorySchemaTest", "HistoryRepositoryTest", "HistoryPersistenceE2eTest", "HistoryNavigationE2eTest", "HistoryDeletionE2eTest", "HistoryJourneyE2eTest", "FlashlightCameraManagerTest", "AudioManagerVolumeTest", "AndroidTimerIntentTest", "AndroidAlarmIntentTest", "AndroidInstalledAppLauncherTest", "AndroidSettingsPageTest", "AndroidTextActionsTest")
-MIN_TESTS = 71
+MIN_TESTS = 72
 
 
 def verify(directory: Path) -> tuple[int, int, int]:
