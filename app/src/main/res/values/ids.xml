@@ -18,4 +18,9 @@
     <item name="tool_status" type="id"/>
     <item name="tool_approve" type="id"/>
     <item name="tool_reject" type="id"/>
+    <item name="chat_camera" type="id"/>
+    <item name="camera_status" type="id"/>
+    <item name="camera_preview" type="id"/>
+    <item name="camera_cancel" type="id"/>
+    <item name="camera_capture" type="id"/>
 </resources>

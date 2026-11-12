@@ -229,6 +229,24 @@ public final class ChatUiE2eTest {
         }
     }
 
+    @Test public void denyingCameraPermissionShowsClearStatusAndKeepsTextChatAvailable() {
+        assertEquals(PackageManager.PERMISSION_DENIED,
+                app.checkSelfPermission(Manifest.permission.CAMERA));
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            awaitEnabled("chat_camera").click();
+            UiObject2 deny = device.wait(Until.findObject(By.text(
+                    Pattern.compile("(?i)(.*don.t allow.*|.*deny.*)"))), UI_TIMEOUT_MS);
+            assertNotNull("Camera permission denial action was not shown", deny);
+            deny.click();
+            assertNotNull("Camera denial should be explained in chat",
+                    device.wait(Until.findObject(By.res(packageName, "chat_status")
+                            .textContains("Camera access is needed")), UI_TIMEOUT_MS));
+            assertEquals(PackageManager.PERMISSION_DENIED,
+                    app.checkSelfPermission(Manifest.permission.CAMERA));
+            awaitEnabled("chat_send");
+        }
+    }
+
     @Test public void recreateDuringGenerationStartsAnIndependentSession() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             awaitEnabled("chat_send");

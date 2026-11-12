@@ -6,7 +6,6 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.graphics.Color;
-import android.graphics.Bitmap;
 import android.net.Uri;
 import android.database.Cursor;
 import android.provider.OpenableColumns;
@@ -45,6 +44,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final int PICK_PHOTO = 44;
     private static final int TAKE_PHOTO = 45;
     private static final int REQUEST_AUDIO = 46;
+    private static final int REQUEST_CAMERA = 47;
 
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -65,6 +65,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private RecordingController recordingController;
     private boolean foreground;
     private boolean microphoneRequested;
+    private boolean cameraRequested;
     private String pendingMediaPath = "";
     private String pendingMediaKind = "";
 
@@ -220,6 +221,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         mediaControls.setOrientation(LinearLayout.HORIZONTAL);
         photoButton = button("Photo");
         cameraButton = button("Camera");
+        cameraButton.setId(R.id.chat_camera);
         recordButton = button("Voice input");
         recordButton.setId(R.id.voice_record);
         mediaControls.addView(photoButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
@@ -371,12 +373,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private void takePhoto() {
         if (busy) return;
-        Intent capture = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
-        if (capture.resolveActivity(getPackageManager()) == null) {
-            status.setText("No camera app is available.");
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            cameraRequested = true;
+            requestPermissions(new String[] { Manifest.permission.CAMERA }, REQUEST_CAMERA);
             return;
         }
-        startActivityForResult(capture, TAKE_PHOTO);
+        launchCameraCapture();
+    }
+
+    private void launchCameraCapture() {
+        startActivityForResult(new Intent(this, CameraCaptureActivity.class), TAKE_PHOTO);
     }
 
     private void copySelectedPhoto(Uri uri) {
@@ -404,18 +410,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         });
     }
 
-    private void saveCameraPhoto(Bitmap bitmap) {
-        File photo = new File(getCacheDir(), "camera-" + System.currentTimeMillis() + ".jpg");
-        try (FileOutputStream output = new FileOutputStream(photo)) {
-            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 92, output)) throw new IOException("Could not encode camera photo");
-            output.getFD().sync();
-            setPendingMedia(photo.getAbsolutePath(), "photo");
-        } catch (Exception e) {
-            photo.delete();
-            status.setText("Camera photo failed: " + e.getMessage());
-        }
-    }
-
     private void setPendingMedia(String path, String kind) {
         runOnUiThread(() -> {
             pendingMediaPath = path;
@@ -425,6 +419,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             updateControls();
         });
     }
+
+    String pendingMediaPathForTest() { return pendingMediaPath; }
 
     private boolean recordingActive() {
         RecordingController.State state = recordingController.state();
@@ -445,6 +441,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_CAMERA && cameraRequested) {
+            cameraRequested = false;
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED && !destroyed && !busy) {
+                launchCameraCapture();
+            } else {
+                status.setText("Camera access is needed to take a photo.");
+            }
+            updateControls();
+            return;
+        }
         if (requestCode == REQUEST_AUDIO && microphoneRequested) {
             microphoneRequested = false;
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED
@@ -483,10 +489,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             copySelectedPhoto(data.getData());
             return;
         }
-        if (code == TAKE_PHOTO && result == RESULT_OK && data != null && data.getExtras() != null) {
-            Object image = data.getExtras().get("data");
-            if (image instanceof Bitmap) saveCameraPhoto((Bitmap) image);
+        if (code == TAKE_PHOTO && result == RESULT_OK && data != null) {
+            String path = data.getStringExtra(CameraCaptureActivity.EXTRA_PHOTO_PATH);
+            if (path != null && new File(path).isFile()) setPendingMedia(path, "photo");
             else status.setText("The camera did not return a photo.");
+            return;
+        }
+        if (code == TAKE_PHOTO && result != RESULT_OK) {
+            status.setText("Camera closed without taking a photo.");
             return;
         }
         if ((code != PICK_MODEL && code != PICK_MMPROJ) || result != RESULT_OK || data == null || data.getData() == null) return;
