@@ -400,10 +400,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 if (input == null) throw new IOException("Could not read the selected photo");
                 byte[] buffer = new byte[64 * 1024];
                 int count;
-                while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+                long totalBytes = 0;
+                while ((count = input.read(buffer)) != -1) {
+                    totalBytes += count;
+                    if (totalBytes > ImageAttachmentFiles.MAX_IMAGE_BYTES)
+                        throw new IOException("Selected image exceeds the 32 MiB limit.");
+                    output.write(buffer, 0, count);
+                }
                 output.getFD().sync();
-                if (!ImageAttachmentFiles.isReadableImage(photo))
-                    throw new IOException("Selected file is not a readable image.");
+                String validationError = ImageAttachmentFiles.validationError(photo);
+                if (validationError != null) throw new IOException(validationError);
                 setPendingMedia(photo.getAbsolutePath(), "photo");
             } catch (Exception e) {
                 photo.delete();

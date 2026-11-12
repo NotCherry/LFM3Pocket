@@ -41,16 +41,32 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
         row(c, "valid.gguf"); row(c, "damaged.gguf");
         row(c, "projector.gguf"); row(c, "wrong-family.gguf");
         row(c, "valid-photo.jpg"); row(c, "replacement-photo.jpg"); row(c, "invalid-photo.jpg");
-        row(c, "truncated-photo.png"); return c;
+        row(c, "truncated-photo.png"); row(c, "large-dimensions-photo.png"); row(c, "oversized-photo.jpg"); return c;
     }
     @Override public ParcelFileDescriptor openDocument(String id, String mode, CancellationSignal signal)
             throws FileNotFoundException {
         if (!java.util.Arrays.asList("valid.gguf","damaged.gguf","projector.gguf","wrong-family.gguf",
-                "valid-photo.jpg","replacement-photo.jpg","invalid-photo.jpg","truncated-photo.png").contains(id))
+                "valid-photo.jpg","replacement-photo.jpg","invalid-photo.jpg","truncated-photo.png",
+                "large-dimensions-photo.png","oversized-photo.jpg").contains(id))
             throw new FileNotFoundException(id);
         File f = new File(getContext().getCacheDir(), id);
         try {
-            if (id.endsWith(".png")) {
+            if (id.equals("oversized-photo.jpg")) {
+                try (FileOutputStream output = new FileOutputStream(f)) {
+                    byte[] block=new byte[64*1024];long remaining=ImageAttachmentFiles.MAX_IMAGE_BYTES+1;
+                    while(remaining>0){int count=(int)Math.min(block.length,remaining);output.write(block,0,count);remaining-=count;}
+                }
+            } else if (id.equals("large-dimensions-photo.png")) {
+                Bitmap bitmap = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888);
+                java.io.ByteArrayOutputStream encoded = new java.io.ByteArrayOutputStream();
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, encoded);
+                bitmap.recycle();
+                byte[] header = encoded.toByteArray();
+                putPngInt(header,16,9000);putPngInt(header,20,5000);
+                java.util.zip.CRC32 crc=new java.util.zip.CRC32();crc.update(header,12,17);
+                putPngInt(header,29,(int)crc.getValue());
+                try (FileOutputStream output = new FileOutputStream(f)) { output.write(header,0,33); }
+            } else if (id.endsWith(".png")) {
                 Bitmap bitmap = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888);
                 java.io.ByteArrayOutputStream encoded = new java.io.ByteArrayOutputStream();
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, encoded);
@@ -79,5 +95,9 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
             }
         } catch (IOException e) { throw new FileNotFoundException(e.toString()); }
         return ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY);
+    }
+    private static void putPngInt(byte[] data,int offset,int value){
+        data[offset]=(byte)(value>>>24);data[offset+1]=(byte)(value>>>16);
+        data[offset+2]=(byte)(value>>>8);data[offset+3]=(byte)value;
     }
 }

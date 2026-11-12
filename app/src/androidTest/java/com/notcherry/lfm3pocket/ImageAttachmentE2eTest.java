@@ -84,6 +84,20 @@ public final class ImageAttachmentE2eTest {
                             .textContains("Photo import failed: Selected file is not a readable image")), WAIT));
             assertEquals("Undecodable image data must not leave a stale path", "", currentPendingPath(scenario));
             assertEquals(null, device.wait(Until.findObject(By.res(packageName, "image_attachment")), 1000));
+
+            chooseImage(device, packageName, "large-dimensions-photo.png");
+            assertNotNull("Oversized images must be rejected before native decode", device.wait(
+                    Until.findObject(By.res(packageName, "chat_status")
+                            .textContains("Photo import failed: Image dimensions exceed the supported 40 megapixel limit")), WAIT));
+            assertEquals("Rejected high-resolution image must not leave a stale path", "", currentPendingPath(scenario));
+            assertEquals(null, device.wait(Until.findObject(By.res(packageName, "image_attachment")), 1000));
+
+            chooseImage(device, packageName, "oversized-photo.jpg");
+            assertNotNull("Oversized files must be stopped while copying from SAF", device.wait(
+                    Until.findObject(By.res(packageName, "chat_status")
+                            .textContains("Photo import failed: Selected image exceeds the 32 MiB limit")), WAIT));
+            assertEquals("Rejected oversized image must not leave a stale path", "", currentPendingPath(scenario));
+            assertEquals(null, device.wait(Until.findObject(By.res(packageName, "image_attachment")), 1000));
         }
     }
 
