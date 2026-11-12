@@ -120,6 +120,10 @@ public final class ImageAttachmentE2eTest {
             org.junit.Assert.fail("SAF image document should be listed: " + name + ". "
                     + hierarchy.toString("UTF-8"));
         }
-        file.click();
+        // In grid mode the thumbnail opens a platform quick-view on some API images.
+        // Clicking the filename label selects the document in the picker instead.
+        android.graphics.Rect bounds = file.getVisibleBounds();
+        device.click(bounds.centerX(), bounds.top + (bounds.height() * 9 / 10));
+        device.waitForIdle();
     }
 }
