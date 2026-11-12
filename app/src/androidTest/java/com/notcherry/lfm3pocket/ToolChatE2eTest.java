@@ -252,6 +252,48 @@ public final class ToolChatE2eTest {
         }
     }
 
+    @Test public void copyProposalRequiresApprovalAndShowsExactRequestedText() {
+        String exact="copy this exact text";
+        ToolRegistry.Parsed parsed=new ToolRegistry().parse(
+                "{\"tool\":\"copy_text\",\"arguments\":{\"text\":\""+exact+"\"}}");
+        assertTrue(parsed.isValid());
+        ToolCoordinator.Outcome proposal=app.toolCoordinator().propose(
+                parsed.request,ToolCoordinator.Source.MODEL_PROPOSAL);
+        assertEquals("PENDING_CONFIRMATION",proposal.status);
+        assertEquals(0,app.toolCalls());
+
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(activity->activity.presentToolOutcome(proposal));
+            assertTrue(find("tool_details").getText().contains("Copy text"));
+            assertTrue(find("tool_details").getText().contains(exact));
+            find("tool_approve").click();
+            assertTrue(find("tool_status").getText().contains("Action complete"));
+            assertEquals(1,app.toolCalls());
+            assertEquals(exact,((ToolRegistry.TextRequest)app.lastToolRequest()).text);
+        }
+    }
+
+    @Test public void shareProposalRequiresApprovalAndReportsChooserNotDelivery() {
+        String exact="share only after choosing a destination";
+        ToolRegistry.Parsed parsed=new ToolRegistry().parse(
+                "{\"tool\":\"share_text\",\"arguments\":{\"text\":\""+exact+"\"}}");
+        assertTrue(parsed.isValid());
+        ToolCoordinator.Outcome proposal=app.toolCoordinator().propose(
+                parsed.request,ToolCoordinator.Source.MODEL_PROPOSAL);
+        assertEquals("PENDING_CONFIRMATION",proposal.status);
+        assertEquals(0,app.toolCalls());
+
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(activity->activity.presentToolOutcome(proposal));
+            assertTrue(find("tool_details").getText().contains("Share text"));
+            assertTrue(find("tool_details").getText().contains(exact));
+            find("tool_approve").click();
+            assertTrue(find("tool_status").getText().contains("Action complete"));
+            assertEquals(1,app.toolCalls());
+            assertEquals(exact,((ToolRegistry.TextRequest)app.lastToolRequest()).text);
+        }
+    }
+
     @Test public void flashlightProposalUsesChatApprovalAndShowsTheValidatedResult() {
         ToolRegistry.Parsed parsed=new ToolRegistry().parse(
                 "{\"tool\":\"toggle_flashlight\",\"arguments\":{\"on\":true}}");
