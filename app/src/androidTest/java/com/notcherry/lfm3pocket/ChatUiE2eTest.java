@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Rect;
 import android.net.TrafficStats;
 import android.os.Process;
 import android.provider.Settings;
@@ -79,6 +80,9 @@ public final class ChatUiE2eTest {
             // Real Activity launch, async fake model load, and UI readiness.
             awaitEnabled("chat_send");
             assertTrue(app.scriptedEngine().loadedPath().endsWith("ui-e2e-dummy.gguf"));
+            UiObject2 mode=device.wait(Until.findObject(By.res(packageName,"chat_live_mode")),UI_TIMEOUT_MS);
+            assertNotNull("Selected mode should remain visible beside the composer",mode);
+            assertTrue(mode.getText().contains("Local / offline"));
 
             UiObject2 input = device.wait(
                     Until.findObject(By.res(packageName, "chat_input")), UI_TIMEOUT_MS);
@@ -90,9 +94,18 @@ public final class ChatUiE2eTest {
             // Progress and mode must be visible before the fake model emits its first token.
             assertTrue(app.scriptedEngine().awaitGenerationStarted());
             UiObject2 status=device.wait(Until.findObject(By.res(packageName,"chat_live_status")
-                    .textContains("Generating locally")),UI_TIMEOUT_MS);
+                    .textContains("Local / offline")),UI_TIMEOUT_MS);
             assertNotNull("Local inference status should appear before the first token",status);
-            assertTrue(status.getText().contains("offline"));
+            assertTrue(status.getText().contains("preparing response"));
+            UiObject2 transcriptBeforeToken=device.findObject(By.res(packageName,"chat_transcript"));
+            assertNotNull(transcriptBeforeToken);
+            Rect statusBounds=status.getVisibleBounds();
+            Rect transcriptBounds=transcriptBeforeToken.getVisibleBounds();
+            Rect inputBounds=input.getVisibleBounds();
+            assertTrue("Live mode/status should sit below the scrollable transcript",
+                    statusBounds.top>transcriptBounds.top);
+            assertTrue("Live status should sit beside, above the message composer",
+                    inputBounds.top>statusBounds.top);
             app.scriptedEngine().releaseFirstToken();
 
             // The scripted model now blocks after the first streamed piece.
@@ -125,6 +138,7 @@ public final class ChatUiE2eTest {
             assertFalse(device.findObject(By.res(packageName, "chat_stop")).isEnabled());
         }
     }
+
     @Test public void inferenceFailureIsVisibleAndRestoresSendControl() throws Exception {
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
             awaitEnabled("chat_send");

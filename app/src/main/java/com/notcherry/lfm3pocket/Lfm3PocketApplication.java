@@ -20,7 +20,6 @@ public class Lfm3PocketApplication extends Application {
     private InferenceEngine inferenceEngine;
     private AndroidActionExecutor actionExecutor;
     private ToolCoordinator toolCoordinator;
-
     public final synchronized ToolCoordinator toolCoordinator() {
         if (toolCoordinator == null) toolCoordinator = new ToolCoordinator(
                 createToolHandler(), createToolPermissionCheck(), createToolClock());

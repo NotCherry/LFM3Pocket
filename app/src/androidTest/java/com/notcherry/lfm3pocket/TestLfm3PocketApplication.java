@@ -117,6 +117,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
             return generationStarted.await(10,TimeUnit.SECONDS);
         }
         public void releaseFirstToken() { releaseBeforeFirstToken.countDown(); }
+        public void completeFirstTurn() { releaseFirstTurn.countDown(); }
         public void failNextGeneration() { failNextGeneration=true; }
 
         public int callCount() { return turns.get(); }
