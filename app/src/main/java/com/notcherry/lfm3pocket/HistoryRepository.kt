@@ -18,7 +18,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
         val completedAt: Long,
     )
 
-    data class Turn(
+    data class Turn @JvmOverloads constructor(
         val id: String,
         val conversationId: String,
         val title: String,
