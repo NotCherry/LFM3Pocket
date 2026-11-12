@@ -46,21 +46,24 @@ public final class HistorySchemaTest {
         old.execSQL("INSERT INTO conversations VALUES ('conversation','Zażółć 🐈',10,20)");
         old.execSQL("INSERT INTO messages (id,conversationId,sequence,role,text,speechTranscript,createdAt) VALUES ('second','conversation',1,'assistant','Odpowiedź',NULL,5)");
         old.execSQL("INSERT INTO messages (id,conversationId,sequence,role,text,speechTranscript,createdAt) VALUES ('first','conversation',0,'user','Pytanie','niebieski kot',50)");old.close();
-        migrations.runMigrationsAndValidate(DB,3,true,HistoryDatabase.MIGRATION_1_2,HistoryDatabase.MIGRATION_2_3).close();
-        db=Room.databaseBuilder(context,HistoryDatabase.class,DB).addMigrations(HistoryDatabase.MIGRATION_1_2,HistoryDatabase.MIGRATION_2_3).build();
+        migrations.runMigrationsAndValidate(DB,4,true,HistoryDatabase.MIGRATION_1_2,HistoryDatabase.MIGRATION_2_3,HistoryDatabase.MIGRATION_3_4).close();
+        db=Room.databaseBuilder(context,HistoryDatabase.class,DB).addMigrations(HistoryDatabase.MIGRATION_1_2,HistoryDatabase.MIGRATION_2_3,HistoryDatabase.MIGRATION_3_4).build();
         assertEquals("Zażółć 🐈",db.history().conversations().get(0).getTitle());
         List<HistoryMessage> messages=db.history().messages("conversation");assertEquals("first",messages.get(0).getId());
         assertEquals("niebieski kot",messages.get(0).getSpeechTranscript());assertEquals("second",messages.get(1).getId());
         assertEquals("COMPLETED",messages.get(0).getTurnStatus());
+        assertNull(messages.get(0).getSpeechTranscriptStatus());
         db.history().insertToolOutcome(outcome("tool","second","request"));assertEquals("DECLINED",db.history().toolOutcomes("conversation").get(0).getStatus());
     }
     @Test public void privateDatabaseReopenRetainsRecordsAndDeterministicConversationOrder(){
         String name="history-reopen-test";
-        db=Room.databaseBuilder(context,HistoryDatabase.class,name).addMigrations(HistoryDatabase.MIGRATION_1_2,HistoryDatabase.MIGRATION_2_3).build();
+        db=Room.databaseBuilder(context,HistoryDatabase.class,name).addMigrations(HistoryDatabase.MIGRATION_1_2,HistoryDatabase.MIGRATION_2_3,HistoryDatabase.MIGRATION_3_4).build();
         db.history().insertConversation(new HistoryConversation("b","Second",0,20));
-        db.history().insertConversation(new HistoryConversation("a","First",0,20));db.close();
-        db=Room.databaseBuilder(context,HistoryDatabase.class,name).addMigrations(HistoryDatabase.MIGRATION_1_2,HistoryDatabase.MIGRATION_2_3).build();
+        db.history().insertConversation(new HistoryConversation("a","First",0,20));
+        db.history().insertMessage(new HistoryMessage("voice-user","a",0,"user","Summarize recording",null,10,null,"COMPLETED","UNAVAILABLE"));db.close();
+        db=Room.databaseBuilder(context,HistoryDatabase.class,name).addMigrations(HistoryDatabase.MIGRATION_1_2,HistoryDatabase.MIGRATION_2_3,HistoryDatabase.MIGRATION_3_4).build();
         assertEquals("a",db.history().conversations().get(0).getId());assertEquals("b",db.history().conversations().get(1).getId());
+        assertEquals("UNAVAILABLE",db.history().messages("a").get(0).getSpeechTranscriptStatus());
         assertTrue(context.getDatabasePath(name).getAbsolutePath().startsWith(context.getDataDir().getAbsolutePath()+"/"));
     }
     @Test public void deleteAllConversationsCascadesMessagesAndToolOutcomes(){

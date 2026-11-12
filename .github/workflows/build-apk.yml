@@ -52,6 +52,8 @@ jobs:
           bash .github/scripts/collect-arm64-omni-evidence.sh --self-test
       - name: Execute JVM JUnit tests
         run: gradle :app:testSmokeDebugUnitTest --no-daemon --stacktrace
+      - name: Verify Room v4 schema was exported
+        run: test -s app/schemas/com.notcherry.lfm3pocket.HistoryDatabase/4.json
       - name: Upload JVM JUnit XML and reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -60,6 +62,7 @@ jobs:
           path: |
             app/build/test-results/testSmokeDebugUnitTest/
             app/build/reports/tests/testSmokeDebugUnitTest/
+            app/schemas/com.notcherry.lfm3pocket.HistoryDatabase/4.json
           if-no-files-found: warn
           retention-days: 14
 

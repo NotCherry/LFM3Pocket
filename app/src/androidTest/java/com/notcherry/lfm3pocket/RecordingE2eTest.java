@@ -47,6 +47,8 @@ public final class RecordingE2eTest {
             app.scriptedEngine().holdFirstToken();
             UiObject2 send=device.wait(Until.findObject(By.res(pkg,"chat_send").enabled(true)),12000);assertNotNull(send);send.click();
             assertTrue("The fake local inference adapter should receive the turn",app.scriptedEngine().awaitGenerationStarted());
+            assertEquals("Voice turns must make a separate local ASR call",1,app.scriptedEngine().asrCallCount());
+            assertTrue(app.scriptedEngine().lastAsrPrompt().contains("Perform ASR."));
             assertEquals("The exact private WAV path must reach inference",path[0],app.scriptedEngine().lastMediaPath());
             assertTrue("Voice question must be encoded with an attached media placeholder",
                     app.scriptedEngine().lastPrompt().contains("Transcribe this recording")

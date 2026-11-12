@@ -6,6 +6,8 @@ import java.util.function.LongSupplier;
 
 /** Owns one active conversation; old callbacks cannot mutate a cleared or closed session. */
 public final class ChatSession {
+    private static final String ASR_PROMPT = "<|startoftext|><|im_start|>system\nPerform ASR.\n<|im_end|>\n"
+            + "<|im_start|>user\n<__media__><|im_end|>\n<|im_start|>assistant\n";
     public interface Dispatcher { void post(Runnable work, long delayMs); }
     public interface Listener { void changed(String transcript, String status, boolean generating); }
     public interface Search { List<WebSearch.Source> search(String endpoint, String question) throws Exception; }
@@ -14,13 +16,14 @@ public final class ChatSession {
     public enum TerminalState { COMPLETED, CANCELLED, FAILED }
     public static final class CompletedTurn {
         public final String id,userText,assistantText;
-        public final String speechTranscript;
+        public final String speechTranscript,speechTranscriptStatus;
         public final TerminalState status;
         public final long completedAt;
-        CompletedTurn(String id,String userText,String assistantText,String speechTranscript,
+        CompletedTurn(String id,String userText,String assistantText,String speechTranscript,String speechTranscriptStatus,
                       TerminalState status,long completedAt) {
             this.id=id;this.userText=userText;this.assistantText=assistantText;
-            this.speechTranscript=speechTranscript;this.status=status;this.completedAt=completedAt;
+            this.speechTranscript=speechTranscript;this.speechTranscriptStatus=speechTranscriptStatus;
+            this.status=status;this.completedAt=completedAt;
         }
     }
     private static final class Message {
@@ -73,12 +76,14 @@ public final class ChatSession {
         if(closed || active!=null || model.getAsLong()==0) return false;
         if(text.trim().isEmpty() && media.isEmpty()) return false;
         String question=text.trim().isEmpty() ? (kind.equals("photo")?"Describe this photo.":"Listen to this recording and answer.") : text.trim();
+        boolean voiceRecording="voice recording".equalsIgnoreCase(kind);
         messages.add(new Message("user",question+(media.isEmpty()?"":"\n["+kind+" attached]"),Collections.emptyList()));
         List<Message> history=new ArrayList<>(messages);
         Turn turn=new Turn(++epoch,model.getAsLong(),useSearch,question);active=turn;
         pending.setLength(0);partial.setLength(0);scheduled=false;
-        status=useSearch?"Searching web, then generating locally…":"Generating locally · offline…";emit();
-        worker.execute(() -> generate(turn,question,media,useSearch,endpoint,maxTokens,history));
+        status=voiceRecording?"Transcribing speech locally…"
+                :useSearch?"Searching web, then generating locally…":"Generating locally · offline…";emit();
+        worker.execute(() -> generate(turn,question,media,voiceRecording,useSearch,endpoint,maxTokens,history));
         return true;
     }
     public synchronized void stop() {
@@ -97,16 +102,40 @@ public final class ChatSession {
         active=null;pending.setLength(0);partial.setLength(0);
     }
     private synchronized boolean current(Turn turn) { return !closed && active==turn && epoch==turn.id; }
-    private void generate(Turn turn,String question,String media,boolean useSearch,String endpoint,int maxTokens,List<Message> history) {
-        try { generateTurn(turn,question,media,useSearch,endpoint,maxTokens,history); }
+    private void generate(Turn turn,String question,String media,boolean voiceRecording,boolean useSearch,
+                          String endpoint,int maxTokens,List<Message> history) {
+        try { generateTurn(turn,question,media,voiceRecording,useSearch,endpoint,maxTokens,history); }
         finally {
             if(!media.isEmpty())try { mediaCleanup.delete(media); } catch(RuntimeException ignored) { }
         }
     }
-    private void generateTurn(Turn turn,String question,String media,boolean useSearch,String endpoint,int maxTokens,List<Message> history) {
+    private void generateTurn(Turn turn,String question,String media,boolean voiceRecording,boolean useSearch,
+                              String endpoint,int maxTokens,List<Message> history) {
         if(!current(turn)) return;
         List<WebSearch.Source> sources=Collections.emptyList();
         String searchError=null,error=null;
+        String speechTranscript=null;
+        String speechTranscriptStatus=null;
+        if(voiceRecording && !turn.cancelled) {
+            StringBuilder recognized=new StringBuilder();
+            engine.resetStop();
+            if(turn.cancelled) engine.stop();
+            try {
+                String asrError=engine.generate(turn.handle,ASR_PROMPT,media,Math.min(128,maxTokens),recognized::append);
+                if(asrError==null && !turn.cancelled) speechTranscript=cleanTranscript(recognized.toString());
+            } catch(Throwable ignored) {
+                // A failed ASR pass must not prevent the normal audio conversation turn.
+            }
+            speechTranscriptStatus=speechTranscript==null?"UNAVAILABLE":"AVAILABLE";
+            final String progress=speechTranscript==null
+                    ? "Speech transcript unavailable · generating response locally…"
+                    : "Speech transcript ready · generating response locally…";
+            ui.post(() -> {
+                synchronized(ChatSession.this) {
+                    if(current(turn) && !turn.cancelled) { status=progress;emit(); }
+                }
+            },0);
+        }
         if(useSearch && !turn.cancelled) {
             try { sources=search.search(endpoint,question);
                 if(sources.isEmpty()) searchError="Search returned no results"; }
@@ -135,12 +164,16 @@ public final class ChatSession {
         String answer=partialFor(turn);
         String saveFailure=null;
         if(!turn.discarded && current(turn)) {
-            try { persistence.save(new CompletedTurn(turn.persistenceId,turn.question,answer,null,
+            try { persistence.save(new CompletedTurn(turn.persistenceId,turn.question,answer,speechTranscript,speechTranscriptStatus,
                     terminal,System.currentTimeMillis())); }
             catch(Exception e) { saveFailure=e.getMessage()==null?e.toString():e.getMessage(); }
         }
         final String historyFailure=saveFailure;
         ui.post(() -> finish(turn,resultSources,failure,useSearch,searchFailure,historyFailure),0);
+    }
+    private static String cleanTranscript(String value) {
+        String transcript=value.replaceAll("(?s)<think>.*?</think>", "").trim();
+        return transcript.isEmpty()?null:transcript;
     }
     private synchronized void queue(Turn turn,String piece) {
         if(!current(turn) || turn.cancelled) return;

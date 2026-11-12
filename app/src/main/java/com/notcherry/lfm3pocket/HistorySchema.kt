@@ -28,6 +28,7 @@ data class HistoryMessage @JvmOverloads constructor(
     val createdAt:Long,
     val turnId:String?=null,
     val turnStatus:String="COMPLETED",
+    val speechTranscriptStatus:String?=null,
 ) {
     init {
         require(id.isNotBlank() && conversationId.isNotBlank() && sequence>=0 && createdAt>=0)
@@ -71,7 +72,7 @@ interface HistoryDao {
     fun toolOutcomes(id:String):List<HistoryToolOutcome>
 }
 
-@Database(entities=[HistoryConversation::class,HistoryMessage::class,HistoryToolOutcome::class],version=3,exportSchema=true)
+@Database(entities=[HistoryConversation::class,HistoryMessage::class,HistoryToolOutcome::class],version=4,exportSchema=true)
 abstract class HistoryDatabase:RoomDatabase() {
     abstract fun history():HistoryDao
     companion object {
@@ -91,9 +92,14 @@ abstract class HistoryDatabase:RoomDatabase() {
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_messages_turnId` ON `messages` (`turnId`)")
             }
         }
+        @JvmField val MIGRATION_3_4:Migration=object:Migration(3,4){
+            override fun migrate(db:SupportSQLiteDatabase){
+                db.execSQL("ALTER TABLE `messages` ADD COLUMN `speechTranscriptStatus` TEXT")
+            }
+        }
         @JvmStatic fun get(context:Context):HistoryDatabase=instance ?: synchronized(this){
             instance ?: Room.databaseBuilder(context.applicationContext,HistoryDatabase::class.java,NAME)
-                .addMigrations(MIGRATION_1_2,MIGRATION_2_3).build().also { instance=it }
+                .addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4).build().also { instance=it }
         }
     }
 }

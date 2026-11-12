@@ -18,7 +18,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
         val completedAt: Long,
     )
 
-    data class Turn(
+    data class Turn @JvmOverloads constructor(
         val id: String,
         val conversationId: String,
         val title: String,
@@ -28,11 +28,15 @@ class HistoryRepository(private val database: HistoryDatabase) {
         val status: Status,
         val completedAt: Long,
         val toolExecution: ToolExecution? = null,
+        val speechTranscriptStatus: String? = null,
     ) {
         init {
             require(id.isNotBlank() && conversationId.isNotBlank() && title.isNotBlank())
             require(completedAt >= 0)
             require(status != Status.COMPLETED || assistantText.isNotBlank())
+            require(speechTranscriptStatus == null || speechTranscriptStatus in setOf("AVAILABLE", "UNAVAILABLE"))
+            require(speechTranscriptStatus != "AVAILABLE" || !speechTranscript.isNullOrBlank())
+            require(speechTranscriptStatus != "UNAVAILABLE" || speechTranscript.isNullOrBlank())
         }
     }
 
@@ -52,7 +56,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
         val assistantId = UUID.randomUUID().toString()
         dao.insertMessage(HistoryMessage(
             userId, turn.conversationId, firstSequence, "user", turn.userText,
-            turn.speechTranscript, turn.completedAt,
+            turn.speechTranscript, turn.completedAt, null, "COMPLETED", turn.speechTranscriptStatus,
         ))
         dao.insertMessage(HistoryMessage(
             assistantId, turn.conversationId, firstSequence + 1L, "assistant", turn.assistantText,

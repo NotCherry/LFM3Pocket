@@ -13,11 +13,16 @@ public class ChatSessionTest {
         void drain(){while(!tasks.isEmpty())tasks.remove(0).run();}
     }
     static final class Engine implements InferenceEngine {
-        int calls;String prompt;boolean stopped;
+        int calls,answerCalls;String prompt,asrError,asrTranscript="The secret animal is a blue cat.";boolean stopped;final List<String> prompts=new ArrayList<>();
         public long loadModel(String m,String p){return 1;}
         public void unloadModel(long h){}
         public String generate(long h,String p,String media,int max,TokenSink sink){
-            calls++;prompt=p;if(!stopped)sink.onToken("Answer "+calls);return null;
+            calls++;prompt=p;prompts.add(p);
+            if(!stopped) {
+                if(p.contains("Perform ASR.")) { if(asrTranscript!=null)sink.onToken(asrTranscript); }
+                else sink.onToken("Answer "+(++answerCalls));
+            }
+            return p.contains("Perform ASR.")?asrError:null;
         }
         public void stop(){stopped=true;}
         public void resetStop(){stopped=false;}
@@ -103,5 +108,43 @@ public class ChatSessionTest {
         worker.drain();
         assertEquals(Collections.singletonList("/private/cache/photo-1.img"),deleted);
         assertEquals(1,engine.calls);
+    }
+
+    @Test public void recordedVoiceStoresASRSeparatelyFromAssistantReply(){
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();
+        List<ChatSession.CompletedTurn> saved=new ArrayList<>();
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                saved::add,(text,message,running)->{});
+        assertTrue(session.submit("What animal was mentioned?","/private/cache/voice.wav",
+                "voice recording",false,"",64));
+
+        worker.drain();ui.drain();
+
+        assertEquals("A recorded voice turn must run a distinct ASR pass",2,engine.calls);
+        assertTrue(engine.prompts.get(0).contains("Perform ASR."));
+        assertTrue(engine.prompts.get(1).contains("What animal was mentioned?"));
+        assertEquals("The secret animal is a blue cat.",saved.get(0).speechTranscript);
+        assertEquals("Answer 1",saved.get(0).assistantText);
+        assertNotEquals("ASR text must never be derived from assistant output",
+                saved.get(0).speechTranscript,saved.get(0).assistantText);
+        assertEquals("AVAILABLE",saved.get(0).speechTranscriptStatus);
+    }
+
+    @Test public void unavailableASRIsExplicitWhileAssistantInferenceContinues(){
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();
+        engine.asrError="decoder unavailable";engine.asrTranscript=null;
+        List<ChatSession.CompletedTurn> saved=new ArrayList<>();String[] status={""};
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                saved::add,(text,message,running)->status[0]=message);
+
+        assertTrue(session.submit("Summarize this recording","/private/cache/voice.wav",
+                "voice recording",false,"",64));
+        worker.drain();ui.drain();
+
+        assertEquals(2,engine.calls);
+        assertNull(saved.get(0).speechTranscript);
+        assertEquals("UNAVAILABLE",saved.get(0).speechTranscriptStatus);
+        assertEquals("Answer 1",saved.get(0).assistantText);
+        assertTrue(status[0].contains("Response complete"));
     }
 }

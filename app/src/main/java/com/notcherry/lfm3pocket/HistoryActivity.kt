@@ -234,6 +234,12 @@ private fun HistoryScreen(
                                     modifier = Modifier.padding(top = 6.dp)
                                         .testTag(tag("history_message_speech"))
                                         .semantics { contentDescription = message.speechTranscript })
+                            } else if (message.speechTranscriptStatus == "UNAVAILABLE") {
+                                Text("Speech transcript unavailable",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                        .testTag(tag("history_message_speech_unavailable"))
+                                        .semantics { contentDescription = "Speech transcript unavailable" })
                             }
                             if (message.role == "assistant" && message.turnStatus != "COMPLETED") {
                                 Text("Turn ${message.turnStatus.lowercase()}",
