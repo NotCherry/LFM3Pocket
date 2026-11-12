@@ -65,7 +65,7 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
                 byte[] header = encoded.toByteArray();
                 putPngInt(header,16,9000);putPngInt(header,20,5000);
                 java.util.zip.CRC32 crc=new java.util.zip.CRC32();crc.update(header,12,17);
-                putPngInt(header,28,(int)crc.getValue());
+                putPngInt(header,29,(int)crc.getValue());
                 try (FileOutputStream output = new FileOutputStream(f)) { output.write(header,0,33); }
             } else if (id.endsWith(".png")) {
                 Bitmap bitmap = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888);
