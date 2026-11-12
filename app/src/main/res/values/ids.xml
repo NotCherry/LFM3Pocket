@@ -6,6 +6,7 @@
     <item name="chat_live_status" type="id" />
     <item name="chat_live_mode" type="id" />
     <item name="chat_live_progress" type="id" />
+    <item name="chat_live_announcer" type="id" />
     <item name="chat_transcript" type="id" />
     <item name="chat_input" type="id" />
     <item name="chat_send" type="id" />

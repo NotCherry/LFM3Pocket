@@ -41,7 +41,7 @@ internal fun ChatLiveStatus(mode: String, status: String, packageName: String) {
                 .semantics {
                     liveRegion = LiveRegionMode.Polite
                     stateDescription = announcedStatus
-                },
+                }.testTag(tag("chat_live_announcer")),
             verticalAlignment = Alignment.CenterVertically) {
             if (active) CircularProgressIndicator(Modifier.size(18.dp)
                 .testTag(tag("chat_live_progress")), strokeWidth = 2.dp)

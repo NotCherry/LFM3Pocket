@@ -1,13 +1,14 @@
 package com.notcherry.lfm3pocket
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.test.assertDoesNotExist
-import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNode
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
@@ -18,6 +19,7 @@ class ChatLiveStatusContractTest {
     private val modeTag = "$packageName:id/chat_live_mode"
     private val statusTag = "$packageName:id/chat_live_status"
     private val progressTag = "$packageName:id/chat_live_progress"
+    private val announcerTag = "$packageName:id/chat_live_announcer"
 
     private fun render(mode: String, status: String) {
         compose.setContent {
@@ -33,8 +35,9 @@ class ChatLiveStatusContractTest {
 
         compose.onNodeWithTag(modeTag).assertTextEquals(mode)
         compose.onNodeWithTag(statusTag).assertTextEquals(label)
-        compose.onNode(hasStateDescription(label)).assertExists()
-        compose.onNodeWithTag(progressTag).assertExists()
+        compose.onNodeWithTag(announcerTag).assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, label))
+        assertEquals(1, compose.onAllNodesWithTag(progressTag).fetchSemanticsNodes().size)
     }
 
     @Test fun searchFailureClearlyLabelsLocalFallbackWhileActive() {
@@ -45,8 +48,9 @@ class ChatLiveStatusContractTest {
 
         compose.onNodeWithTag(modeTag).assertTextEquals(mode)
         compose.onNodeWithTag(statusTag).assertTextEquals(label)
-        compose.onNode(hasStateDescription(label)).assertExists()
-        compose.onNodeWithTag(progressTag).assertExists()
+        compose.onNodeWithTag(announcerTag).assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, label))
+        assertEquals(1, compose.onAllNodesWithTag(progressTag).fetchSemanticsNodes().size)
     }
 
     @Test fun completedResponseKeepsSelectedModeWithoutShowingProgress() {
@@ -56,6 +60,6 @@ class ChatLiveStatusContractTest {
 
         compose.onNodeWithTag(modeTag).assertTextEquals(mode)
         compose.onNodeWithTag(statusTag).assertTextEquals(status)
-        compose.onNodeWithTag(progressTag).assertDoesNotExist()
+        assertEquals(0, compose.onAllNodesWithTag(progressTag).fetchSemanticsNodes().size)
     }
 }
