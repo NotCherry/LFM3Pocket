@@ -13,13 +13,15 @@ public class ChatSessionTest {
         void drain(){while(!tasks.isEmpty())tasks.remove(0).run();}
     }
     static final class Engine implements InferenceEngine {
-        int calls;String prompt;boolean stopped;final List<String> prompts=new ArrayList<>();
+        int calls,answerCalls;String prompt;boolean stopped;final List<String> prompts=new ArrayList<>();
         public long loadModel(String m,String p){return 1;}
         public void unloadModel(long h){}
         public String generate(long h,String p,String media,int max,TokenSink sink){
             calls++;prompt=p;prompts.add(p);
-            if(!stopped) sink.onToken(p.contains("Perform ASR.")
-                    ? "The secret animal is a blue cat." : "Assistant answer");
+            if(!stopped) {
+                if(p.contains("Perform ASR.")) sink.onToken("The secret animal is a blue cat.");
+                else sink.onToken("Answer "+(++answerCalls));
+            }
             return null;
         }
         public void stop(){stopped=true;}
@@ -122,7 +124,7 @@ public class ChatSessionTest {
         assertTrue(engine.prompts.get(0).contains("Perform ASR."));
         assertTrue(engine.prompts.get(1).contains("What animal was mentioned?"));
         assertEquals("The secret animal is a blue cat.",saved.get(0).speechTranscript);
-        assertEquals("Assistant answer",saved.get(0).assistantText);
+        assertEquals("Answer 1",saved.get(0).assistantText);
         assertNotEquals("ASR text must never be derived from assistant output",
                 saved.get(0).speechTranscript,saved.get(0).assistantText);
     }
