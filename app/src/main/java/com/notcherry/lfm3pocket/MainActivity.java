@@ -109,7 +109,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 });
         session = new ChatSession(inferenceEngine, worker,
                 (task, delay) -> mainHandler.postDelayed(task, delay), () -> modelHandle,
-                ((Lfm3PocketApplication)getApplication()).webSearch(), turn -> {
+                WebSearch::search, turn -> {
                     if("New conversation".equals(historyTitle)) historyTitle=titleForQuestion(turn.userText);
                     HistoryRepository.Status resultStatus=HistoryRepository.Status.valueOf(turn.status.name());
                     historyRepository.completeTurn(new HistoryRepository.Turn(turn.id,

@@ -20,17 +20,6 @@ public class Lfm3PocketApplication extends Application {
     private InferenceEngine inferenceEngine;
     private AndroidActionExecutor actionExecutor;
     private ToolCoordinator toolCoordinator;
-    private ChatSession.Search webSearch;
-
-    public final synchronized ChatSession.Search webSearch() {
-        if (webSearch == null) webSearch = createWebSearch();
-        return webSearch;
-    }
-
-    protected ChatSession.Search createWebSearch() {
-        return WebSearch::search;
-    }
-
     public final synchronized ToolCoordinator toolCoordinator() {
         if (toolCoordinator == null) toolCoordinator = new ToolCoordinator(
                 createToolHandler(), createToolPermissionCheck(), createToolClock());

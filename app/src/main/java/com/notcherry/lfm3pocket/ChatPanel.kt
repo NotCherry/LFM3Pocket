@@ -11,8 +11,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.*
-import androidx.compose.ui.semantics.*
-import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.LinkAnnotation
@@ -48,19 +47,6 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
     fun showImageAttachment(path: String,onRemove: Runnable) { attachment=Attachment(path,onRemove) }
     fun clearImageAttachment() { attachment=null }
     private fun tag(name: String) = "${context.packageName}:id/$name"
-    private fun statusLabel(status: String): String = when {
-        status.startsWith("Searching web") -> "Web search · searching…"
-        status.startsWith("Generating locally · using web results") ->
-            "Web search · generating locally from results…"
-        status.startsWith("Generating locally · web search unavailable") ->
-            "Local fallback · web search unavailable; answering locally…"
-        status.startsWith("Generating locally · offline") -> "Local / offline · preparing response…"
-        status.startsWith("Stopping local generation · web search") ->
-            "Stopping · local generation after web search…"
-        status.startsWith("Stopping local generation · offline") -> "Stopping · local / offline generation…"
-        else -> status
-    }
-
     @Composable override fun Content() {
         MaterialTheme {
             var input by remember { mutableStateOf("") }
@@ -115,24 +101,8 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
                         }
                     }
                 }
-                val active=liveStatus.startsWith("Searching") || liveStatus.startsWith("Generating")
-                        || liveStatus.startsWith("Stopping")
-                val announcedStatus=statusLabel(liveStatus)
                 Column(Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=4.dp)) {
-                    Text(idleMode,style=MaterialTheme.typography.labelMedium,
-                        modifier=Modifier.testTag(tag("chat_live_mode")))
-                    if(liveStatus.isNotBlank()) {
-                        Row(Modifier.fillMaxWidth().padding(top=3.dp)
-                                .semantics {
-                                    liveRegion=LiveRegionMode.Polite
-                                    stateDescription=announcedStatus
-                                },
-                            verticalAlignment=Alignment.CenterVertically) {
-                            if(active) CircularProgressIndicator(Modifier.size(18.dp),strokeWidth=2.dp)
-                            Text(announcedStatus,style=MaterialTheme.typography.bodyMedium,
-                                modifier=Modifier.padding(start=8.dp).testTag(tag("chat_live_status")))
-                        }
-                    }
+                    ChatLiveStatus(idleMode, liveStatus, context.packageName)
                 }
                 OutlinedTextField(value=input,onValueChange={input=it},placeholder={Text("Write a message...")},
                     minLines=1,maxLines=4,modifier=Modifier.fillMaxWidth().testTag(tag("chat_input")))

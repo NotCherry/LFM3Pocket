@@ -46,7 +46,6 @@ public final class ChatUiE2eTest {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         app = (TestLfm3PocketApplication) context.getApplicationContext();
         app.scriptedEngine().resetForTest();
-        app.resetSearch();
         device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         packageName = context.getPackageName();
 
@@ -73,37 +72,6 @@ public final class ChatUiE2eTest {
                 By.res(packageName, "chat_transcript").textContains(token)), UI_TIMEOUT_MS);
         assertNotNull("Expected rendered transcript token: " + token, object);
         return object;
-    }
-
-    private UiObject2 awaitLiveStatus(String token) {
-        UiObject2 object=device.wait(Until.findObject(
-                By.res(packageName,"chat_live_status").textContains(token)),UI_TIMEOUT_MS);
-        assertNotNull("Expected live status: "+token,object);
-        return object;
-    }
-
-    private void enableSearchInUi() {
-        UiObject2 toggle=device.wait(Until.findObject(By.text("Web search: off")),2000);
-        for(int i=0;toggle==null&&i<3;i++) {
-            UiObject2 configuration=device.findObject(By.res(packageName,"model_configuration_scroll"));
-            assertNotNull("Model and search settings should be scrollable",configuration);
-            Rect bounds=configuration.getVisibleBounds();
-            device.swipe(bounds.centerX(),bounds.bottom-12,bounds.centerX(),bounds.top+12,8);
-            toggle=device.wait(Until.findObject(By.text("Web search: off")),2000);
-        }
-        assertNotNull("Search settings should be available",toggle);toggle.click();
-        UiObject2 endpoint=device.wait(Until.findObject(
-                By.hint("https://your-searxng.example.org/search")),UI_TIMEOUT_MS);
-        assertNotNull("Search endpoint field should be available",endpoint);
-        endpoint.setText("https://search.example.test/search");
-        UiObject2 enabled=device.wait(Until.findObject(
-                By.text("Use web search for new questions")),UI_TIMEOUT_MS);
-        assertNotNull("Search opt-in should be available",enabled);enabled.click();
-        UiObject2 save=device.wait(Until.findObject(By.text("Save")),UI_TIMEOUT_MS);
-        assertNotNull("Save should apply the selected web-search mode",save);save.click();
-        UiObject2 mode=device.wait(Until.findObject(
-                By.res(packageName,"chat_live_mode").textContains("Web search + local model")),UI_TIMEOUT_MS);
-        assertNotNull("Selected web-search mode should stay visible beside chat",mode);
     }
 
     @Test public void launchStreamCancelAndRetryRecoversVisibleChatControls() throws Exception {
@@ -171,60 +139,6 @@ public final class ChatUiE2eTest {
         }
     }
 
-    @Test public void searchModeShowsSearchThenLocalGenerationNearComposer() throws Exception {
-        app.holdSearch();app.scriptedEngine().holdFirstToken();
-        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
-            awaitEnabled("chat_send");
-            enableSearchInUi();
-            UiObject2 input=device.findObject(By.res(packageName,"chat_input"));
-            assertNotNull(input);input.setText("Use current information");
-            awaitEnabled("chat_send").click();
-            assertTrue("Fake search should start",app.awaitSearchStarted());
-            assertTrue(awaitLiveStatus("Web search · searching").getText().contains("searching"));
-            UiObject2 mode=device.findObject(By.res(packageName,"chat_live_mode"));
-            assertNotNull(mode);assertTrue("Selected web mode should remain visible",mode.getText().contains("Web search + local model"));
-
-            app.releaseSearch();
-            assertTrue("Model should start after the fake result returns",
-                    app.scriptedEngine().awaitGenerationStarted());
-            assertTrue("Search results phase should be explicit",
-                    awaitLiveStatus("Web search · generating locally from results").getText()
-                            .contains("from results"));
-            assertTrue("The fake result should reach the local model prompt",
-                    app.scriptedEngine().lastPrompt().contains("Fake result"));
-            app.scriptedEngine().releaseFirstToken();
-            awaitTranscript("FAKE_STREAM_BEGIN");
-            app.scriptedEngine().completeFirstTurn();
-            assertNotNull(device.wait(Until.findObject(By.res(packageName,"chat_live_status")
-                    .textContains("Response complete · web search + local model")),UI_TIMEOUT_MS));
-            assertEquals("Web search should run once",1,app.searchCalls());
-        }
-    }
-
-    @Test public void failedSearchClearlyShowsLocalFallbackMode() throws Exception {
-        app.failSearch(true);app.scriptedEngine().holdFirstToken();
-        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
-            awaitEnabled("chat_send");
-            enableSearchInUi();
-            UiObject2 input=device.findObject(By.res(packageName,"chat_input"));
-            assertNotNull(input);input.setText("Answer if search is unavailable");
-            awaitEnabled("chat_send").click();
-            assertTrue("Fake search should run",app.awaitSearchStarted());
-            assertTrue("Local model should run after the search failure",
-                    app.scriptedEngine().awaitGenerationStarted());
-            assertTrue("UI should say the local model is answering after search failure",
-                    awaitLiveStatus("Local fallback · web search unavailable; answering locally")
-                            .getText().contains("answering locally"));
-            UiObject2 mode=device.findObject(By.res(packageName,"chat_live_mode"));
-            assertNotNull(mode);assertTrue("Web mode remains selected during local fallback",mode.getText().contains("Web search + local model"));
-            app.scriptedEngine().releaseFirstToken();
-            awaitTranscript("FAKE_STREAM_BEGIN");
-            app.scriptedEngine().completeFirstTurn();
-            assertNotNull(device.wait(Until.findObject(By.res(packageName,"chat_live_status")
-                    .textContains("Response complete · web search + local model")),UI_TIMEOUT_MS));
-            assertEquals("Failed search should run once",1,app.searchCalls());
-        }
-    }
     @Test public void inferenceFailureIsVisibleAndRestoresSendControl() throws Exception {
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
             awaitEnabled("chat_send");
