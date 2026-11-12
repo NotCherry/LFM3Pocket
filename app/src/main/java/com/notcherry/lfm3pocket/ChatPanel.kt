@@ -103,18 +103,23 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
                         }
                     }
                 }
-                val visibleStatus=liveStatus.ifBlank { idleMode }
                 val active=liveStatus.startsWith("Searching") || liveStatus.startsWith("Generating")
                         || liveStatus.startsWith("Stopping")
-                Row(Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=6.dp)
-                        .semantics {
-                            liveRegion=LiveRegionMode.Polite
-                            stateDescription=visibleStatus
-                        },
-                    verticalAlignment=Alignment.CenterVertically) {
-                    if(active) CircularProgressIndicator(Modifier.size(18.dp),strokeWidth=2.dp)
-                    Text(visibleStatus,style=MaterialTheme.typography.bodyMedium,
-                        modifier=Modifier.padding(start=8.dp).testTag(tag("chat_live_status")))
+                Column(Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=4.dp)) {
+                    Text(idleMode,style=MaterialTheme.typography.labelMedium,
+                        modifier=Modifier.testTag(tag("chat_live_mode")))
+                    if(liveStatus.isNotBlank()) {
+                        Row(Modifier.fillMaxWidth().padding(top=3.dp)
+                                .semantics {
+                                    liveRegion=LiveRegionMode.Polite
+                                    stateDescription=liveStatus
+                                },
+                            verticalAlignment=Alignment.CenterVertically) {
+                            if(active) CircularProgressIndicator(Modifier.size(18.dp),strokeWidth=2.dp)
+                            Text(liveStatus,style=MaterialTheme.typography.bodyMedium,
+                                modifier=Modifier.padding(start=8.dp).testTag(tag("chat_live_status")))
+                        }
+                    }
                 }
                 OutlinedTextField(value=input,onValueChange={input=it},placeholder={Text("Write a message...")},
                     minLines=1,maxLines=4,modifier=Modifier.fillMaxWidth().testTag(tag("chat_input")))
