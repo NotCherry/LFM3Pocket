@@ -34,6 +34,35 @@ public final class RecordingE2eTest {
             assertTrue(files[0].getName().endsWith(".wav"));assertEquals(8236,files[0].length());
         }
     }
+    @Test public void capturedWavIsPassedToLocalInferenceAndCleanedAfterward()throws Exception{
+        app.scriptedEngine().resetForTest();
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+            ready();click();status("Recording voice input");assertTrue(app.awaitCaptured());
+            click();status("Voice recording attached");ready();assertTrue(app.awaitCaptureReleased());
+            String[] path={null};scenario.onActivity(activity->path[0]=activity.pendingMediaPathForTest());
+            assertNotNull("Stopped microphone capture should remain pending for the turn",path[0]);
+            File wav=new File(path[0]);assertTrue(wav.isFile());
+            UiObject2 input=device.wait(Until.findObject(By.res(pkg,"chat_input")),12000);assertNotNull(input);
+            input.setText("Transcribe this recording and tell me what was said.");
+            app.scriptedEngine().holdFirstToken();
+            UiObject2 send=device.wait(Until.findObject(By.res(pkg,"chat_send").enabled(true)),12000);assertNotNull(send);send.click();
+            assertTrue("The fake local inference adapter should receive the turn",app.scriptedEngine().awaitGenerationStarted());
+            assertEquals("The exact private WAV path must reach inference",path[0],app.scriptedEngine().lastMediaPath());
+            assertTrue("Voice question must be encoded with an attached media placeholder",
+                    app.scriptedEngine().lastPrompt().contains("Transcribe this recording")
+                            && app.scriptedEngine().lastPrompt().contains("<__media__>"));
+            assertFalse("Search remains disabled for captured audio",app.scriptedEngine().lastPrompt().contains("search.example"));
+            app.scriptedEngine().releaseFirstToken();
+            assertNotNull("Fake inference should stream a response for the captured turn",device.wait(
+                    Until.findObject(By.res(pkg,"chat_transcript").textContains("FAKE_STREAM_BEGIN")),12000));
+            UiObject2 stop=device.wait(Until.findObject(By.res(pkg,"chat_stop").enabled(true)),12000);assertNotNull(stop);stop.click();
+            assertNotNull("The chat should finish the cancelled inference turn",device.wait(
+                    Until.findObject(By.res(pkg,"chat_live_status").textContains("Response stopped")),12000));
+            long deadline=android.os.SystemClock.elapsedRealtime()+5000;
+            while(wav.exists()&&android.os.SystemClock.elapsedRealtime()<deadline)Thread.sleep(25);
+            assertFalse("Inference completion/cancellation must remove the temporary WAV",wav.exists());
+        }
+    }
     @Test public void shortCaptureRecoversForAnotherUserAttempt()throws Exception{
         app.shortCapture(true);
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
