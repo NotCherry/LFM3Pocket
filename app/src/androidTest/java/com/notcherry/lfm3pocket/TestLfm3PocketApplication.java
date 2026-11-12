@@ -1,12 +1,39 @@
 package com.notcherry.lfm3pocket;
 
 import java.util.Map;
+import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** Isolated instrumentation-only application. No model files or JNI are used for UI E2E. */
 public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
+    private final AtomicInteger searchCalls=new AtomicInteger();
+    private volatile boolean failSearch;
+    private volatile boolean holdSearch;
+    private volatile CountDownLatch searchStarted=new CountDownLatch(0),searchReleased=new CountDownLatch(0);
+    public void resetSearch() {
+        searchCalls.set(0);failSearch=false;holdSearch=false;
+        searchStarted=new CountDownLatch(0);searchReleased=new CountDownLatch(0);
+    }
+    public void failSearch(boolean value){failSearch=value;}
+    public void holdSearch() {
+        holdSearch=true;searchStarted=new CountDownLatch(1);searchReleased=new CountDownLatch(1);
+    }
+    public boolean awaitSearchStarted()throws InterruptedException{return searchStarted.await(10,TimeUnit.SECONDS);}
+    public void releaseSearch(){searchReleased.countDown();}
+    public int searchCalls(){return searchCalls.get();}
+    @Override protected ChatSession.Search createWebSearch() {
+        return (endpoint,question)->{
+            searchCalls.incrementAndGet();searchStarted.countDown();
+            if(holdSearch&&!searchReleased.await(10,TimeUnit.SECONDS))
+                throw new Exception("Fake search timed out");
+            if(failSearch)throw new Exception("Injected search failure");
+            return Collections.singletonList(new WebSearch.Source(
+                    "Fake result","Reference snippet","https://example.test/result"));
+        };
+    }
+
     private volatile boolean capturePermission;
     public void capturePermission(boolean value){capturePermission=value;}
     @Override public boolean hasMicrophonePermission(){return capturePermission || super.hasMicrophonePermission();}
@@ -117,6 +144,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
             return generationStarted.await(10,TimeUnit.SECONDS);
         }
         public void releaseFirstToken() { releaseBeforeFirstToken.countDown(); }
+        public void completeFirstTurn() { releaseFirstTurn.countDown(); }
         public void failNextGeneration() { failNextGeneration=true; }
 
         public int callCount() { return turns.get(); }

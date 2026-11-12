@@ -48,6 +48,18 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
     fun showImageAttachment(path: String,onRemove: Runnable) { attachment=Attachment(path,onRemove) }
     fun clearImageAttachment() { attachment=null }
     private fun tag(name: String) = "${context.packageName}:id/$name"
+    private fun statusLabel(status: String): String = when {
+        status.startsWith("Searching web") -> "Web search · searching…"
+        status.startsWith("Generating locally · using web results") ->
+            "Web search · generating locally from results…"
+        status.startsWith("Generating locally · web search unavailable") ->
+            "Local fallback · web search unavailable; answering locally…"
+        status.startsWith("Generating locally · offline") -> "Local / offline · preparing response…"
+        status.startsWith("Stopping local generation · web search") ->
+            "Stopping · local generation after web search…"
+        status.startsWith("Stopping local generation · offline") -> "Stopping · local / offline generation…"
+        else -> status
+    }
 
     @Composable override fun Content() {
         MaterialTheme {
@@ -105,6 +117,7 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
                 }
                 val active=liveStatus.startsWith("Searching") || liveStatus.startsWith("Generating")
                         || liveStatus.startsWith("Stopping")
+                val announcedStatus=statusLabel(liveStatus)
                 Column(Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=4.dp)) {
                     Text(idleMode,style=MaterialTheme.typography.labelMedium,
                         modifier=Modifier.testTag(tag("chat_live_mode")))
@@ -112,11 +125,11 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
                         Row(Modifier.fillMaxWidth().padding(top=3.dp)
                                 .semantics {
                                     liveRegion=LiveRegionMode.Polite
-                                    stateDescription=liveStatus
+                                    stateDescription=announcedStatus
                                 },
                             verticalAlignment=Alignment.CenterVertically) {
                             if(active) CircularProgressIndicator(Modifier.size(18.dp),strokeWidth=2.dp)
-                            Text(liveStatus,style=MaterialTheme.typography.bodyMedium,
+                            Text(announcedStatus,style=MaterialTheme.typography.bodyMedium,
                                 modifier=Modifier.padding(start=8.dp).testTag(tag("chat_live_status")))
                         }
                     }

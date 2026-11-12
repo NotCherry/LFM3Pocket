@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Rect;
 import android.net.TrafficStats;
 import android.os.Process;
 import android.provider.Settings;
@@ -45,6 +46,7 @@ public final class ChatUiE2eTest {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         app = (TestLfm3PocketApplication) context.getApplicationContext();
         app.scriptedEngine().resetForTest();
+        app.resetSearch();
         device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         packageName = context.getPackageName();
 
@@ -73,12 +75,29 @@ public final class ChatUiE2eTest {
         return object;
     }
 
+    private UiObject2 awaitLiveStatus(String token) {
+        UiObject2 object=device.wait(Until.findObject(
+                By.res(packageName,"chat_live_status").textContains(token)),UI_TIMEOUT_MS);
+        assertNotNull("Expected live status: "+token,object);
+        return object;
+    }
+
+    private void enableSearch(Context context) {
+        assertTrue(context.getSharedPreferences("MainActivity",Context.MODE_PRIVATE).edit()
+                .putBoolean("search_enabled",true)
+                .putString("search_endpoint","https://search.example.test/search")
+                .commit());
+    }
+
     @Test public void launchStreamCancelAndRetryRecoversVisibleChatControls() throws Exception {
         try (ActivityScenario<MainActivity> scenario =
                      ActivityScenario.launch(MainActivity.class)) {
             // Real Activity launch, async fake model load, and UI readiness.
             awaitEnabled("chat_send");
             assertTrue(app.scriptedEngine().loadedPath().endsWith("ui-e2e-dummy.gguf"));
+            UiObject2 mode=device.wait(Until.findObject(By.res(packageName,"chat_live_mode")),UI_TIMEOUT_MS);
+            assertNotNull("Selected mode should remain visible beside the composer",mode);
+            assertTrue(mode.getText().contains("Local / offline"));
 
             UiObject2 input = device.wait(
                     Until.findObject(By.res(packageName, "chat_input")), UI_TIMEOUT_MS);
@@ -90,9 +109,18 @@ public final class ChatUiE2eTest {
             // Progress and mode must be visible before the fake model emits its first token.
             assertTrue(app.scriptedEngine().awaitGenerationStarted());
             UiObject2 status=device.wait(Until.findObject(By.res(packageName,"chat_live_status")
-                    .textContains("Generating locally")),UI_TIMEOUT_MS);
+                    .textContains("Local / offline")),UI_TIMEOUT_MS);
             assertNotNull("Local inference status should appear before the first token",status);
-            assertTrue(status.getText().contains("offline"));
+            assertTrue(status.getText().contains("preparing response"));
+            UiObject2 transcriptBeforeToken=device.findObject(By.res(packageName,"chat_transcript"));
+            assertNotNull(transcriptBeforeToken);
+            Rect statusBounds=status.getVisibleBounds();
+            Rect transcriptBounds=transcriptBeforeToken.getVisibleBounds();
+            Rect inputBounds=input.getVisibleBounds();
+            assertTrue("Live mode/status should sit below the scrollable transcript",
+                    statusBounds.top>transcriptBounds.top);
+            assertTrue("Live status should sit beside, above the message composer",
+                    inputBounds.top>statusBounds.top);
             app.scriptedEngine().releaseFirstToken();
 
             // The scripted model now blocks after the first streamed piece.
@@ -123,6 +151,57 @@ public final class ChatUiE2eTest {
                     transcript.getText().split("FAKE_STREAM_BEGIN", -1).length - 1);
             awaitEnabled("chat_send");
             assertFalse(device.findObject(By.res(packageName, "chat_stop")).isEnabled());
+        }
+    }
+
+    @Test public void searchModeShowsSearchThenLocalGenerationNearComposer() throws Exception {
+        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        enableSearch(context);app.holdSearch();app.scriptedEngine().holdFirstToken();
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            awaitEnabled("chat_send");
+            UiObject2 input=device.findObject(By.res(packageName,"chat_input"));
+            assertNotNull(input);input.setText("Use current information");
+            awaitEnabled("chat_send").click();
+            assertTrue("Fake search should start",app.awaitSearchStarted());
+            assertTrue(awaitLiveStatus("Web search · searching").getText().contains("searching"));
+            UiObject2 mode=device.findObject(By.res(packageName,"chat_live_mode"));
+            assertNotNull(mode);assertTrue(mode.getText().contains("Web search + local model"));
+
+            app.releaseSearch();
+            assertTrue("Model should start after the fake result returns",
+                    app.scriptedEngine().awaitGenerationStarted());
+            assertTrue(awaitLiveStatus("Web search · generating locally from results").getText()
+                    .contains("from results"));
+            assertTrue(app.scriptedEngine().lastPrompt().contains("Fake result"));
+            app.scriptedEngine().releaseFirstToken();
+            awaitTranscript("FAKE_STREAM_BEGIN");
+            app.scriptedEngine().completeFirstTurn();
+            assertNotNull(device.wait(Until.findObject(By.res(packageName,"chat_live_status")
+                    .textContains("Response complete · web search + local model")),UI_TIMEOUT_MS));
+            assertEquals(1,app.searchCalls());
+        }
+    }
+
+    @Test public void failedSearchClearlyShowsLocalFallbackMode() throws Exception {
+        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        enableSearch(context);app.failSearch(true);app.scriptedEngine().holdFirstToken();
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            awaitEnabled("chat_send");
+            UiObject2 input=device.findObject(By.res(packageName,"chat_input"));
+            assertNotNull(input);input.setText("Answer if search is unavailable");
+            awaitEnabled("chat_send").click();
+            assertTrue("Fake search should run",app.awaitSearchStarted());
+            assertTrue(app.scriptedEngine().awaitGenerationStarted());
+            assertTrue(awaitLiveStatus("Local fallback · web search unavailable; answering locally")
+                    .getText().contains("answering locally"));
+            UiObject2 mode=device.findObject(By.res(packageName,"chat_live_mode"));
+            assertNotNull(mode);assertTrue(mode.getText().contains("Web search + local model"));
+            app.scriptedEngine().releaseFirstToken();
+            awaitTranscript("FAKE_STREAM_BEGIN");
+            app.scriptedEngine().completeFirstTurn();
+            assertNotNull(device.wait(Until.findObject(By.res(packageName,"chat_live_status")
+                    .textContains("Response complete · web search + local model")),UI_TIMEOUT_MS));
+            assertEquals(1,app.searchCalls());
         }
     }
     @Test public void inferenceFailureIsVisibleAndRestoresSendControl() throws Exception {
