@@ -13,16 +13,16 @@ public class ChatSessionTest {
         void drain(){while(!tasks.isEmpty())tasks.remove(0).run();}
     }
     static final class Engine implements InferenceEngine {
-        int calls,answerCalls;String prompt;boolean stopped;final List<String> prompts=new ArrayList<>();
+        int calls,answerCalls;String prompt,asrError,asrTranscript="The secret animal is a blue cat.";boolean stopped;final List<String> prompts=new ArrayList<>();
         public long loadModel(String m,String p){return 1;}
         public void unloadModel(long h){}
         public String generate(long h,String p,String media,int max,TokenSink sink){
             calls++;prompt=p;prompts.add(p);
             if(!stopped) {
-                if(p.contains("Perform ASR.")) sink.onToken("The secret animal is a blue cat.");
+                if(p.contains("Perform ASR.")) { if(asrTranscript!=null)sink.onToken(asrTranscript); }
                 else sink.onToken("Answer "+(++answerCalls));
             }
-            return null;
+            return p.contains("Perform ASR.")?asrError:null;
         }
         public void stop(){stopped=true;}
         public void resetStop(){stopped=false;}
@@ -131,13 +131,8 @@ public class ChatSessionTest {
     }
 
     @Test public void unavailableASRIsExplicitWhileAssistantInferenceContinues(){
-        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine(){
-            @Override public String generate(long h,String p,String media,int max,TokenSink sink){
-                calls++;prompts.add(p);
-                if(!p.contains("Perform ASR.")) sink.onToken("Audio answer");
-                return p.contains("Perform ASR.")?"decoder unavailable":null;
-            }
-        };
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();
+        engine.asrError="decoder unavailable";engine.asrTranscript=null;
         List<ChatSession.CompletedTurn> saved=new ArrayList<>();String[] status={""};
         ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
                 saved::add,(text,message,running)->status[0]=message);
@@ -149,7 +144,7 @@ public class ChatSessionTest {
         assertEquals(2,engine.calls);
         assertNull(saved.get(0).speechTranscript);
         assertEquals("UNAVAILABLE",saved.get(0).speechTranscriptStatus);
-        assertEquals("Audio answer",saved.get(0).assistantText);
+        assertEquals("Answer 1",saved.get(0).assistantText);
         assertTrue(status[0].contains("Response complete"));
     }
 }
