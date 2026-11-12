@@ -13,11 +13,14 @@ public class ChatSessionTest {
         void drain(){while(!tasks.isEmpty())tasks.remove(0).run();}
     }
     static final class Engine implements InferenceEngine {
-        int calls;String prompt;boolean stopped;
+        int calls;String prompt;boolean stopped;final List<String> prompts=new ArrayList<>();
         public long loadModel(String m,String p){return 1;}
         public void unloadModel(long h){}
         public String generate(long h,String p,String media,int max,TokenSink sink){
-            calls++;prompt=p;if(!stopped)sink.onToken("Answer "+calls);return null;
+            calls++;prompt=p;prompts.add(p);
+            if(!stopped) sink.onToken(p.contains("Perform ASR.")
+                    ? "The secret animal is a blue cat." : "Assistant answer");
+            return null;
         }
         public void stop(){stopped=true;}
         public void resetStop(){stopped=false;}
@@ -103,5 +106,24 @@ public class ChatSessionTest {
         worker.drain();
         assertEquals(Collections.singletonList("/private/cache/photo-1.img"),deleted);
         assertEquals(1,engine.calls);
+    }
+
+    @Test public void recordedVoiceStoresASRSeparatelyFromAssistantReply(){
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();
+        List<ChatSession.CompletedTurn> saved=new ArrayList<>();
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                saved::add,(text,message,running)->{});
+        assertTrue(session.submit("What animal was mentioned?","/private/cache/voice.wav",
+                "voice recording",false,"",64));
+
+        worker.drain();ui.drain();
+
+        assertEquals("A recorded voice turn must run a distinct ASR pass",2,engine.calls);
+        assertTrue(engine.prompts.get(0).contains("Perform ASR."));
+        assertTrue(engine.prompts.get(1).contains("What animal was mentioned?"));
+        assertEquals("The secret animal is a blue cat.",saved.get(0).speechTranscript);
+        assertEquals("Assistant answer",saved.get(0).assistantText);
+        assertNotEquals("ASR text must never be derived from assistant output",
+                saved.get(0).speechTranscript,saved.get(0).assistantText);
     }
 }
