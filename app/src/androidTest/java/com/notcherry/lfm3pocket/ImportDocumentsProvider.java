@@ -28,7 +28,8 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
         c.newRow().add(Document.COLUMN_DOCUMENT_ID, id)
                 .add(Document.COLUMN_DISPLAY_NAME, id.equals("root") ? "LFM test files" : id)
                 .add(Document.COLUMN_MIME_TYPE, id.equals("root") ? Document.MIME_TYPE_DIR
-                        : id.endsWith(".jpg") ? "image/jpeg" : "application/octet-stream")
+                        : id.endsWith(".jpg") ? "image/jpeg"
+                        : id.endsWith(".png") ? "image/png" : "application/octet-stream")
                 .add(Document.COLUMN_SIZE, id.equals("root") ? 0 : 1024 * 1024)
                 .add(Document.COLUMN_FLAGS, 0);
     }
@@ -39,15 +40,26 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
         MatrixCursor c = new MatrixCursor(projection == null ? DOC : projection);
         row(c, "valid.gguf"); row(c, "damaged.gguf");
         row(c, "projector.gguf"); row(c, "wrong-family.gguf");
-        row(c, "valid-photo.jpg"); row(c, "replacement-photo.jpg"); row(c, "invalid-photo.jpg"); return c;
+        row(c, "valid-photo.jpg"); row(c, "replacement-photo.jpg"); row(c, "invalid-photo.jpg");
+        row(c, "truncated-photo.png"); return c;
     }
     @Override public ParcelFileDescriptor openDocument(String id, String mode, CancellationSignal signal)
             throws FileNotFoundException {
         if (!java.util.Arrays.asList("valid.gguf","damaged.gguf","projector.gguf","wrong-family.gguf",
-                "valid-photo.jpg","replacement-photo.jpg","invalid-photo.jpg").contains(id)) throw new FileNotFoundException(id);
+                "valid-photo.jpg","replacement-photo.jpg","invalid-photo.jpg","truncated-photo.png").contains(id))
+            throw new FileNotFoundException(id);
         File f = new File(getContext().getCacheDir(), id);
         try {
-            if (id.endsWith(".jpg")) {
+            if (id.endsWith(".png")) {
+                Bitmap bitmap = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888);
+                java.io.ByteArrayOutputStream encoded = new java.io.ByteArrayOutputStream();
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, encoded);
+                bitmap.recycle();
+                byte[] validHeader = encoded.toByteArray();
+                try (FileOutputStream output = new FileOutputStream(f)) {
+                    output.write(validHeader, 0, 33); // Valid PNG signature and IHDR, but no pixel data.
+                }
+            } else if (id.endsWith(".jpg")) {
                 try (FileOutputStream output = new FileOutputStream(f)) {
                     if (id.equals("invalid-photo.jpg")) {
                         output.write("not an image".getBytes(java.nio.charset.StandardCharsets.UTF_8));

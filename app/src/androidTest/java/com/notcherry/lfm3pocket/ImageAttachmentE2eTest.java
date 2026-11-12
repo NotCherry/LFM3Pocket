@@ -77,6 +77,13 @@ public final class ImageAttachmentE2eTest {
                             .textContains("Photo import failed: Selected file is not a readable image")), WAIT));
             assertEquals("Invalid selection must not leave a stale path", "", currentPendingPath(scenario));
             assertEquals(null, device.wait(Until.findObject(By.res(packageName, "image_attachment")), 1000));
+
+            chooseImage(device, packageName, "truncated-photo.png");
+            assertNotNull("An image with a valid header but missing pixels must be rejected", device.wait(
+                    Until.findObject(By.res(packageName, "chat_status")
+                            .textContains("Photo import failed: Selected file is not a readable image")), WAIT));
+            assertEquals("Undecodable image data must not leave a stale path", "", currentPendingPath(scenario));
+            assertEquals(null, device.wait(Until.findObject(By.res(packageName, "image_attachment")), 1000));
         }
     }
 

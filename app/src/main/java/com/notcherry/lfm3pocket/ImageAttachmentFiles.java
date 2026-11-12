@@ -12,18 +12,18 @@ final class ImageAttachmentFiles {
     private ImageAttachmentFiles() {}
 
     static boolean isReadableImage(File file) {
-        if (file == null || !file.isFile() || file.length() == 0) return false;
-        BitmapFactory.Options bounds = new BitmapFactory.Options();
-        bounds.inJustDecodeBounds = true;
-        BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
-        return bounds.outWidth > 0 && bounds.outHeight > 0;
+        Bitmap preview = decodePreview(file);
+        if (preview == null) return false;
+        preview.recycle();
+        return true;
     }
 
     static Bitmap decodePreview(File file) {
-        if (!isReadableImage(file)) return null;
+        if (file == null || !file.isFile() || file.length() == 0) return null;
         BitmapFactory.Options bounds = new BitmapFactory.Options();
         bounds.inJustDecodeBounds = true;
         BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
 
         int sampleSize = 1;
         while (bounds.outWidth / sampleSize > MAX_PREVIEW_DIMENSION
