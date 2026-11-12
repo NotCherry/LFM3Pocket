@@ -45,11 +45,13 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
     private final AtomicInteger toolCalls=new AtomicInteger();
     private final java.util.concurrent.atomic.AtomicLong toolTime=new java.util.concurrent.atomic.AtomicLong();
     private volatile boolean failTool;
+    private volatile boolean denyToolPermission;
     private volatile ToolRegistry.Request lastToolRequest;
-    public void resetTools() { toolCalls.set(0);toolTime.set(0);failTool=false;lastToolRequest=null; }
+    public void resetTools() { toolCalls.set(0);toolTime.set(0);failTool=false;denyToolPermission=false;lastToolRequest=null; }
     public int toolCalls() { return toolCalls.get(); }
     public ToolRegistry.Request lastToolRequest() { return lastToolRequest; }
     public void failTool(boolean value) { failTool=value; }
+    public void denyToolPermission(boolean value) { denyToolPermission=value; }
     public void advanceToolTime(long millis) { toolTime.addAndGet(millis); }
     @Override protected ToolCoordinator.Handler createToolHandler() {
         return request -> {
@@ -69,7 +71,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
                     failTool ? "TEST_FAILED" : "TEST_PERFORMED", failTool ? "Test handler failed" : "Test handler executed");
         };
     }
-    @Override protected java.util.function.Predicate<ToolRegistry.Request> createToolPermissionCheck() { return request -> true; }
+    @Override protected java.util.function.Predicate<ToolRegistry.Request> createToolPermissionCheck() { return request -> !denyToolPermission; }
     @Override protected java.util.function.LongSupplier createToolClock() { return toolTime::get; }
 
     public ScriptedInferenceEngine scriptedEngine() {
