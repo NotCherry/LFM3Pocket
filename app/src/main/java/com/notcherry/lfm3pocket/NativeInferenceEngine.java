@@ -18,8 +18,13 @@ public final class NativeInferenceEngine implements InferenceEngine {
 
     @Override public String generate(long handle, String prompt, String mediaPath,
                                      int maxTokens, TokenSink sink) {
+        return generateWithMedia(handle,prompt,mediaPath==null?new String[0]:new String[]{mediaPath},maxTokens,sink);
+    }
+
+    @Override public String generateWithMedia(long handle, String prompt, String[] mediaPaths,
+                                              int maxTokens, TokenSink sink) {
         InferenceSettings current=settings;
-        return NativeBridge.generateWithSettings(handle,prompt,mediaPath,
+        return NativeBridge.generateWithMediaAndSettings(handle,prompt,mediaPaths,
                 new InferenceSettings(current.contextTokens,current.threads,Math.min(maxTokens,current.maxTokens)),sink::onToken);
     }
 

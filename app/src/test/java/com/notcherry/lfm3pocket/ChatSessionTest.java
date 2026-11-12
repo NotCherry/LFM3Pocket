@@ -18,11 +18,11 @@ public class ChatSessionTest {
         public long loadModel(String m,String p){return 1;}
         public void unloadModel(long h){}
         public String generate(long h,String p,String media,int max,TokenSink sink){
-            return generate(h,p,media==null?new String[0]:new String[]{media},max,sink);
+            return generateWithMedia(h,p,media==null?new String[0]:new String[]{media},max,sink);
         }
-        @Override public String generate(long h,String p,String[] media,int max,TokenSink sink){
+        @Override public String generateWithMedia(long h,String p,String[] media,int max,TokenSink sink){
             calls++;prompt=p;prompts.add(p);
-            mediaByCall.add(Arrays.asList(media.clone()));
+            mediaByCall.add(new ArrayList<>(Arrays.asList(media)));
             if(!stopped) {
                 if(p.contains("Perform ASR.")) { if(asrTranscript!=null)sink.onToken(asrTranscript); }
                 else sink.onToken("Answer "+(++answerCalls));
@@ -111,8 +111,10 @@ public class ChatSessionTest {
         assertTrue(session.submit("Describe this","/private/cache/photo-1.img","photo",false,"",32));
         assertTrue(deleted.isEmpty());
         worker.drain();
-        assertEquals(Collections.singletonList("/private/cache/photo-1.img"),deleted);
+        assertTrue("The current conversation retains its image for follow-up",deleted.isEmpty());
         assertEquals(1,engine.calls);
+        session.clear();
+        assertEquals(Collections.singletonList("/private/cache/photo-1.img"),deleted);
     }
 
     @Test public void recordedVoiceStoresASRSeparatelyFromAssistantReply(){
