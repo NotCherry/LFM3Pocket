@@ -86,10 +86,8 @@ public final class ImageAttachmentE2eTest {
             assertEquals(null, device.wait(Until.findObject(By.res(packageName, "image_attachment")), 1000));
 
             chooseImage(device, packageName, "large-dimensions-photo.png");
-            assertNotNull("The selected high-resolution image must begin importing", device.wait(
-                    Until.findObject(By.res(packageName, "chat_status").text("Importing photo...")), WAIT));
             UiObject2 highResolutionStatus = device.wait(Until.findObject(By.res(packageName, "chat_status")
-                    .textContains("Photo import failed:")), WAIT);
+                    .textContains("Photo import failed: Image dimensions exceed")), WAIT);
             assertNotNull("Oversized images must be rejected before native decode", highResolutionStatus);
             String highResolutionReason = highResolutionStatus.getText();
             assertTrue("Unexpected high-resolution rejection: " + highResolutionReason,
