@@ -32,10 +32,14 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
     private data class Attachment(val path: String,val onRemove: Runnable)
     private var transcript by mutableStateOf("No conversation yet.\n")
     private var liveStatus by mutableStateOf("")
+    private var idleMode by mutableStateOf("Mode · Local / offline")
     private var toolCard by mutableStateOf<ToolCard?>(null)
     private var attachment by mutableStateOf<Attachment?>(null)
     private var controls by mutableStateOf(Controls())
     fun render(text: String,status: String) { transcript=text;liveStatus=status }
+    fun setIdleMode(searchEnabled: Boolean) {
+        idleMode = if(searchEnabled) "Mode · Web search + local model" else "Mode · Local / offline"
+    }
     fun renderToolCard(details: String,risk: String,status: String,result: String,pending: Boolean,
                        approve: Runnable?,reject: Runnable?) {
         toolCard=ToolCard(details,risk,status,result,pending,approve,reject)
@@ -83,19 +87,6 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
                         }
                     }
                 }
-                if(liveStatus.isNotBlank()) {
-                    val active=liveStatus.startsWith("Searching") || liveStatus.startsWith("Generating")
-                            || liveStatus.startsWith("Stopping")
-                    Row(Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=8.dp)
-                            .semantics {
-                                liveRegion=LiveRegionMode.Polite
-                            },
-                        verticalAlignment=Alignment.CenterVertically) {
-                        if(active) CircularProgressIndicator(Modifier.size(18.dp),strokeWidth=2.dp)
-                        Text(liveStatus,style=MaterialTheme.typography.bodyMedium,
-                            modifier=Modifier.padding(start=8.dp).testTag(tag("chat_live_status")))
-                    }
-                }
                 SelectionContainer(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)) {
                     Text(annotated,modifier=Modifier.fillMaxWidth().padding(8.dp).testTag(tag("chat_transcript")))
                 }
@@ -111,6 +102,19 @@ class ChatPanel(context: Context, private val send: Consumer<String>, private va
                             Text("Remove image")
                         }
                     }
+                }
+                val visibleStatus=liveStatus.ifBlank { idleMode }
+                val active=liveStatus.startsWith("Searching") || liveStatus.startsWith("Generating")
+                        || liveStatus.startsWith("Stopping")
+                Row(Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=6.dp)
+                        .semantics {
+                            liveRegion=LiveRegionMode.Polite
+                            stateDescription=visibleStatus
+                        },
+                    verticalAlignment=Alignment.CenterVertically) {
+                    if(active) CircularProgressIndicator(Modifier.size(18.dp),strokeWidth=2.dp)
+                    Text(visibleStatus,style=MaterialTheme.typography.bodyMedium,
+                        modifier=Modifier.padding(start=8.dp).testTag(tag("chat_live_status")))
                 }
                 OutlinedTextField(value=input,onValueChange={input=it},placeholder={Text("Write a message...")},
                     minLines=1,maxLines=4,modifier=Modifier.fillMaxWidth().testTag(tag("chat_input")))

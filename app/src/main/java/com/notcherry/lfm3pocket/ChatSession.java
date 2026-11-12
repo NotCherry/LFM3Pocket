@@ -77,14 +77,14 @@ public final class ChatSession {
         List<Message> history=new ArrayList<>(messages);
         Turn turn=new Turn(++epoch,model.getAsLong(),useSearch,question);active=turn;
         pending.setLength(0);partial.setLength(0);scheduled=false;
-        status=useSearch?"Searching web, then generating locally…":"Generating locally · offline…";emit();
+        status=useSearch?"Searching the web · Web search mode":"Generating locally · offline mode · preparing response…";emit();
         worker.execute(() -> generate(turn,question,media,useSearch,endpoint,maxTokens,history));
         return true;
     }
     public synchronized void stop() {
         if(active==null) return;
         active.cancelled=true;engine.stop();
-        status=active.webSearch?"Stopping local generation · web search mode…":"Stopping local generation · offline…";emit();
+        status=active.webSearch?"Stopping · Web search + local generation…":"Stopping · Local / offline generation…";emit();
     }
     public synchronized void clear() {
         if(active!=null) { active.cancelled=true;active.discarded=true;engine.stop(); }
@@ -114,8 +114,8 @@ public final class ChatSession {
         }
         if(current(turn) && !turn.cancelled) {
             final String progress=useSearch
-                    ? (searchError==null?"Generating locally · using web results…":"Generating locally · web search unavailable…")
-                    : "Generating locally · offline…";
+                    ? (searchError==null?"Generating locally · Web search results":"Generating locally · Local fallback; web search unavailable")
+                    : "Generating locally · offline mode";
             ui.post(() -> {
                 synchronized(ChatSession.this) {
                     if(current(turn) && !turn.cancelled) { status=progress;emit(); }

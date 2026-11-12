@@ -139,6 +139,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         mmprojPath = getPreferences(MODE_PRIVATE).getString("mmproj", "");
         searchEndpoint = getPreferences(MODE_PRIVATE).getString("search_endpoint", "");
         searchEnabled = getPreferences(MODE_PRIVATE).getBoolean("search_enabled", false);
+        chatPanel.setIdleMode(searchEnabled);
         if (!previous.isEmpty() && new File(previous).isFile()) {
             loadModelInBackground(previous, mmprojPath);
         } else {
@@ -361,6 +362,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     getPreferences(MODE_PRIVATE).edit()
                             .putString("search_endpoint", searchEndpoint)
                             .putBoolean("search_enabled", searchEnabled).apply();
+                    chatPanel.setIdleMode(searchEnabled);
                     updateControls();
                 }).show();
     }
