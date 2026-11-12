@@ -42,13 +42,13 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
         row(c, "valid.gguf"); row(c, "damaged.gguf");
         row(c, "projector.gguf"); row(c, "wrong-family.gguf");
         row(c, "valid-photo.jpg"); row(c, "replacement-photo.jpg"); row(c, "invalid-photo.jpg");
-        row(c, "truncated-photo.png"); row(c, "large-dimensions-photo.png"); row(c, "oversized-photo.jpg"); return c;
+        row(c, "truncated-photo.png"); row(c, "large-dimensions-photo.jpg"); row(c, "oversized-photo.jpg"); return c;
     }
     @Override public ParcelFileDescriptor openDocument(String id, String mode, CancellationSignal signal)
             throws FileNotFoundException {
         if (!java.util.Arrays.asList("valid.gguf","damaged.gguf","projector.gguf","wrong-family.gguf",
                 "valid-photo.jpg","replacement-photo.jpg","invalid-photo.jpg","truncated-photo.png",
-                "large-dimensions-photo.png","oversized-photo.jpg").contains(id))
+                "large-dimensions-photo.jpg","oversized-photo.jpg").contains(id))
             throw new FileNotFoundException(id);
         File f = new File(getContext().getCacheDir(), id);
         try {
@@ -57,16 +57,14 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
                     byte[] block=new byte[64*1024];long remaining=ImageAttachmentFiles.MAX_IMAGE_BYTES+1;
                     while(remaining>0){int count=(int)Math.min(block.length,remaining);output.write(block,0,count);remaining-=count;}
                 }
-            } else if (id.equals("large-dimensions-photo.png")) {
+            } else if (id.equals("large-dimensions-photo.jpg")) {
                 Bitmap bitmap = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888);
                 java.io.ByteArrayOutputStream encoded = new java.io.ByteArrayOutputStream();
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, encoded);
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, encoded);
                 bitmap.recycle();
-                byte[] header = encoded.toByteArray();
-                putPngInt(header,16,9000);putPngInt(header,20,5000);
-                java.util.zip.CRC32 crc=new java.util.zip.CRC32();crc.update(header,12,17);
-                putPngInt(header,29,(int)crc.getValue());
-                try (FileOutputStream output = new FileOutputStream(f)) { output.write(header,0,33); }
+                byte[] jpeg = encoded.toByteArray();
+                if (!putJpegDimensions(jpeg, 9000, 5000)) throw new IOException("JPEG frame not found");
+                try (FileOutputStream output = new FileOutputStream(f)) { output.write(jpeg); }
             } else if (id.endsWith(".png")) {
                 Bitmap bitmap = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888);
                 java.io.ByteArrayOutputStream encoded = new java.io.ByteArrayOutputStream();
@@ -97,8 +95,22 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
         } catch (IOException e) { throw new FileNotFoundException(e.toString()); }
         return ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY);
     }
-    private static void putPngInt(byte[] data,int offset,int value){
-        data[offset]=(byte)(value>>>24);data[offset+1]=(byte)(value>>>16);
-        data[offset+2]=(byte)(value>>>8);data[offset+3]=(byte)value;
+    private static boolean putJpegDimensions(byte[] jpeg,int width,int height){
+        int offset=2;
+        while(offset+9<jpeg.length){
+            if((jpeg[offset]&0xff)!=0xff){offset++;continue;}
+            int marker=jpeg[offset+1]&0xff;
+            if(marker==0xd8||marker==0xd9||marker==0x01||(marker>=0xd0&&marker<=0xd7)){offset+=2;continue;}
+            int length=((jpeg[offset+2]&0xff)<<8)|(jpeg[offset+3]&0xff);
+            if(length<2||offset+2+length>jpeg.length)return false;
+            if((marker>=0xc0&&marker<=0xc3)||(marker>=0xc5&&marker<=0xc7)
+                    ||(marker>=0xc9&&marker<=0xcb)||(marker>=0xcd&&marker<=0xcf)){
+                jpeg[offset+5]=(byte)(height>>>8);jpeg[offset+6]=(byte)height;
+                jpeg[offset+7]=(byte)(width>>>8);jpeg[offset+8]=(byte)width;
+                return true;
+            }
+            offset+=2+length;
+        }
+        return false;
     }
 }
