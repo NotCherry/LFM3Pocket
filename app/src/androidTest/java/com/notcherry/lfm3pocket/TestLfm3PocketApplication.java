@@ -80,6 +80,8 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
 
     public static final class ScriptedInferenceEngine implements InferenceEngine {
         private final AtomicInteger turns = new AtomicInteger();
+        private final AtomicInteger assistantTurns = new AtomicInteger();
+        private final AtomicInteger asrCalls = new AtomicInteger();
         private volatile CountDownLatch releaseFirstTurn = new CountDownLatch(1);
         private volatile CountDownLatch releaseBeforeFirstToken = new CountDownLatch(0);
         private volatile CountDownLatch generationStarted = new CountDownLatch(0);
@@ -92,16 +94,22 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         private volatile boolean failLoad;
         public void failNextLoad() { failLoad = true; }
         private volatile String lastPrompt;
+        private volatile String lastAsrPrompt;
         private volatile String lastMediaPath;
         public String lastPrompt() { return lastPrompt; }
+        public String lastAsrPrompt() { return lastAsrPrompt; }
+        public int asrCallCount() { return asrCalls.get(); }
         public String lastMediaPath() { return lastMediaPath; }
 
         public void resetForTest() {
             turns.set(0);
+            assistantTurns.set(0);
+            asrCalls.set(0);
             stopRequested = false;
             loadedPath = null;
             failLoad = false;
             lastPrompt = null;
+            lastAsrPrompt = null;
             lastMediaPath = null;
             releaseFirstTurn = new CountDownLatch(1);
             releaseBeforeFirstToken = new CountDownLatch(0);
@@ -133,9 +141,15 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
 
         @Override public String generate(long handle, String prompt, String mediaPath,
                                          int maxTokens, TokenSink sink) {
-            lastPrompt = prompt;
             lastMediaPath = mediaPath;
-            int turn = turns.incrementAndGet();
+            turns.incrementAndGet();
+            if(prompt.contains("Perform ASR.")) {
+                asrCalls.incrementAndGet();lastAsrPrompt=prompt;
+                sink.onToken("Captured test speech");
+                return null;
+            }
+            lastPrompt = prompt;
+            int turn = assistantTurns.incrementAndGet();
             if (failNextGeneration) {
                 failNextGeneration=false;
                 return "Injected inference failure";
