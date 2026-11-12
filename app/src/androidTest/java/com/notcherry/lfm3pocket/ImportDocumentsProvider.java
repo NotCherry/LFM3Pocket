@@ -30,7 +30,8 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
                 .add(Document.COLUMN_MIME_TYPE, id.equals("root") ? Document.MIME_TYPE_DIR
                         : id.endsWith(".jpg") ? "image/jpeg"
                         : id.endsWith(".png") ? "image/png" : "application/octet-stream")
-                .add(Document.COLUMN_SIZE, id.equals("root") ? 0 : 1024 * 1024)
+                .add(Document.COLUMN_SIZE, id.equals("root") ? 0
+                        : id.equals("oversized-photo.jpg") ? ImageAttachmentFiles.MAX_IMAGE_BYTES + 1 : 1024 * 1024)
                 .add(Document.COLUMN_FLAGS, 0);
     }
     @Override public Cursor queryDocument(String id, String[] projection) {
@@ -64,7 +65,7 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
                 byte[] header = encoded.toByteArray();
                 putPngInt(header,16,9000);putPngInt(header,20,5000);
                 java.util.zip.CRC32 crc=new java.util.zip.CRC32();crc.update(header,12,17);
-                putPngInt(header,29,(int)crc.getValue());
+                putPngInt(header,28,(int)crc.getValue());
                 try (FileOutputStream output = new FileOutputStream(f)) { output.write(header,0,33); }
             } else if (id.endsWith(".png")) {
                 Bitmap bitmap = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888);

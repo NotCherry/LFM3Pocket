@@ -395,19 +395,24 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         status.setText("Importing photo...");
         worker.execute(() -> {
             File photo = new File(getCacheDir(), "photo-" + System.currentTimeMillis() + ".img");
-            try (InputStream input = getContentResolver().openInputStream(uri);
-                 FileOutputStream output = new FileOutputStream(photo)) {
-                if (input == null) throw new IOException("Could not read the selected photo");
-                byte[] buffer = new byte[64 * 1024];
-                int count;
-                long totalBytes = 0;
-                while ((count = input.read(buffer)) != -1) {
-                    totalBytes += count;
-                    if (totalBytes > ImageAttachmentFiles.MAX_IMAGE_BYTES)
-                        throw new IOException("Selected image exceeds the 32 MiB limit.");
-                    output.write(buffer, 0, count);
+            try {
+                Long reportedSize = selectedPhotoSize(uri);
+                if (reportedSize != null && reportedSize > ImageAttachmentFiles.MAX_IMAGE_BYTES)
+                    throw new IOException("Selected image exceeds the 32 MiB limit.");
+                try (InputStream input = getContentResolver().openInputStream(uri);
+                     FileOutputStream output = new FileOutputStream(photo)) {
+                    if (input == null) throw new IOException("Could not read the selected photo");
+                    byte[] buffer = new byte[64 * 1024];
+                    int count;
+                    long totalBytes = 0;
+                    while ((count = input.read(buffer)) != -1) {
+                        totalBytes += count;
+                        if (totalBytes > ImageAttachmentFiles.MAX_IMAGE_BYTES)
+                            throw new IOException("Selected image exceeds the 32 MiB limit.");
+                        output.write(buffer, 0, count);
+                    }
+                    output.getFD().sync();
                 }
-                output.getFD().sync();
                 String validationError = ImageAttachmentFiles.validationError(photo);
                 if (validationError != null) throw new IOException(validationError);
                 setPendingMedia(photo.getAbsolutePath(), "photo");
@@ -420,6 +425,19 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 });
             }
         });
+    }
+
+    private Long selectedPhotoSize(Uri uri) {
+        try (Cursor cursor = getContentResolver().query(uri,
+                new String[] { OpenableColumns.SIZE }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int column = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (column >= 0 && !cursor.isNull(column)) return cursor.getLong(column);
+            }
+        } catch (Exception ignored) {
+            // Some document providers omit size metadata. The bounded stream copy remains authoritative.
+        }
+        return null;
     }
 
     private void setPendingMedia(String path, String kind) {
