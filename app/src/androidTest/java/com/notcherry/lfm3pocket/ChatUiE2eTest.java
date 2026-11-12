@@ -82,11 +82,28 @@ public final class ChatUiE2eTest {
         return object;
     }
 
-    private void enableSearch(Context context) {
-        assertTrue(context.getSharedPreferences("MainActivity",Context.MODE_PRIVATE).edit()
-                .putBoolean("search_enabled",true)
-                .putString("search_endpoint","https://search.example.test/search")
-                .commit());
+    private void enableSearchInUi() {
+        UiObject2 toggle=device.wait(Until.findObject(By.text("Web search: off")),2000);
+        for(int i=0;toggle==null&&i<3;i++) {
+            UiObject2 configuration=device.findObject(By.res(packageName,"model_configuration_scroll"));
+            assertNotNull("Model and search settings should be scrollable",configuration);
+            Rect bounds=configuration.getVisibleBounds();
+            device.swipe(bounds.centerX(),bounds.bottom-12,bounds.centerX(),bounds.top+12,8);
+            toggle=device.wait(Until.findObject(By.text("Web search: off")),2000);
+        }
+        assertNotNull("Search settings should be available",toggle);toggle.click();
+        UiObject2 endpoint=device.wait(Until.findObject(
+                By.hint("https://your-searxng.example.org/search")),UI_TIMEOUT_MS);
+        assertNotNull("Search endpoint field should be available",endpoint);
+        endpoint.setText("https://search.example.test/search");
+        UiObject2 enabled=device.wait(Until.findObject(
+                By.text("Use web search for new questions")),UI_TIMEOUT_MS);
+        assertNotNull("Search opt-in should be available",enabled);enabled.click();
+        UiObject2 save=device.wait(Until.findObject(By.text("Save")),UI_TIMEOUT_MS);
+        assertNotNull("Save should apply the selected web-search mode",save);save.click();
+        UiObject2 mode=device.wait(Until.findObject(
+                By.res(packageName,"chat_live_mode").textContains("Web search + local model")),UI_TIMEOUT_MS);
+        assertNotNull("Selected web-search mode should stay visible beside chat",mode);
     }
 
     @Test public void launchStreamCancelAndRetryRecoversVisibleChatControls() throws Exception {
@@ -155,10 +172,10 @@ public final class ChatUiE2eTest {
     }
 
     @Test public void searchModeShowsSearchThenLocalGenerationNearComposer() throws Exception {
-        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
-        enableSearch(context);app.holdSearch();app.scriptedEngine().holdFirstToken();
+        app.holdSearch();app.scriptedEngine().holdFirstToken();
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
             awaitEnabled("chat_send");
+            enableSearchInUi();
             UiObject2 input=device.findObject(By.res(packageName,"chat_input"));
             assertNotNull(input);input.setText("Use current information");
             awaitEnabled("chat_send").click();
@@ -185,10 +202,10 @@ public final class ChatUiE2eTest {
     }
 
     @Test public void failedSearchClearlyShowsLocalFallbackMode() throws Exception {
-        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
-        enableSearch(context);app.failSearch(true);app.scriptedEngine().holdFirstToken();
+        app.failSearch(true);app.scriptedEngine().holdFirstToken();
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
             awaitEnabled("chat_send");
+            enableSearchInUi();
             UiObject2 input=device.findObject(By.res(packageName,"chat_input"));
             assertNotNull(input);input.setText("Answer if search is unavailable");
             awaitEnabled("chat_send").click();
