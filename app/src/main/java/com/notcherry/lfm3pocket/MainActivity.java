@@ -114,7 +114,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     HistoryRepository.Status resultStatus=HistoryRepository.Status.valueOf(turn.status.name());
                     historyRepository.completeTurn(new HistoryRepository.Turn(turn.id,
                             historyConversationId,historyTitle,turn.userText,turn.assistantText,
-                            turn.speechTranscript,resultStatus,turn.completedAt,null));
+                            turn.speechTranscript,resultStatus,turn.completedAt,null,turn.speechTranscriptStatus));
                 }, path -> HistoryMediaCleanup.deleteAttachment(this,path), (text, message, running) -> {
                     if (destroyed) return;
                     generating = running;

@@ -24,19 +24,35 @@ public final class HistoryRepositoryTest {
                 "request-1","set_alarm","{\"hour\":7,\"minute\":30}",false,"DECLINED","User declined",130);
         HistoryRepository.Turn turn=new HistoryRepository.Turn(
                 "turn-1","conversation-1","Morning","Set an alarm","I can prepare that.",
-                "set an alarm",HistoryRepository.Status.COMPLETED,100,action);
+                "set an alarm",HistoryRepository.Status.COMPLETED,100,action,"AVAILABLE");
 
         assertTrue(repository.completeTurn(turn));
         List<HistoryMessage> messages=db.history().messages("conversation-1");
         assertEquals(Arrays.asList("user","assistant"),Arrays.asList(messages.get(0).getRole(),messages.get(1).getRole()));
         assertEquals(Arrays.asList("Set an alarm","I can prepare that."),Arrays.asList(messages.get(0).getText(),messages.get(1).getText()));
         assertEquals("set an alarm",messages.get(0).getSpeechTranscript());
+        assertEquals("AVAILABLE",messages.get(0).getSpeechTranscriptStatus());
         assertEquals(1,db.history().conversations().size());
         assertEquals(1,db.history().toolOutcomes("conversation-1").size());
         HistoryToolOutcome saved=db.history().toolOutcomes("conversation-1").get(0);
         assertEquals(messages.get(1).getId(),saved.getMessageId());
         assertEquals("DECLINED",saved.getStatus());
         assertFalse(saved.getSucceeded());
+    }
+
+    @Test public void unavailableSpeechTranscriptIsPersistedSeparatelyFromAssistantText(){
+        db=Room.inMemoryDatabaseBuilder(context,HistoryDatabase.class).build();
+        HistoryRepository repository=new HistoryRepository(db);
+        HistoryRepository.Turn turn=new HistoryRepository.Turn(
+                "turn-asr-unavailable","conversation-asr","Voice","Summarize this recording","Audio answer",
+                null,HistoryRepository.Status.COMPLETED,100,null,"UNAVAILABLE");
+
+        assertTrue(repository.completeTurn(turn));
+        List<HistoryMessage> messages=db.history().messages("conversation-asr");
+        assertNull(messages.get(0).getSpeechTranscript());
+        assertEquals("UNAVAILABLE",messages.get(0).getSpeechTranscriptStatus());
+        assertEquals("Audio answer",messages.get(1).getText());
+        assertNull(messages.get(1).getSpeechTranscriptStatus());
     }
 
     @Test public void cancelledAndFailedTurnsKeepTerminalStateAndRepeatedCommitDoesNotDuplicate(){

@@ -127,5 +127,29 @@ public class ChatSessionTest {
         assertEquals("Answer 1",saved.get(0).assistantText);
         assertNotEquals("ASR text must never be derived from assistant output",
                 saved.get(0).speechTranscript,saved.get(0).assistantText);
+        assertEquals("AVAILABLE",saved.get(0).speechTranscriptStatus);
+    }
+
+    @Test public void unavailableASRIsExplicitWhileAssistantInferenceContinues(){
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine(){
+            @Override public String generate(long h,String p,String media,int max,TokenSink sink){
+                calls++;prompts.add(p);
+                if(!p.contains("Perform ASR.")) sink.onToken("Audio answer");
+                return p.contains("Perform ASR.")?"decoder unavailable":null;
+            }
+        };
+        List<ChatSession.CompletedTurn> saved=new ArrayList<>();String[] status={""};
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                saved::add,(text,message,running)->status[0]=message);
+
+        assertTrue(session.submit("Summarize this recording","/private/cache/voice.wav",
+                "voice recording",false,"",64));
+        worker.drain();ui.drain();
+
+        assertEquals(2,engine.calls);
+        assertNull(saved.get(0).speechTranscript);
+        assertEquals("UNAVAILABLE",saved.get(0).speechTranscriptStatus);
+        assertEquals("Audio answer",saved.get(0).assistantText);
+        assertTrue(status[0].contains("Response complete"));
     }
 }

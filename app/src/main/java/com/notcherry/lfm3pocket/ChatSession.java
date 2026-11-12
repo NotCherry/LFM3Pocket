@@ -16,13 +16,14 @@ public final class ChatSession {
     public enum TerminalState { COMPLETED, CANCELLED, FAILED }
     public static final class CompletedTurn {
         public final String id,userText,assistantText;
-        public final String speechTranscript;
+        public final String speechTranscript,speechTranscriptStatus;
         public final TerminalState status;
         public final long completedAt;
-        CompletedTurn(String id,String userText,String assistantText,String speechTranscript,
+        CompletedTurn(String id,String userText,String assistantText,String speechTranscript,String speechTranscriptStatus,
                       TerminalState status,long completedAt) {
             this.id=id;this.userText=userText;this.assistantText=assistantText;
-            this.speechTranscript=speechTranscript;this.status=status;this.completedAt=completedAt;
+            this.speechTranscript=speechTranscript;this.speechTranscriptStatus=speechTranscriptStatus;
+            this.status=status;this.completedAt=completedAt;
         }
     }
     private static final class Message {
@@ -114,6 +115,7 @@ public final class ChatSession {
         List<WebSearch.Source> sources=Collections.emptyList();
         String searchError=null,error=null;
         String speechTranscript=null;
+        String speechTranscriptStatus=null;
         if(voiceRecording && !turn.cancelled) {
             StringBuilder recognized=new StringBuilder();
             engine.resetStop();
@@ -124,6 +126,7 @@ public final class ChatSession {
             } catch(Throwable ignored) {
                 // A failed ASR pass must not prevent the normal audio conversation turn.
             }
+            speechTranscriptStatus=speechTranscript==null?"UNAVAILABLE":"AVAILABLE";
             final String progress=speechTranscript==null
                     ? "Speech transcript unavailable · generating response locally…"
                     : "Speech transcript ready · generating response locally…";
@@ -161,7 +164,7 @@ public final class ChatSession {
         String answer=partialFor(turn);
         String saveFailure=null;
         if(!turn.discarded && current(turn)) {
-            try { persistence.save(new CompletedTurn(turn.persistenceId,turn.question,answer,speechTranscript,
+            try { persistence.save(new CompletedTurn(turn.persistenceId,turn.question,answer,speechTranscript,speechTranscriptStatus,
                     terminal,System.currentTimeMillis())); }
             catch(Exception e) { saveFailure=e.getMessage()==null?e.toString():e.getMessage(); }
         }
