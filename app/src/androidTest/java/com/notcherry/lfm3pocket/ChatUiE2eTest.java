@@ -165,20 +165,22 @@ public final class ChatUiE2eTest {
             assertTrue("Fake search should start",app.awaitSearchStarted());
             assertTrue(awaitLiveStatus("Web search · searching").getText().contains("searching"));
             UiObject2 mode=device.findObject(By.res(packageName,"chat_live_mode"));
-            assertNotNull(mode);assertTrue(mode.getText().contains("Web search + local model"));
+            assertNotNull(mode);assertTrue("Selected web mode should remain visible",mode.getText().contains("Web search + local model"));
 
             app.releaseSearch();
             assertTrue("Model should start after the fake result returns",
                     app.scriptedEngine().awaitGenerationStarted());
-            assertTrue(awaitLiveStatus("Web search · generating locally from results").getText()
-                    .contains("from results"));
-            assertTrue(app.scriptedEngine().lastPrompt().contains("Fake result"));
+            assertTrue("Search results phase should be explicit",
+                    awaitLiveStatus("Web search · generating locally from results").getText()
+                            .contains("from results"));
+            assertTrue("The fake result should reach the local model prompt",
+                    app.scriptedEngine().lastPrompt().contains("Fake result"));
             app.scriptedEngine().releaseFirstToken();
             awaitTranscript("FAKE_STREAM_BEGIN");
             app.scriptedEngine().completeFirstTurn();
             assertNotNull(device.wait(Until.findObject(By.res(packageName,"chat_live_status")
                     .textContains("Response complete · web search + local model")),UI_TIMEOUT_MS));
-            assertEquals(1,app.searchCalls());
+            assertEquals("Web search should run once",1,app.searchCalls());
         }
     }
 
@@ -191,17 +193,19 @@ public final class ChatUiE2eTest {
             assertNotNull(input);input.setText("Answer if search is unavailable");
             awaitEnabled("chat_send").click();
             assertTrue("Fake search should run",app.awaitSearchStarted());
-            assertTrue(app.scriptedEngine().awaitGenerationStarted());
-            assertTrue(awaitLiveStatus("Local fallback · web search unavailable; answering locally")
-                    .getText().contains("answering locally"));
+            assertTrue("Local model should run after the search failure",
+                    app.scriptedEngine().awaitGenerationStarted());
+            assertTrue("UI should say the local model is answering after search failure",
+                    awaitLiveStatus("Local fallback · web search unavailable; answering locally")
+                            .getText().contains("answering locally"));
             UiObject2 mode=device.findObject(By.res(packageName,"chat_live_mode"));
-            assertNotNull(mode);assertTrue(mode.getText().contains("Web search + local model"));
+            assertNotNull(mode);assertTrue("Web mode remains selected during local fallback",mode.getText().contains("Web search + local model"));
             app.scriptedEngine().releaseFirstToken();
             awaitTranscript("FAKE_STREAM_BEGIN");
             app.scriptedEngine().completeFirstTurn();
             assertNotNull(device.wait(Until.findObject(By.res(packageName,"chat_live_status")
                     .textContains("Response complete · web search + local model")),UI_TIMEOUT_MS));
-            assertEquals(1,app.searchCalls());
+            assertEquals("Failed search should run once",1,app.searchCalls());
         }
     }
     @Test public void inferenceFailureIsVisibleAndRestoresSendControl() throws Exception {

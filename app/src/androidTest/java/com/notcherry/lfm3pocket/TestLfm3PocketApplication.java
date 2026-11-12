@@ -14,7 +14,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
     private volatile CountDownLatch searchStarted=new CountDownLatch(0),searchReleased=new CountDownLatch(0);
     public void resetSearch() {
         searchCalls.set(0);failSearch=false;holdSearch=false;
-        searchStarted=new CountDownLatch(0);searchReleased=new CountDownLatch(0);
+        searchStarted=new CountDownLatch(1);searchReleased=new CountDownLatch(0);
     }
     public void failSearch(boolean value){failSearch=value;}
     public void holdSearch() {
