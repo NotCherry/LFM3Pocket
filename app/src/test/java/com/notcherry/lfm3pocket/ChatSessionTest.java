@@ -14,10 +14,15 @@ public class ChatSessionTest {
     }
     static final class Engine implements InferenceEngine {
         int calls,answerCalls;String prompt,asrError,asrTranscript="The secret animal is a blue cat.";boolean stopped;final List<String> prompts=new ArrayList<>();
+        final List<List<String>> mediaByCall=new ArrayList<>();
         public long loadModel(String m,String p){return 1;}
         public void unloadModel(long h){}
         public String generate(long h,String p,String media,int max,TokenSink sink){
+            return generate(h,p,media==null?new String[0]:new String[]{media},max,sink);
+        }
+        @Override public String generate(long h,String p,String[] media,int max,TokenSink sink){
             calls++;prompt=p;prompts.add(p);
+            mediaByCall.add(Arrays.asList(media.clone()));
             if(!stopped) {
                 if(p.contains("Perform ASR.")) { if(asrTranscript!=null)sink.onToken(asrTranscript); }
                 else sink.onToken("Answer "+(++answerCalls));
@@ -146,5 +151,38 @@ public class ChatSessionTest {
         assertEquals("UNAVAILABLE",saved.get(0).speechTranscriptStatus);
         assertEquals("Answer 1",saved.get(0).assistantText);
         assertTrue(status[0].contains("Response complete"));
+    }
+
+    @Test public void combinedVoiceAndImageTurnKeepsImageForFollowUpAndCleansAudio(){
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();List<String> deleted=new ArrayList<>();
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                turn->{},deleted::add,(text,status,running)->{});
+        List<ChatSession.Attachment> attachments=Arrays.asList(
+                new ChatSession.Attachment("/private/image.jpg",ChatSession.AttachmentKind.PHOTO),
+                new ChatSession.Attachment("/private/question.wav",ChatSession.AttachmentKind.VOICE_RECORDING));
+
+        assertTrue(session.submit("What is in the picture?",attachments,false,"",64));
+        worker.drain();ui.drain();
+
+        assertEquals(Collections.singletonList("/private/question.wav"),engine.mediaByCall.get(0));
+        assertEquals(Arrays.asList("/private/image.jpg","/private/question.wav"),engine.mediaByCall.get(1));
+        assertEquals("Audio and image must each have a media marker in the same user message",2,
+                occurrences(engine.prompts.get(1),"<__media__>"));
+        assertEquals(Collections.singletonList("/private/question.wav"),deleted);
+
+        assertTrue(session.submit("What color was it?",Collections.emptyList(),false,"",64));
+        worker.drain();ui.drain();
+        assertEquals(Collections.singletonList("/private/image.jpg"),engine.mediaByCall.get(2));
+        assertEquals(1,occurrences(engine.prompts.get(2),"<__media__>"));
+        assertTrue(engine.prompts.get(2).contains("What is in the picture?"));
+        assertTrue(engine.prompts.get(2).contains("What color was it?"));
+        assertEquals("Follow-up must keep the image but not reuse the spoken audio",1,deleted.size());
+
+        session.clear();
+        assertEquals(Arrays.asList("/private/question.wav","/private/image.jpg"),deleted);
+    }
+
+    private static int occurrences(String value,String token){
+        return value.split(java.util.regex.Pattern.quote(token),-1).length-1;
     }
 }
