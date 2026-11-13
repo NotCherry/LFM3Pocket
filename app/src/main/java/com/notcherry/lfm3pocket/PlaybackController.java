@@ -31,6 +31,7 @@ public final class PlaybackController implements AutoCloseable {
     private final Listener listener;
     private volatile State state = State.IDLE;
     private volatile boolean stopping, closed;
+    private volatile Track activeTrack;
     private boolean active;
     private long epoch;
 
@@ -67,12 +68,20 @@ public final class PlaybackController implements AutoCloseable {
         if (!active || closed || stopping) return;
         stopping = true;
         publish(epoch, State.STOPPING, "Stopping spoken response...");
+        Track current = activeTrack;
+        if (current != null) {
+            try { current.stop(); } catch (RuntimeException ignored) {}
+        }
     }
 
     @Override public synchronized void close() {
         closed = true;
         stopping = true;
         state = State.CLOSED;
+        Track current = activeTrack;
+        if (current != null) {
+            try { current.stop(); } catch (RuntimeException ignored) {}
+        }
     }
 
     private synchronized void publish(long turn, State next, String message) {
@@ -107,6 +116,7 @@ public final class PlaybackController implements AutoCloseable {
                 return;
             }
             track = factory.open();
+            activeTrack = track;
             track.start(sampleRateHz, channels, bitsPerSample);
             if (!stopping) publish(turn, State.PLAYING, "Playing spoken response. Tap Stop speech when finished.");
             final int chunk = 4096;
@@ -122,6 +132,7 @@ public final class PlaybackController implements AutoCloseable {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             finish(turn, State.ERROR, "Spoken playback failed: " + e.getMessage());
         } finally {
+            activeTrack = null;
             if (track != null) {
                 try { track.stop(); } catch (RuntimeException ignored) {}
                 try { track.close(); } catch (RuntimeException ignored) {}

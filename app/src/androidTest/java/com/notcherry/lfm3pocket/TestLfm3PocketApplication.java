@@ -51,13 +51,19 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
     @Override protected PlaybackController.Factory createPlaybackTrackFactory(){
         return () -> {
             playbackOpened.incrementAndGet();
+            // Hold write until stop(), mirroring AudioTrack.write blocked until pause/flush/stop.
+            final CountDownLatch releaseWrite = new CountDownLatch(1);
             return new PlaybackController.Track(){
                 public void start(int sampleRateHz,int channels,int bitsPerSample){
                     playbackStarted.countDown();
                 }
-                public void write(byte[] pcm){playbackWritten.addAndGet(pcm==null?0:pcm.length);}
-                public void stop(){}
-                public void close(){playbackReleased.incrementAndGet();}
+                public void write(byte[] pcm) throws InterruptedException {
+                    playbackWritten.addAndGet(pcm==null?0:pcm.length);
+                    if (!releaseWrite.await(30, TimeUnit.SECONDS))
+                        throw new IllegalStateException("Fake playback hold timed out");
+                }
+                public void stop(){ releaseWrite.countDown(); }
+                public void close(){ releaseWrite.countDown(); playbackReleased.incrementAndGet(); }
             };
         };
     }
