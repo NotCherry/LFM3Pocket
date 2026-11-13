@@ -34,6 +34,33 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
             public void close(){captureClosed.incrementAndGet();captureReleased.countDown();}
         };
     }
+
+    private final AtomicInteger playbackOpened=new AtomicInteger(),playbackWritten=new AtomicInteger(),
+            playbackReleased=new AtomicInteger();
+    private volatile CountDownLatch playbackStarted=new CountDownLatch(0);
+    public void resetPlayback(){
+        playbackOpened.set(0);playbackWritten.set(0);playbackReleased.set(0);
+        playbackStarted=new CountDownLatch(1);
+    }
+    public int playbackOpened(){return playbackOpened.get();}
+    public int playbackWritten(){return playbackWritten.get();}
+    public int playbackReleased(){return playbackReleased.get();}
+    public boolean awaitPlaybackStarted()throws InterruptedException{
+        return playbackStarted.await(10,TimeUnit.SECONDS);
+    }
+    @Override protected PlaybackController.Factory createPlaybackTrackFactory(){
+        return () -> {
+            playbackOpened.incrementAndGet();
+            return new PlaybackController.Track(){
+                public void start(int sampleRateHz,int channels,int bitsPerSample){
+                    playbackStarted.countDown();
+                }
+                public void write(byte[] pcm){playbackWritten.addAndGet(pcm==null?0:pcm.length);}
+                public void stop(){}
+                public void close(){playbackReleased.incrementAndGet();}
+            };
+        };
+    }
     private volatile ScriptedInferenceEngine scripted = new ScriptedInferenceEngine();
 
     @Override protected InferenceEngine createInferenceEngine() {
@@ -100,12 +127,16 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         private volatile String lastPrompt;
         private volatile String lastAsrPrompt;
         private volatile String lastMediaPath;
+        private volatile String lastSpeechPrompt;
+        private final AtomicInteger speechCalls = new AtomicInteger();
         private final List<List<String>> mediaByCall = Collections.synchronizedList(new ArrayList<>());
         private final List<String> promptsByCall = Collections.synchronizedList(new ArrayList<>());
         public String lastPrompt() { return lastPrompt; }
         public String lastAsrPrompt() { return lastAsrPrompt; }
         public int asrCallCount() { return asrCalls.get(); }
         public String lastMediaPath() { return lastMediaPath; }
+        public String lastSpeechPrompt() { return lastSpeechPrompt; }
+        public int speechCallCount() { return speechCalls.get(); }
         public List<List<String>> mediaByCall() { return new ArrayList<>(mediaByCall); }
         public List<String> promptsByCall() { return new ArrayList<>(promptsByCall); }
 
@@ -113,12 +144,14 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
             turns.set(0);
             assistantTurns.set(0);
             asrCalls.set(0);
+            speechCalls.set(0);
             stopRequested = false;
             loadedPath = null;
             failLoad = false;
             lastPrompt = null;
             lastAsrPrompt = null;
             lastMediaPath = null;
+            lastSpeechPrompt = null;
             mediaByCall.clear();
             promptsByCall.clear();
             releaseFirstTurn = new CountDownLatch(1);
@@ -192,6 +225,19 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
                 return stopRequested ? null : "FAKE_NOT_CANCELLED";
             }
             sink.onToken("FAKE_RETRY_COMPLETE");
+            return null;
+        }
+
+        @Override public String generateSpeech(long handle, String prompt, SpeechOptions options, AudioSink sink) {
+            speechCalls.incrementAndGet();
+            lastSpeechPrompt = prompt;
+            if (prompt == null || sink == null) return "Missing prompt or audio callback";
+            if (stopRequested) return null;
+            sink.onAudioFormat(24000, 1, 16);
+            byte[] pcm = new byte[480]; // 10 ms of mono PCM16 at 24 kHz
+            for (int i = 0; i < pcm.length; i += 2) { pcm[i] = 10; pcm[i + 1] = 0; }
+            sink.onAudioPcm(pcm);
+            sink.onAudioComplete();
             return null;
         }
 

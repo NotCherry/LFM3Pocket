@@ -111,7 +111,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     updateControls();
                 });
         playbackFocus = new AndroidPlaybackFocus(this);
-        playbackController = new PlaybackController(AndroidSpeechTrack::new, playbackFocus::request,
+        playbackController = new PlaybackController(
+                ((Lfm3PocketApplication) getApplication()).newPlaybackTrackFactory(),
+                playbackFocus::request,
                 playbackFocus::abandon, audioWorker, task -> mainHandler.post(task), (playState, message) -> {
                     if (destroyed) return;
                     busy = recordingActive() || playbackActive() || generating;
