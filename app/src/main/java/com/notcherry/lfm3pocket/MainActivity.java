@@ -474,6 +474,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(pendingAudioPath.isEmpty())return new String[]{pendingImagePath};
         return new String[]{pendingImagePath,pendingAudioPath};
     }
+    /** Instrumentation seam: submit through the same path as the Send button without IME/focus races. */
+    void sendForTest(String text) { send(text == null ? "" : text); }
 
     private boolean recordingActive() {
         RecordingController.State state = recordingController.state();

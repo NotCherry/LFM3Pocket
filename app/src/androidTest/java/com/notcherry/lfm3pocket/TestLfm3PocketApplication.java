@@ -1,5 +1,9 @@
 package com.notcherry.lfm3pocket;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -96,10 +100,14 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         private volatile String lastPrompt;
         private volatile String lastAsrPrompt;
         private volatile String lastMediaPath;
+        private final List<List<String>> mediaByCall = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> promptsByCall = Collections.synchronizedList(new ArrayList<>());
         public String lastPrompt() { return lastPrompt; }
         public String lastAsrPrompt() { return lastAsrPrompt; }
         public int asrCallCount() { return asrCalls.get(); }
         public String lastMediaPath() { return lastMediaPath; }
+        public List<List<String>> mediaByCall() { return new ArrayList<>(mediaByCall); }
+        public List<String> promptsByCall() { return new ArrayList<>(promptsByCall); }
 
         public void resetForTest() {
             turns.set(0);
@@ -111,6 +119,8 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
             lastPrompt = null;
             lastAsrPrompt = null;
             lastMediaPath = null;
+            mediaByCall.clear();
+            promptsByCall.clear();
             releaseFirstTurn = new CountDownLatch(1);
             releaseBeforeFirstToken = new CountDownLatch(0);
             generationStarted = new CountDownLatch(0);
@@ -138,6 +148,16 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         }
 
         @Override public void unloadModel(long handle) { }
+
+        @Override public String generateWithMedia(long handle, String prompt, String[] mediaPaths,
+                                                  int maxTokens, TokenSink sink) {
+            List<String> paths = mediaPaths == null ? Collections.emptyList()
+                    : new ArrayList<>(Arrays.asList(mediaPaths));
+            mediaByCall.add(paths);
+            promptsByCall.add(prompt == null ? "" : prompt);
+            String single = paths.isEmpty() ? null : paths.get(0);
+            return generate(handle, prompt, single, maxTokens, sink);
+        }
 
         @Override public String generate(long handle, String prompt, String mediaPath,
                                          int maxTokens, TokenSink sink) {
