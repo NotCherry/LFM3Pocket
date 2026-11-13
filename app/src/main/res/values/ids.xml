@@ -12,6 +12,7 @@
     <item name="chat_send" type="id" />
     <item name="chat_stop" type="id" />
     <item name="voice_record" type="id" />
+    <item name="voice_speak" type="id" />
     <item name="import_model" type="id"/>
     <item name="import_projector" type="id"/>
     <item name="settings_context" type="id"/>

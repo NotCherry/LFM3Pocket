@@ -63,11 +63,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private volatile AtomicBoolean importCancellation;
     private final ExecutorService audioWorker = Executors.newSingleThreadExecutor();
     private RecordingController recordingController;
+    private PlaybackController playbackController;
+    private AndroidPlaybackFocus playbackFocus;
     private boolean foreground;
     private boolean microphoneRequested;
     private boolean cameraRequested;
     private String pendingImagePath = "";
     private String pendingAudioPath = "";
+    private String lastAssistantReply = "";
 
     private TextView status;
     private ModelManagerPanel modelManager;
@@ -75,7 +78,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private InferenceSettingsStore settingsStore;
     private boolean settingsLoaded;
     private Button modelButton, mmprojButton;
-    private Button searchButton, photoButton, cameraButton, recordButton;
+    private Button searchButton, photoButton, cameraButton, recordButton, speakButton;
     private boolean searchEnabled = false;
     private String searchEndpoint = "";
     private String mmprojPath = "";
@@ -99,7 +102,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 () -> ((Lfm3PocketApplication)getApplication()).hasMicrophonePermission(),
                 audioWorker, task -> mainHandler.post(task), (captureState, message, completed) -> {
                     if (destroyed) { if (completed != null) completed.delete(); return; }
-                    busy = recordingActive();
+                    busy = recordingActive() || playbackActive();
                     status.setText(message);
                     if (completed != null) {
                         if (!pendingAudioPath.isEmpty()) HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
@@ -107,10 +110,20 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     }
                     updateControls();
                 });
+        playbackFocus = new AndroidPlaybackFocus(this);
+        playbackController = new PlaybackController(AndroidSpeechTrack::new, playbackFocus::request,
+                playbackFocus::abandon, audioWorker, task -> mainHandler.post(task), (playState, message) -> {
+                    if (destroyed) return;
+                    busy = recordingActive() || playbackActive() || generating;
+                    status.setText(message);
+                    updateControls();
+                });
         session = new ChatSession(inferenceEngine, worker,
                 (task, delay) -> mainHandler.postDelayed(task, delay), () -> modelHandle,
                 WebSearch::search, turn -> {
                     if("New conversation".equals(historyTitle)) historyTitle=titleForQuestion(turn.userText);
+                    if(turn.assistantText!=null && !turn.assistantText.isBlank())
+                        lastAssistantReply=turn.assistantText;
                     HistoryRepository.Status resultStatus=HistoryRepository.Status.valueOf(turn.status.name());
                     historyRepository.completeTurn(new HistoryRepository.Turn(turn.id,
                             historyConversationId,historyTitle,turn.userText,turn.assistantText,
@@ -118,7 +131,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 }, path -> HistoryMediaCleanup.deleteAttachment(this,path), (text, message, running) -> {
                     if (destroyed) return;
                     generating = running;
-                    busy = running;
+                    busy = running || recordingActive() || playbackActive();
                     chatPanel.render(text,message);
                     status.setText(message);
                     status.setVisibility(running ? View.GONE : View.VISIBLE);
@@ -215,6 +228,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
             pendingImagePath = "";
             pendingAudioPath = "";
+            lastAssistantReply = "";
+            if (playbackActive()) playbackController.stop();
             chatPanel.clearImageAttachment();
             session.clear();
         });
@@ -228,9 +243,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         cameraButton.setId(R.id.chat_camera);
         recordButton = button("Voice input");
         recordButton.setId(R.id.voice_record);
+        speakButton = button("Speak reply");
+        speakButton.setId(R.id.voice_speak);
         mediaControls.addView(photoButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
         mediaControls.addView(cameraButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
-        mediaControls.addView(recordButton, new LinearLayout.LayoutParams(0, dp(46), 1.3f));
+        mediaControls.addView(recordButton, new LinearLayout.LayoutParams(0, dp(46), 1.2f));
+        mediaControls.addView(speakButton, new LinearLayout.LayoutParams(0, dp(46), 1.2f));
         root.addView(mediaControls);
 
         setContentView(root);
@@ -241,6 +259,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         photoButton.setOnClickListener(v -> pickPhoto());
         cameraButton.setOnClickListener(v -> takePhoto());
         recordButton.setOnClickListener(v -> toggleRecording());
+        speakButton.setOnClickListener(v -> toggleSpokenReply());
     }
 
     private void updateControls() {
@@ -254,8 +273,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         recordButton.setText(capture == RecordingController.State.STOPPING ? "Finishing..."
                 : recordingActive() ? "Stop recording" : "Voice input");
         recordButton.setEnabled(capture != RecordingController.State.STOPPING && (!busy || recordingActive()));
+        PlaybackController.State playback = playbackController.state();
+        speakButton.setText(playback == PlaybackController.State.STOPPING ? "Stopping speech..."
+                : playbackActive() ? "Stop speech" : "Speak reply");
+        speakButton.setEnabled((!busy || playbackActive()) && (playbackActive()
+                || (modelHandle != 0L && settingsLoaded && !lastAssistantReply.isBlank())));
         chatPanel.updateControls(!busy && modelHandle != 0L && settingsLoaded,
-                generating || recordingActive() || importCancellation != null, !busy || generating);
+                generating || recordingActive() || playbackActive() || importCancellation != null,
+                !busy || generating);
 
         if (modelManager != null) {
             modelManager.showSettings(settingsLoaded ? inferenceSettings.summary() : "Loading inference settings...");
@@ -483,6 +508,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 || state == RecordingController.State.STOPPING;
     }
 
+    private boolean playbackActive() {
+        PlaybackController.State state = playbackController.state();
+        return state == PlaybackController.State.STARTING || state == PlaybackController.State.PLAYING
+                || state == PlaybackController.State.STOPPING;
+    }
+
     private void toggleRecording() {
         if (recordingActive()) { recordingController.stop(); return; }
         if (busy || !foreground) return;
@@ -492,6 +523,59 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             return;
         }
         recordingController.start();
+    }
+
+    private void toggleSpokenReply() {
+        if (playbackActive()) { playbackController.stop(); return; }
+        if (busy || !foreground || modelHandle == 0L || lastAssistantReply.isBlank()) return;
+        final String reply = lastAssistantReply;
+        busy = true;
+        status.setText("Generating spoken response locally…");
+        updateControls();
+        worker.execute(() -> {
+            java.io.ByteArrayOutputStream pcm = new java.io.ByteArrayOutputStream();
+            final int[] format = new int[] { 24000, 1, 16 };
+            String error;
+            try {
+                inferenceEngine.resetStop();
+                error = inferenceEngine.generateSpeech(modelHandle,
+                        SpeechPrompt.tts(reply, "en", "female"),
+                        new SpeechOptions("en", "female", Math.min(512, inferenceSettings.maxTokens)),
+                        new InferenceEngine.AudioSink() {
+                            @Override public void onAudioFormat(int sampleRateHz, int channelCount, int bitsPerSample) {
+                                format[0] = sampleRateHz; format[1] = channelCount; format[2] = bitsPerSample;
+                            }
+                            @Override public void onAudioPcm(byte[] interleavedLittleEndianPcm) {
+                                try { pcm.write(interleavedLittleEndianPcm); }
+                                catch (java.io.IOException e) { throw new IllegalStateException(e); }
+                            }
+                        });
+            } catch (Throwable t) {
+                error = t.toString();
+            }
+            final String failure = error;
+            final byte[] audio = pcm.toByteArray();
+            mainHandler.post(() -> {
+                if (destroyed) return;
+                if (failure != null) {
+                    busy = recordingActive() || generating;
+                    status.setText("Spoken response failed: " + failure);
+                    updateControls();
+                    return;
+                }
+                if (audio.length == 0) {
+                    busy = recordingActive() || generating;
+                    status.setText("Spoken response produced no audio.");
+                    updateControls();
+                    return;
+                }
+                if (!playbackController.play(audio, format[0], format[1], format[2])) {
+                    busy = recordingActive() || generating;
+                    status.setText("Could not start spoken playback.");
+                    updateControls();
+                }
+            });
+        });
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -658,10 +742,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private void stopActiveWork() {
         if (recordingActive()) recordingController.stop();
+        else if (playbackActive()) playbackController.stop();
         else if (importCancellation != null) {
             importCancellation.set(true);
             status.setText("Cancelling import...");
-        } else session.stop();
+        } else {
+            inferenceEngine.stop();
+            session.stop();
+        }
     }
 
     /** Presents a validated coordinator result in the conversation and keeps authorization in the coordinator. */
@@ -766,6 +854,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         mainHandler.removeCallbacksAndMessages(null);
         if (importCancellation != null) importCancellation.set(true);
         recordingController.close();
+        playbackController.close();
         audioWorker.shutdown();
         inferenceEngine.stop();
         worker.execute(() -> {
