@@ -107,8 +107,9 @@ public final class OfflinePrivacyE2eTest {
             UiObject2 enabled = device.wait(Until.findObject(By.res(pkg, "search_enabled")), UI_TIMEOUT_MS);
             assertNotNull(enabled);
             if (!enabled.isChecked()) enabled.click();
-            UiObject2 save = device.wait(Until.findObject(By.text("Save")), UI_TIMEOUT_MS);
-            assertNotNull(save);
+            // AlertDialog positive button is android:button1 (label may be all-caps / IME-obscured).
+            UiObject2 save = device.wait(Until.findObject(By.res("android", "button1").enabled(true)), UI_TIMEOUT_MS);
+            assertNotNull("Save", save);
             save.click();
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_status")
                     .textContains("Use an HTTPS SearXNG search endpoint")), UI_TIMEOUT_MS));
