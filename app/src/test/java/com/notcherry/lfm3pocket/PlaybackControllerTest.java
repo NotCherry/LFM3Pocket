@@ -68,6 +68,37 @@ public class PlaybackControllerTest {
         assertEquals(0,focusRequests.get());
     }
 
+    @Test public void stopUnblocksActiveWriteAndReleasesTrack() throws Exception {
+        java.util.concurrent.CountDownLatch enteredWrite=new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch releaseWrite=new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger stops=new java.util.concurrent.atomic.AtomicInteger();
+        PlaybackController c=new PlaybackController(() -> new PlaybackController.Track(){
+            public void start(int sampleRateHz,int channels,int bitsPerSample){}
+            public void write(byte[] pcm) throws InterruptedException {
+                written.addAndGet(pcm.length);
+                enteredWrite.countDown();
+                if (!releaseWrite.await(5,java.util.concurrent.TimeUnit.SECONDS))
+                    throw new IllegalStateException("write hold timed out");
+            }
+            public void stop(){ stops.incrementAndGet(); releaseWrite.countDown(); }
+            public void close(){ released.incrementAndGet(); }
+        }, () -> true, focusAbandons::incrementAndGet,
+                command -> new Thread(command,"playback-worker").start(),
+                Runnable::run, (state,message)->states.add(state));
+        assertTrue(c.play(new byte[]{1,0,2,0},24000,1,16));
+        assertTrue(enteredWrite.await(5,java.util.concurrent.TimeUnit.SECONDS));
+        assertEquals(PlaybackController.State.PLAYING,c.state());
+        c.stop();
+        assertTrue(states.contains(PlaybackController.State.STOPPING));
+        assertTrue(stops.get() >= 1);
+        long deadline=System.currentTimeMillis()+5000;
+        while (c.state()==PlaybackController.State.STOPPING && System.currentTimeMillis()<deadline)
+            Thread.sleep(10);
+        assertEquals(PlaybackController.State.IDLE,c.state());
+        assertEquals(1,released.get());
+        assertEquals(1,focusAbandons.get());
+    }
+
     @Test public void focusDenialAndWriteFailureSurfaceErrorAndRelease(){
         PlaybackController c=create();
         focusGranted.set(false);
