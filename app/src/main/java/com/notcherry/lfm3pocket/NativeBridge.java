@@ -24,11 +24,22 @@ public final class NativeBridge {
         return generateUtf8(handle,PromptEncoding.encode(prompt),mediaPath,settings.maxTokens,
                 settings.contextTokens,settings.threads,sink);
     }
+    public static String generateMultiWithSettings(long handle, String prompt, String[] mediaPaths,
+                                                   InferenceSettings settings, TokenSink sink) {
+        if (prompt == null || sink == null) return "Missing prompt or callback";
+        String[] paths = mediaPaths == null ? new String[0] : mediaPaths;
+        if (paths.length <= 1) {
+            return generateWithSettings(handle, prompt, paths.length == 0 ? null : paths[0], settings, sink);
+        }
+        return generateMultiUtf8(handle, PromptEncoding.encode(prompt), paths, settings.maxTokens,
+                settings.contextTokens, settings.threads, sink);
+    }
     private static native String generateUtf8(long handle, byte[] prompt, String mediaPath,
                                                int maxTokens, int contextTokens, int threads, TokenSink sink);
+    private static native String generateMultiUtf8(long handle, byte[] prompt, String[] mediaPaths,
+                                                   int maxTokens, int contextTokens, int threads, TokenSink sink);
     public static native void requestStop(long handle);
     public static native void resetModelStop(long handle);
     public static native void stop();
     public static native void resetStop();
 }
-

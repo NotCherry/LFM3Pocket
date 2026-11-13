@@ -7,7 +7,10 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
+import java.io.File;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Pure JVM regression tests: no Android emulator, JNI or GGUF required. */
@@ -51,5 +54,43 @@ public final class AppContractsUnitTest {
         fake.resetStop();
         assertNull(fake.generate(1L, "retry", null, 1, streamed::append));
         assertEquals("safe", streamed.toString());
+    }
+
+    @Test public void defaultSpeechSynthesisIsExplicitlyUnsupported() {
+        InferenceEngine fake = new InferenceEngine() {
+            @Override public long loadModel(String modelPath, String projectorPath) { return 1L; }
+            @Override public void unloadModel(long handle) { }
+            @Override public String generate(long handle, String prompt, String mediaPath,
+                                             int maxTokens, TokenSink sink) { return null; }
+            @Override public void stop() { }
+            @Override public void resetStop() { }
+        };
+        assertEquals("Speech generation is not supported by this build",
+                fake.synthesizeSpeech(1L, "hello", new File("unused.wav")));
+        assertEquals("Speech generation is not supported by this build",
+                new NativeInferenceEngine().synthesizeSpeech(0L, "hello", new File("unused.wav")));
+    }
+
+    @Test public void defaultMultiMediaContractFailsClearlyUnlessOverridden() {
+        InferenceEngine fake = new InferenceEngine() {
+            @Override public long loadModel(String modelPath, String projectorPath) { return 1L; }
+            @Override public void unloadModel(long handle) { }
+            @Override public String generate(long handle, String prompt, String mediaPath,
+                                             int maxTokens, TokenSink sink) {
+                sink.onToken(mediaPath == null ? "none" : mediaPath);
+                return null;
+            }
+            @Override public void stop() { }
+            @Override public void resetStop() { }
+        };
+        StringBuilder one = new StringBuilder();
+        assertNull(fake.generate(1L, "hi", Collections.singletonList("/a.jpg"), 1, one::append));
+        assertEquals("/a.jpg", one.toString());
+        assertEquals("This inference engine does not support multiple media attachments",
+                fake.generate(1L, "hi", Arrays.asList("/a.jpg", "/b.wav"), 1, piece -> {}));
+        List<String> empty = Collections.emptyList();
+        StringBuilder none = new StringBuilder();
+        assertNull(fake.generate(1L, "hi", empty, 1, none::append));
+        assertEquals("none", none.toString());
     }
 }

@@ -177,10 +177,9 @@ Java_com_notcherry_lfm3pocket_NativeBridge_resetStop(JNIEnv *, jclass) {
     for (auto & item : registry) item.second->cancelled.store(false);
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
-        JNIEnv * env, jclass, jlong handle, jbyteArray prompt, jstring media_path,
-        jint max_tokens, jint context_tokens, jint threads, jobject sink) {
+namespace {
+jstring generate_with_media(JNIEnv * env, jlong handle, jbyteArray prompt, jobjectArray media_paths,
+                            jint max_tokens, jint context_tokens, jint threads, jobject sink) {
     if (!handle) return make_string(env, "Model has not been loaded");
     if (!prompt || !sink) return make_string(env, "Missing prompt or callback");
     if (context_tokens < 512 || context_tokens > 8192 || context_tokens % 256 != 0 ||
@@ -247,22 +246,45 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         error = "Cannot locate Java token callback";
     } else {
         int position = 0;
-        const bool has_media = media_path && env->GetStringLength(media_path) > 0;
+        const jsize media_count = media_paths ? env->GetArrayLength(media_paths) : 0;
+        const bool has_media = media_count > 0;
         if (has_media) {
             if (!state->multimodal) {
                 error = "This model has no multimodal projector loaded";
             } else {
-                const char * raw_media = env->GetStringUTFChars(media_path, nullptr);
-                mtmd_helper_bitmap_wrapper wrapper = mtmd_helper_bitmap_init_from_file(
-                        state->multimodal, raw_media, false, mtmd_helper_init_opt_default());
-                env->ReleaseStringUTFChars(media_path, raw_media);
-                if (!wrapper.bitmap) {
-                    error = "Could not read the selected image or audio file";
-                } else {
-                    const mtmd_bitmap * bitmaps[] = { wrapper.bitmap };
+                std::vector<mtmd_helper_bitmap_wrapper> wrappers;
+                std::vector<const mtmd_bitmap *> bitmaps;
+                wrappers.reserve(static_cast<size_t>(media_count));
+                bitmaps.reserve(static_cast<size_t>(media_count));
+                for (jsize i = 0; i < media_count && error.empty(); ++i) {
+                    auto path = static_cast<jstring>(env->GetObjectArrayElement(media_paths, i));
+                    if (!path) {
+                        error = "A selected media path is missing";
+                        break;
+                    }
+                    const char * raw_media = env->GetStringUTFChars(path, nullptr);
+                    if (!raw_media) {
+                        env->DeleteLocalRef(path);
+                        error = "Could not read a selected media path";
+                        break;
+                    }
+                    mtmd_helper_bitmap_wrapper wrapper = mtmd_helper_bitmap_init_from_file(
+                            state->multimodal, raw_media, false, mtmd_helper_init_opt_default());
+                    env->ReleaseStringUTFChars(path, raw_media);
+                    env->DeleteLocalRef(path);
+                    if (!wrapper.bitmap) {
+                        if (wrapper.video_ctx) mtmd_helper_video_free(wrapper.video_ctx);
+                        error = "Could not read the selected image or audio file";
+                        break;
+                    }
+                    wrappers.push_back(wrapper);
+                    bitmaps.push_back(wrapper.bitmap);
+                }
+                if (error.empty()) {
                     mtmd_input_chunks * chunks = mtmd_input_chunks_init();
                     mtmd_input_text text = { input.data(), input.size(), false, true };
-                    if (!chunks || mtmd_tokenize(state->multimodal, chunks, &text, bitmaps, 1) != 0) {
+                    if (!chunks || mtmd_tokenize(state->multimodal, chunks, &text,
+                                                  bitmaps.data(), bitmaps.size()) != 0) {
                         error = "Could not prepare the selected media for LFM3";
                     } else {
                         llama_pos next_position = 0;
@@ -277,7 +299,9 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
                         }
                     }
                     if (chunks) mtmd_input_chunks_free(chunks);
-                    mtmd_bitmap_free(wrapper.bitmap);
+                }
+                for (auto & wrapper : wrappers) {
+                    if (wrapper.bitmap) mtmd_bitmap_free(wrapper.bitmap);
                     if (wrapper.video_ctx) mtmd_helper_video_free(wrapper.video_ctx);
                 }
             }
@@ -324,5 +348,28 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     llama_batch_ext_free(batch);
     llama_free(ctx);
     return error.empty() || state->cancelled.load() ? nullptr : make_string(env, error);
+}
+} // namespace
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
+        JNIEnv * env, jclass, jlong handle, jbyteArray prompt, jstring media_path,
+        jint max_tokens, jint context_tokens, jint threads, jobject sink) {
+    jobjectArray paths = nullptr;
+    if (media_path && env->GetStringLength(media_path) > 0) {
+        paths = env->NewObjectArray(1, env->FindClass("java/lang/String"), nullptr);
+        if (!paths) return make_string(env, "Could not allocate media path array");
+        env->SetObjectArrayElement(paths, 0, media_path);
+    }
+    jstring result = generate_with_media(env, handle, prompt, paths, max_tokens, context_tokens, threads, sink);
+    if (paths) env->DeleteLocalRef(paths);
+    return result;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_notcherry_lfm3pocket_NativeBridge_generateMultiUtf8(
+        JNIEnv * env, jclass, jlong handle, jbyteArray prompt, jobjectArray media_paths,
+        jint max_tokens, jint context_tokens, jint threads, jobject sink) {
+    return generate_with_media(env, handle, prompt, media_paths, max_tokens, context_tokens, threads, sink);
 }
 

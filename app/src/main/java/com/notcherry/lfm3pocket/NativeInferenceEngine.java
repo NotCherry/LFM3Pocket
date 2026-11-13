@@ -1,5 +1,9 @@
 package com.notcherry.lfm3pocket;
 
+import java.io.File;
+import java.util.Collections;
+import java.util.List;
+
 /** Production adapter; native library remains an implementation detail. */
 public final class NativeInferenceEngine implements InferenceEngine {
     private volatile long ownedHandle;
@@ -18,9 +22,23 @@ public final class NativeInferenceEngine implements InferenceEngine {
 
     @Override public String generate(long handle, String prompt, String mediaPath,
                                      int maxTokens, TokenSink sink) {
+        List<String> paths = mediaPath == null || mediaPath.isEmpty()
+                ? Collections.emptyList() : Collections.singletonList(mediaPath);
+        return generate(handle, prompt, paths, maxTokens, sink);
+    }
+
+    @Override public String generate(long handle, String prompt, List<String> mediaPaths,
+                                     int maxTokens, TokenSink sink) {
         InferenceSettings current=settings;
-        return NativeBridge.generateWithSettings(handle,prompt,mediaPath,
-                new InferenceSettings(current.contextTokens,current.threads,Math.min(maxTokens,current.maxTokens)),sink::onToken);
+        String[] paths = mediaPaths == null || mediaPaths.isEmpty()
+                ? new String[0] : mediaPaths.toArray(new String[0]);
+        return NativeBridge.generateMultiWithSettings(handle, prompt, paths,
+                new InferenceSettings(current.contextTokens, current.threads,
+                        Math.min(maxTokens, current.maxTokens)), sink::onToken);
+    }
+
+    @Override public String synthesizeSpeech(long handle, String text, File outputWav) {
+        return "Speech generation is not supported by this build";
     }
 
     @Override public void stop() {

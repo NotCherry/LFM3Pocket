@@ -73,6 +73,10 @@ public class Lfm3PocketApplication extends Application {
         return createRecordingSource();
     }
 
+    public final PlaybackController.Player newPlaybackPlayer() throws Exception {
+        return createPlaybackPlayer();
+    }
+
     public boolean hasMicrophonePermission() {
         return checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
@@ -80,6 +84,10 @@ public class Lfm3PocketApplication extends Application {
 
     protected RecordingController.Source createRecordingSource() throws Exception {
         return new AndroidMicrophone();
+    }
+
+    protected PlaybackController.Player createPlaybackPlayer() throws Exception {
+        return new AndroidAudioTrackPlayer();
     }
 
     protected InferenceEngine createInferenceEngine() {

@@ -63,11 +63,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private volatile AtomicBoolean importCancellation;
     private final ExecutorService audioWorker = Executors.newSingleThreadExecutor();
     private RecordingController recordingController;
+    private PlaybackController playbackController;
     private boolean foreground;
     private boolean microphoneRequested;
     private boolean cameraRequested;
-    private String pendingMediaPath = "";
-    private String pendingMediaKind = "";
+    private String pendingImagePath = "";
+    private String pendingAudioPath = "";
 
     private TextView status;
     private ModelManagerPanel modelManager;
@@ -99,12 +100,20 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 () -> ((Lfm3PocketApplication)getApplication()).hasMicrophonePermission(),
                 audioWorker, task -> mainHandler.post(task), (captureState, message, completed) -> {
                     if (destroyed) { if (completed != null) completed.delete(); return; }
-                    busy = recordingActive();
+                    busy = recordingActive() || playbackActive();
                     status.setText(message);
                     if (completed != null) {
-                        pendingMediaPath = completed.getAbsolutePath();
-                        pendingMediaKind = "voice recording";
+                        if (!pendingAudioPath.isEmpty()) HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
+                        pendingAudioPath = completed.getAbsolutePath();
                     }
+                    updateControls();
+                });
+        playbackController = new PlaybackController(
+                ((Lfm3PocketApplication)getApplication())::newPlaybackPlayer,
+                audioWorker, task -> mainHandler.post(task), (playbackState, message) -> {
+                    if (destroyed) return;
+                    busy = generating || recordingActive() || playbackActive();
+                    status.setText(message);
                     updateControls();
                 });
         session = new ChatSession(inferenceEngine, worker,
@@ -115,14 +124,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     historyRepository.completeTurn(new HistoryRepository.Turn(turn.id,
                             historyConversationId,historyTitle,turn.userText,turn.assistantText,
                             turn.speechTranscript,resultStatus,turn.completedAt,null,turn.speechTranscriptStatus));
-                }, path -> HistoryMediaCleanup.deleteAttachment(this,path), (text, message, running) -> {
-                    if (destroyed) return;
-                    generating = running;
-                    busy = running;
-                    chatPanel.render(text,message);
-                    status.setText(message);
-                    status.setVisibility(running ? View.GONE : View.VISIBLE);
-                    updateControls();
+                }, path -> HistoryMediaCleanup.deleteAttachment(this,path),
+                new File(getCacheDir(), "speech"),
+                new ChatSession.Listener() {
+                    @Override public void changed(String text, String message, boolean running) {
+                        if (destroyed) return;
+                        generating = running;
+                        busy = running || playbackActive() || recordingActive();
+                        chatPanel.render(text,message);
+                        status.setText(message);
+                        status.setVisibility(running ? View.GONE : View.VISIBLE);
+                        updateControls();
+                    }
+                    @Override public void speechReady(File speech) {
+                        if (destroyed) { if (speech != null) speech.delete(); return; }
+                        if (speech != null) playbackController.play(speech);
+                    }
                 });
         settingsStore=new InferenceSettingsStore(this);
         buildUi();
@@ -211,9 +228,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 dp(Math.min(220, getResources().getConfiguration().screenHeightDp / 3))));
 
         chatPanel = new ChatPanel(this, this::send, this::stopActiveWork, () -> {
-            HistoryMediaCleanup.deleteAttachment(this,pendingMediaPath);
-            pendingMediaPath = "";
-            pendingMediaKind = "";
+            HistoryMediaCleanup.deleteAttachment(this,pendingImagePath);
+            HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
+            pendingImagePath = "";
+            pendingAudioPath = "";
             chatPanel.clearImageAttachment();
             session.clear();
         });
@@ -254,7 +272,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 : recordingActive() ? "Stop recording" : "Voice input");
         recordButton.setEnabled(capture != RecordingController.State.STOPPING && (!busy || recordingActive()));
         chatPanel.updateControls(!busy && modelHandle != 0L && settingsLoaded,
-                generating || recordingActive() || importCancellation != null, !busy || generating);
+                generating || recordingActive() || playbackActive() || importCancellation != null,
+                !busy || generating || playbackActive());
 
         if (modelManager != null) {
             modelManager.showSettings(settingsLoaded ? inferenceSettings.summary() : "Loading inference settings...");
@@ -440,16 +459,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         return null;
     }
 
-    private void setPendingMedia(String path, String kind) {
+    void setPendingMedia(String path, String kind) {
         runOnUiThread(() -> {
-            if (!pendingMediaPath.isEmpty() && !pendingMediaPath.equals(path))
-                HistoryMediaCleanup.deleteAttachment(this, pendingMediaPath);
-            pendingMediaPath = path;
-            pendingMediaKind = kind;
             if ("photo".equals(kind)) {
+                if (!pendingImagePath.isEmpty() && !pendingImagePath.equals(path))
+                    HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
+                pendingImagePath = path;
                 chatPanel.showImageAttachment(path, () -> removePendingImage(path));
             } else {
-                chatPanel.clearImageAttachment();
+                if (!pendingAudioPath.isEmpty() && !pendingAudioPath.equals(path))
+                    HistoryMediaCleanup.deleteAttachment(this, pendingAudioPath);
+                pendingAudioPath = path;
             }
             busy = false;
             status.setText(kind + " attached. Add a question and press Send.");
@@ -458,21 +478,36 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void removePendingImage(String expectedPath) {
-        if (!expectedPath.equals(pendingMediaPath)) return;
-        HistoryMediaCleanup.deleteAttachment(this, pendingMediaPath);
-        pendingMediaPath = "";
-        pendingMediaKind = "";
+        if (!expectedPath.equals(pendingImagePath)) return;
+        HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
+        pendingImagePath = "";
         chatPanel.clearImageAttachment();
         status.setText("Photo removed. Add a question and press Send.");
         updateControls();
     }
 
-    String pendingMediaPathForTest() { return pendingMediaPath; }
+    String pendingMediaPathForTest() {
+        if (!pendingAudioPath.isEmpty() && pendingImagePath.isEmpty()) return pendingAudioPath;
+        return pendingImagePath;
+    }
+    String[] pendingMediaPathsForTest() {
+        if (pendingImagePath.isEmpty())
+            return pendingAudioPath.isEmpty() ? new String[0] : new String[]{pendingAudioPath};
+        if (pendingAudioPath.isEmpty()) return new String[]{pendingImagePath};
+        return new String[]{pendingImagePath, pendingAudioPath};
+    }
 
     private boolean recordingActive() {
         RecordingController.State state = recordingController.state();
         return state == RecordingController.State.STARTING || state == RecordingController.State.RECORDING
                 || state == RecordingController.State.STOPPING;
+    }
+
+    private boolean playbackActive() {
+        if (playbackController == null) return false;
+        PlaybackController.State state = playbackController.state();
+        return state == PlaybackController.State.STARTING || state == PlaybackController.State.PLAYING
+                || state == PlaybackController.State.STOPPING;
     }
 
     private void toggleRecording() {
@@ -650,6 +685,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private void stopActiveWork() {
         if (recordingActive()) recordingController.stop();
+        else if (playbackActive()) playbackController.stop();
         else if (importCancellation != null) {
             importCancellation.set(true);
             status.setText("Cancelling import...");
@@ -729,10 +765,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private void send(String text) {
         if (busy || modelHandle == 0L || !settingsLoaded) return;
-        if (session.submit(text, pendingMediaPath, pendingMediaKind,
+        if (session.submit(text, pendingImagePath, pendingAudioPath,
                 searchEnabled, searchEndpoint, inferenceSettings.maxTokens)) {
-            pendingMediaPath = "";
-            pendingMediaKind = "";
+            pendingImagePath = "";
+            pendingAudioPath = "";
             chatPanel.clearImageAttachment();
         }
     }
@@ -745,13 +781,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     @Override protected void onDestroy() {
         destroyed = true;
-        HistoryMediaCleanup.deleteAttachment(this,pendingMediaPath);
-        pendingMediaPath = "";
+        HistoryMediaCleanup.deleteAttachment(this,pendingImagePath);
+        HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
+        pendingImagePath = "";
+        pendingAudioPath = "";
         session.close();
         settingsStore.close();
         mainHandler.removeCallbacksAndMessages(null);
         if (importCancellation != null) importCancellation.set(true);
         recordingController.close();
+        if (playbackController != null) playbackController.close();
         audioWorker.shutdown();
         inferenceEngine.stop();
         worker.execute(() -> {

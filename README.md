@@ -22,6 +22,8 @@ Import an official quantized LFM3 GGUF from the Android document picker to chat 
 
 For current answers, open **Web search**, configure an HTTPS SearXNG `/search` endpoint with JSON enabled, and turn search on. Only questions sent while search is on are sent to that endpoint. Search results appear below the model's answer as clickable sources. Ordinary text chat remains local and works offline.
 
+Voice capture, spoken playback wiring and release gates are documented in [docs/VOICE_CAPTURE.md](docs/VOICE_CAPTURE.md), [docs/VOICE_OUTPUT.md](docs/VOICE_OUTPUT.md) and [docs/RELEASE.md](docs/RELEASE.md). Native Omni speech-out remains explicitly unsupported in this Stage 1 build.
+
 ## Security and license
 
 Internet access is used only for opt-in web search; search queries go to the configured SearXNG instance. Model inference and media processing run on-device. No telemetry. Source code is MIT-licensed (see LICENSE); each model has its own Liquid AI license. CI smoke testing does not guarantee performance on every phone.

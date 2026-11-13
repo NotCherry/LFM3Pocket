@@ -1,5 +1,9 @@
 package com.notcherry.lfm3pocket;
 
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -30,6 +34,38 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
             public void close(){captureClosed.incrementAndGet();captureReleased.countDown();}
         };
     }
+
+    private final AtomicInteger playbackOpened=new AtomicInteger(),playbackClosed=new AtomicInteger();
+    private volatile CountDownLatch playbackStarted=new CountDownLatch(1);
+    private volatile CountDownLatch playbackReleased=new CountDownLatch(1);
+    private volatile boolean holdPlayback;
+    private volatile CountDownLatch releasePlayback=new CountDownLatch(0);
+    public void resetPlayback(){
+        playbackOpened.set(0);playbackClosed.set(0);holdPlayback=false;
+        playbackStarted=new CountDownLatch(1);playbackReleased=new CountDownLatch(1);
+        releasePlayback=new CountDownLatch(0);
+    }
+    public void holdPlayback(){holdPlayback=true;releasePlayback=new CountDownLatch(1);playbackStarted=new CountDownLatch(1);}
+    public void releasePlayback(){releasePlayback.countDown();}
+    public boolean awaitPlaybackStarted()throws InterruptedException{return playbackStarted.await(10,TimeUnit.SECONDS);}
+    public boolean awaitPlaybackReleased()throws InterruptedException{return playbackReleased.await(10,TimeUnit.SECONDS);}
+    public int playbackOpened(){return playbackOpened.get();}
+    @Override protected PlaybackController.Player createPlaybackPlayer(){
+        playbackOpened.incrementAndGet();
+        return new PlaybackController.Player(){
+            private boolean playing;
+            public void start(short[] pcm){playing=true;playbackStarted.countDown();}
+            public int write(short[] pcm,int offset,int count)throws Exception{
+                if(holdPlayback){
+                    if(!releasePlayback.await(15,TimeUnit.SECONDS))return -1;
+                }
+                return count;
+            }
+            public void stop(){playing=false;}
+            public void close(){playbackClosed.incrementAndGet();playbackReleased.countDown();}
+        };
+    }
+
     private volatile ScriptedInferenceEngine scripted = new ScriptedInferenceEngine();
 
     @Override protected InferenceEngine createInferenceEngine() {
@@ -82,11 +118,13 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         private final AtomicInteger turns = new AtomicInteger();
         private final AtomicInteger assistantTurns = new AtomicInteger();
         private final AtomicInteger asrCalls = new AtomicInteger();
+        private final AtomicInteger speechCalls = new AtomicInteger();
         private volatile CountDownLatch releaseFirstTurn = new CountDownLatch(1);
         private volatile CountDownLatch releaseBeforeFirstToken = new CountDownLatch(0);
         private volatile CountDownLatch generationStarted = new CountDownLatch(0);
         private volatile boolean stopRequested;
         private volatile boolean failNextGeneration;
+        private volatile boolean allowFirstTurnSuccess;
         private volatile String loadedPath;
         private volatile InferenceSettings configured=InferenceSettings.DEFAULT;
         @Override public void configure(InferenceSettings settings) { configured=settings; }
@@ -96,29 +134,42 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         private volatile String lastPrompt;
         private volatile String lastAsrPrompt;
         private volatile String lastMediaPath;
+        private volatile List<String> lastMediaPaths=Collections.emptyList();
+        private final List<List<String>> mediaByCall=Collections.synchronizedList(new ArrayList<>());
         public String lastPrompt() { return lastPrompt; }
         public String lastAsrPrompt() { return lastAsrPrompt; }
         public int asrCallCount() { return asrCalls.get(); }
+        public int speechCallCount() { return speechCalls.get(); }
         public String lastMediaPath() { return lastMediaPath; }
+        public List<String> lastMediaPaths() { return lastMediaPaths; }
+        public List<List<String>> mediaByCall() { return new ArrayList<>(mediaByCall); }
 
         public void resetForTest() {
             turns.set(0);
             assistantTurns.set(0);
             asrCalls.set(0);
+            speechCalls.set(0);
             stopRequested = false;
             loadedPath = null;
             failLoad = false;
             lastPrompt = null;
             lastAsrPrompt = null;
             lastMediaPath = null;
+            lastMediaPaths = Collections.emptyList();
+            mediaByCall.clear();
             releaseFirstTurn = new CountDownLatch(1);
             releaseBeforeFirstToken = new CountDownLatch(0);
             generationStarted = new CountDownLatch(0);
             failNextGeneration = false;
+            allowFirstTurnSuccess = false;
         }
 
         public void holdFirstToken() {
             releaseBeforeFirstToken = new CountDownLatch(1);
+            generationStarted = new CountDownLatch(1);
+        }
+        public void allowFirstTurnSuccess() {
+            allowFirstTurnSuccess = true;
             generationStarted = new CountDownLatch(1);
         }
         public boolean awaitGenerationStarted() throws InterruptedException {
@@ -141,7 +192,18 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
 
         @Override public String generate(long handle, String prompt, String mediaPath,
                                          int maxTokens, TokenSink sink) {
-            lastMediaPath = mediaPath;
+            return generate(handle, prompt,
+                    mediaPath == null || mediaPath.isEmpty()
+                            ? Collections.emptyList() : Collections.singletonList(mediaPath),
+                    maxTokens, sink);
+        }
+
+        @Override public String generate(long handle, String prompt, List<String> mediaPaths,
+                                         int maxTokens, TokenSink sink) {
+            List<String> paths = mediaPaths == null ? Collections.emptyList() : new ArrayList<>(mediaPaths);
+            lastMediaPaths = paths;
+            lastMediaPath = paths.isEmpty() ? null : paths.get(paths.size() - 1);
+            mediaByCall.add(paths);
             turns.incrementAndGet();
             if(prompt.contains("Perform ASR.")) {
                 asrCalls.incrementAndGet();lastAsrPrompt=prompt;
@@ -154,7 +216,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
                 failNextGeneration=false;
                 return "Injected inference failure";
             }
-            if (turn == 1) {
+            if (turn == 1 && !allowFirstTurnSuccess) {
                 generationStarted.countDown();
                 try {
                     if (!releaseBeforeFirstToken.await(10,TimeUnit.SECONDS)) return "FAKE_FIRST_TOKEN_TIMEOUT";
@@ -171,8 +233,29 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
                 }
                 return stopRequested ? null : "FAKE_NOT_CANCELLED";
             }
-            sink.onToken("FAKE_RETRY_COMPLETE");
+            generationStarted.countDown();
+            sink.onToken(turn == 1 ? "FAKE_STREAM_BEGIN" : "FAKE_RETRY_COMPLETE");
+            if (allowFirstTurnSuccess && turn == 1) sink.onToken(" and multimodal follow-up ready");
             return null;
+        }
+
+        @Override public String synthesizeSpeech(long handle, String text, File outputWav) {
+            speechCalls.incrementAndGet();
+            try {
+                if (outputWav.getParentFile() != null
+                        && !outputWav.getParentFile().isDirectory()
+                        && !outputWav.getParentFile().mkdirs()) {
+                    return "Fixture speech directory missing";
+                }
+                int samples = Math.max(1, SpeechAudio.SAMPLE_RATE / 8);
+                short[] pcm = new short[samples];
+                double step = 2.0 * Math.PI * 440.0 / SpeechAudio.SAMPLE_RATE;
+                for (int i = 0; i < samples; i++) pcm[i] = (short) (Math.sin(step * i) * 12000);
+                SpeechAudio.writeWav(outputWav, pcm);
+                return null;
+            } catch (Exception e) {
+                return "Fixture speech failed: " + e.getMessage();
+            }
         }
 
         @Override public void stop() {
