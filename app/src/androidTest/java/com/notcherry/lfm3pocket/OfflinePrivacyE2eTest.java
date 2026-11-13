@@ -95,11 +95,10 @@ public final class OfflinePrivacyE2eTest {
                 before, TrafficStats.getUidTxBytes(Process.myUid()));
     }
 
-    @Test public void searchDefaultsOffAndRejectsCleartextEndpoint() {
+    @Test public void searchDefaultsOffAndRejectsCleartextEndpoint() throws Exception {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             waitEnabled("chat_send");
-            UiObject2 search = device.wait(Until.findObject(By.res(pkg, "web_search")), UI_TIMEOUT_MS);
-            assertNotNull(search);
+            UiObject2 search = scrollTo("web_search");
             assertTrue(search.getText().contains("Web search: off"));
             search.click();
             UiObject2 endpoint = device.wait(Until.findObject(By.res(pkg, "search_endpoint")), UI_TIMEOUT_MS);
@@ -108,11 +107,10 @@ public final class OfflinePrivacyE2eTest {
             UiObject2 enabled = device.wait(Until.findObject(By.res(pkg, "search_enabled")), UI_TIMEOUT_MS);
             assertNotNull(enabled);
             if (!enabled.isChecked()) enabled.click();
-            device.findObject(By.text("Save")).click();
+            assertNotNull(device.wait(Until.findObject(By.text("Save")), UI_TIMEOUT_MS)).click();
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_status")
                     .textContains("Use an HTTPS SearXNG search endpoint")), UI_TIMEOUT_MS));
-            search = device.wait(Until.findObject(By.res(pkg, "web_search")), UI_TIMEOUT_MS);
-            assertNotNull(search);
+            search = scrollTo("web_search");
             assertTrue("Cleartext endpoint must leave search disabled",
                     search.getText().contains("Web search: off"));
             assertFalse(context.getSharedPreferences("MainActivity", Context.MODE_PRIVATE)
@@ -160,18 +158,29 @@ public final class OfflinePrivacyE2eTest {
             long txBefore = TrafficStats.getUidTxBytes(Process.myUid());
             chooseImage("valid-photo.jpg");
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "image_preview")), UI_TIMEOUT_MS));
-            UiObject2 input = device.wait(Until.findObject(By.res(pkg, "chat_input")), UI_TIMEOUT_MS);
-            assertNotNull(input);
-            input.setText("What is in this offline photo?");
-            waitEnabled("chat_send").click();
+            TestLfm3PocketApplication.ScriptedInferenceEngine engine = app.scriptedEngine();
+            engine.resetForTest();
+            engine.holdFirstToken();
+            // Avoid Compose IME/focus races after returning from the SAF picker.
+            scenario.onActivity(activity -> activity.sendForTest("What is in this offline photo?"));
+            assertTrue(engine.awaitGenerationStarted());
+            engine.releaseFirstToken();
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_transcript")
                     .textContains("FAKE_STREAM_BEGIN")), UI_TIMEOUT_MS));
             waitEnabled("chat_stop").click();
             waitEnabled("chat_send");
-            assertTrue(app.scriptedEngine().lastMediaPath() != null
-                    || !app.scriptedEngine().mediaByCall().isEmpty());
+            assertTrue("Image path must reach the local fake adapter",
+                    engine.lastMediaPath() != null || !engine.mediaByCall().isEmpty());
             assertNoUidTxGrowth(txBefore);
         }
+    }
+
+    private UiObject2 scrollTo(String id) throws Exception {
+        new UiScrollable(new UiSelector().resourceId(pkg + ":id/model_configuration_scroll"))
+                .scrollIntoView(new UiSelector().resourceId(pkg + ":id/" + id));
+        UiObject2 object = device.wait(Until.findObject(By.res(pkg, id)), UI_TIMEOUT_MS);
+        assertNotNull("Expected scrolled control: " + id, object);
+        return object;
     }
 
     private void chooseImage(String name) throws Exception {
