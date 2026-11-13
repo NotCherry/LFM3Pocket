@@ -8,6 +8,8 @@ GitHub Actions builds the ARM64 phone APK, runs an x86_64 emulator smoke test th
 
 Locally, install JDK 17, Android SDK/NDK and Gradle 8.13; run `git clone --branch v0.8.0 --depth 1 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp` then `gradle :app:assemblePhoneDebug`.
 
+The Stage 1 release recipe — clean-checkout steps, CI artifacts, model import, device limitations, and license notices — is in [`docs/RELEASE.md`](docs/RELEASE.md). Model weights are never bundled in the APK.
+
 ## App navigation
 
 The app opens in a minimal Kotlin/Compose navigation host. Tap **Open chat** for Compose streaming chat. A session controller owns active context, cancellation, retry and Clear; JNI inference remains local. Old conversations are not injected into a new session. This staged migration is covered by emulator navigation tests.
