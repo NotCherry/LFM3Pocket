@@ -107,7 +107,9 @@ public final class OfflinePrivacyE2eTest {
             UiObject2 enabled = device.wait(Until.findObject(By.res(pkg, "search_enabled")), UI_TIMEOUT_MS);
             assertNotNull(enabled);
             if (!enabled.isChecked()) enabled.click();
-            assertNotNull(device.wait(Until.findObject(By.text("Save")), UI_TIMEOUT_MS)).click();
+            UiObject2 save = device.wait(Until.findObject(By.text("Save")), UI_TIMEOUT_MS);
+            assertNotNull(save);
+            save.click();
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_status")
                     .textContains("Use an HTTPS SearXNG search endpoint")), UI_TIMEOUT_MS));
             search = scrollTo("web_search");
