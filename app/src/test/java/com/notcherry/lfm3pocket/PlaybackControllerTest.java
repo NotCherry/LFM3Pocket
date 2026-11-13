@@ -54,7 +54,8 @@ public class PlaybackControllerTest {
         assertEquals(PlaybackController.State.IDLE,c.state());
         assertTrue(states.contains(PlaybackController.State.STARTING));
         assertTrue(states.contains(PlaybackController.State.PLAYING));
-        assertTrue(states.contains(PlaybackController.State.STOPPING));
+        assertFalse("Successful completion skips STOPPING; that state is for explicit stop()",
+                states.contains(PlaybackController.State.STOPPING));
     }
 
     @Test public void stopCancelsQueuedPlaybackBeforeTrackOpens(){
