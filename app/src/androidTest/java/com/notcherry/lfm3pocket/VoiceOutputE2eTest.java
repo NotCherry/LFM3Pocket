@@ -108,7 +108,7 @@ public final class VoiceOutputE2eTest {
             assertEquals(1, engine.speechCallCount());
             assertTrue(engine.lastSpeechPrompt().contains("Perform TTS"));
             assertTrue(engine.lastSpeechPrompt().contains("FAKE_STREAM_BEGIN"));
-            assertTrue(app.playbackWritten() > 0);
+            assertTrue("Fake track must receive PCM before Stop speech", app.awaitPlaybackWritten());
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "voice_speak").textContains("Stop speech")),
                     UI_TIMEOUT_MS));
             waitEnabled("voice_speak").click();
