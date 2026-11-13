@@ -28,6 +28,25 @@ public final class NativeInferenceEngine implements InferenceEngine {
                 new InferenceSettings(current.contextTokens,current.threads,Math.min(maxTokens,current.maxTokens)),sink::onToken);
     }
 
+    @Override public String generateSpeech(long handle, String prompt, SpeechOptions options, AudioSink sink) {
+        SpeechOptions selected = options == null ? SpeechOptions.DEFAULT : options;
+        InferenceSettings current = settings;
+        int maxFrames = Math.min(selected.maxFrames, Math.max(1, current.maxTokens));
+        return NativeBridge.generateSpeech(handle, prompt,
+                new SpeechOptions(selected.language, selected.voice, maxFrames),
+                new NativeBridge.AudioSink() {
+                    @Override public void onAudioFormat(int sampleRateHz, int channelCount, int bitsPerSample) {
+                        sink.onAudioFormat(sampleRateHz, channelCount, bitsPerSample);
+                    }
+                    @Override public void onAudioPcm(byte[] interleavedLittleEndianPcm) {
+                        sink.onAudioPcm(interleavedLittleEndianPcm);
+                    }
+                    @Override public void onAudioComplete() {
+                        sink.onAudioComplete();
+                    }
+                });
+    }
+
     @Override public void stop() {
         NativeBridge.requestStop(ownedHandle);
     }

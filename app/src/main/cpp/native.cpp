@@ -351,3 +351,252 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     return error.empty() || state->cancelled.load() ? nullptr : make_string(env, error);
 }
 
+namespace {
+std::string jstring_or_empty(JNIEnv * env, jstring value) {
+    if (!value) return {};
+    const char * raw = env->GetStringUTFChars(value, nullptr);
+    if (!raw) return {};
+    std::string out(raw);
+    env->ReleaseStringUTFChars(value, raw);
+    return out;
+}
+
+bool deliver_pcm(JNIEnv * env, jobject sink, jmethodID method, const int16_t * samples, size_t count) {
+    if (!samples || count == 0) return true;
+    const jsize bytes = static_cast<jsize>(count * sizeof(int16_t));
+    jbyteArray chunk = env->NewByteArray(bytes);
+    if (!chunk) return false;
+    env->SetByteArrayRegion(chunk, 0, bytes, reinterpret_cast<const jbyte *>(samples));
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(chunk);
+        return false;
+    }
+    env->CallVoidMethod(sink, method, chunk);
+    env->DeleteLocalRef(chunk);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return false;
+    }
+    return true;
+}
+
+std::vector<int16_t> float_pcm_to_i16(const float * audio, size_t n_samples) {
+    std::vector<int16_t> pcm(n_samples);
+    for (size_t i = 0; i < n_samples; ++i) {
+        float sample = audio[i];
+        if (sample > 1.0f) sample = 1.0f;
+        if (sample < -1.0f) sample = -1.0f;
+        pcm[i] = static_cast<int16_t>(sample * 32767.0f);
+    }
+    return pcm;
+}
+} // namespace
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_notcherry_lfm3pocket_NativeBridge_generateSpeechUtf8(
+        JNIEnv * env, jclass, jlong handle, jbyteArray prompt, jstring language, jstring voice,
+        jint max_frames, jint context_tokens, jint threads, jobject sink) {
+    if (!handle) return make_string(env, "Model has not been loaded");
+    if (!prompt || !sink) return make_string(env, "Missing prompt or audio callback");
+    if (context_tokens < 512 || context_tokens > 8192 || context_tokens % 256 != 0 ||
+        threads < 1 || threads > 8 || max_frames < 1 || max_frames > 4096)
+        return make_string(env, "Invalid speech generation limits");
+    auto state = find_model(handle);
+    if (!state) return make_string(env, "Model handle is retired or invalid");
+    std::unique_lock<std::mutex> decode_lock(state->decode_mutex, std::try_to_lock);
+    if (!decode_lock.owns_lock()) return make_string(env, "Model is already generating");
+    if (state->cancelled.load()) return nullptr;
+    if (!state->multimodal) return make_string(env, "Speech generation requires a multimodal projector");
+    const mtmd_gen_audio_info audio_info = mtmd_gen_audio_get_info(state->multimodal);
+    if (audio_info.type == MTMD_GEN_AUDIO_TYPE_NONE)
+        return make_string(env, "Speech generation is not available on this model");
+
+    const jsize input_size = env->GetArrayLength(prompt);
+    std::string input(static_cast<size_t>(input_size), '\0');
+    if (input_size > 0) env->GetByteArrayRegion(prompt, 0, input_size,
+            reinterpret_cast<jbyte *>(input.data()));
+    if (env->ExceptionCheck()) return nullptr;
+
+    jclass sink_class = env->GetObjectClass(sink);
+    jmethodID on_format = sink_class ? env->GetMethodID(sink_class, "onAudioFormat", "(III)V") : nullptr;
+    jmethodID on_pcm = sink_class ? env->GetMethodID(sink_class, "onAudioPcm", "([B)V") : nullptr;
+    jmethodID on_complete = sink_class ? env->GetMethodID(sink_class, "onAudioComplete", "()V") : nullptr;
+    if (sink_class) env->DeleteLocalRef(sink_class);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (!on_format || !on_pcm || !on_complete)
+        return make_string(env, "Cannot locate Java audio callback");
+
+    llama_context_params ctx_params = llama_context_default_params();
+    ctx_params.abort_callback = [](void * data) { return static_cast<std::atomic<bool> *>(data)->load(); };
+    ctx_params.abort_callback_data = &state->cancelled;
+    ctx_params.n_ctx = context_tokens;
+    ctx_params.n_batch = 512;
+    ctx_params.n_ubatch = 512;
+    ctx_params.embeddings = true;
+    const unsigned cpu = std::thread::hardware_concurrency();
+    ctx_params.n_threads = static_cast<int32_t>(std::min(static_cast<unsigned>(threads), std::max(1u, cpu)));
+    ctx_params.n_threads_batch = ctx_params.n_threads;
+    llama_context * ctx = llama_init_from_model(state->model, ctx_params);
+    if (!ctx) return make_string(env, "Unable to allocate speech context; insufficient RAM?");
+
+    mtmd_helper_gen_audio * gen = mtmd_helper_gen_audio_init(ctx, state->multimodal);
+    if (!gen) {
+        llama_free(ctx);
+        return make_string(env, "Speech generation is not available on this model");
+    }
+
+    std::string lang = jstring_or_empty(env, language);
+    std::string spoken_voice = jstring_or_empty(env, voice);
+    mtmd_helper_gen_audio_inp inp = mtmd_helper_gen_audio_inp_default();
+    inp.seq_id = 0;
+    inp.prompt = input.c_str();
+    inp.prompt_len = input.size();
+    inp.lang = lang.empty() ? nullptr : lang.c_str();
+    inp.voice = spoken_voice.empty() ? nullptr : spoken_voice.c_str();
+    inp.out_type = MTMD_HELPER_GEN_AUDIO_OUTTYPE_PCM;
+    inp.stream = true;
+
+    std::string error;
+    if (mtmd_helper_gen_audio_set_input(gen, &inp) != 0) {
+        error = "Could not prepare the speech generation prompt";
+    }
+
+    while (error.empty() && !state->cancelled.load()) {
+        const int32_t remaining = mtmd_helper_gen_audio_step_prompt(gen, 512);
+        if (remaining < 0) {
+            error = "Model failed while evaluating the speech prompt";
+            break;
+        }
+        if (remaining == 0) break;
+    }
+
+    llama_sampler * sampler = nullptr;
+    if (error.empty()) {
+        sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
+        llama_sampler_chain_add(sampler, llama_sampler_init_top_k(50));
+        llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.1f));
+        llama_sampler_chain_add(sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    }
+
+    bool format_sent = false;
+    int frames = 0;
+    size_t total_samples = 0;
+    if (error.empty() && !state->cancelled.load()) {
+        llama_token sampled = LLAMA_TOKEN_NULL;
+        if (mtmd_helper_gen_audio_next_is_text(gen)) {
+            sampled = llama_sampler_sample(sampler, ctx, -1);
+            llama_sampler_accept(sampler, sampled);
+        }
+        const float * h_state = llama_get_embeddings_ith(ctx, -1);
+        bool stop = false;
+        while (error.empty() && !state->cancelled.load() && !stop && frames < max_frames) {
+            const float * h_next = nullptr;
+            if (mtmd_helper_gen_audio_step_gen(gen, sampled, h_state, &h_next, &stop) != 0) {
+                error = "Model failed while generating speech audio";
+                break;
+            }
+            if (!h_next) break;
+            ++frames;
+            h_state = h_next;
+
+            int32_t sample_rate = 0;
+            const char * data = nullptr;
+            size_t data_len = 0;
+            int64_t n_samples = 0;
+            if (mtmd_helper_gen_audio_get_output(gen, &sample_rate, &data, &data_len, &n_samples) != 0) {
+                error = "Speech audio decode failed";
+                break;
+            }
+            if (data_len > 0 && data) {
+                if (!format_sent) {
+                    const int rate = sample_rate > 0 ? sample_rate
+                            : (audio_info.sample_rate > 0 ? audio_info.sample_rate : 24000);
+                    env->CallVoidMethod(sink, on_format, rate, 1, 16);
+                    if (env->ExceptionCheck()) {
+                        env->ExceptionClear();
+                        error = "Java audio format callback failed";
+                        break;
+                    }
+                    format_sent = true;
+                }
+                // stream mode may return float PCM bytes; convert when sample count is known
+                if (n_samples > 0 && data_len == static_cast<size_t>(n_samples) * sizeof(float)) {
+                    auto pcm = float_pcm_to_i16(reinterpret_cast<const float *>(data),
+                            static_cast<size_t>(n_samples));
+                    if (!deliver_pcm(env, sink, on_pcm, pcm.data(), pcm.size())) {
+                        error = "Java audio callback failed";
+                        break;
+                    }
+                    total_samples += pcm.size();
+                } else if (data_len > 0 && (data_len % 2) == 0) {
+                    if (!deliver_pcm(env, sink, on_pcm,
+                            reinterpret_cast<const int16_t *>(data), data_len / 2)) {
+                        error = "Java audio callback failed";
+                        break;
+                    }
+                    total_samples += data_len / 2;
+                }
+            }
+
+            if (mtmd_helper_gen_audio_next_is_text(gen)) {
+                sampled = llama_sampler_sample(sampler, ctx, -1);
+                llama_sampler_accept(sampler, sampled);
+            } else {
+                sampled = LLAMA_TOKEN_NULL;
+            }
+        }
+    }
+
+    if (error.empty() && !state->cancelled.load()) {
+        if (mtmd_helper_gen_audio_flush(gen) == 0) {
+            int32_t sample_rate = 0;
+            const char * data = nullptr;
+            size_t data_len = 0;
+            int64_t n_samples = 0;
+            if (mtmd_helper_gen_audio_get_output(gen, &sample_rate, &data, &data_len, &n_samples) == 0
+                    && data_len > 0 && data) {
+                if (!format_sent) {
+                    const int rate = sample_rate > 0 ? sample_rate
+                            : (audio_info.sample_rate > 0 ? audio_info.sample_rate : 24000);
+                    env->CallVoidMethod(sink, on_format, rate, 1, 16);
+                    if (env->ExceptionCheck()) {
+                        env->ExceptionClear();
+                        error = "Java audio format callback failed";
+                    } else {
+                        format_sent = true;
+                    }
+                }
+                if (error.empty()) {
+                    if (n_samples > 0 && data_len == static_cast<size_t>(n_samples) * sizeof(float)) {
+                        auto pcm = float_pcm_to_i16(reinterpret_cast<const float *>(data),
+                                static_cast<size_t>(n_samples));
+                        if (!deliver_pcm(env, sink, on_pcm, pcm.data(), pcm.size()))
+                            error = "Java audio callback failed";
+                        else total_samples += pcm.size();
+                    } else if ((data_len % 2) == 0) {
+                        if (!deliver_pcm(env, sink, on_pcm,
+                                reinterpret_cast<const int16_t *>(data), data_len / 2))
+                            error = "Java audio callback failed";
+                        else total_samples += data_len / 2;
+                    }
+                }
+            }
+        }
+        if (error.empty() && total_samples == 0 && !state->cancelled.load())
+            error = "Speech generation produced no audio";
+        if (error.empty() && format_sent && !state->cancelled.load()) {
+            env->CallVoidMethod(sink, on_complete);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                error = "Java audio completion callback failed";
+            }
+        }
+    }
+
+    if (sampler) llama_sampler_free(sampler);
+    mtmd_helper_gen_audio_free(gen);
+    llama_free(ctx);
+    return error.empty() || state->cancelled.load() ? nullptr : make_string(env, error);
+}
+
