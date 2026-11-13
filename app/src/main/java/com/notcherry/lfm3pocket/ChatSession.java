@@ -124,9 +124,10 @@ public final class ChatSession {
         List<Message> history=new ArrayList<>(messages);
         Turn turn=new Turn(++epoch,model.getAsLong(),useSearch,question,turnMedia,activeImagePath);active=turn;
         pending.setLength(0);partial.setLength(0);scheduled=false;
-        status=voiceRecording?"Transcribing speech locally…"
+        final boolean includeVoice=voiceRecording;
+        status=includeVoice?"Transcribing speech locally…"
                 :useSearch?"Searching web, then generating locally…":"Generating locally · offline…";emit();
-        worker.execute(() -> generate(turn,question,voiceRecording,useSearch,endpoint,maxTokens,history));
+        worker.execute(() -> generate(turn,question,includeVoice,useSearch,endpoint,maxTokens,history));
         return true;
     }
     public synchronized void stop() {
