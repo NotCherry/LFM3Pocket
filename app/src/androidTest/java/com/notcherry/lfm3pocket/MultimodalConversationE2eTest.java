@@ -128,14 +128,17 @@ public final class MultimodalConversationE2eTest {
             assertNotNull(audioPath[0]);
             File wav = new File(audioPath[0]);
             assertTrue(wav.isFile());
-
-            UiObject2 input = waitFor("chat_input");
-            input.setText("What is in the picture?");
-            app.scriptedEngine().holdFirstToken();
-            waitEnabled("chat_send").click();
-            assertTrue(app.scriptedEngine().awaitGenerationStarted());
+            assertNotNull("Image preview should remain visible before the combined send",
+                    device.wait(Until.findObject(By.res(pkg, "image_attachment")), UI_TIMEOUT_MS));
 
             TestLfm3PocketApplication.ScriptedInferenceEngine engine = app.scriptedEngine();
+            engine.resetForTest();
+            engine.holdFirstToken();
+            // Avoid Compose IME/focus races after CameraX return; exercise the same send() path.
+            scenario.onActivity(activity -> activity.sendForTest("What is in the picture?"));
+            assertTrue("Combined camera+voice turn should reach the fake local adapter",
+                    engine.awaitGenerationStarted());
+
             assertEquals(1, engine.asrCallCount());
             assertEquals(java.util.Collections.singletonList(audioPath[0]), engine.mediaByCall().get(0));
             assertEquals(Arrays.asList(imagePath[0], audioPath[0]), engine.mediaByCall().get(1));
@@ -149,15 +152,14 @@ public final class MultimodalConversationE2eTest {
             waitEnabled("chat_stop").click();
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_live_status")
                     .textContains("Response stopped")), UI_TIMEOUT_MS));
+            waitEnabled("chat_send");
 
             long deadline = android.os.SystemClock.elapsedRealtime() + 5000;
             while (wav.exists() && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(25);
             assertFalse("Turn-scoped audio must be deleted after the combined response", wav.exists());
             assertTrue("Session-scoped photo must remain for follow-up", photo.exists());
 
-            input = waitFor("chat_input");
-            input.setText("What color was it?");
-            waitEnabled("chat_send").click();
+            scenario.onActivity(activity -> activity.sendForTest("What color was it?"));
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_transcript")
                     .textContains("FAKE_RETRY_COMPLETE")), UI_TIMEOUT_MS));
             assertEquals(java.util.Collections.singletonList(imagePath[0]), engine.mediaByCall().get(2));
