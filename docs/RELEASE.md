@@ -55,7 +55,7 @@ Pinned smoke fixture SHA-256 and host provisioning are documented in `docs/TEST_
 - Emulator CameraX / fake-mic journeys prove app wiring, not model visual or speech quality.
 - Spoken response playback (V05) and the full voice journey E2E (V06) may still be PARTIAL/MISSING in the acceptance matrix when this document ships.
 - Optional SearXNG web search is user-configured HTTPS only; core chat must work offline with search disabled.
-- No telemetry; diagnostics stay on-device.
+- No telemetry; diagnostics stay on-device (`docs/DIAGNOSTICS.md`, `files/diagnostics.ndjson`).
 - Persistent AI memory / reminders are Stage 2 — Stage 1 history is local transcripts only.
 
 ## License notices

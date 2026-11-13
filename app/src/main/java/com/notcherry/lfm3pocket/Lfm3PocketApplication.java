@@ -1,6 +1,9 @@
 package com.notcherry.lfm3pocket;
 
 import android.app.Application;
+import android.os.SystemClock;
+
+import java.io.File;
 import java.util.Map;
 
 /**
@@ -8,6 +11,8 @@ import java.util.Map;
  * of Application to supply fake engines; release builds always use native JNI.
  */
 public class Lfm3PocketApplication extends Application {
+    private final LocalDiagnostics diagnostics = new LocalDiagnostics(SystemClock::elapsedRealtime);
+
     @Override public void onCreate() {
         super.onCreate();
         // No activity/import worker exists yet: discard remnants of a killed import.
@@ -15,6 +20,22 @@ public class Lfm3PocketApplication extends Application {
                 .listFiles((directory, name) -> name.endsWith(".partial"));
         if (partials != null) for (java.io.File partial : partials) partial.delete();
         HistoryMediaCleanup.deleteTemporaryAttachments(this);
+    }
+
+    public final LocalDiagnostics diagnostics() {
+        return diagnostics;
+    }
+
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        Runtime runtime = Runtime.getRuntime();
+        long usedMb = Math.max(0L, (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L));
+        diagnostics.record(LocalDiagnostics.Kind.MEMORY, 0L, "trim=" + level + ",usedMb=" + usedMb);
+        try {
+            diagnostics.writeTo(new File(getFilesDir(), "diagnostics.ndjson"));
+        } catch (Exception ignored) {
+            // Diagnostics must never break the process under memory pressure.
+        }
     }
 
     private InferenceEngine inferenceEngine;
