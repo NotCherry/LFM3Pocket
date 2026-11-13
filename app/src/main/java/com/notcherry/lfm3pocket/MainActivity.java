@@ -211,6 +211,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         LinearLayout actionControls = new LinearLayout(this);
         actionControls.setOrientation(LinearLayout.HORIZONTAL);
         searchButton = button("Web search: off");
+        searchButton.setId(R.id.web_search);
         actionControls.addView(searchButton, new LinearLayout.LayoutParams(-1, dp(48)));
         controls.addView(actionControls);
         // Keep a readable transcript on small screens. Configuration can scroll independently.
@@ -365,12 +366,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         form.setOrientation(LinearLayout.VERTICAL);
         form.setPadding(dp(20), dp(8), dp(20), 0);
         EditText endpoint = new EditText(this);
+        endpoint.setId(R.id.search_endpoint);
         endpoint.setSingleLine(true);
         endpoint.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         endpoint.setHint("https://your-searxng.example.org/search");
         endpoint.setText(searchEndpoint);
         form.addView(endpoint);
         CheckBox enabled = new CheckBox(this);
+        enabled.setId(R.id.search_enabled);
         enabled.setText("Use web search for new questions");
         enabled.setChecked(searchEnabled);
         form.addView(enabled);
@@ -381,12 +384,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Save", (dialog, which) -> {
                     String value = endpoint.getText().toString().trim();
-                    if (!value.isEmpty() && !value.startsWith("https://")) {
+                    if (!SearchEndpointPolicy.accepts(value)) {
                         status.setText("Use an HTTPS SearXNG search endpoint.");
                         return;
                     }
                     searchEndpoint = value;
-                    searchEnabled = enabled.isChecked() && !value.isEmpty();
+                    searchEnabled = SearchEndpointPolicy.enabled(enabled.isChecked(), value);
                     getPreferences(MODE_PRIVATE).edit()
                             .putString("search_endpoint", searchEndpoint)
                             .putBoolean("search_enabled", searchEnabled).apply();

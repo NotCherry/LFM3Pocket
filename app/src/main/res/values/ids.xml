@@ -31,4 +31,7 @@
     <item name="image_attachment" type="id"/>
     <item name="image_preview" type="id"/>
     <item name="image_remove" type="id"/>
+    <item name="web_search" type="id"/>
+    <item name="search_endpoint" type="id"/>
+    <item name="search_enabled" type="id"/>
 </resources>
