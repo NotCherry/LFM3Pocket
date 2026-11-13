@@ -222,7 +222,8 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
                     Thread.currentThread().interrupt();
                     return "FAKE_INTERRUPTED";
                 }
-                return stopRequested ? null : "FAKE_NOT_CANCELLED";
+                // stop() cancels via ChatSession; completeFirstTurn() finishes successfully.
+                return null;
             }
             sink.onToken("FAKE_RETRY_COMPLETE");
             return null;
