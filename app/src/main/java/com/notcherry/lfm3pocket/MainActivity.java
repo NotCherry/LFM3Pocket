@@ -66,8 +66,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean foreground;
     private boolean microphoneRequested;
     private boolean cameraRequested;
-    private String pendingMediaPath = "";
-    private String pendingMediaKind = "";
+    private String pendingImagePath = "";
+    private String pendingAudioPath = "";
 
     private TextView status;
     private ModelManagerPanel modelManager;
@@ -102,8 +102,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     busy = recordingActive();
                     status.setText(message);
                     if (completed != null) {
-                        pendingMediaPath = completed.getAbsolutePath();
-                        pendingMediaKind = "voice recording";
+                        if (!pendingAudioPath.isEmpty()) HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
+                        pendingAudioPath = completed.getAbsolutePath();
                     }
                     updateControls();
                 });
@@ -211,9 +211,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 dp(Math.min(220, getResources().getConfiguration().screenHeightDp / 3))));
 
         chatPanel = new ChatPanel(this, this::send, this::stopActiveWork, () -> {
-            HistoryMediaCleanup.deleteAttachment(this,pendingMediaPath);
-            pendingMediaPath = "";
-            pendingMediaKind = "";
+            HistoryMediaCleanup.deleteAttachment(this,pendingImagePath);
+            HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
+            pendingImagePath = "";
+            pendingAudioPath = "";
             chatPanel.clearImageAttachment();
             session.clear();
         });
@@ -442,14 +443,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private void setPendingMedia(String path, String kind) {
         runOnUiThread(() -> {
-            if (!pendingMediaPath.isEmpty() && !pendingMediaPath.equals(path))
-                HistoryMediaCleanup.deleteAttachment(this, pendingMediaPath);
-            pendingMediaPath = path;
-            pendingMediaKind = kind;
             if ("photo".equals(kind)) {
+                if (!pendingImagePath.isEmpty() && !pendingImagePath.equals(path))
+                    HistoryMediaCleanup.deleteAttachment(this,pendingImagePath);
+                pendingImagePath=path;
                 chatPanel.showImageAttachment(path, () -> removePendingImage(path));
             } else {
-                chatPanel.clearImageAttachment();
+                if (!pendingAudioPath.isEmpty() && !pendingAudioPath.equals(path))
+                    HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
+                pendingAudioPath=path;
             }
             busy = false;
             status.setText(kind + " attached. Add a question and press Send.");
@@ -458,16 +460,20 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void removePendingImage(String expectedPath) {
-        if (!expectedPath.equals(pendingMediaPath)) return;
-        HistoryMediaCleanup.deleteAttachment(this, pendingMediaPath);
-        pendingMediaPath = "";
-        pendingMediaKind = "";
+        if (!expectedPath.equals(pendingImagePath)) return;
+        HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
+        pendingImagePath = "";
         chatPanel.clearImageAttachment();
         status.setText("Photo removed. Add a question and press Send.");
         updateControls();
     }
 
-    String pendingMediaPathForTest() { return pendingMediaPath; }
+    String pendingMediaPathForTest() { return !pendingAudioPath.isEmpty()?pendingAudioPath:pendingImagePath; }
+    String[] pendingMediaPathsForTest() {
+        if(pendingImagePath.isEmpty())return pendingAudioPath.isEmpty()?new String[0]:new String[]{pendingAudioPath};
+        if(pendingAudioPath.isEmpty())return new String[]{pendingImagePath};
+        return new String[]{pendingImagePath,pendingAudioPath};
+    }
 
     private boolean recordingActive() {
         RecordingController.State state = recordingController.state();
@@ -729,10 +735,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private void send(String text) {
         if (busy || modelHandle == 0L || !settingsLoaded) return;
-        if (session.submit(text, pendingMediaPath, pendingMediaKind,
-                searchEnabled, searchEndpoint, inferenceSettings.maxTokens)) {
-            pendingMediaPath = "";
-            pendingMediaKind = "";
+        List<ChatSession.Attachment> attachments=new ArrayList<>();
+        if(!pendingImagePath.isEmpty())attachments.add(new ChatSession.Attachment(
+                pendingImagePath,ChatSession.AttachmentKind.PHOTO));
+        if(!pendingAudioPath.isEmpty())attachments.add(new ChatSession.Attachment(
+                pendingAudioPath,ChatSession.AttachmentKind.VOICE_RECORDING));
+        if (session.submit(text, attachments, searchEnabled, searchEndpoint, inferenceSettings.maxTokens)) {
+            pendingImagePath = "";
+            pendingAudioPath = "";
             chatPanel.clearImageAttachment();
         }
     }
@@ -745,8 +755,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     @Override protected void onDestroy() {
         destroyed = true;
-        HistoryMediaCleanup.deleteAttachment(this,pendingMediaPath);
-        pendingMediaPath = "";
+        HistoryMediaCleanup.deleteAttachment(this,pendingImagePath);
+        HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
+        pendingImagePath = "";
+        pendingAudioPath = "";
         session.close();
         settingsStore.close();
         mainHandler.removeCallbacksAndMessages(null);
