@@ -1,5 +1,6 @@
 package com.notcherry.lfm3pocket;
 
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -76,6 +77,24 @@ public final class GenerationSmokeTest {
             assertTrue("Generation after Stop did not finish", retryFinished.await(30, TimeUnit.SECONDS));
             assertNull("Retry reported an error: " + retryError.get(), retryError.get());
             assertTrue("Generation after Stop produced no output: " + retryError.get(), retry.length() > 0);
+
+            final String[] speechError = new String[1];
+            final int[] speechFormatCalls = new int[1];
+            NativeBridge.resetStop();
+            speechError[0] = NativeBridge.generateSpeech(handle,
+                    SpeechPrompt.tts("Hello from the smoke fixture.", "en", "female"),
+                    SpeechOptions.DEFAULT,
+                    new NativeBridge.AudioSink() {
+                        @Override public void onAudioFormat(int sampleRateHz, int channelCount, int bitsPerSample) {
+                            speechFormatCalls[0]++;
+                        }
+                        @Override public void onAudioPcm(byte[] interleavedLittleEndianPcm) {}
+                        @Override public void onAudioComplete() {}
+                    });
+            assertNotNull("Stories15M smoke model must reject speech generation clearly", speechError[0]);
+            assertTrue("Expected a speech-unavailable error, got: " + speechError[0],
+                    speechError[0].toLowerCase().contains("speech"));
+            assertTrue("Unsupported speech generation must not stream audio", speechFormatCalls[0] == 0);
         } finally {
             NativeBridge.stop();
             NativeBridge.unloadModel(handle);
