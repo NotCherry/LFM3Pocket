@@ -714,6 +714,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean loadModelOnWorker(String path, String projector) {
         long next = 0;
         String error = null;
+        long started = android.os.SystemClock.elapsedRealtime();
         try {
             GgufSelection.validate(new File(path), projector == null || projector.isEmpty() ? null : new File(projector));
             next = inferenceEngine.loadModel(path, projector == null || projector.isEmpty() ? null : projector);
@@ -721,8 +722,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         } catch (Throwable e) {
             error = e.toString();
         }
+        long loadMs = android.os.SystemClock.elapsedRealtime() - started;
         final long loaded = next;
         final String failure = error;
+        LocalDiagnostics diagnostics = ((Lfm3PocketApplication) getApplication()).diagnostics();
+        diagnostics.record(LocalDiagnostics.Kind.MODEL_LOAD, loadMs,
+                failure == null ? "ok path=" + new File(path).getName() : "error=" + failure);
+        try {
+            diagnostics.writeTo(new File(getFilesDir(), "diagnostics.ndjson"));
+        } catch (Exception ignored) {
+        }
         if (loaded != 0L && destroyed) {
             inferenceEngine.unloadModel(loaded);
             return false;

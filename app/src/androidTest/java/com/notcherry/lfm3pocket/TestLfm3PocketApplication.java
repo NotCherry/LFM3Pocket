@@ -48,6 +48,12 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
     public boolean awaitPlaybackStarted()throws InterruptedException{
         return playbackStarted.await(10,TimeUnit.SECONDS);
     }
+    public boolean awaitPlaybackWritten() throws InterruptedException {
+        long deadline = android.os.SystemClock.elapsedRealtime() + 10_000;
+        while (playbackWritten.get() <= 0 && android.os.SystemClock.elapsedRealtime() < deadline)
+            Thread.sleep(25);
+        return playbackWritten.get() > 0;
+    }
     @Override protected PlaybackController.Factory createPlaybackTrackFactory(){
         return () -> {
             playbackOpened.incrementAndGet();
