@@ -2,13 +2,22 @@
 
 On-device Android chat for Liquid AI LFM3 using native [llama.cpp](https://github.com/ggml-org/llama.cpp). Text inference stays on the phone. Optional web search uses a SearXNG endpoint configured by the user.
 
+## Download
+
+Installable ARM64 APKs are published on the [Releases](https://github.com/notcherry/lfm3pocket/releases) page:
+
+- **Latest CI build** (pre-release) — refreshed automatically after each green `main` CI run
+- Numbered **`v*`** releases — created when a version tag is pushed (for example `v0.1.0`)
+
+Model weights are never bundled in the APK; import LFM3 / LFM3-Omni GGUFs in-app after install.
+
 ## Build
 
 GitHub Actions builds the ARM64 phone APK, runs an x86_64 emulator smoke test through the JNI generation path, and uploads the phone APK artifact. It checks out llama.cpp `v0.8.0` for LFM3 and multimodal support.
 
 Locally, install JDK 17, Android SDK/NDK and Gradle 8.13; run `git clone --branch v0.8.0 --depth 1 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp` then `gradle :app:assemblePhoneDebug`.
 
-The Stage 1 release recipe — clean-checkout steps, CI artifacts, model import, device limitations, and license notices — is in [`docs/RELEASE.md`](docs/RELEASE.md). Model weights are never bundled in the APK.
+The Stage 1 release recipe — clean-checkout steps, CI artifacts, GitHub Releases, model import, device limitations, and license notices — is in [`docs/RELEASE.md`](docs/RELEASE.md).
 
 ## App navigation
 

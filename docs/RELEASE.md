@@ -38,6 +38,25 @@ GitHub Actions workflow **Android Stage 1 CI**:
 
 Pinned smoke fixture SHA-256 and host provisioning are documented in `docs/TEST_PLAN.md`. Failures upload instrumentation XML/HTML and logcat.
 
+## GitHub Releases (downloadable APK)
+
+Workflow **Publish GitHub Release** (`.github/workflows/release.yml`):
+
+| Trigger | Release | Asset |
+| --- | --- | --- |
+| Green **Android Stage 1 CI** on `main` | Pre-release tag `latest` (rolling) | `LFM3Pocket-latest-arm64-debug.apk` |
+| Push tag `v*` (e.g. `v0.1.0`) | Versioned release | `LFM3Pocket-0.1.0-arm64-debug.apk` |
+| Manual **workflow_dispatch** | Rebuild `latest`, or publish a `v*` tag if supplied | same as above |
+
+Action run artifacts still expire; use the [Releases](https://github.com/notcherry/lfm3pocket/releases) page for durable downloads.
+
+Publish a numbered release from a clean `main`:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ## Model import expectations
 
 - Text LFM3: import one quantized GGUF.
