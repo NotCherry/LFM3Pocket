@@ -55,7 +55,7 @@ Emulator/JVM slices for AT-01..AT-09 are present and green in the runs above. **
 | Multimodal pathways on device | #13 (F01), #30 (I03) | Text+image+mismatch evidence on RMX2170; see ARM64_COMPATIBILITY_REPORT |
 | Audio input / Polish ASR | #22 (V02 closed), #23/#96 (V03) | Polish/English fixtures on ARM64; human-mic optional residual |
 | Flashlight physical on/off | #84 (A03 follow-up) | **Cleared on RMX2170** — remaining AT-08 tools still need physical sign-off |
-| Omni speech quality + latency | AT-06 ARM64 column | Speech probe FAIL clear on current weights (`probe-speech-rmx2170.json`); audible quality N/A until set_input succeeds |
+| Omni speech quality + latency | AT-06 ARM64 column | Speech probe PASS on RMX2170 (`pcmBytes=38400`, 24 kHz, `firstAudioMs=4112`); human listen QA optional |
 | Signed privacy/stress report | AT-03 / AT-09 ARM64 | `diagnostics.ndjson` pulled from deviceCheck; true airplane TX needs USB (Wi-Fi ADB) |
 
 Until those are filled, every AT row stays **PARTIAL** (never promote to VERIFIED from emulator evidence alone).
