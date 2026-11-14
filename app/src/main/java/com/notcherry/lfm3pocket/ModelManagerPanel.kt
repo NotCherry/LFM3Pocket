@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.notcherry.lfm3pocket.ui.theme.PocketTheme
 
 /** Incremental Compose manager, paired with the existing tested SAF controls and status view. */
 class ModelManagerPanel(
@@ -30,7 +31,7 @@ class ModelManagerPanel(
 
     @OptIn(ExperimentalLayoutApi::class)
     @Composable override fun Content() {
-        MaterialTheme {
+        PocketTheme {
             val state = selection
             Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                 Text("Model: ${state.model.ifEmpty { "None selected" }}", maxLines = 1, overflow = TextOverflow.Ellipsis)

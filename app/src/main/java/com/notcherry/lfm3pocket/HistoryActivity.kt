@@ -5,10 +5,13 @@ import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -18,6 +21,9 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.notcherry.lfm3pocket.ui.theme.PocketTheme
+import com.notcherry.lfm3pocket.ui.theme.atlasColors
+import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 import java.text.DateFormat
 import java.util.Date
 import java.util.UUID
@@ -49,19 +55,21 @@ class HistoryActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         dao = HistoryDatabase.get(this).history()
         setContent {
-            MaterialTheme {
-                HistoryScreen(
-                    packageName = packageName,
-                    conversations = conversations,
-                    selected = selected,
-                    loading = loading,
-                    error = error,
-                    onOpen = ::openConversation,
-                    onDeleteConversation = ::deleteConversation,
-                    onDeleteAll = ::deleteAllConversations,
-                    onBack = { if (selected != null) selected = null else finish() },
-                    onNewChat = ::startNewChat,
-                )
+            PocketTheme {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    HistoryScreen(
+                        packageName = packageName,
+                        conversations = conversations,
+                        selected = selected,
+                        loading = loading,
+                        error = error,
+                        onOpen = ::openConversation,
+                        onDeleteConversation = ::deleteConversation,
+                        onDeleteAll = ::deleteAllConversations,
+                        onBack = { if (selected != null) selected = null else finish() },
+                        onNewChat = ::startNewChat,
+                    )
+                }
             }
         }
         refreshConversations()
@@ -147,9 +155,17 @@ private fun HistoryScreen(
     onNewChat: () -> Unit,
 ) {
     val tag = { name: String -> "$packageName:id/$name" }
+    val atlas = MaterialTheme.atlasColors
+    val type = MaterialTheme.atlasTypography
     var deleteTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
     var confirmDeleteAll by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().padding(16.dp).semantics { testTagsAsResourceId = true }) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(atlas.surface)
+            .padding(16.dp)
+            .semantics { testTagsAsResourceId = true },
+    ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onBack, modifier = Modifier.testTag(tag("history_back"))) {
                 Text(if (selected == null) "Home" else "Back")
@@ -158,46 +174,81 @@ private fun HistoryScreen(
                 Text("New chat")
             }
         }
-        Text("History stays on this device and is excluded from Android backup. Conversation text and any saved speech transcript are retained; audio and image attachments are temporary and removed after processing.",
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(vertical = 8.dp).testTag(tag("history_retention_notice")))
+        Text(
+            "History stays on this device and is excluded from Android backup. Conversation text and any saved speech transcript are retained; audio and image attachments are temporary and removed after processing.",
+            style = type.bodySmall,
+            color = atlas.inkMuted,
+            modifier = Modifier.padding(vertical = 8.dp).testTag(tag("history_retention_notice")),
+        )
         if (selected == null) {
-            Text("Saved conversations", style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.testTag(tag("history_list_title")))
+            Text(
+                "Saved conversations",
+                style = type.headline,
+                color = atlas.ink,
+                modifier = Modifier.testTag(tag("history_list_title")),
+            )
             when {
                 loading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                     CircularProgressIndicator()
                 }
-                error != null -> Text(error, modifier = Modifier.testTag(tag("history_error")))
-                conversations.isEmpty() -> Text("No saved conversations yet.",
-                    modifier = Modifier.padding(top = 20.dp).testTag(tag("history_empty")))
+                error != null -> Text(error, color = atlas.danger, modifier = Modifier.testTag(tag("history_error")))
+                conversations.isEmpty() -> Text(
+                    "No saved conversations yet.",
+                    color = atlas.inkMuted,
+                    modifier = Modifier.padding(top = 20.dp).testTag(tag("history_empty")),
+                )
                 else -> LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
                     item {
-                        TextButton(onClick = { confirmDeleteAll = true },
-                            modifier = Modifier.testTag(tag("history_delete_all"))) {
+                        TextButton(
+                            onClick = { confirmDeleteAll = true },
+                            modifier = Modifier.testTag(tag("history_delete_all")),
+                        ) {
                             Text("Delete all history")
                         }
                     }
                     items(conversations, key = { it.id }) { row ->
-                        Card(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-                            Row(Modifier.fillMaxWidth().padding(8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp)
+                                .border(1.dp, atlas.border)
+                                .padding(10.dp),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
                                 Column(Modifier.weight(1f)) {
-                                    TextButton(onClick = { onOpen(row.id) },
-                                        modifier = Modifier.testTag(tag("history_item"))) {
-                                        Text(row.title, style = MaterialTheme.typography.titleMedium)
+                                    TextButton(
+                                        onClick = { onOpen(row.id) },
+                                        modifier = Modifier.testTag(tag("history_item")),
+                                    ) {
+                                        Text(row.title, style = type.title, color = atlas.ink)
                                     }
-                                    Text(row.preview.ifBlank { "No message preview" }, maxLines = 2,
+                                    Text(
+                                        row.preview.ifBlank { "No message preview" },
+                                        maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(start = 12.dp, top = 4.dp)
-                                            .testTag(tag("history_item_preview")))
-                                    Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-                                        .format(Date(row.updatedAt)), style = MaterialTheme.typography.bodySmall,
-                                        modifier = Modifier.padding(start = 12.dp, top = 4.dp)
-                                            .testTag(tag("history_item_timestamp")))
+                                        style = type.bodySmall,
+                                        color = atlas.inkMuted,
+                                        modifier = Modifier
+                                            .padding(start = 12.dp, top = 2.dp)
+                                            .testTag(tag("history_item_preview")),
+                                    )
+                                    Text(
+                                        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                                            .format(Date(row.updatedAt)),
+                                        style = type.bodySmall,
+                                        color = atlas.inkMuted,
+                                        modifier = Modifier
+                                            .padding(start = 12.dp, top = 4.dp)
+                                            .testTag(tag("history_item_timestamp")),
+                                    )
                                 }
-                                TextButton(onClick = { deleteTarget = row.id to row.title },
-                                    modifier = Modifier.testTag(tag("history_delete_${row.id}"))) {
+                                TextButton(
+                                    onClick = { deleteTarget = row.id to row.title },
+                                    modifier = Modifier.testTag(tag("history_delete_${row.id}")),
+                                ) {
                                     Text("Delete")
                                 }
                             }
@@ -206,85 +257,165 @@ private fun HistoryScreen(
                 }
             }
         } else {
-            Text(selected.conversation.title, style = MaterialTheme.typography.headlineSmall,
+            Text(
+                selected.conversation.title,
+                style = type.headline,
+                color = atlas.ink,
                 modifier = Modifier.testTag(tag("history_reader_title")).semantics {
                     contentDescription = selected.conversation.title
-                })
-            LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag(tag("history_reader"))) {
-                items(selected.messages, key = { it.id }) { message ->
-                    val role = when (message.role) {
-                        "user" -> "You"
-                        "assistant" -> "LFM3"
-                        "tool" -> "Android action"
-                        else -> message.role.replaceFirstChar { it.uppercase() }
-                    }
-                    Card(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text(role, style = MaterialTheme.typography.labelLarge)
-                            SelectionContainer {
-                                Text(message.text, modifier = Modifier
-                                    .padding(top = 4.dp)
-                                    .testTag(tag(if (message.role == "user") "history_message_user"
-                                        else if (message.role == "assistant") "history_message_assistant" else "history_message_tool"))
-                                    .semantics { contentDescription = message.text })
-                            }
-                            if (!message.speechTranscript.isNullOrBlank()) {
-                                Text("Speech transcript: ${message.speechTranscript}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(top = 6.dp)
-                                        .testTag(tag("history_message_speech"))
-                                        .semantics { contentDescription = message.speechTranscript })
-                            } else if (message.speechTranscriptStatus == "UNAVAILABLE") {
-                                Text("Speech transcript unavailable",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(top = 6.dp)
-                                        .testTag(tag("history_message_speech_unavailable"))
-                                        .semantics { contentDescription = "Speech transcript unavailable" })
-                            }
-                            if (message.role == "assistant" && message.turnStatus != "COMPLETED") {
-                                Text("Turn ${message.turnStatus.lowercase()}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(top = 6.dp))
-                            }
-                            selected.outcomes.filter { it.messageId == message.id }.forEach { outcome ->
-                                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                                Text("${outcome.tool} · ${outcome.status}",
-                                    style = MaterialTheme.typography.labelMedium)
-                                Text(outcome.argumentsJson, style = MaterialTheme.typography.bodySmall)
-                                Text(outcome.resultText, style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.testTag(tag("history_tool_outcome_result")).semantics {
-                                        contentDescription = outcome.resultText
-                                    })
+                },
+            )
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .testTag(tag("history_reader")),
+            ) {
+                selected.messages.forEach { message ->
+                    when (message.role) {
+                        "tool" -> {
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp)
+                                    .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
+                                    .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
+                                    .padding(12.dp),
+                            ) {
+                                Text("Android action", style = type.label, color = atlas.inkMuted)
+                                Text(
+                                    message.text,
+                                    style = type.mono,
+                                    color = atlas.ink,
+                                    modifier = Modifier
+                                        .padding(top = 4.dp)
+                                        .testTag(tag("history_message_tool"))
+                                        .semantics { contentDescription = message.text },
+                                )
                             }
                         }
+                        else -> {
+                            val cleaned = if (message.role == "assistant") {
+                                ThinkingSanitizer.clean(message.text)
+                            } else {
+                                null
+                            }
+                            val turn = ChatSnapshot.Turn(
+                                message.role,
+                                cleaned?.answer ?: message.text,
+                                cleaned?.reasoning,
+                                emptyList(),
+                                false,
+                            )
+                            ChatTurn(
+                                turn = turn,
+                                packageName = packageName,
+                                userMessageTag = if (message.role == "user") "history_message_user" else null,
+                                assistantMessageTag = if (message.role == "assistant") "history_message_assistant" else null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                            )
+                        }
+                    }
+                    if (!message.speechTranscript.isNullOrBlank()) {
+                        Text(
+                            "Speech transcript: ${message.speechTranscript}",
+                            style = type.bodySmall,
+                            color = atlas.inkMuted,
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .testTag(tag("history_message_speech"))
+                                .semantics { contentDescription = message.speechTranscript },
+                        )
+                    } else if (message.speechTranscriptStatus == "UNAVAILABLE") {
+                        Text(
+                            "Speech transcript unavailable",
+                            style = type.bodySmall,
+                            color = atlas.inkMuted,
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .testTag(tag("history_message_speech_unavailable"))
+                                .semantics { contentDescription = "Speech transcript unavailable" },
+                        )
+                    }
+                    if (message.role == "assistant" && message.turnStatus != "COMPLETED") {
+                        Text(
+                            "Turn ${message.turnStatus.lowercase()}",
+                            style = type.bodySmall,
+                            color = atlas.inkMuted,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    selected.outcomes.filter { it.messageId == message.id }.forEach { outcome ->
+                        HorizontalDivider(Modifier.padding(vertical = 8.dp), color = atlas.border)
+                        Text(
+                            "${outcome.tool} · ${outcome.status}",
+                            style = type.label,
+                            color = atlas.inkMuted,
+                        )
+                        Text(outcome.argumentsJson, style = type.mono, color = atlas.inkMuted)
+                        Text(
+                            outcome.resultText,
+                            style = type.body,
+                            color = atlas.ink,
+                            modifier = Modifier.testTag(tag("history_tool_outcome_result")).semantics {
+                                contentDescription = outcome.resultText
+                            },
+                        )
                     }
                 }
             }
         }
         if (error != null && selected != null) {
-            Text(error, modifier = Modifier.testTag(tag("history_error")))
+            Text(error, color = atlas.danger, modifier = Modifier.testTag(tag("history_error")))
         }
     }
     deleteTarget?.let { target ->
-        AlertDialog(onDismissRequest = { deleteTarget = null },
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
             modifier = Modifier.semantics { testTagsAsResourceId = true },
             title = { Text("Delete conversation?") },
             text = { Text("Delete ‘${target.second}’ and all of its saved messages and action results?") },
-            confirmButton = { TextButton(onClick = {
-                onDeleteConversation(target.first); deleteTarget = null
-            }, modifier = Modifier.testTag(tag("history_confirm_delete"))) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { deleteTarget = null },
-                modifier = Modifier.testTag(tag("history_cancel_delete"))) { Text("Cancel") } })
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteConversation(target.first)
+                        deleteTarget = null
+                    },
+                    modifier = Modifier.testTag(tag("history_confirm_delete")),
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { deleteTarget = null },
+                    modifier = Modifier.testTag(tag("history_cancel_delete")),
+                ) { Text("Cancel") }
+            },
+        )
     }
     if (confirmDeleteAll) {
-        AlertDialog(onDismissRequest = { confirmDeleteAll = false },
+        AlertDialog(
+            onDismissRequest = { confirmDeleteAll = false },
             modifier = Modifier.semantics { testTagsAsResourceId = true },
             title = { Text("Delete all history?") },
             text = { Text("This permanently deletes every saved conversation on this device.") },
-            confirmButton = { TextButton(onClick = {
-                onDeleteAll(); confirmDeleteAll = false
-            }, modifier = Modifier.testTag(tag("history_confirm_delete_all"))) { Text("Delete all") } },
-            dismissButton = { TextButton(onClick = { confirmDeleteAll = false },
-                modifier = Modifier.testTag(tag("history_cancel_delete_all"))) { Text("Cancel") } })
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteAll()
+                        confirmDeleteAll = false
+                    },
+                    modifier = Modifier.testTag(tag("history_confirm_delete_all")),
+                ) { Text("Delete all") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { confirmDeleteAll = false },
+                    modifier = Modifier.testTag(tag("history_cancel_delete_all")),
+                ) { Text("Cancel") }
+            },
+        )
     }
 }

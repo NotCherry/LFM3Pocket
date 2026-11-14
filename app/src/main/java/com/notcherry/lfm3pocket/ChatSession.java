@@ -12,7 +12,10 @@ public final class ChatSession {
     /** Default user text when a voice recording is submitted without typed input. */
     static final String DEFAULT_VOICE_QUESTION = "Listen to this recording and answer.";
     public interface Dispatcher { void post(Runnable work, long delayMs); }
+    /** Flat-string listener kept for MainActivity / ChatPanel / E2E compatibility. */
     public interface Listener { void changed(String transcript, String status, boolean generating); }
+    /** Optional structured snapshot consumer (U05). SAM-safe: separate from {@link Listener}. */
+    public interface SnapshotListener { void onSnapshot(ChatSnapshot snapshot); }
     public interface Search { List<WebSearch.Source> search(String endpoint, String question) throws Exception; }
     public interface Persistence { void save(CompletedTurn turn) throws Exception; }
     public interface MediaCleanup { void delete(String path); }
@@ -40,9 +43,15 @@ public final class ChatSession {
     }
     private static final class Message {
         final String role, text;
+        /** Cleaned optional reasoning for assistant turns; null for user / empty. */
+        final String reasoning;
         final List<WebSearch.Source> sources;
         Message(String role,String text,List<WebSearch.Source> sources) {
-            this.role=role;this.text=text;this.sources=new ArrayList<>(sources);
+            this(role,text,null,sources);
+        }
+        Message(String role,String text,String reasoning,List<WebSearch.Source> sources) {
+            this.role=role;this.text=text;this.reasoning=reasoning;
+            this.sources=new ArrayList<>(sources);
         }
     }
     private static final class Turn {
@@ -63,6 +72,7 @@ public final class ChatSession {
     private final Executor worker;
     private final Dispatcher ui;
     private final Listener listener;
+    private final SnapshotListener snapshotListener;
     private final Persistence persistence;
     private final MediaCleanup mediaCleanup;
     private final LongSupplier model;
@@ -74,20 +84,29 @@ public final class ChatSession {
     private boolean closed, scheduled;
     private String status="";
     private String activeImagePath="";
+    private ChatSnapshot latestSnapshot=new ChatSnapshot(Collections.emptyList(),"",false);
 
     public ChatSession(InferenceEngine engine,Executor worker,Dispatcher ui,LongSupplier model,
                        Search search,Listener listener) {
-        this(engine,worker,ui,model,search,turn->{},path->{},listener);
+        this(engine,worker,ui,model,search,turn->{},path->{},listener,null);
     }
     public ChatSession(InferenceEngine engine,Executor worker,Dispatcher ui,LongSupplier model,
                        Search search,Persistence persistence,Listener listener) {
-        this(engine,worker,ui,model,search,persistence,path->{},listener);
+        this(engine,worker,ui,model,search,persistence,path->{},listener,null);
     }
     public ChatSession(InferenceEngine engine,Executor worker,Dispatcher ui,LongSupplier model,
                        Search search,Persistence persistence,MediaCleanup mediaCleanup,Listener listener) {
+        this(engine,worker,ui,model,search,persistence,mediaCleanup,listener,null);
+    }
+    public ChatSession(InferenceEngine engine,Executor worker,Dispatcher ui,LongSupplier model,
+                       Search search,Persistence persistence,MediaCleanup mediaCleanup,
+                       Listener listener,SnapshotListener snapshotListener) {
         this.engine=engine;this.worker=worker;this.ui=ui;this.model=model;this.search=search;
         this.persistence=persistence;this.mediaCleanup=mediaCleanup;this.listener=listener;
+        this.snapshotListener=snapshotListener;
     }
+    /** Latest structured snapshot (immutable). Safe for UI / tests after emit. */
+    public synchronized ChatSnapshot snapshot() { return latestSnapshot; }
     public synchronized boolean isGenerating() { return active!=null; }
     public synchronized boolean submit(String text,String media,String kind,boolean useSearch,String endpoint,int maxTokens) {
         List<Attachment> attachments=media==null || media.isEmpty()?Collections.emptyList()
@@ -238,7 +257,7 @@ public final class ChatSession {
         final String failure=error,searchFailure=searchError;
         TerminalState terminal=failure!=null?TerminalState.FAILED
                 :turn.cancelled?TerminalState.CANCELLED:TerminalState.COMPLETED;
-        String answer=partialFor(turn);
+        String answer=ThinkingSanitizer.clean(partialFor(turn)).answer;
         String saveFailure=null;
         if(!turn.discarded && current(turn)) {
             try { persistence.save(new CompletedTurn(turn.persistenceId,turn.question,answer,speechTranscript,speechTranscriptStatus,
@@ -249,9 +268,7 @@ public final class ChatSession {
         ui.post(() -> finish(turn,resultSources,failure,useSearch,searchFailure,historyFailure),0);
     }
     private static String cleanTranscript(String value) {
-        String transcript=value.replaceAll("(?s)<think>.*?</think>", "").trim();
-        // Drop Omni mixed-mode markers if the ASR pass surfaces them.
-        transcript=transcript.replace("<|mixed_start|>","").replace("<|mixed_end|>","").trim();
+        String transcript=ThinkingSanitizer.clean(value).answer.trim();
         return transcript.isEmpty()?null:transcript;
     }
     /**
@@ -293,7 +310,10 @@ public final class ChatSession {
     private synchronized void finish(Turn turn,List<WebSearch.Source> sources,String failure,boolean searched,String searchFailure,String historyFailure) {
         if(!current(turn)) return;
         drain();
-        if(partial.length()>0) messages.add(new Message("assistant",partial.toString(),sources));
+        if(partial.length()>0) {
+            ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(partial.toString());
+            messages.add(new Message("assistant",cleaned.answer,cleaned.reasoning,sources));
+        }
         partial.setLength(0);active=null;
         String mode=searched?"web search + local model":"local model · offline";
         status=failure!=null?"Response failed · "+mode+": "+failure
@@ -304,17 +324,30 @@ public final class ChatSession {
     }
     private void drain() { partial.append(pending);pending.setLength(0);scheduled=false; }
     private void emit() {
-        StringBuilder out=new StringBuilder();
-        if(messages.isEmpty() && active==null) out.append("No conversation yet.\n");
+        ChatSnapshot snapshot=buildSnapshot();
+        latestSnapshot=snapshot;
+        String flat=FlatTranscript.format(snapshot);
+        listener.changed(flat,status,active!=null);
+        if(snapshotListener!=null) snapshotListener.onSnapshot(snapshot);
+    }
+    private ChatSnapshot buildSnapshot() {
+        List<ChatSnapshot.Turn> turns=new ArrayList<>();
         for(Message message:messages) {
-            out.append(message.role.equals("user")?"YOU\n":"LFM3\n").append(message.text).append("\n\n");
-            for(int i=0;i<message.sources.size();i++) {
-                WebSearch.Source source=message.sources.get(i);
-                out.append('[').append(i+1).append("] ").append(source.title).append('\n').append(source.url).append('\n');
-            }
+            turns.add(new ChatSnapshot.Turn(message.role,message.text,message.reasoning,
+                    toSnapshotSources(message.sources),false));
         }
-        if(active!=null) out.append("LFM3\n").append(partial).append('▌');
-        listener.changed(out.toString(),status,active!=null);
+        if(active!=null) {
+            ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(partial.toString());
+            turns.add(new ChatSnapshot.Turn("assistant",cleaned.answer,cleaned.reasoning,
+                    Collections.emptyList(),true));
+        }
+        return new ChatSnapshot(turns,status,active!=null);
+    }
+    private static List<ChatSnapshot.Source> toSnapshotSources(List<WebSearch.Source> sources) {
+        List<ChatSnapshot.Source> out=new ArrayList<>(sources.size());
+        for(WebSearch.Source source:sources)
+            out.add(new ChatSnapshot.Source(source.title,source.url,source.snippet));
+        return out;
     }
     private static String prompt(List<Message> history,List<WebSearch.Source> sources,int mediaCount) {
         StringBuilder out=new StringBuilder("<|startoftext|><|im_start|>system\nYou are a concise helpful assistant. Reply in the language of the user. Use attached media when present. Respond in text.\n");

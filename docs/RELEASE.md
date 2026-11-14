@@ -104,3 +104,16 @@ It does **not** prove:
 - physical flashlight / tool side effects (#84)
 
 Track those under the Stage 1 acceptance matrix (`docs/ACCEPTANCE_MATRIX.md`) and tracker issue #4. R04 records CI evidence and names the ARM64 release blockers; it does not flip AT rows to VERIFIED.
+
+## Atlas UI epic (separate from AT VERIFIED gates)
+
+The Atlas redesign (tracker [#135](https://github.com/NotCherry/LFM3Pocket/issues/135), workstream `U` / UT-01..UT-08) covers theme, structured chat rendering, Home/Settings/History chrome, and E2E selector adaptation. It is **orthogonal** to Stage 1 AT-01..AT-09 VERIFIED rules:
+
+| Doc | Role |
+| --- | --- |
+| [`DESIGN.md`](DESIGN.md) | Atlas style guide (tokens, components, anti-patterns) |
+| [`UI_ACCEPTANCE_MATRIX.md`](UI_ACCEPTANCE_MATRIX.md) | UT-01..UT-08 evidence map (JVM / EMU-FAKE / device visual) |
+| [`UI_E2E_CONTRACT.md`](UI_E2E_CONTRACT.md) | Stable chat IDs + flat transcript + Settings navigation for automators |
+| `device-evidence/reports/ui-atlas/` | Device visual checklist + operator report (U16) |
+
+Green UT rows or Atlas screenshots **never** flip AT-01..AT-09 to VERIFIED. Stage 1 product capability remains governed by `ACCEPTANCE_MATRIX.md` and tracker #4.
