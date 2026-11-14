@@ -91,8 +91,10 @@ public class PlaybackControllerTest {
         c.stop();
         assertTrue(states.contains(PlaybackController.State.STOPPING));
         assertTrue(stops.get() >= 1);
+        // finish() publishes IDLE before the worker finally{} closes the track / abandons focus.
         long deadline=System.currentTimeMillis()+5000;
-        while (c.state()==PlaybackController.State.STOPPING && System.currentTimeMillis()<deadline)
+        while (System.currentTimeMillis()<deadline
+                && (c.state()!=PlaybackController.State.IDLE || released.get()<1 || focusAbandons.get()<1))
             Thread.sleep(10);
         assertEquals(PlaybackController.State.IDLE,c.state());
         assertEquals(1,released.get());
