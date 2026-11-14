@@ -63,11 +63,10 @@
 - Phone APK from CI run 43601898557 installed on RMX2170
 
 ## Omni speech generation (AT-06)
-- FAIL with clear error — `RealOmniProbeTest` `caseId=speech` on deviceCheck APK from PR #114
+- PASS — after PR #116 (`SpeechPrompt.tts` ends with `<think></think><|audio_start|>`)
 - Input: speechText=`Hello`, en/female, maxFrames=256
-- `error`: `Could not prepare the speech generation prompt`; `pcmBytes=0`; `firstAudioMs=null`; `speechMs=66`
-- Artifact: `probe-speech-rmx2170.json`
-- Interpretation: multimodal load succeeds; gen_audio init path rejects prompt prep on this weight pair (Q4_0 + Q8_0 mmproj as Q4_K_M names). Product must surface the status string (already does).
+- `sampleRateHz=24000`, mono, 16-bit; `pcmBytes=38400`; `firstAudioMs=4112`; `speechMs=6832`; `error=null`
+- Artifacts: `probe-speech-rmx2170.json`, `probe-speech-rmx2170.wav`
 
 ## Diagnostics
 - deviceCheck `diagnostics.ndjson` pulled: `diagnostics-devicecheck-rmx2170.ndjson` (MEMORY trim events)
