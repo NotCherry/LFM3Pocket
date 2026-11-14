@@ -26,7 +26,7 @@ public final class InferenceSettingsE2eTest {
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
             assertNotNull(device.wait(Until.findObject(By.res(pkg,"chat_send").enabled(true)),WAIT));
             if(phase.equals("verify")) {
-                verifyLimits(device,app);
+                verifyLimits(device,pkg,app);
                 restoreDefaults(device,pkg);
                 return;
             }
@@ -37,11 +37,20 @@ public final class InferenceSettingsE2eTest {
             if(phase.equals("prepare")) return;
             scenario.recreate();
             assertNotNull(device.wait(Until.findObject(By.res(pkg,"chat_send").enabled(true)),WAIT));
-            verifyLimits(device,app);
+            verifyLimits(device,pkg,app);
             restoreDefaults(device,pkg);
         }
     }
-    private void verifyLimits(UiDevice device,TestLfm3PocketApplication app) {
+    private void verifyLimits(UiDevice device,String pkg,TestLfm3PocketApplication app) throws Exception {
+        // Summary lives on the Settings host ModelManager (U10/U15), not the chat viewport.
+        openSettings(device,pkg);
+        scrollTo(pkg,"model_configuration_scroll");
+        try {
+            UiScrollable scroll=new UiScrollable(
+                    new UiSelector().resourceId(pkg+":id/model_configuration_scroll"));
+            scroll.setAsVerticalList();
+            scroll.scrollIntoView(new UiSelector().textContains("Context 2048"));
+        } catch(Exception ignored) { }
         assertNotNull(device.wait(Until.findObject(By.text("Context 2048 • Threads 2 • Max 128")),WAIT));
         assertEquals(2048,app.scriptedEngine().configuredSettings().contextTokens);
         assertEquals(2,app.scriptedEngine().configuredSettings().threads);
