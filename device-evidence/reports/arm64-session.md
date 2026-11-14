@@ -62,6 +62,17 @@
 - PR #113: successful ASR drops WAV from the assistant turn and answers from the transcript
 - Phone APK from CI run 43601898557 installed on RMX2170
 
+## Omni speech generation (AT-06)
+- FAIL with clear error — `RealOmniProbeTest` `caseId=speech` on deviceCheck APK from PR #114
+- Input: speechText=`Hello`, en/female, maxFrames=256
+- `error`: `Could not prepare the speech generation prompt`; `pcmBytes=0`; `firstAudioMs=null`; `speechMs=66`
+- Artifact: `probe-speech-rmx2170.json`
+- Interpretation: multimodal load succeeds; gen_audio init path rejects prompt prep on this weight pair (Q4_0 + Q8_0 mmproj as Q4_K_M names). Product must surface the status string (already does).
+
+## Diagnostics
+- deviceCheck `diagnostics.ndjson` pulled: `diagnostics-devicecheck-rmx2170.ndjson` (MEMORY trim events)
+- True airplane-mode TX still blocked on Wi-Fi ADB per protocol
+
 ## Limitations
 - Host weights are Q4_0 + Q8_0 mmproj renamed to probe Q4_K_M filenames (same as text session)
 - Audio fixtures are OS TTS, not human microphone captures

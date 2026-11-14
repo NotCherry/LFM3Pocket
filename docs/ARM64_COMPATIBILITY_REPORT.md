@@ -36,7 +36,7 @@ Physical qualification for F01 / AT-04. DeviceCheck package
 | Human-microphone Polish | NOT_RUN | Requires operator utterance; fixtures above are OS TTS |
 | True airplane-mode TX | BLOCKED on Wi-Fi ADB | Protocol requires USB or on-device handoff (`ARM64_OMNI_TEST_PROTOCOL.md`) |
 | Gallery / CameraX UI import | NOT_RUN on ARM64 | Emulator E2E exists; native image path proven via probe |
-| Omni speech (TTS) generation | PENDING probe | `RealOmniProbeTest` `caseId=speech` added for device measurement |
+| Omni speech (TTS) generation | FAIL (clear error) | `probe-speech-rmx2170.json` — `Could not prepare the speech generation prompt` after load; `pcmBytes=0`, `speechMs=66`. Host Q4_0 + Q8_0 mmproj renamed to probe names; gen_audio path rejects at `mtmd_helper_gen_audio_set_input`. Not silent. |
 
 ## Missing / out of Stage 1 scope
 
