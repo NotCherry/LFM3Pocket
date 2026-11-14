@@ -110,6 +110,9 @@ public class SpeechGenerationContractTest {
         assertTrue(prompt.toLowerCase(Locale.ROOT).contains("male"));
         assertTrue(prompt.contains("The harbor was quiet."));
         assertTrue(prompt.contains("<|im_start|>assistant"));
+        assertTrue("Omni TTS prompts must end on the audio modality marker",
+                prompt.endsWith("<|audio_start|>"));
+        assertTrue(prompt.contains("<think></think>"));
     }
 
     @Test public void speechWavRejectsEmptyPcm(){

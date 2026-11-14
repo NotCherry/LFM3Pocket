@@ -8,11 +8,14 @@ public final class SpeechPrompt {
         if (text == null || text.trim().isEmpty()) throw new IllegalArgumentException("text");
         String lang = language == null || language.trim().isEmpty() ? "en" : language.trim();
         String spokenVoice = voice == null || voice.trim().isEmpty() ? "female" : voice.trim();
+        // LFM3-Omni TTS chat template: empty think block then forced audio modality marker.
+        // mtmd_helper_gen_audio requires the prompt to end on <|audio_start|>.
         return "<|startoftext|><|im_start|>system\n"
-                + "Perform TTS in " + languageLabel(lang) + " using a " + spokenVoice + " voice.\n"
+                + "Perform TTS in " + languageLabel(lang) + " using a " + spokenVoice + " voice."
                 + "<|im_end|>\n<|im_start|>user\n"
                 + text.trim()
-                + "<|im_end|>\n<|im_start|>assistant\n";
+                + "<|im_end|>\n<|im_start|>assistant\n"
+                + "<think></think><|audio_start|>";
     }
 
     private static String languageLabel(String language) {
