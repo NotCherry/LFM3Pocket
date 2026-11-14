@@ -32,6 +32,23 @@ This is the authoritative **test-to-requirement map**, not a feature-completion 
 - [PR #56, Actions run #23](https://github.com/NotCherry/LFM3Pocket/actions/runs/42007764262): 6/6 Android tests, including black-box UI launch/stream/cancel/retry. **No official Omni device inference**.
 - [PR #57, Actions run #25](https://github.com/NotCherry/LFM3Pocket/actions/runs/42009363621): JVM contracts, ARM64 APK build, 6/6 emulator JNI/UI tests, JUnit result gate and downloadable evidence.
 - [PR #58, Actions run #27](https://github.com/NotCherry/LFM3Pocket/actions/runs/42010361465): 8/8 executed emulator JNI/UI tests (0 failures, 0 skips), including offline/denied-permission scenarios. These are EMU-FAKE tests, not real ARM64-Omni evidence.
+- [PR #106 / V06](https://github.com/NotCherry/LFM3Pocket/actions/runs/43517473927): Voice journey E2E green (JVM, emulator JNI/UI, ARM64 APK).
+- [PR #107 / R01](https://github.com/NotCherry/LFM3Pocket/actions/runs/43525123944): Offline privacy + HTTPS search opt-in green.
+- [PR #108 / R02](https://github.com/NotCherry/LFM3Pocket/actions/runs/43528513845): Local diagnostics + stress/lifecycle green (~82 emulator tests).
+
+## Stage 1 release blockers (R04)
+
+Emulator/JVM slices for AT-01..AT-09 are present and green in the runs above. **Stage 1 release remains blocked** until physical ARM64-OMNI evidence lands for:
+
+| Gate | Owner issues | Why blocked |
+| --- | --- | --- |
+| Multimodal pathways on device | #13 (F01), #30 (I03) | Real Omni image/projector inference not verified on ARM64 |
+| Audio input / Polish ASR | #22 (V02), #23/#96 (V03) | Human-speech accuracy and native audio interpretation |
+| Flashlight physical on/off | #84 (A03 follow-up) | Emulator CameraManager cannot prove torch hardware |
+| Omni speech quality + latency | AT-06 ARM64 column | Audible TTS / interruption measured on device |
+| Signed privacy/stress report | AT-03 / AT-09 ARM64 | Airplane-mode traffic + `diagnostics.ndjson` on a real phone |
+
+Until those are filled, every AT row stays **PARTIAL** (never promote to VERIFIED from emulator evidence alone).
 
 ## Maintenance contract
 

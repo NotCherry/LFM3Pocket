@@ -74,7 +74,7 @@ A green CI run proves:
 
 - unit contracts
 - emulator JNI lifecycle on Stories15M
-- EMU-FAKE UI journeys
+- EMU-FAKE UI journeys (including offline privacy, voice journey, diagnostics stress)
 - ARM64 APK packaging
 
 It does **not** prove:
@@ -84,4 +84,4 @@ It does **not** prove:
 - audible Omni TTS quality
 - physical flashlight / tool side effects (#84)
 
-Track those under the Stage 1 acceptance matrix (`docs/ACCEPTANCE_MATRIX.md`) and tracker issue #4.
+Track those under the Stage 1 acceptance matrix (`docs/ACCEPTANCE_MATRIX.md`) and tracker issue #4. R04 records CI evidence and names the ARM64 release blockers; it does not flip AT rows to VERIFIED.
