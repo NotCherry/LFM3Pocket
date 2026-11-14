@@ -32,7 +32,9 @@ This is the authoritative **test-to-requirement map**, not a feature-completion 
 - **#84 flashlight:** PASS — `FlashlightCameraManagerTest` with `CAMERA` granted via `adb install -g`; production `CameraManager.setTorchMode` on/off. Issue closed.
 - **Omni text (RD-02 / F01 pathway):** PASS — `RealOmniProbeTest` `caseId=text`; `firstTokenMs=5112`, `loadMs=2320`, Polish local reply in `device-evidence/reports/probe-text.json`. Host weights were `LFM3-Omni-2B-Q4_0` + `mmproj-LFM3-Omni-2B-Q8_0` renamed to probe filenames.
 - **Omni image:** PASS — `caseId=image`; synthetic two-shape fixture; output correctly names red background, blue square left, yellow circle right; `firstTokenMs=17737`, `decodeMs=22096`; `device-evidence/reports/probe-image.json`.
-- **Omni audio / Polish ASR:** native path PASS. English SAPI ASR partial (`blanket` vs `blue cat`). Polish SAPI (Paulina) ASR exact match on `Perform ASR.`; `device-evidence/reports/probe-audio-pl-asr-rmx2170.json`. Re-attaching WAV after ASR caused echo; ChatSession now answers from the transcript when ASR succeeds (image kept). Post-ASR text answer on device returned niebieski/kot. Full session log: `device-evidence/reports/arm64-session.md`. Human-mic Polish still open (#96); I03 gallery/camera UI (#30) still open.
+- **Mismatched projector:** FAIL safe — language-model file used as projector → `Select a multimodal projector, not a language model` (`probe-mismatch-rmx2170.json`).
+- **Omni audio / Polish ASR:** native path PASS. English SAPI ASR partial (`blanket` vs `blue cat`). Polish SAPI (Paulina) ASR exact match on `Perform ASR.`; `device-evidence/reports/probe-audio-pl-asr-rmx2170.json`. ChatSession ASR→transcript reply (#113). Compatibility report: `docs/ARM64_COMPATIBILITY_REPORT.md`.
+- **Human-mic Polish / true airplane TX / gallery UI:** human utterance and Wi-Fi-ADB airplane remain operator-gated; gallery/CameraX ARM64 UI not separately re-run (native image path proven).
 
 ## Currently observed CI evidence
 
@@ -50,8 +52,8 @@ Emulator/JVM slices for AT-01..AT-09 are present and green in the runs above. **
 
 | Gate | Owner issues | Why blocked |
 | --- | --- | --- |
-| Multimodal pathways on device | #13 (F01), #30 (I03) | Text+image Omni JNI PASS on RMX2170; I03 gallery/camera UI + combined turn still open |
-| Audio input / Polish ASR | #22 (V02), #23/#96 (V03) | Polish SAPI ASR exact on ARM64; ChatSession ASR→text reply; human-mic still open |
+| Multimodal pathways on device | #13 (F01), #30 (I03) | Text+image+mismatch evidence on RMX2170; see ARM64_COMPATIBILITY_REPORT |
+| Audio input / Polish ASR | #22 (V02 closed), #23/#96 (V03) | Polish/English fixtures on ARM64; human-mic optional residual |
 | Flashlight physical on/off | #84 (A03 follow-up) | **Cleared on RMX2170** — remaining AT-08 tools still need physical sign-off |
 | Omni speech quality + latency | AT-06 ARM64 column | Audible TTS / interruption measured on device |
 | Signed privacy/stress report | AT-03 / AT-09 ARM64 | Airplane-mode traffic + `diagnostics.ndjson` on a real phone |

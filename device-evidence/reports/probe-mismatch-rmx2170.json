@@ -1,0 +1,16 @@
+﻿{
+  "device": "RMX2170",
+  "api": 31,
+  "deviceClass": "ANDROID_DEVICE",
+  "abi": "arm64-v8a",
+  "startedUtc": "2026-11-14T14:30:06.580812Z",
+  "model": "LFM3-Omni-2B-Q4_K_M.gguf",
+  "projector": "mmproj-LFM3-Omni-2B-Q4_K_M.gguf",
+  "maxTokens": 16,
+  "phase": "complete",
+  "prompt": "<|startoftext|><|im_start|>system\nYou are a concise helpful assistant. Reply in the language of the user.<|im_end|>\n<|im_start|>user\nNapisz po polsku jedno zdanie o lokalnym przetwarzaniu.<|im_end|>\n<|im_start|>assistant\n",
+  "media": "",
+  "output": "",
+  "error": "java.io.IOException: Select a multimodal projector, not a language model",
+  "quality": "REQUIRES_REVIEW"
+}
