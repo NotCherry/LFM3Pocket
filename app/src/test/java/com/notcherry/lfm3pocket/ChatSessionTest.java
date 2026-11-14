@@ -12,9 +12,11 @@ public class ChatSessionTest {
         public void post(Runnable task,long delay){tasks.add(task);}
         void drain(){while(!tasks.isEmpty())tasks.remove(0).run();}
     }
-    static final class Engine implements InferenceEngine {
+    static class Engine implements InferenceEngine {
         int calls,answerCalls;String prompt,asrError,asrTranscript="The secret animal is a blue cat.";boolean stopped;final List<String> prompts=new ArrayList<>();
         final List<List<String>> mediaByCall=new ArrayList<>();
+        /** When non-null, assistant generate emits this instead of the default Answer N token. */
+        String assistantToken;
         public long loadModel(String m,String p){return 1;}
         public void unloadModel(long h){}
         public String generate(long h,String p,String media,int max,TokenSink sink){
@@ -25,6 +27,7 @@ public class ChatSessionTest {
             mediaByCall.add(new ArrayList<>(Arrays.asList(media)));
             if(!stopped) {
                 if(p.contains("Perform ASR.")) { if(asrTranscript!=null)sink.onToken(asrTranscript); }
+                else if(assistantToken!=null) sink.onToken(assistantToken);
                 else sink.onToken("Answer "+(++answerCalls));
             }
             return p.contains("Perform ASR.")?asrError:null;
@@ -35,11 +38,79 @@ public class ChatSessionTest {
     static final class Harness {
         final Queue worker=new Queue(),ui=new Queue();final Engine engine=new Engine();
         String text="",status="";boolean generating;
+        ChatSnapshot snapshot=new ChatSnapshot(Collections.emptyList(),"",false);
         final ChatSession session=new ChatSession(engine,worker,ui,()->1,
                 (endpoint,question)->{throw new AssertionError("Disabled search must not run");},
-                (t,s,g)->{text=t;status=s;generating=g;});
+                turn->{},path->{},
+                (t,s,g)->{text=t;status=s;generating=g;},
+                snap->{snapshot=snap;});
         void complete(){worker.drain();ui.drain();}
         boolean send(String text){return session.submit(text,"","",false,"",32);}
+    }
+
+    @Test public void structuredSnapshotMatchesFlatTranscriptParity(){
+        Harness h=new Harness();
+        assertTrue(h.send("First question"));h.complete();
+        assertEquals(FlatTranscript.format(h.snapshot),h.text);
+        assertEquals(2,h.snapshot.turns.size());
+        assertEquals("user",h.snapshot.turns.get(0).role);
+        assertEquals("First question",h.snapshot.turns.get(0).text);
+        assertFalse(h.snapshot.turns.get(0).streaming);
+        assertEquals("assistant",h.snapshot.turns.get(1).role);
+        assertEquals("Answer 1",h.snapshot.turns.get(1).text);
+        assertFalse(h.snapshot.turns.get(1).streaming);
+        assertFalse(h.snapshot.generating);
+        assertEquals(h.session.snapshot(),h.snapshot);
+    }
+
+    @Test public void thinkingTagsAreStrippedFromAnswerAndFlatTranscript(){
+        Queue worker=new Queue(),ui=new Queue();
+        Engine engine=new Engine();
+        engine.assistantToken="<think>hidden plan</think>Visible answer";
+        String[] flat={""};ChatSnapshot[] snap={null};
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,
+                (endpoint,question)->Collections.emptyList(),turn->{},path->{},
+                (text,status,running)->flat[0]=text,
+                s->snap[0]=s);
+        assertTrue(session.submit("Ask","","",false,"",32));
+        worker.drain();ui.drain();
+        assertEquals("Visible answer",snap[0].turns.get(1).text);
+        assertEquals("hidden plan",snap[0].turns.get(1).reasoning);
+        assertFalse(flat[0].contains("<think>"));
+        assertFalse(flat[0].contains("hidden plan"));
+        assertTrue(flat[0].contains("Visible answer"));
+        assertEquals(FlatTranscript.format(snap[0]),flat[0]);
+    }
+
+    @Test public void streamingSnapshotExposesCleanedPartialAndCursorInFlat(){
+        Queue worker=new Queue(),ui=new Queue();
+        Engine engine=new Engine();
+        engine.assistantToken="<think>plan</think>Partial";
+        String[] flat={""};
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,
+                (endpoint,question)->Collections.emptyList(),turn->{},path->{},
+                (text,status,running)->flat[0]=text,
+                snap->{});
+        assertTrue(session.submit("Stream me","","",false,"",32));
+        worker.drain();
+        // Offline path posts progress emit, then token drain emit, then finish.
+        assertTrue(ui.tasks.size()>=3);
+        ui.tasks.remove(0).run(); // progress
+        ui.tasks.remove(0).run(); // stream drain
+        ChatSnapshot mid=session.snapshot();
+        assertTrue(mid.generating);
+        ChatSnapshot.Turn stream=mid.turns.get(mid.turns.size()-1);
+        assertTrue(stream.streaming);
+        assertEquals("Partial",stream.text);
+        assertEquals("plan",stream.reasoning);
+        assertTrue(flat[0].contains("LFM3\nPartial"));
+        assertTrue(flat[0].contains("\u258C")); // ▌ streaming cursor
+        assertFalse(flat[0].contains("<think>"));
+        assertEquals(FlatTranscript.format(mid),flat[0]);
+        ui.drain();
+        assertFalse(session.snapshot().generating);
+        assertFalse(session.snapshot().turns.get(1).streaming);
+        assertEquals("Partial",session.snapshot().turns.get(1).text);
     }
     @Test public void twoTurnsRetainActiveContextAndAppendEachResponseExactlyOnce(){
         Harness h=new Harness();assertTrue(h.send("First question"));h.complete();

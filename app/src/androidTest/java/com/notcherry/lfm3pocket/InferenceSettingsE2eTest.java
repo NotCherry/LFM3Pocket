@@ -30,9 +30,9 @@ public final class InferenceSettingsE2eTest {
                 restoreDefaults(device,pkg);
                 return;
             }
-            open(device);fields(device,pkg,"300","2","128");click(device,"Save");
+            openSettings(device,pkg);fields(device,pkg,"300","2","128");saveInference(device,pkg);
             assertNotNull(device.wait(Until.findObject(By.textContains("Context must be")),WAIT));
-            fields(device,pkg,"2048","2","128");click(device,"Save");
+            fields(device,pkg,"2048","2","128");saveInference(device,pkg);
             assertNotNull(device.wait(Until.findObject(By.text("Context 2048 • Threads 2 • Max 128")),WAIT));
             if(phase.equals("prepare")) return;
             scenario.recreate();
@@ -48,11 +48,18 @@ public final class InferenceSettingsE2eTest {
         assertEquals(128,app.scriptedEngine().configuredSettings().maxTokens);
     }
     private void restoreDefaults(UiDevice device,String pkg) {
-        open(device);fields(device,pkg,"4096","4","512");click(device,"Save");
+        openSettings(device,pkg);fields(device,pkg,"4096","4","512");saveInference(device,pkg);
         assertNotNull(device.wait(Until.findObject(By.text("Context 4096 • Threads 4 • Max 512")),WAIT));
     }
-    private void open(UiDevice device){click(device,"Settings");}
-    private void click(UiDevice device,String text){UiObject2 button=device.wait(Until.findObject(text.equals("Save") ? By.res("android","button1").enabled(true) : By.text(text).enabled(true)),WAIT);assertNotNull(text,button);button.click();}
+    private void openSettings(UiDevice device,String pkg) {
+        UiObject2 open=device.wait(Until.findObject(By.res(pkg,"settings_open").enabled(true)),2000);
+        if(open!=null) open.click();
+        assertNotNull(device.wait(Until.findObject(By.res(pkg,"model_configuration_scroll")),WAIT));
+    }
+    private void saveInference(UiDevice device,String pkg) {
+        UiObject2 save=device.wait(Until.findObject(By.res(pkg,"settings_save").enabled(true)),WAIT);
+        assertNotNull("settings_save",save);save.click();
+    }
     private void fields(UiDevice device,String pkg,String context,String threads,String tokens){
         device.wait(Until.findObject(By.res(pkg,"settings_context")),WAIT).setText(context);
         device.findObject(By.res(pkg,"settings_threads")).setText(threads);

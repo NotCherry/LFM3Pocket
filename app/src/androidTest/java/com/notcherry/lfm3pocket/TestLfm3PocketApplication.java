@@ -131,11 +131,14 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         private volatile boolean stopRequested;
         private volatile boolean failNextGeneration;
         private volatile String loadedPath;
+        /** One-shot override for the next assistant stream token (U15 think-tag strip E2E). */
+        private volatile String assistantTokenOverride;
         private volatile InferenceSettings configured=InferenceSettings.DEFAULT;
         @Override public void configure(InferenceSettings settings) { configured=settings; }
         public InferenceSettings configuredSettings() { return configured; }
         private volatile boolean failLoad;
         public void failNextLoad() { failLoad = true; }
+        public void setAssistantTokenOverride(String token) { assistantTokenOverride = token; }
         private volatile String lastPrompt;
         private volatile String lastAsrPrompt;
         private volatile String lastMediaPath;
@@ -170,6 +173,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
             releaseBeforeFirstToken = new CountDownLatch(0);
             generationStarted = new CountDownLatch(0);
             failNextGeneration = false;
+            assistantTokenOverride = null;
         }
 
         public void holdFirstToken() {
@@ -219,6 +223,8 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
                 failNextGeneration=false;
                 return "Injected inference failure";
             }
+            String override = assistantTokenOverride;
+            if (override != null) assistantTokenOverride = null;
             if (turn == 1) {
                 generationStarted.countDown();
                 try {
@@ -227,7 +233,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
                     Thread.currentThread().interrupt();
                     return "FAKE_INTERRUPTED_BEFORE_TOKEN";
                 }
-                sink.onToken("FAKE_STREAM_BEGIN");
+                sink.onToken(override != null ? override : "FAKE_STREAM_BEGIN");
                 try {
                     if (!releaseFirstTurn.await(15, TimeUnit.SECONDS)) return "FAKE_CANCEL_TIMEOUT";
                 } catch (InterruptedException e) {
@@ -237,7 +243,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
                 // stop() cancels via ChatSession; completeFirstTurn() finishes successfully.
                 return null;
             }
-            sink.onToken("FAKE_RETRY_COMPLETE");
+            sink.onToken(override != null ? override : "FAKE_RETRY_COMPLETE");
             return null;
         }
 

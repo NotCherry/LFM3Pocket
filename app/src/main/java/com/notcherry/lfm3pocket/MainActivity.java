@@ -39,6 +39,7 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends androidx.activity.ComponentActivity {
     public static final String EXTRA_HISTORY_CONVERSATION_ID="history_conversation_id";
     public static final String EXTRA_HISTORY_TITLE="history_title";
+    public static final String EXTRA_OPEN_SETTINGS = "open_settings";
     private static final int PICK_MODEL = 42;
     private static final int PICK_MMPROJ = 43;
     private static final int PICK_PHOTO = 44;
@@ -73,12 +74,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private String lastAssistantReply = "";
 
     private TextView status;
+    private TextView brandTitle;
+    private TextView modePill;
     private ModelManagerPanel modelManager;
+    private View settingsHost;
+    private View chatShell;
     private InferenceSettings inferenceSettings=InferenceSettings.DEFAULT;
     private InferenceSettingsStore settingsStore;
     private boolean settingsLoaded;
+    private boolean settingsOpen;
     private Button modelButton, mmprojButton;
     private Button searchButton, photoButton, cameraButton, recordButton, speakButton;
+    private Button settingsOpenButton;
+    private EditText settingsContextField, settingsThreadsField, settingsTokensField;
+    private TextView settingsInlineError;
+    private EditText searchEndpointField;
+    private CheckBox searchEnabledBox;
     private boolean searchEnabled = false;
     private String searchEndpoint = "";
     private String mmprojPath = "";
@@ -138,23 +149,29 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     status.setText(message);
                     status.setVisibility(running ? View.GONE : View.VISIBLE);
                     updateControls();
+                }, snapshot -> {
+                    if (destroyed || chatPanel == null) return;
+                    chatPanel.renderSnapshot(snapshot);
                 });
         settingsStore=new InferenceSettingsStore(this);
         buildUi();
         updateControls();
         settingsStore.load(settings -> {
             if (destroyed) return;
-            inferenceSettings=settings;inferenceEngine.configure(settings);settingsLoaded=true;updateControls();
+            inferenceSettings=settings;inferenceEngine.configure(settings);settingsLoaded=true;
+            syncInlineSettingsFields();updateControls();
         }, error -> {
             if (destroyed) return;
             inferenceSettings=InferenceSettings.DEFAULT;inferenceEngine.configure(inferenceSettings);
-            settingsLoaded=true;status.setText("Settings unavailable; using defaults: "+error);updateControls();
+            settingsLoaded=true;status.setText("Settings unavailable; using defaults: "+error);
+            syncInlineSettingsFields();updateControls();
         });
         String previous = getPreferences(MODE_PRIVATE).getString("model", "");
         mmprojPath = getPreferences(MODE_PRIVATE).getString("mmproj", "");
         searchEndpoint = getPreferences(MODE_PRIVATE).getString("search_endpoint", "");
         searchEnabled = getPreferences(MODE_PRIVATE).getBoolean("search_enabled", false);
         chatPanel.setIdleMode(searchEnabled);
+        syncInlineSettingsFields();
         if (!previous.isEmpty() && new File(previous).isFile()) {
             loadModelInBackground(previous, mmprojPath);
         } else {
@@ -180,21 +197,73 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void buildUi() {
+        // Atlas charcoal shell — chat owns the primary viewport; model/search live in Settings (U10/U13).
+        int surface = Color.parseColor("#0E1116");
+        int raised = Color.parseColor("#151A21");
+        int ink = Color.parseColor("#E8EAED");
+        int inkMuted = Color.parseColor("#9AA3AD");
+        int accent = Color.parseColor("#5B8FA8");
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(14), dp(14), dp(14), dp(12));
-        root.setBackgroundColor(Color.rgb(250, 250, 252));
+        root.setBackgroundColor(surface);
+        root.setPadding(dp(12), dp(12), dp(12), dp(10));
 
-        TextView heading = label("LFM3 Pocket", 23, Color.rgb(24, 30, 44));
-        heading.setTypeface(null, 1);
-        root.addView(heading);
+        LinearLayout topBar = new LinearLayout(this);
+        topBar.setOrientation(LinearLayout.HORIZONTAL);
+        topBar.setGravity(Gravity.CENTER_VERTICAL);
+        brandTitle = label("LFM3", 22, ink);
+        brandTitle.setTypeface(null, 1);
+        topBar.addView(brandTitle, new LinearLayout.LayoutParams(0, -2, 1f));
+        modePill = label(searchEnabled ? "Search" : "Offline", 12, accent);
+        modePill.setPadding(dp(10), dp(4), dp(10), dp(4));
+        modePill.setBackgroundColor(raised);
+        topBar.addView(modePill);
+        settingsOpenButton = button("Settings");
+        settingsOpenButton.setId(R.id.settings_open);
+        settingsOpenButton.setTextColor(ink);
+        settingsOpenButton.setBackgroundColor(Color.TRANSPARENT);
+        settingsOpenButton.setOnClickListener(v -> setSettingsOpen(true));
+        topBar.addView(settingsOpenButton, new LinearLayout.LayoutParams(-2, dp(40)));
+        Button overflow = button("⋮");
+        overflow.setId(R.id.chat_overflow);
+        overflow.setTextColor(inkMuted);
+        overflow.setBackgroundColor(Color.TRANSPARENT);
+        overflow.setOnClickListener(v -> {
+            android.widget.PopupMenu menu = new android.widget.PopupMenu(this, v);
+            menu.getMenu().add(0, 1, 0, "Settings");
+            menu.getMenu().add(0, 2, 1, "Web search");
+            menu.setOnMenuItemClickListener(item -> {
+                if (item.getItemId() == 1) setSettingsOpen(true);
+                else if (item.getItemId() == 2) showSearchSettings();
+                return true;
+            });
+            menu.show();
+        });
+        topBar.addView(overflow, new LinearLayout.LayoutParams(-2, dp(40)));
+        root.addView(topBar);
 
-        status = label("Starting...", 13, Color.DKGRAY);
+        status = label("Starting...", 13, inkMuted);
         status.setId(R.id.chat_status);
-        status.setPadding(0, dp(5), 0, dp(6));
+        status.setPadding(0, dp(6), 0, dp(6));
+        root.addView(status);
 
-        LinearLayout controls = new LinearLayout(this);
-        controls.setOrientation(LinearLayout.VERTICAL);
+        // --- Settings host (hidden by default) ---
+        LinearLayout settingsRoot = new LinearLayout(this);
+        settingsRoot.setOrientation(LinearLayout.VERTICAL);
+        settingsRoot.setBackgroundColor(surface);
+        Button settingsBack = button("Back to chat");
+        settingsBack.setId(R.id.settings_back);
+        settingsBack.setOnClickListener(v -> setSettingsOpen(false));
+        settingsRoot.addView(settingsBack, new LinearLayout.LayoutParams(-1, dp(44)));
+        TextView settingsHeading = label("Settings", 20, ink);
+        settingsHeading.setTypeface(null, 1);
+        settingsHeading.setPadding(0, dp(8), 0, dp(8));
+        settingsRoot.addView(settingsHeading);
+
+        LinearLayout configuration = new LinearLayout(this);
+        configuration.setOrientation(LinearLayout.VERTICAL);
+        configuration.setPadding(0, 0, 0, dp(16));
         LinearLayout modelControls = new LinearLayout(this);
         modelControls.setOrientation(LinearLayout.HORIZONTAL);
         modelButton = button("Import model");
@@ -203,29 +272,75 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         mmprojButton.setId(R.id.import_projector);
         modelControls.addView(modelButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         modelControls.addView(mmprojButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
-        root.addView(status);
-        controls.addView(modelControls);
+        configuration.addView(modelControls);
         modelManager = new ModelManagerPanel(this,
                 this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings);
-        root.addView(modelManager);
-        LinearLayout actionControls = new LinearLayout(this);
-        actionControls.setOrientation(LinearLayout.HORIZONTAL);
+        configuration.addView(modelManager);
+
+        TextView inferenceHeading = label("Inference", 16, ink);
+        inferenceHeading.setTypeface(null, 1);
+        inferenceHeading.setPadding(0, dp(12), 0, dp(4));
+        configuration.addView(inferenceHeading);
+        settingsContextField = settingInput(configuration,
+                "Context tokens (512–8192, steps of 256)",
+                inferenceSettings.contextTokens, R.id.settings_context);
+        settingsContextField.setTextColor(ink);
+        settingsThreadsField = settingInput(configuration,
+                "Decode threads (1–8, capped to available CPUs)",
+                inferenceSettings.threads, R.id.settings_threads);
+        settingsThreadsField.setTextColor(ink);
+        settingsTokensField = settingInput(configuration,
+                "Max response tokens (1–2048, less than context)",
+                inferenceSettings.maxTokens, R.id.settings_tokens);
+        settingsTokensField.setTextColor(ink);
+        settingsInlineError = label("", 13, Color.parseColor("#C45B5B"));
+        configuration.addView(settingsInlineError);
+        Button saveInference = button("Save");
+        saveInference.setId(R.id.settings_save);
+        saveInference.setOnClickListener(v -> saveInlineInferenceSettings());
+        configuration.addView(saveInference, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        TextView searchHeading = label("SearXNG", 16, ink);
+        searchHeading.setTypeface(null, 1);
+        searchHeading.setPadding(0, dp(12), 0, dp(4));
+        configuration.addView(searchHeading);
+        searchEndpointField = new EditText(this);
+        searchEndpointField.setId(R.id.search_endpoint);
+        searchEndpointField.setSingleLine(true);
+        searchEndpointField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        searchEndpointField.setHint("https://your-searxng.example.org/search");
+        searchEndpointField.setHintTextColor(inkMuted);
+        searchEndpointField.setTextColor(ink);
+        searchEndpointField.setText(searchEndpoint);
+        configuration.addView(searchEndpointField);
+        searchEnabledBox = new CheckBox(this);
+        searchEnabledBox.setId(R.id.search_enabled);
+        searchEnabledBox.setText("Use web search for new questions");
+        searchEnabledBox.setTextColor(ink);
+        searchEnabledBox.setChecked(searchEnabled);
+        configuration.addView(searchEnabledBox);
         searchButton = button("Web search: off");
         searchButton.setId(R.id.web_search);
-        actionControls.addView(searchButton, new LinearLayout.LayoutParams(-1, dp(48)));
-        controls.addView(actionControls);
-        // Keep a readable transcript on small screens. Configuration can scroll independently.
-        root.removeView(modelManager);
-        LinearLayout configuration = new LinearLayout(this);
-        configuration.setOrientation(LinearLayout.VERTICAL);
-        configuration.addView(modelManager);
-        configuration.addView(controls);
+        searchButton.setOnClickListener(v -> showSearchSettings());
+        configuration.addView(searchButton, new LinearLayout.LayoutParams(-1, dp(48)));
+        Button saveSearch = button("Save search");
+        saveSearch.setId(R.id.search_save);
+        saveSearch.setOnClickListener(v -> saveInlineSearchSettings());
+        configuration.addView(saveSearch, new LinearLayout.LayoutParams(-1, dp(48)));
+
         ScrollView configurationScroll = new ScrollView(this);
         configurationScroll.setId(R.id.model_configuration_scroll);
+        configurationScroll.setBackgroundColor(raised);
+        configurationScroll.setPadding(dp(8), dp(8), dp(8), dp(8));
         configurationScroll.addView(configuration);
-        root.addView(configurationScroll, new LinearLayout.LayoutParams(-1,
-                dp(Math.min(220, getResources().getConfiguration().screenHeightDp / 3))));
+        settingsRoot.addView(configurationScroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+        settingsHost = settingsRoot;
+        settingsHost.setVisibility(View.GONE);
+        root.addView(settingsHost, new LinearLayout.LayoutParams(-1, 0, 1f));
 
+        // --- Chat shell (primary viewport) ---
+        LinearLayout chatRoot = new LinearLayout(this);
+        chatRoot.setOrientation(LinearLayout.VERTICAL);
         chatPanel = new ChatPanel(this, this::send, this::stopActiveWork, () -> {
             HistoryMediaCleanup.deleteAttachment(this,pendingImagePath);
             HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
@@ -236,10 +351,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             chatPanel.clearImageAttachment();
             session.clear();
         });
-        root.addView(chatPanel, new LinearLayout.LayoutParams(-1, 0, 1f));
+        chatRoot.addView(chatPanel, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         LinearLayout mediaControls = new LinearLayout(this);
         mediaControls.setOrientation(LinearLayout.HORIZONTAL);
+        mediaControls.setBackgroundColor(raised);
+        mediaControls.setPadding(dp(2), dp(4), dp(2), dp(2));
         photoButton = button("Photo");
         photoButton.setId(R.id.chat_photo);
         cameraButton = button("Camera");
@@ -252,7 +369,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         mediaControls.addView(cameraButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
         mediaControls.addView(recordButton, new LinearLayout.LayoutParams(0, dp(46), 1.2f));
         mediaControls.addView(speakButton, new LinearLayout.LayoutParams(0, dp(46), 1.2f));
-        root.addView(mediaControls);
+        chatRoot.addView(mediaControls);
+        chatShell = chatRoot;
+        root.addView(chatShell, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         setContentView(root);
 
@@ -263,10 +382,23 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         cameraButton.setOnClickListener(v -> takePhoto());
         recordButton.setOnClickListener(v -> toggleRecording());
         speakButton.setOnClickListener(v -> toggleSpokenReply());
+
+        if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) {
+            setSettingsOpen(true);
+        }
+    }
+
+    private void setSettingsOpen(boolean open) {
+        settingsOpen = open;
+        if (settingsHost != null) settingsHost.setVisibility(open ? View.VISIBLE : View.GONE);
+        if (chatShell != null) chatShell.setVisibility(open ? View.GONE : View.VISIBLE);
+        if (settingsOpenButton != null) settingsOpenButton.setVisibility(open ? View.GONE : View.VISIBLE);
+        if (open) syncInlineSettingsFields();
     }
 
     private void updateControls() {
         searchButton.setText(searchEnabled ? "Web search: on" : "Web search: off");
+        if (modePill != null) modePill.setText(searchEnabled ? "Search" : "Offline");
         searchButton.setEnabled(!busy);
         modelButton.setEnabled(!busy);
         mmprojButton.setEnabled(!busy);
@@ -322,80 +454,82 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private EditText settingInput(LinearLayout form,String labelText,int value,int id) {
-        TextView label=new TextView(this);label.setText(labelText);form.addView(label);
+        TextView label=new TextView(this);label.setText(labelText);
+        label.setTextColor(Color.parseColor("#9AA3AD"));form.addView(label);
         EditText field=new EditText(this);field.setId(id);field.setSingleLine(true);
         field.setInputType(InputType.TYPE_CLASS_NUMBER);field.setText(Integer.toString(value));
+        field.setTextColor(Color.parseColor("#E8EAED"));
+        field.setHintTextColor(Color.parseColor("#5C6670"));
         form.addView(field);return field;
+    }
+
+    private void syncInlineSettingsFields() {
+        if (settingsContextField != null && settingsLoaded) {
+            settingsContextField.setText(Integer.toString(inferenceSettings.contextTokens));
+            settingsThreadsField.setText(Integer.toString(inferenceSettings.threads));
+            settingsTokensField.setText(Integer.toString(inferenceSettings.maxTokens));
+        }
+        if (searchEndpointField != null) {
+            searchEndpointField.setText(searchEndpoint);
+            searchEnabledBox.setChecked(searchEnabled);
+        }
+    }
+
+    private void saveInlineInferenceSettings() {
+        if (busy || !settingsLoaded || settingsContextField == null) return;
+        if (settingsInlineError != null) settingsInlineError.setText("");
+        try {
+            InferenceSettings next = new InferenceSettings(
+                    Integer.parseInt(settingsContextField.getText().toString()),
+                    Integer.parseInt(settingsThreadsField.getText().toString()),
+                    Integer.parseInt(settingsTokensField.getText().toString()));
+            settingsStore.save(next, () -> {
+                if (destroyed) return;
+                inferenceSettings = next;
+                inferenceEngine.configure(next);
+                updateControls();
+                status.setText(next.summary());
+            }, failure -> {
+                if (destroyed) return;
+                if (settingsInlineError != null)
+                    settingsInlineError.setText("Settings were not saved: " + failure);
+            });
+        } catch (NumberFormatException invalid) {
+            if (settingsInlineError != null)
+                settingsInlineError.setText("Enter whole numbers for all settings.");
+        } catch (IllegalArgumentException invalid) {
+            if (settingsInlineError != null) settingsInlineError.setText(invalid.getMessage());
+            status.setText(invalid.getMessage());
+        }
+    }
+
+    private void saveInlineSearchSettings() {
+        if (searchEndpointField == null) return;
+        String value = searchEndpointField.getText().toString().trim();
+        if (!SearchEndpointPolicy.accepts(value)) {
+            status.setText("Use an HTTPS SearXNG search endpoint.");
+            return;
+        }
+        searchEndpoint = value;
+        searchEnabled = SearchEndpointPolicy.enabled(searchEnabledBox.isChecked(), value);
+        getPreferences(MODE_PRIVATE).edit()
+                .putString("search_endpoint", searchEndpoint)
+                .putBoolean("search_enabled", searchEnabled).apply();
+        chatPanel.setIdleMode(searchEnabled);
+        updateControls();
     }
 
     private void showInferenceSettings() {
         if (busy || !settingsLoaded) return;
-        LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(dp(20),dp(8),dp(20),0);
-        EditText context=settingInput(form,"Context tokens (512–8192, steps of 256)",
-                inferenceSettings.contextTokens,R.id.settings_context);
-        EditText threads=settingInput(form,"Decode threads (1–8, capped to available CPUs)",
-                inferenceSettings.threads,R.id.settings_threads);
-        EditText tokens=settingInput(form,"Max response tokens (1–2048, less than context)",
-                inferenceSettings.maxTokens,R.id.settings_tokens);
-        TextView error=new TextView(this);error.setTextColor(Color.RED);form.addView(error);
-        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Inference settings")
-                .setMessage("Higher context uses more memory. Changes apply to the next response.")
-                .setView(form).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
-        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            try {
-                InferenceSettings next=new InferenceSettings(Integer.parseInt(context.getText().toString()),
-                        Integer.parseInt(threads.getText().toString()),Integer.parseInt(tokens.getText().toString()));
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
-                settingsStore.save(next, () -> {
-                    if (destroyed) return;
-                    inferenceSettings=next;inferenceEngine.configure(next);updateControls();dialog.dismiss();
-                }, failure -> {
-                    if (destroyed) return;
-                    error.setText("Settings were not saved: "+failure);
-                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
-                });
-            } catch(NumberFormatException invalid) { error.setText("Enter whole numbers for all settings."); }
-            catch(IllegalArgumentException invalid) { error.setText(invalid.getMessage()); }
-        }));
-        dialog.show();
+        setSettingsOpen(true);
+        syncInlineSettingsFields();
+        if (settingsContextField != null) settingsContextField.requestFocus();
     }
 
     private void showSearchSettings() {
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(dp(20), dp(8), dp(20), 0);
-        EditText endpoint = new EditText(this);
-        endpoint.setId(R.id.search_endpoint);
-        endpoint.setSingleLine(true);
-        endpoint.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        endpoint.setHint("https://your-searxng.example.org/search");
-        endpoint.setText(searchEndpoint);
-        form.addView(endpoint);
-        CheckBox enabled = new CheckBox(this);
-        enabled.setId(R.id.search_enabled);
-        enabled.setText("Use web search for new questions");
-        enabled.setChecked(searchEnabled);
-        form.addView(enabled);
-        new AlertDialog.Builder(this)
-                .setTitle("Live web search")
-                .setMessage("Searches are sent to this SearXNG instance. Local model inference stays on this device.")
-                .setView(form)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Save", (dialog, which) -> {
-                    String value = endpoint.getText().toString().trim();
-                    if (!SearchEndpointPolicy.accepts(value)) {
-                        status.setText("Use an HTTPS SearXNG search endpoint.");
-                        return;
-                    }
-                    searchEndpoint = value;
-                    searchEnabled = SearchEndpointPolicy.enabled(enabled.isChecked(), value);
-                    getPreferences(MODE_PRIVATE).edit()
-                            .putString("search_endpoint", searchEndpoint)
-                            .putBoolean("search_enabled", searchEnabled).apply();
-                    chatPanel.setIdleMode(searchEnabled);
-                    updateControls();
-                }).show();
+        setSettingsOpen(true);
+        syncInlineSettingsFields();
+        if (searchEndpointField != null) searchEndpointField.requestFocus();
     }
 
     private void pickPhoto() {

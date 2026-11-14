@@ -98,6 +98,7 @@ public final class OfflinePrivacyE2eTest {
     @Test public void searchDefaultsOffAndRejectsCleartextEndpoint() throws Exception {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             waitEnabled("chat_send");
+            openSettings();
             UiObject2 search = scrollTo("web_search");
             assertTrue(search.getText().contains("Web search: off"));
             search.click();
@@ -107,9 +108,8 @@ public final class OfflinePrivacyE2eTest {
             UiObject2 enabled = device.wait(Until.findObject(By.res(pkg, "search_enabled")), UI_TIMEOUT_MS);
             assertNotNull(enabled);
             if (!enabled.isChecked()) enabled.click();
-            // AlertDialog positive button is android:button1 (label may be all-caps / IME-obscured).
-            UiObject2 save = device.wait(Until.findObject(By.res("android", "button1").enabled(true)), UI_TIMEOUT_MS);
-            assertNotNull("Save", save);
+            UiObject2 save = device.wait(Until.findObject(By.res(pkg, "search_save").enabled(true)), UI_TIMEOUT_MS);
+            assertNotNull("search_save", save);
             save.click();
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_status")
                     .textContains("Use an HTTPS SearXNG search endpoint")), UI_TIMEOUT_MS));
@@ -176,6 +176,12 @@ public final class OfflinePrivacyE2eTest {
                     engine.lastMediaPath() != null || !engine.mediaByCall().isEmpty());
             assertNoUidTxGrowth(txBefore);
         }
+    }
+
+    private void openSettings() {
+        UiObject2 open = device.wait(Until.findObject(By.res(pkg, "settings_open").enabled(true)), 2000);
+        if (open != null) open.click();
+        assertNotNull(device.wait(Until.findObject(By.res(pkg, "model_configuration_scroll")), UI_TIMEOUT_MS));
     }
 
     private UiObject2 scrollTo(String id) throws Exception {

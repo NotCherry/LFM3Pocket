@@ -47,12 +47,21 @@ public final class CameraCaptureActivity extends ComponentActivity {
     }
 
     private void buildUi() {
+        // Atlas chrome only — CameraX pipeline unchanged (U14).
+        int surface = android.graphics.Color.parseColor("#0E1116");
+        int raised = android.graphics.Color.parseColor("#151A21");
+        int ink = android.graphics.Color.parseColor("#E8EAED");
+        int inkMuted = android.graphics.Color.parseColor("#9AA3AD");
+        int accent = android.graphics.Color.parseColor("#5B8FA8");
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(surface);
         root.setPadding(16, 16, 16, 16);
 
         status = new TextView(this);
         status.setId(R.id.camera_status);
+        status.setTextColor(inkMuted);
         status.setText("Starting camera preview…");
         root.addView(status, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -61,6 +70,7 @@ public final class CameraCaptureActivity extends ComponentActivity {
         previewView.setId(R.id.camera_preview);
         previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
         previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
+        previewView.setBackgroundColor(raised);
         root.addView(previewView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -69,10 +79,16 @@ public final class CameraCaptureActivity extends ComponentActivity {
         Button cancelButton = new Button(this);
         cancelButton.setId(R.id.camera_cancel);
         cancelButton.setText("Cancel");
+        cancelButton.setAllCaps(false);
+        cancelButton.setTextColor(ink);
+        cancelButton.setBackgroundColor(raised);
         cancelButton.setOnClickListener(view -> finish());
         captureButton = new Button(this);
         captureButton.setId(R.id.camera_capture);
         captureButton.setText("Take photo");
+        captureButton.setAllCaps(false);
+        captureButton.setTextColor(surface);
+        captureButton.setBackgroundColor(accent);
         captureButton.setEnabled(false);
         captureButton.setOnClickListener(view -> captureStill());
         actions.addView(cancelButton, new LinearLayout.LayoutParams(0,

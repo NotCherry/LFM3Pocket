@@ -294,4 +294,29 @@ public final class ChatUiE2eTest {
         }
     }
 
+    @Test public void scriptedThinkTagsDoNotAppearInFlatTranscript() throws Exception {
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            awaitEnabled("chat_send");
+            app.scriptedEngine().setAssistantTokenOverride(
+                    "<think>hidden plan</think>Visible clean answer");
+            app.scriptedEngine().holdFirstToken();
+            device.findObject(By.res(packageName, "chat_input")).setText("Strip think tags");
+            awaitEnabled("chat_send").click();
+            assertTrue(app.scriptedEngine().awaitGenerationStarted());
+            app.scriptedEngine().releaseFirstToken();
+            awaitTranscript("Visible clean answer");
+            app.scriptedEngine().completeFirstTurn();
+            assertNotNull(device.wait(Until.findObject(By.res(packageName, "chat_live_status")
+                    .textContains("Response complete")), UI_TIMEOUT_MS));
+            UiObject2 transcript = device.findObject(By.res(packageName, "chat_transcript"));
+            assertNotNull(transcript);
+            String flat = transcript.getText();
+            assertTrue(flat.contains("Visible clean answer"));
+            assertFalse(flat.contains("<think>"));
+            assertFalse(flat.contains("</think>"));
+            assertFalse(flat.contains("hidden plan"));
+            awaitEnabled("chat_send");
+        }
+    }
+
 }
