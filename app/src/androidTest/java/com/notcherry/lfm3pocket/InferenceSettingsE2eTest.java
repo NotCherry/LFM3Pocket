@@ -47,7 +47,7 @@ public final class InferenceSettingsE2eTest {
         assertEquals(2,app.scriptedEngine().configuredSettings().threads);
         assertEquals(128,app.scriptedEngine().configuredSettings().maxTokens);
     }
-    private void restoreDefaults(UiDevice device,String pkg) {
+    private void restoreDefaults(UiDevice device,String pkg) throws Exception {
         openSettings(device,pkg);fields(device,pkg,"4096","4","512");saveInference(device,pkg);
         assertNotNull(device.wait(Until.findObject(By.text("Context 4096 • Threads 4 • Max 512")),WAIT));
     }
