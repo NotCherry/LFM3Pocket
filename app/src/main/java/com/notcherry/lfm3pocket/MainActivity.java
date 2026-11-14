@@ -273,10 +273,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         modelControls.addView(modelButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         modelControls.addView(mmprojButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         configuration.addView(modelControls);
-        modelManager = new ModelManagerPanel(this,
-                this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings);
-        configuration.addView(modelManager);
 
+        // Inference fields sit above the model manager so Stage 1 can reach them without
+        // scrolling past Compose controls on the small CI emulator (+ sticky Save footer).
         TextView inferenceHeading = label("Inference", 16, ink);
         inferenceHeading.setTypeface(null, 1);
         inferenceHeading.setPadding(0, dp(12), 0, dp(4));
@@ -295,6 +294,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         settingsTokensField.setTextColor(ink);
         settingsInlineError = label("", 13, Color.parseColor("#C45B5B"));
         configuration.addView(settingsInlineError);
+
+        modelManager = new ModelManagerPanel(this,
+                this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings);
+        configuration.addView(modelManager);
 
         TextView searchHeading = label("SearXNG", 16, ink);
         searchHeading.setTypeface(null, 1);

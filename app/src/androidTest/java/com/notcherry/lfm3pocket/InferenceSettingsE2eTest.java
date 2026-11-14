@@ -61,8 +61,14 @@ public final class InferenceSettingsE2eTest {
         assertNotNull("settings_save",save);save.click();
     }
     private void fields(UiDevice device,String pkg,String context,String threads,String tokens){
-        device.wait(Until.findObject(By.res(pkg,"settings_context")),WAIT).setText(context);
-        device.findObject(By.res(pkg,"settings_threads")).setText(threads);
-        device.findObject(By.res(pkg,"settings_tokens")).setText(tokens);
+        setField(device,pkg,"settings_context",context);
+        setField(device,pkg,"settings_threads",threads);
+        setField(device,pkg,"settings_tokens",tokens);
+    }
+    private void setField(UiDevice device,String pkg,String id,String value){
+        UiObject2 field=device.wait(Until.findObject(By.res(pkg,id)),WAIT);
+        assertNotNull(id,field);
+        field.click();
+        field.setText(value);
     }
 }

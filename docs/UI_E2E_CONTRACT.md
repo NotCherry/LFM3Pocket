@@ -44,7 +44,7 @@ No conversation yet.
 - Partial streams update the active `LFM3` segment and keep `▌` until finish/cancel.
 - Cancelled turns finish as completed assistant text **without** `▌` (same as today's `ChatSession.finish`).
 - `FlatTranscriptFormatter` does **not** sanitize thinking tags; U06 supplies cleaned `text` before format.
-- Production (U08/U15): ChatPanel hosts a real `R.id.chat_transcript` TextView (VISIBLE, non-zero bounds, in the accessibility tree) whose text/`contentDescription` come from the helper while Compose renders Atlas turns. Do not mark that host `IMPORTANT_FOR_ACCESSIBILITY_NO`, zero-height, or shadow it with a Compose `testTag` of the same resource-id.
+- Production (U08/U15): ChatPanel owns a real Android `R.id.chat_transcript` TextView (sibling above the Compose Atlas turns — VISIBLE, non-zero bounds, in the accessibility tree). Its text/`contentDescription` come from the helper. Do not bury that host inside an occluded/alpha-0 Compose `AndroidView`, mark it `IMPORTANT_FOR_ACCESSIBILITY_NO`, or shadow it with a Compose `testTag` of the same resource-id.
 
 ### Formatter API
 
