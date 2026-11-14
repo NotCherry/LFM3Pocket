@@ -53,8 +53,18 @@
 - Post-ASR text-only answer using the exact transcript (`caseId=audio-pl-answer-text`): PASS — `Twoje hasło testowe to niebieski kot. Wymieniłeś kolor niebieski i zwierzę kota.`
 - Conclusion: ARM64 audio pathway + Polish ASR work; end-to-end “answer the spoken question” while media remains attached is still weak; answering after a successful ASR transcript works
 
+## Mismatched projector (I03)
+- PASS (safe rejection) — replaced `mmproj-LFM3-Omni-2B-Q4_K_M.gguf` with a language-model GGUF copy
+- `GgufSelection.validate` error: `Select a multimodal projector, not a language model`
+- Artifact: `probe-mismatch-rmx2170.json`; projector restored afterward
+
+## ChatSession V02 wiring
+- PR #113: successful ASR drops WAV from the assistant turn and answers from the transcript
+- Phone APK from CI run 43601898557 installed on RMX2170
+
 ## Limitations
 - Host weights are Q4_0 + Q8_0 mmproj renamed to probe Q4_K_M filenames (same as text session)
 - Audio fixtures are OS TTS, not human microphone captures
 - `quality` field remains `REQUIRES_REVIEW` (probe never auto-grades)
 - Gallery/camera/mic UI routes and airplane-mode traffic not exercised in these probes
+- Compatibility summary: `docs/ARM64_COMPATIBILITY_REPORT.md`

@@ -61,7 +61,39 @@ public final class RealOmniProbeTest {
             report.put("loadMs",SystemClock.elapsedRealtime()-loadStart);
             report.put("phase","decoding");writeReport(result,report);
             if(handle==0)error="Native model/projector load returned zero";
-            else{
+            else if("speech".equals(caseId)){
+                String speechText=args.getString("speechText","Hello from the pocket assistant.");
+                String language=args.getString("speechLanguage","en");
+                String voice=args.getString("speechVoice","female");
+                int maxFrames=Integer.parseInt(args.getString("maxFrames","512"));
+                prompt=SpeechPrompt.tts(speechText,language,voice);
+                report.put("speechText",speechText);report.put("speechLanguage",language);
+                report.put("speechVoice",voice);report.put("maxFrames",maxFrames);
+                report.put("phase","speech");writeReport(result,report);
+                ByteArrayOutputStream pcm=new ByteArrayOutputStream();
+                final int[] format={0,0,0};final long[] audioStart={0};
+                long speechStart=SystemClock.elapsedRealtime();NativeBridge.resetModelStop(handle);
+                error=NativeBridge.generateSpeech(handle,prompt,new SpeechOptions(language,voice,maxFrames),
+                        new NativeBridge.AudioSink(){
+                            public void onAudioFormat(int sampleRateHz,int channelCount,int bitsPerSample){
+                                format[0]=sampleRateHz;format[1]=channelCount;format[2]=bitsPerSample;
+                                if(audioStart[0]==0)audioStart[0]=SystemClock.elapsedRealtime();
+                            }
+                            public void onAudioPcm(byte[] interleavedLittleEndianPcm){
+                                if(interleavedLittleEndianPcm!=null)pcm.write(interleavedLittleEndianPcm,0,interleavedLittleEndianPcm.length);
+                            }
+                            public void onAudioComplete(){}
+                        });
+                report.put("speechMs",SystemClock.elapsedRealtime()-speechStart);
+                report.put("firstAudioMs",audioStart[0]==0?JSONObject.NULL:audioStart[0]-speechStart);
+                report.put("sampleRateHz",format[0]);report.put("channels",format[1]);report.put("bitsPerSample",format[2]);
+                report.put("pcmBytes",pcm.size());
+                if(pcm.size()>0 && format[0]>0 && format[2]==16)
+                    try(FileOutputStream wav=new FileOutputStream(new File(context.getFilesDir(),"probe-"+caseId+".wav"))){
+                        wav.write(SpeechWav.toWav(pcm.toByteArray(),format[0],Math.max(1,format[1]),format[2]));
+                    }
+                output.append("pcmBytes=").append(pcm.size());
+            }else{
                 long decodeStart=SystemClock.elapsedRealtime();NativeBridge.resetModelStop(handle);
                 try(FileOutputStream streamed=new FileOutputStream(new File(context.getFilesDir(),"probe-"+caseId+"-stream.txt"))){
                     error=NativeBridge.generate(handle,prompt,media.isEmpty()?null:media,maxTokens,piece->{
@@ -79,7 +111,10 @@ public final class RealOmniProbeTest {
         report.put("error",error==null?JSONObject.NULL:error);report.put("quality","REQUIRES_REVIEW");
         report.put("phase","complete");writeReport(result,report);
         assertNull("Actual native error; inspect probe JSON",error);
-        assertTrue("No real streamed output",output.length()>0);
+        if("speech".equals(caseId)){
+            assertTrue("No real speech PCM streamed",report.optInt("pcmBytes",0)>0);
+            assertTrue("Speech must announce a positive sample rate",report.optInt("sampleRateHz",0)>=8000);
+        }else assertTrue("No real streamed output",output.length()>0);
     }
     private static void writeReport(File result,JSONObject report)throws Exception{
         try(FileOutputStream out=new FileOutputStream(result)){out.write(report.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));}
