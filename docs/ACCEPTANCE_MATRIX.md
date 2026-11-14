@@ -30,8 +30,9 @@ This is the authoritative **test-to-requirement map**, not a feature-completion 
 
 - Device: realme RMX2170, `arm64-v8a`, Android 12 / API 31 (Wi-Fi ADB).
 - **#84 flashlight:** PASS — `FlashlightCameraManagerTest` with `CAMERA` granted via `adb install -g`; production `CameraManager.setTorchMode` on/off. Issue closed.
-- **Omni text (RD-02 / F01–I03 pathway):** PASS — `RealOmniProbeTest` `caseId=text`; `firstTokenMs=5112`, `loadMs=2320`, Polish local reply in `device-evidence/reports/probe-text.json`. Host weights were `LFM3-Omni-2B-Q4_0` + `mmproj-LFM3-Omni-2B-Q8_0` renamed to probe filenames.
-- Image Omni probe: TIMEOUT (hung before `probe-image.json`); audio ASR: NOT_RUN. F01/I03/V02/V03 remain open for those modalities.
+- **Omni text (RD-02 / F01 pathway):** PASS — `RealOmniProbeTest` `caseId=text`; `firstTokenMs=5112`, `loadMs=2320`, Polish local reply in `device-evidence/reports/probe-text.json`. Host weights were `LFM3-Omni-2B-Q4_0` + `mmproj-LFM3-Omni-2B-Q8_0` renamed to probe filenames.
+- **Omni image:** PASS — `caseId=image`; synthetic two-shape fixture; output correctly names red background, blue square left, yellow circle right; `firstTokenMs=17737`, `decodeMs=22096`; `device-evidence/reports/probe-image.json`.
+- **Omni audio / Polish ASR:** native path PASS. English SAPI ASR partial (`blanket` vs `blue cat`). Polish SAPI (Paulina) ASR exact match on `Perform ASR.`; `device-evidence/reports/probe-audio-pl-asr-rmx2170.json`. Native audio “answer the question” still echoes/translates; post-ASR text answer correctly returns niebieski/kot. Full session log: `device-evidence/reports/arm64-session.md`. V02 answer-with-media and human-mic Polish remain open (#22/#96); I03 gallery/camera UI (#30) still open.
 
 ## Currently observed CI evidence
 
@@ -49,8 +50,8 @@ Emulator/JVM slices for AT-01..AT-09 are present and green in the runs above. **
 
 | Gate | Owner issues | Why blocked |
 | --- | --- | --- |
-| Multimodal pathways on device | #13 (F01), #30 (I03) | Real Omni image/projector inference not verified on ARM64 |
-| Audio input / Polish ASR | #22 (V02), #23/#96 (V03) | Human-speech accuracy and native audio interpretation |
+| Multimodal pathways on device | #13 (F01), #30 (I03) | Text+image Omni JNI PASS on RMX2170; I03 gallery/camera UI + combined turn still open |
+| Audio input / Polish ASR | #22 (V02), #23/#96 (V03) | Polish SAPI ASR exact on ARM64; human-mic + answer-with-media still open |
 | Flashlight physical on/off | #84 (A03 follow-up) | **Cleared on RMX2170** — remaining AT-08 tools still need physical sign-off |
 | Omni speech quality + latency | AT-06 ARM64 column | Audible TTS / interruption measured on device |
 | Signed privacy/stress report | AT-03 / AT-09 ARM64 | Airplane-mode traffic + `diagnostics.ndjson` on a real phone |
