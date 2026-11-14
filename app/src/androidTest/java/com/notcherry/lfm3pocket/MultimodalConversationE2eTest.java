@@ -141,8 +141,9 @@ public final class MultimodalConversationE2eTest {
 
             assertEquals(1, engine.asrCallCount());
             assertEquals(java.util.Collections.singletonList(audioPath[0]), engine.mediaByCall().get(0));
-            assertEquals(Arrays.asList(imagePath[0], audioPath[0]), engine.mediaByCall().get(1));
-            assertEquals(2, occurrences(engine.promptsByCall().get(1), "<__media__>"));
+            assertEquals("Successful ASR keeps the image for the assistant turn but drops the WAV",
+                    java.util.Collections.singletonList(imagePath[0]), engine.mediaByCall().get(1));
+            assertEquals(1, occurrences(engine.promptsByCall().get(1), "<__media__>"));
             assertTrue(engine.lastPrompt().contains("What is in the picture?"));
             assertFalse(engine.lastPrompt().contains("search.example"));
 

@@ -49,10 +49,14 @@ public final class RecordingE2eTest {
             assertTrue("The fake local inference adapter should receive the turn",app.scriptedEngine().awaitGenerationStarted());
             assertEquals("Voice turns must make a separate local ASR call",1,app.scriptedEngine().asrCallCount());
             assertTrue(app.scriptedEngine().lastAsrPrompt().contains("Perform ASR."));
-            assertEquals("The exact private WAV path must reach inference",path[0],app.scriptedEngine().lastMediaPath());
-            assertTrue("Voice question must be encoded with an attached media placeholder",
-                    app.scriptedEngine().lastPrompt().contains("Transcribe this recording")
-                            && app.scriptedEngine().lastPrompt().contains("<__media__>"));
+            assertEquals("The exact private WAV path must reach the ASR pass",
+                    java.util.Collections.singletonList(path[0]),app.scriptedEngine().mediaByCall().get(0));
+            assertTrue("Typed voice questions stay in the assistant prompt",
+                    app.scriptedEngine().lastPrompt().contains("Transcribe this recording"));
+            assertFalse("Successful ASR must not re-attach the WAV to the assistant turn",
+                    app.scriptedEngine().lastPrompt().contains("<__media__>"));
+            assertTrue("Assistant media list must be empty after successful ASR",
+                    app.scriptedEngine().mediaByCall().get(1).isEmpty());
             assertFalse("Search remains disabled for captured audio",app.scriptedEngine().lastPrompt().contains("search.example"));
             app.scriptedEngine().releaseFirstToken();
             assertNotNull("Fake inference should stream a response for the captured turn",device.wait(
