@@ -167,9 +167,9 @@ public class ChatSessionTest {
         worker.drain();ui.drain();
 
         assertEquals(Collections.singletonList("/private/question.wav"),engine.mediaByCall.get(0));
-        assertEquals(Arrays.asList("/private/image.jpg","/private/question.wav"),engine.mediaByCall.get(1));
-        assertEquals("Audio and image must each have a media marker in the same user message",2,
-                occurrences(engine.prompts.get(1),"<__media__>"));
+        assertEquals("Successful ASR must not re-attach the WAV to the assistant turn",
+                Collections.singletonList("/private/image.jpg"),engine.mediaByCall.get(1));
+        assertEquals(1,occurrences(engine.prompts.get(1),"<__media__>"));
         assertEquals(Collections.singletonList("/private/question.wav"),deleted);
 
         assertTrue(session.submit("What color was it?",Collections.emptyList(),false,"",64));
@@ -182,6 +182,38 @@ public class ChatSessionTest {
 
         session.clear();
         assertEquals(Arrays.asList("/private/question.wav","/private/image.jpg"),deleted);
+    }
+
+    @Test public void successfulAsrAnswersFromTranscriptWithoutReattachingAudio(){
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();
+        List<ChatSession.CompletedTurn> saved=new ArrayList<>();
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                saved::add,(text,status,running)->{});
+        assertTrue(session.submit("","/private/cache/voice.wav","voice recording",false,"",64));
+        worker.drain();ui.drain();
+
+        assertEquals(Collections.singletonList("/private/cache/voice.wav"),engine.mediaByCall.get(0));
+        assertTrue(engine.mediaByCall.get(1).isEmpty());
+        assertEquals(0,occurrences(engine.prompts.get(1),"<__media__>"));
+        assertTrue("Assistant prompt must use the ASR transcript",
+                engine.prompts.get(1).contains("The secret animal is a blue cat."));
+        assertFalse(engine.prompts.get(1).contains(ChatSession.DEFAULT_VOICE_QUESTION));
+        assertEquals("The secret animal is a blue cat.",saved.get(0).speechTranscript);
+        assertEquals("Answer 1",saved.get(0).assistantText);
+    }
+
+    @Test public void unavailableAsrKeepsAudioAttachedForAssistantTurn(){
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();
+        engine.asrError="decoder unavailable";engine.asrTranscript=null;
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                turn->{},(text,status,running)->{});
+        assertTrue(session.submit("","/private/cache/voice.wav","voice recording",false,"",64));
+        worker.drain();ui.drain();
+
+        assertEquals(Collections.singletonList("/private/cache/voice.wav"),engine.mediaByCall.get(0));
+        assertEquals(Collections.singletonList("/private/cache/voice.wav"),engine.mediaByCall.get(1));
+        assertEquals(1,occurrences(engine.prompts.get(1),"<__media__>"));
+        assertTrue(engine.prompts.get(1).contains(ChatSession.DEFAULT_VOICE_QUESTION));
     }
 
     private static int occurrences(String value,String token){

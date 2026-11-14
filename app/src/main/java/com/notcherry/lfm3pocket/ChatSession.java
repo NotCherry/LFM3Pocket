@@ -9,6 +9,8 @@ import java.util.function.LongSupplier;
 public final class ChatSession {
     private static final String ASR_PROMPT = "<|startoftext|><|im_start|>system\nPerform ASR.\n<|im_end|>\n"
             + "<|im_start|>user\n<__media__><|im_end|>\n<|im_start|>assistant\n";
+    /** Default user text when a voice recording is submitted without typed input. */
+    static final String DEFAULT_VOICE_QUESTION = "Listen to this recording and answer.";
     public interface Dispatcher { void post(Runnable work, long delayMs); }
     public interface Listener { void changed(String transcript, String status, boolean generating); }
     public interface Search { List<WebSearch.Source> search(String endpoint, String question) throws Exception; }
@@ -110,7 +112,7 @@ public final class ChatSession {
             activeImagePath=submittedImage;
         }
         String question=text.trim().isEmpty()
-                ?voiceRecording?"Listen to this recording and answer.":"Describe this photo."
+                ?voiceRecording?DEFAULT_VOICE_QUESTION:"Describe this photo."
                 :text.trim();
         List<Attachment> turnMedia=new ArrayList<>();
         if(!activeImagePath.isEmpty())turnMedia.add(new Attachment(activeImagePath,AttachmentKind.PHOTO));
@@ -201,7 +203,9 @@ public final class ChatSession {
             },0);
         }
         if(useSearch && !turn.cancelled) {
-            try { sources=search.search(endpoint,question);
+            String searchQuestion=speechTranscript!=null && DEFAULT_VOICE_QUESTION.equals(question)
+                    ?speechTranscript:question;
+            try { sources=search.search(endpoint,searchQuestion);
                 if(sources.isEmpty()) searchError="Search returned no results"; }
             catch(Exception e) { searchError=e.getMessage(); }
         }
@@ -217,8 +221,16 @@ public final class ChatSession {
             engine.resetStop();
             // stop() may race resetStop; the per-turn flag never gets reset.
             if(turn.cancelled) engine.stop();
-            String[] mediaPaths=turn.media.stream().map(attachment->attachment.path).toArray(String[]::new);
-            try { error=engine.generateWithMedia(turn.handle,prompt(history,sources,mediaPaths.length),
+            // Successful ASR already consumed the WAV. Re-attaching it makes Omni echo/transcribe
+            // instead of answering; keep images and only re-attach audio when ASR failed.
+            List<Attachment> replyMedia=new ArrayList<>();
+            for(Attachment attachment:turn.media) {
+                if(attachment.kind==AttachmentKind.VOICE_RECORDING && speechTranscript!=null) continue;
+                replyMedia.add(attachment);
+            }
+            String[] mediaPaths=replyMedia.stream().map(attachment->attachment.path).toArray(String[]::new);
+            List<Message> replyHistory=assistantHistory(history,question,speechTranscript);
+            try { error=engine.generateWithMedia(turn.handle,prompt(replyHistory,sources,mediaPaths.length),
                     mediaPaths,maxTokens,piece -> queue(turn,piece)); }
             catch(Throwable e) { error=e.toString(); }
         }
@@ -238,7 +250,25 @@ public final class ChatSession {
     }
     private static String cleanTranscript(String value) {
         String transcript=value.replaceAll("(?s)<think>.*?</think>", "").trim();
+        // Drop Omni mixed-mode markers if the ASR pass surfaces them.
+        transcript=transcript.replace("<|mixed_start|>","").replace("<|mixed_end|>","").trim();
         return transcript.isEmpty()?null:transcript;
+    }
+    /**
+     * When ASR succeeds for a default voice-only question, substitute the transcript into the
+     * assistant prompt so the model answers the spoken content instead of re-hearing the WAV.
+     */
+    private static List<Message> assistantHistory(List<Message> history,String question,String speechTranscript) {
+        if(speechTranscript==null || history.isEmpty() || !DEFAULT_VOICE_QUESTION.equals(question))
+            return history;
+        List<Message> copy=new ArrayList<>(history);
+        Message last=copy.get(copy.size()-1);
+        if(!"user".equals(last.role)) return history;
+        String markers="";
+        int nl=last.text.indexOf('\n');
+        if(nl>=0) markers=last.text.substring(nl);
+        copy.set(copy.size()-1,new Message("user",speechTranscript+markers,last.sources));
+        return copy;
     }
     private static String firstMedia(Turn turn,AttachmentKind kind) {
         for(Attachment attachment:turn.media)if(attachment.kind==kind)return attachment.path;
