@@ -56,19 +56,29 @@ public final class InferenceSettingsE2eTest {
         if(open!=null) open.click();
         assertNotNull(device.wait(Until.findObject(By.res(pkg,"model_configuration_scroll")),WAIT));
     }
-    private void saveInference(UiDevice device,String pkg) {
+    private void saveInference(UiDevice device,String pkg) throws Exception {
+        scrollTo(pkg,"settings_save");
         UiObject2 save=device.wait(Until.findObject(By.res(pkg,"settings_save").enabled(true)),WAIT);
         assertNotNull("settings_save",save);save.click();
     }
-    private void fields(UiDevice device,String pkg,String context,String threads,String tokens){
+    private void fields(UiDevice device,String pkg,String context,String threads,String tokens) throws Exception {
         setField(device,pkg,"settings_context",context);
         setField(device,pkg,"settings_threads",threads);
         setField(device,pkg,"settings_tokens",tokens);
     }
-    private void setField(UiDevice device,String pkg,String id,String value){
+    private void setField(UiDevice device,String pkg,String id,String value) throws Exception {
+        scrollTo(pkg,id);
         UiObject2 field=device.wait(Until.findObject(By.res(pkg,id)),WAIT);
         assertNotNull(id,field);
         field.click();
         field.setText(value);
+    }
+    private void scrollTo(String pkg,String id) throws Exception {
+        UiScrollable scroll=new UiScrollable(
+                new UiSelector().resourceId(pkg+":id/model_configuration_scroll"));
+        scroll.setAsVerticalList();
+        // settings_save is sticky outside the scroll; ignore failures for that id.
+        try { scroll.scrollIntoView(new UiSelector().resourceId(pkg+":id/"+id)); }
+        catch(Exception ignored) { }
     }
 }

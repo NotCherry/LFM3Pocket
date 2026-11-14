@@ -63,7 +63,14 @@ public final class DiagnosticsStressE2eTest {
         return object;
     }
 
-    private void clickText(String text) {
+    private void clickText(String text) throws Exception {
+        // Model manager controls may sit just below the fold on the CI emulator.
+        try {
+            UiScrollable scroll = new UiScrollable(
+                    new UiSelector().resourceId(pkg + ":id/model_configuration_scroll"));
+            scroll.setAsVerticalList();
+            scroll.scrollIntoView(new UiSelector().text(text));
+        } catch (Exception ignored) { }
         UiObject2 button = device.wait(Until.findObject(By.text(text).enabled(true)), UI_TIMEOUT_MS);
         assertNotNull("Expected control: " + text, button);
         button.click();
