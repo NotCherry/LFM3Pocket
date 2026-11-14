@@ -295,10 +295,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         settingsTokensField.setTextColor(ink);
         settingsInlineError = label("", 13, Color.parseColor("#C45B5B"));
         configuration.addView(settingsInlineError);
-        Button saveInference = button("Save");
-        saveInference.setId(R.id.settings_save);
-        saveInference.setOnClickListener(v -> saveInlineInferenceSettings());
-        configuration.addView(saveInference, new LinearLayout.LayoutParams(-1, dp(48)));
 
         TextView searchHeading = label("SearXNG", 16, ink);
         searchHeading.setTypeface(null, 1);
@@ -323,10 +319,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         searchButton.setId(R.id.web_search);
         searchButton.setOnClickListener(v -> showSearchSettings());
         configuration.addView(searchButton, new LinearLayout.LayoutParams(-1, dp(48)));
-        Button saveSearch = button("Save search");
-        saveSearch.setId(R.id.search_save);
-        saveSearch.setOnClickListener(v -> saveInlineSearchSettings());
-        configuration.addView(saveSearch, new LinearLayout.LayoutParams(-1, dp(48)));
 
         ScrollView configurationScroll = new ScrollView(this);
         configurationScroll.setId(R.id.model_configuration_scroll);
@@ -334,6 +326,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         configurationScroll.setPadding(dp(8), dp(8), dp(8), dp(8));
         configurationScroll.addView(configuration);
         settingsRoot.addView(configurationScroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        // Sticky Save controls stay on-screen (small emulator + IME) for UiAutomator Stage 1 IDs.
+        LinearLayout settingsActions = new LinearLayout(this);
+        settingsActions.setOrientation(LinearLayout.VERTICAL);
+        settingsActions.setBackgroundColor(raised);
+        settingsActions.setPadding(dp(8), dp(6), dp(8), dp(6));
+        Button saveInference = button("Save");
+        saveInference.setId(R.id.settings_save);
+        saveInference.setOnClickListener(v -> saveInlineInferenceSettings());
+        settingsActions.addView(saveInference, new LinearLayout.LayoutParams(-1, dp(48)));
+        Button saveSearch = button("Save search");
+        saveSearch.setId(R.id.search_save);
+        saveSearch.setOnClickListener(v -> saveInlineSearchSettings());
+        settingsActions.addView(saveSearch, new LinearLayout.LayoutParams(-1, dp(48)));
+        settingsRoot.addView(settingsActions, new LinearLayout.LayoutParams(-1, -2));
+
         settingsHost = settingsRoot;
         settingsHost.setVisibility(View.GONE);
         root.addView(settingsHost, new LinearLayout.LayoutParams(-1, 0, 1f));

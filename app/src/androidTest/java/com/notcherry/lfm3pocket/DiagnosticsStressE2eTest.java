@@ -69,6 +69,19 @@ public final class DiagnosticsStressE2eTest {
         button.click();
     }
 
+    private void openSettings() {
+        UiObject2 open = device.wait(Until.findObject(By.res(pkg, "settings_open").enabled(true)), 2000);
+        if (open != null) open.click();
+        assertNotNull(device.wait(Until.findObject(By.res(pkg, "model_configuration_scroll")), UI_TIMEOUT_MS));
+    }
+
+    private void backToChat() {
+        UiObject2 back = device.wait(Until.findObject(By.res(pkg, "settings_back").enabled(true)), UI_TIMEOUT_MS);
+        assertNotNull("settings_back", back);
+        back.click();
+        assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_send")), UI_TIMEOUT_MS));
+    }
+
     @Test public void unloadReloadStopLoopsRecoverWithoutStrandedMicOrTelemetry() throws Exception {
         assertFalse(app.diagnostics().uploadsTelemetry());
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
@@ -77,9 +90,14 @@ public final class DiagnosticsStressE2eTest {
                     app.diagnostics().count(LocalDiagnostics.Kind.MODEL_LOAD) >= 1);
 
             for (int i = 0; i < 3; i++) {
+                // Unload/Load live on the Atlas Settings host (U10/U15), not the chat viewport.
+                openSettings();
                 clickText("Unload model");
+                backToChat();
                 assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_send").enabled(false)), UI_TIMEOUT_MS));
+                openSettings();
                 clickText("Load model");
+                backToChat();
                 waitEnabled("chat_send");
                 app.diagnostics().record(LocalDiagnostics.Kind.STRESS, 0, "unload-reload-" + i);
 

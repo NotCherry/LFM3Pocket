@@ -58,28 +58,35 @@ fun ChatTurnList(
     assistantMessageTag: String? = null,
     autoScroll: Boolean = true,
 ) {
-    val tag = { name: String -> "$packageName:id/$name" }
     val scroll = rememberScrollState()
     LaunchedEffect(turns.size, turns.lastOrNull()?.text, turns.lastOrNull()?.streaming) {
         if (autoScroll) scroll.scrollTo(scroll.maxValue)
     }
     Column(modifier.fillMaxWidth()) {
-        // Real View ID host so UiAutomator By.res(chat_transcript).textContains keeps working.
+        // Real View ID host for UiAutomator By.res(chat_transcript).textContains (U08/U15).
+        // Must stay VISIBLE with non-zero bounds and remain in the accessibility tree —
+        // INVISIBLE / height 0 / IMPORTANT_FOR_ACCESSIBILITY_NO drops the node from Automator.
+        // Do not also set a Compose testTag with the same resource-id: that shadows this View
+        // with a semantics node that has no text.
         AndroidView(
             factory = { context ->
                 TextView(context).apply {
                     id = if (flatTestTag == "chat_transcript") R.id.chat_transcript
                     else context.resources.getIdentifier(flatTestTag, "id", packageName)
-                    // INVISIBLE (not GONE) so UiAutomator can still read textContains.
-                    visibility = View.INVISIBLE
-                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    visibility = View.VISIBLE
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                    // Transparent ink keeps the Automator host out of the visual Atlas layout.
+                    setTextColor(android.graphics.Color.TRANSPARENT)
+                    textSize = 1f
                 }
             },
-            update = { it.text = flatTranscript },
+            update = { view ->
+                view.text = flatTranscript
+                view.contentDescription = flatTranscript
+            },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(0.dp)
-                .testTag(tag(flatTestTag)),
+                .height(1.dp),
         )
         Column(
             Modifier
