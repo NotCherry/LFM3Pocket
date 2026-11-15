@@ -4,6 +4,21 @@ package com.notcherry.lfm3pocket;
 public final class SpeechPrompt {
     private SpeechPrompt() {}
 
+    /** Prefer plain prose for Omni TTS; markdown markers often get spoken or confuse the voice model. */
+    public static String spokenText(String reply) {
+        String text = ThinkingSanitizer.clean(reply).answer.trim();
+        if (text.isEmpty()) return "";
+        text = text.replace('\u00A0', ' ');
+        text = text.replaceAll("(?m)^\\s{0,3}#{1,6}\\s+", "");
+        text = text.replaceAll("(?m)^\\s*[-*+]\\s+", "");
+        text = text.replaceAll("(?m)^\\s*\\d+\\.\\s+", "");
+        // Strip emphasis/code markers without deleting underscores inside tokens (e.g. FAKE_STREAM_BEGIN).
+        text = text.replace("**", "").replace("`", "");
+        text = text.replaceAll("(?<!\\w)\\*([^*]+?)\\*(?!\\w)", "$1");
+        text = text.replaceAll("[ \\t]+\\n", "\n").replaceAll("\\n{3,}", "\n\n").trim();
+        return text;
+    }
+
     public static String tts(String text, String language, String voice) {
         if (text == null || text.trim().isEmpty()) throw new IllegalArgumentException("text");
         String lang = language == null || language.trim().isEmpty() ? "en" : language.trim();

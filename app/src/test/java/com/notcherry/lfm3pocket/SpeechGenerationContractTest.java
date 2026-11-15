@@ -103,6 +103,23 @@ public class SpeechGenerationContractTest {
                 missing.generateSpeech(1,"prompt",SpeechOptions.DEFAULT,sink));
     }
 
+    @Test public void speechFrameBudgetScalesWithTextAndStaysWithinLimit(){
+        assertEquals(1024,SpeechOptions.framesForText(null));
+        assertEquals(1028,SpeechOptions.framesForText("Hi"));
+        assertTrue(SpeechOptions.framesForText("x".repeat(800))>1024);
+        assertEquals(SpeechOptions.MAX_FRAMES_LIMIT,SpeechOptions.framesForText("x".repeat(10000)));
+    }
+
+    @Test public void spokenTextStripsMarkdownNoise(){
+        String spoken=SpeechPrompt.spokenText("## Title\n- first point\n**bold** word and FAKE_STREAM_BEGIN");
+        assertFalse(spoken.contains("##"));
+        assertFalse(spoken.contains("**"));
+        assertTrue(spoken.contains("Title"));
+        assertTrue(spoken.contains("first point"));
+        assertTrue(spoken.contains("bold"));
+        assertTrue("Must keep underscores inside tokens", spoken.contains("FAKE_STREAM_BEGIN"));
+    }
+
     @Test public void speechPromptEncodesLanguageAndVoiceForLocalTts(){
         String prompt=SpeechPrompt.tts("The harbor was quiet.","pl","male");
         assertTrue(prompt.contains("Perform TTS"));

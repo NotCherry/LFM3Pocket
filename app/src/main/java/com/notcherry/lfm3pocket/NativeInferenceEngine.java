@@ -31,9 +31,8 @@ public final class NativeInferenceEngine implements InferenceEngine {
     @Override public String generateSpeech(long handle, String prompt, SpeechOptions options, AudioSink sink) {
         SpeechOptions selected = options == null ? SpeechOptions.DEFAULT : options;
         InferenceSettings current = settings;
-        int maxFrames = Math.min(selected.maxFrames, Math.max(1, current.maxTokens));
-        return NativeBridge.generateSpeech(handle, prompt,
-                new SpeechOptions(selected.language, selected.voice, maxFrames),
+        // Do not tie speech length to chat maxTokens — those units are unrelated.
+        return NativeBridge.generateSpeech(handle, prompt, selected, current,
                 new NativeBridge.AudioSink() {
                     @Override public void onAudioFormat(int sampleRateHz, int channelCount, int bitsPerSample) {
                         sink.onAudioFormat(sampleRateHz, channelCount, bitsPerSample);

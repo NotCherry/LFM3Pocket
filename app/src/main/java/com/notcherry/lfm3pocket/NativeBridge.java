@@ -39,10 +39,16 @@ public final class NativeBridge {
                 settings.contextTokens,settings.threads,sink);
     }
     public static String generateSpeech(long handle, String prompt, SpeechOptions options, AudioSink sink) {
+        return generateSpeech(handle, prompt, options, InferenceSettings.DEFAULT, sink);
+    }
+
+    public static String generateSpeech(long handle, String prompt, SpeechOptions options,
+                                        InferenceSettings settings, AudioSink sink) {
         if (prompt == null || sink == null) return "Missing prompt or audio callback";
         SpeechOptions selected = options == null ? SpeechOptions.DEFAULT : options;
+        InferenceSettings limits = settings == null ? InferenceSettings.DEFAULT : settings;
         return generateSpeechUtf8(handle, PromptEncoding.encode(prompt), selected.language, selected.voice,
-                selected.maxFrames, 4096, 4, sink);
+                selected.maxFrames, limits.contextTokens, limits.threads, sink);
     }
     private static native String generateUtf8(long handle, byte[] prompt, String[] mediaPaths,
                                                int maxTokens, int contextTokens, int threads, TokenSink sink);
