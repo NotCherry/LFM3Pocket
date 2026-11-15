@@ -12,7 +12,9 @@ public final class SpeechPrompt {
         text = text.replaceAll("(?m)^\\s{0,3}#{1,6}\\s+", "");
         text = text.replaceAll("(?m)^\\s*[-*+]\\s+", "");
         text = text.replaceAll("(?m)^\\s*\\d+\\.\\s+", "");
-        text = text.replaceAll("[*_`]+", "");
+        // Strip emphasis/code markers without deleting underscores inside tokens (e.g. FAKE_STREAM_BEGIN).
+        text = text.replace("**", "").replace("`", "");
+        text = text.replaceAll("(?<!\\w)\\*([^*]+?)\\*(?!\\w)", "$1");
         text = text.replaceAll("[ \\t]+\\n", "\n").replaceAll("\\n{3,}", "\n\n").trim();
         return text;
     }

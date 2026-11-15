@@ -111,12 +111,13 @@ public class SpeechGenerationContractTest {
     }
 
     @Test public void spokenTextStripsMarkdownNoise(){
-        String spoken=SpeechPrompt.spokenText("## Title\n- first point\n**bold** word");
+        String spoken=SpeechPrompt.spokenText("## Title\n- first point\n**bold** word and FAKE_STREAM_BEGIN");
         assertFalse(spoken.contains("##"));
         assertFalse(spoken.contains("**"));
         assertTrue(spoken.contains("Title"));
         assertTrue(spoken.contains("first point"));
         assertTrue(spoken.contains("bold"));
+        assertTrue("Must keep underscores inside tokens", spoken.contains("FAKE_STREAM_BEGIN"));
     }
 
     @Test public void speechPromptEncodesLanguageAndVoiceForLocalTts(){
