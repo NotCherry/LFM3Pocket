@@ -5,8 +5,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import android.view.View
-import android.widget.TextView
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -31,6 +29,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -38,76 +38,52 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 import kotlinx.coroutines.delay
 
 /**
- * Atlas chat transcript: open text blocks, left Reasoning rail, markdown answers, steel sources.
- * Flat automator text stays on [flatTestTag] via a zero-height host (U08 / E2E contract).
+ * Atlas chat transcript visuals: open text blocks, Reasoning rail, markdown, sources.
+ * Flat Automator text lives on ChatPanel's real [R.id.chat_transcript] TextView (U08/U15).
  */
 @Composable
 fun ChatTurnList(
     turns: List<ChatSnapshot.Turn>,
-    flatTranscript: String,
     packageName: String,
     modifier: Modifier = Modifier,
-    flatTestTag: String = "chat_transcript",
     userMessageTag: String? = null,
     assistantMessageTag: String? = null,
     autoScroll: Boolean = true,
 ) {
-    val tag = { name: String -> "$packageName:id/$name" }
     val scroll = rememberScrollState()
     LaunchedEffect(turns.size, turns.lastOrNull()?.text, turns.lastOrNull()?.streaming) {
         if (autoScroll) scroll.scrollTo(scroll.maxValue)
     }
-    Column(modifier.fillMaxWidth()) {
-        // Real View ID host so UiAutomator By.res(chat_transcript).textContains keeps working.
-        AndroidView(
-            factory = { context ->
-                TextView(context).apply {
-                    id = if (flatTestTag == "chat_transcript") R.id.chat_transcript
-                    else context.resources.getIdentifier(flatTestTag, "id", packageName)
-                    // INVISIBLE (not GONE) so UiAutomator can still read textContains.
-                    visibility = View.INVISIBLE
-                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                }
-            },
-            update = { it.text = flatTranscript },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(0.dp)
-                .testTag(tag(flatTestTag)),
-        )
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .weight(1f, fill = true)
-                .verticalScroll(scroll),
-        ) {
-            if (turns.isEmpty()) {
-                Text(
-                    text = "No conversation yet.",
-                    style = MaterialTheme.atlasTypography.body,
-                    color = MaterialTheme.atlasColors.inkMuted,
-                    modifier = Modifier.padding(16.dp),
+    Column(
+        modifier
+            .fillMaxWidth()
+            .verticalScroll(scroll),
+    ) {
+        if (turns.isEmpty()) {
+            Text(
+                text = "No conversation yet.",
+                style = MaterialTheme.atlasTypography.body,
+                color = MaterialTheme.atlasColors.inkMuted,
+                modifier = Modifier.padding(16.dp),
+            )
+        } else {
+            turns.forEachIndexed { index, turn ->
+                ChatTurn(
+                    turn = turn,
+                    packageName = packageName,
+                    userMessageTag = userMessageTag,
+                    assistantMessageTag = assistantMessageTag,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                 )
-            } else {
-                turns.forEachIndexed { index, turn ->
-                    ChatTurn(
-                        turn = turn,
-                        packageName = packageName,
-                        userMessageTag = userMessageTag,
-                        assistantMessageTag = assistantMessageTag,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                    )
-                    if (index < turns.lastIndex) {
-                        Spacer(Modifier.height(4.dp))
-                    }
+                if (index < turns.lastIndex) {
+                    Spacer(Modifier.height(4.dp))
                 }
             }
         }
@@ -140,7 +116,10 @@ fun ChatTurn(
                     text = turn.text,
                     style = type.body,
                     color = atlas.ink,
-                    modifier = if (bodyTag != null) Modifier.testTag(bodyTag) else Modifier,
+                    modifier = Modifier
+                        .then(if (bodyTag != null) Modifier.testTag(bodyTag) else Modifier)
+                        // History E2E uses By.desc(user text) for voice/transcript exposure.
+                        .semantics { contentDescription = turn.text },
                 )
             }
         } else {
@@ -155,7 +134,11 @@ fun ChatTurn(
                 }
                 Column(Modifier.weight(1f)) {
                     SelectionContainer {
-                        Column(if (bodyTag != null) Modifier.testTag(bodyTag) else Modifier) {
+                        Column(
+                            Modifier
+                                .then(if (bodyTag != null) Modifier.testTag(bodyTag) else Modifier)
+                                .semantics { contentDescription = turn.text },
+                        ) {
                             if (turn.text.isNotBlank()) {
                                 MarkdownBody(turn.text)
                             }

@@ -116,12 +116,6 @@ fun SettingsScreen(
             if (!error.isNullOrBlank()) {
                 Text(error, color = atlas.danger, style = type.bodySmall)
             }
-            Button(
-                onClick = onSaveInference,
-                modifier = Modifier.fillMaxWidth().testTag(tag("settings_save")),
-            ) {
-                Text("Save")
-            }
             Text("SearXNG", style = type.title, color = atlas.ink)
             OutlinedTextField(
                 value = searchEndpoint,
@@ -142,6 +136,15 @@ fun SettingsScreen(
                 color = atlas.inkMuted,
                 modifier = Modifier.testTag(tag("web_search")),
             )
+        }
+        // Sticky Save row — Stage 1 Automator must find settings_save / search_save on-screen.
+        Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = onSaveInference,
+                modifier = Modifier.fillMaxWidth().testTag(tag("settings_save")),
+            ) {
+                Text("Save")
+            }
             Button(
                 onClick = onSaveSearch,
                 modifier = Modifier.fillMaxWidth().testTag(tag("search_save")),

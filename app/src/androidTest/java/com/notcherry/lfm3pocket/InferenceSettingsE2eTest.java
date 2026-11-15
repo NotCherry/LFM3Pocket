@@ -26,7 +26,7 @@ public final class InferenceSettingsE2eTest {
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
             assertNotNull(device.wait(Until.findObject(By.res(pkg,"chat_send").enabled(true)),WAIT));
             if(phase.equals("verify")) {
-                verifyLimits(device,app);
+                verifyLimits(device,pkg,app);
                 restoreDefaults(device,pkg);
                 return;
             }
@@ -37,17 +37,26 @@ public final class InferenceSettingsE2eTest {
             if(phase.equals("prepare")) return;
             scenario.recreate();
             assertNotNull(device.wait(Until.findObject(By.res(pkg,"chat_send").enabled(true)),WAIT));
-            verifyLimits(device,app);
+            verifyLimits(device,pkg,app);
             restoreDefaults(device,pkg);
         }
     }
-    private void verifyLimits(UiDevice device,TestLfm3PocketApplication app) {
+    private void verifyLimits(UiDevice device,String pkg,TestLfm3PocketApplication app) throws Exception {
+        // Summary lives on the Settings host ModelManager (U10/U15), not the chat viewport.
+        openSettings(device,pkg);
+        scrollTo(pkg,"model_configuration_scroll");
+        try {
+            UiScrollable scroll=new UiScrollable(
+                    new UiSelector().resourceId(pkg+":id/model_configuration_scroll"));
+            scroll.setAsVerticalList();
+            scroll.scrollIntoView(new UiSelector().textContains("Context 2048"));
+        } catch(Exception ignored) { }
         assertNotNull(device.wait(Until.findObject(By.text("Context 2048 • Threads 2 • Max 128")),WAIT));
         assertEquals(2048,app.scriptedEngine().configuredSettings().contextTokens);
         assertEquals(2,app.scriptedEngine().configuredSettings().threads);
         assertEquals(128,app.scriptedEngine().configuredSettings().maxTokens);
     }
-    private void restoreDefaults(UiDevice device,String pkg) {
+    private void restoreDefaults(UiDevice device,String pkg) throws Exception {
         openSettings(device,pkg);fields(device,pkg,"4096","4","512");saveInference(device,pkg);
         assertNotNull(device.wait(Until.findObject(By.text("Context 4096 • Threads 4 • Max 512")),WAIT));
     }
@@ -56,13 +65,29 @@ public final class InferenceSettingsE2eTest {
         if(open!=null) open.click();
         assertNotNull(device.wait(Until.findObject(By.res(pkg,"model_configuration_scroll")),WAIT));
     }
-    private void saveInference(UiDevice device,String pkg) {
+    private void saveInference(UiDevice device,String pkg) throws Exception {
+        scrollTo(pkg,"settings_save");
         UiObject2 save=device.wait(Until.findObject(By.res(pkg,"settings_save").enabled(true)),WAIT);
         assertNotNull("settings_save",save);save.click();
     }
-    private void fields(UiDevice device,String pkg,String context,String threads,String tokens){
-        device.wait(Until.findObject(By.res(pkg,"settings_context")),WAIT).setText(context);
-        device.findObject(By.res(pkg,"settings_threads")).setText(threads);
-        device.findObject(By.res(pkg,"settings_tokens")).setText(tokens);
+    private void fields(UiDevice device,String pkg,String context,String threads,String tokens) throws Exception {
+        setField(device,pkg,"settings_context",context);
+        setField(device,pkg,"settings_threads",threads);
+        setField(device,pkg,"settings_tokens",tokens);
+    }
+    private void setField(UiDevice device,String pkg,String id,String value) throws Exception {
+        scrollTo(pkg,id);
+        UiObject2 field=device.wait(Until.findObject(By.res(pkg,id)),WAIT);
+        assertNotNull(id,field);
+        field.click();
+        field.setText(value);
+    }
+    private void scrollTo(String pkg,String id) throws Exception {
+        UiScrollable scroll=new UiScrollable(
+                new UiSelector().resourceId(pkg+":id/model_configuration_scroll"));
+        scroll.setAsVerticalList();
+        // settings_save is sticky outside the scroll; ignore failures for that id.
+        try { scroll.scrollIntoView(new UiSelector().resourceId(pkg+":id/"+id)); }
+        catch(Exception ignored) { }
     }
 }

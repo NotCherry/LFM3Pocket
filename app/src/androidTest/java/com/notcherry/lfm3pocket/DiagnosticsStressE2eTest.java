@@ -14,6 +14,8 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject2;
+import androidx.test.uiautomator.UiScrollable;
+import androidx.test.uiautomator.UiSelector;
 import androidx.test.uiautomator.Until;
 
 import org.junit.After;
@@ -63,10 +65,30 @@ public final class DiagnosticsStressE2eTest {
         return object;
     }
 
-    private void clickText(String text) {
+    private void clickText(String text) throws Exception {
+        // Model manager controls may sit just below the fold on the CI emulator.
+        try {
+            UiScrollable scroll = new UiScrollable(
+                    new UiSelector().resourceId(pkg + ":id/model_configuration_scroll"));
+            scroll.setAsVerticalList();
+            scroll.scrollIntoView(new UiSelector().text(text));
+        } catch (Exception ignored) { }
         UiObject2 button = device.wait(Until.findObject(By.text(text).enabled(true)), UI_TIMEOUT_MS);
         assertNotNull("Expected control: " + text, button);
         button.click();
+    }
+
+    private void openSettings() {
+        UiObject2 open = device.wait(Until.findObject(By.res(pkg, "settings_open").enabled(true)), 2000);
+        if (open != null) open.click();
+        assertNotNull(device.wait(Until.findObject(By.res(pkg, "model_configuration_scroll")), UI_TIMEOUT_MS));
+    }
+
+    private void backToChat() {
+        UiObject2 back = device.wait(Until.findObject(By.res(pkg, "settings_back").enabled(true)), UI_TIMEOUT_MS);
+        assertNotNull("settings_back", back);
+        back.click();
+        assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_send")), UI_TIMEOUT_MS));
     }
 
     @Test public void unloadReloadStopLoopsRecoverWithoutStrandedMicOrTelemetry() throws Exception {
@@ -77,9 +99,14 @@ public final class DiagnosticsStressE2eTest {
                     app.diagnostics().count(LocalDiagnostics.Kind.MODEL_LOAD) >= 1);
 
             for (int i = 0; i < 3; i++) {
+                // Unload/Load live on the Atlas Settings host (U10/U15), not the chat viewport.
+                openSettings();
                 clickText("Unload model");
+                backToChat();
                 assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_send").enabled(false)), UI_TIMEOUT_MS));
+                openSettings();
                 clickText("Load model");
+                backToChat();
                 waitEnabled("chat_send");
                 app.diagnostics().record(LocalDiagnostics.Kind.STRESS, 0, "unload-reload-" + i);
 

@@ -2,6 +2,10 @@ package com.notcherry.lfm3pocket
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Color
+import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -45,12 +49,16 @@ import java.util.function.Consumer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * Chat shell: Compose Atlas turns plus a real Android [R.id.chat_transcript] TextView so
+ * UiAutomator Stage 1 can read flat transcript text without Compose occlusion/alpha issues.
+ */
 class ChatPanel(
     context: Context,
     private val send: Consumer<String>,
     private val stop: Runnable,
     private val clear: Runnable,
-) : AbstractComposeView(context) {
+) : LinearLayout(context) {
     private data class Controls(val send: Boolean = false, val stop: Boolean = false, val clear: Boolean = true)
     private data class ToolCardState(
         val details: String,
@@ -63,7 +71,6 @@ class ChatPanel(
     )
     private data class Attachment(val path: String, val onRemove: Runnable)
 
-    private var flatTranscript by mutableStateOf(FlatTranscriptFormatter.EMPTY_TRANSCRIPT)
     private var snapshot by mutableStateOf(ChatSnapshot(emptyList(), "", false))
     private var liveStatus by mutableStateOf("")
     private var idleMode by mutableStateOf("Mode · Local / offline")
@@ -71,14 +78,45 @@ class ChatPanel(
     private var attachment by mutableStateOf<Attachment?>(null)
     private var controls by mutableStateOf(Controls())
 
+    private val transcriptHost = TextView(context).apply {
+        id = R.id.chat_transcript
+        visibility = View.VISIBLE
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        setTextColor(Color.TRANSPARENT)
+        setBackgroundColor(Color.TRANSPARENT)
+        textSize = 14f
+        text = FlatTranscriptFormatter.EMPTY_TRANSCRIPT
+        contentDescription = FlatTranscriptFormatter.EMPTY_TRANSCRIPT
+    }
+
+    private val composeView = object : AbstractComposeView(context) {
+        @Composable
+        override fun Content() {
+            ChatPanelContent()
+        }
+    }
+
+    init {
+        orientation = VERTICAL
+        // 1px Automator host above Compose — never occluded, always in the a11y tree.
+        val px = (resources.displayMetrics.density).toInt().coerceAtLeast(1)
+        addView(transcriptHost, LayoutParams(LayoutParams.MATCH_PARENT, px))
+        addView(composeView, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+    }
+
+    private fun publishFlatTranscript(text: String) {
+        transcriptHost.text = text
+        transcriptHost.contentDescription = text
+    }
+
     fun render(text: String, status: String) {
-        flatTranscript = text
+        publishFlatTranscript(text)
         liveStatus = status
     }
 
     fun renderSnapshot(next: ChatSnapshot) {
         snapshot = next
-        flatTranscript = FlatTranscriptFormatter.formatSnapshot(next)
+        publishFlatTranscript(FlatTranscriptFormatter.formatSnapshot(next))
         liveStatus = next.status
     }
 
@@ -113,7 +151,7 @@ class ChatPanel(
     private fun tag(name: String) = "${context.packageName}:id/$name"
 
     @Composable
-    override fun Content() {
+    private fun ChatPanelContent() {
         PocketTheme {
             var input by remember { mutableStateOf("") }
             val focus = LocalFocusManager.current
@@ -200,7 +238,6 @@ class ChatPanel(
                 }
                 ChatTurnList(
                     turns = snapshot.turns,
-                    flatTranscript = flatTranscript,
                     packageName = context.packageName,
                     modifier = Modifier
                         .weight(1f)
