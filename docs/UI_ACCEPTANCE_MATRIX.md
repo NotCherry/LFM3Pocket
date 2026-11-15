@@ -28,14 +28,14 @@ Style guide: [`DESIGN.md`](DESIGN.md). E2E ID / flat-transcript contract: [`UI_E
 | UT-05 | Chat hero: model / search / settings out of primary viewport | [#127](https://github.com/NotCherry/LFM3Pocket/issues/127) U10, [#130](https://github.com/NotCherry/LFM3Pocket/issues/130) U13 | Settings host + `settings_open`; E2E adapted to open Settings before `import_*` / `web_search` / inference fields (U15) | Chat first-viewport screenshot PENDING | PARTIAL |
 | UT-06 | History list/reader parity with live chat rendering | [#129](https://github.com/NotCherry/LFM3Pocket/issues/129) U12 | Shared turn/markdown/reasoning components; history E2E classes retained (EMU-FAKE pending CI) | Side-by-side history vs chat PENDING | PARTIAL |
 | UT-07 | Tool card + consent chrome Atlas; Approve/Reject IDs stable | [#128](https://github.com/NotCherry/LFM3Pocket/issues/128) U11, [#131](https://github.com/NotCherry/LFM3Pocket/issues/131) U14 | Stable `tool_*` IDs in `ids.xml`; `ToolChatE2eTest` / `ToolConsentE2eTest` (EMU-FAKE pending CI) | Tool/consent screenshots PENDING | PARTIAL |
-| UT-08 | Existing Stage 1 chat E2E green (IDs + flat transcript contract) | [#121](https://github.com/NotCherry/LFM3Pocket/issues/121) U04, [#132](https://github.com/NotCherry/LFM3Pocket/issues/132) U15 | `UI_E2E_CONTRACT.md` + JVM `FlatTranscriptFormatterTest`; U15 selector/nav/Save ID adaptations + think-tag flat assert. **Full Stage 1 EMU CI not re-run in this closeout environment** — status stays PARTIAL until green CI linked | N/A (CI evidence) | PARTIAL |
+| UT-08 | Existing Stage 1 chat E2E green (IDs + flat transcript contract) | [#121](https://github.com/NotCherry/LFM3Pocket/issues/121) U04, [#132](https://github.com/NotCherry/LFM3Pocket/issues/132) U15 | `UI_E2E_CONTRACT.md` + JVM `FlatTranscriptFormatterTest`; U15 adaptations in [#137](https://github.com/NotCherry/LFM3Pocket/pull/137). **EMU-FAKE green on main:** [Actions run 43703089138](https://github.com/NotCherry/LFM3Pocket/actions/runs/43703089138) (post-#137 merge). Prior PR evidence: [run 43629362929](https://github.com/NotCherry/LFM3Pocket/actions/runs/43629362929) | N/A (CI evidence) | VERIFIED |
 
 ## Tracker closeout status (Phase 4)
 
 | Code | Issue | Closeout note |
 | --- | --- | --- |
-| U15 | [#132](https://github.com/NotCherry/LFM3Pocket/issues/132) | Code/docs adapted for Settings navigation + `settings_save` / `search_save`; think-tag flat assert added. DoD incomplete until Stage 1 EMU-FAKE CI green. |
-| U16 | [#133](https://github.com/NotCherry/LFM3Pocket/issues/133) | Protocol + PENDING report under `device-evidence/reports/ui-atlas/`. Operator device run still required. |
+| U15 | [#132](https://github.com/NotCherry/LFM3Pocket/issues/132) | Closed via [#137](https://github.com/NotCherry/LFM3Pocket/pull/137); Stage 1 EMU CI green on main ([run 43703089138](https://github.com/NotCherry/LFM3Pocket/actions/runs/43703089138)). |
+| U16 | [#133](https://github.com/NotCherry/LFM3Pocket/issues/133) | Protocol + PENDING report under `device-evidence/reports/ui-atlas/`. **Operator device run still required** — leave open. |
 | U17 | [#134](https://github.com/NotCherry/LFM3Pocket/issues/134) | README navigation + RELEASE Atlas-vs-AT note + matrix/DESIGN links refreshed. |
 
 ## Maintenance contract
