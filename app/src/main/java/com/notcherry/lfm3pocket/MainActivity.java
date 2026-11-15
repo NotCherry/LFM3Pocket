@@ -60,6 +60,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private volatile long modelHandle = 0L;
     private boolean busy = false;
     private boolean generating = false;
+    private boolean speaking = false;
+    private volatile boolean speechCancelRequested = false;
     private volatile boolean destroyed = false;
     private volatile AtomicBoolean importCancellation;
     private final ExecutorService audioWorker = Executors.newSingleThreadExecutor();
@@ -113,7 +115,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 () -> ((Lfm3PocketApplication)getApplication()).hasMicrophonePermission(),
                 audioWorker, task -> mainHandler.post(task), (captureState, message, completed) -> {
                     if (destroyed) { if (completed != null) completed.delete(); return; }
-                    busy = recordingActive() || playbackActive();
+                    busy = recordingActive() || playbackActive() || speaking || generating;
                     status.setText(message);
                     if (completed != null) {
                         if (!pendingAudioPath.isEmpty()) HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
@@ -127,7 +129,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 playbackFocus::request,
                 playbackFocus::abandon, audioWorker, task -> mainHandler.post(task), (playState, message) -> {
                     if (destroyed) return;
-                    busy = recordingActive() || playbackActive() || generating;
+                    busy = recordingActive() || playbackActive() || generating || speaking;
                     status.setText(message);
                     updateControls();
                 });
@@ -144,7 +146,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 }, path -> HistoryMediaCleanup.deleteAttachment(this,path), (text, message, running) -> {
                     if (destroyed) return;
                     generating = running;
-                    busy = running || recordingActive() || playbackActive();
+                    busy = running || recordingActive() || playbackActive() || speaking;
                     chatPanel.render(text,message);
                     status.setText(message);
                     status.setVisibility(running ? View.GONE : View.VISIBLE);
@@ -418,12 +420,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 : recordingActive() ? "Stop recording" : "Voice input");
         recordButton.setEnabled(capture != RecordingController.State.STOPPING && (!busy || recordingActive()));
         PlaybackController.State playback = playbackController.state();
-        speakButton.setText(playback == PlaybackController.State.STOPPING ? "Stopping speech..."
-                : playbackActive() ? "Stop speech" : "Speak reply");
-        speakButton.setEnabled((!busy || playbackActive()) && (playbackActive()
+        speakButton.setText(playback == PlaybackController.State.STOPPING || speechCancelRequested
+                ? "Stopping speech..."
+                : (playbackActive() || speaking) ? "Stop speech" : "Speak reply");
+        speakButton.setEnabled((!busy || playbackActive() || speaking) && (playbackActive() || speaking
                 || (modelHandle != 0L && settingsLoaded && !lastAssistantReply.isBlank())));
         chatPanel.updateControls(!busy && modelHandle != 0L && settingsLoaded,
-                generating || recordingActive() || playbackActive() || importCancellation != null,
+                generating || speaking || recordingActive() || playbackActive() || importCancellation != null,
                 !busy || generating);
 
         if (modelManager != null) {
@@ -675,20 +678,35 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private void toggleSpokenReply() {
         if (playbackActive()) { playbackController.stop(); return; }
+        if (speaking) {
+            speechCancelRequested = true;
+            inferenceEngine.stop();
+            status.setText("Stopping spoken response...");
+            updateControls();
+            return;
+        }
         if (busy || !foreground || modelHandle == 0L || lastAssistantReply.isBlank()) return;
-        final String reply = lastAssistantReply;
+        final String reply = SpeechPrompt.spokenText(lastAssistantReply);
+        if (reply.isBlank()) {
+            status.setText("Nothing speakable in the last reply.");
+            return;
+        }
+        final int speechFrames = SpeechOptions.framesForText(reply);
         busy = true;
+        speaking = true;
+        speechCancelRequested = false;
         status.setText("Generating spoken response locally…");
         updateControls();
         worker.execute(() -> {
             java.io.ByteArrayOutputStream pcm = new java.io.ByteArrayOutputStream();
             final int[] format = new int[] { 24000, 1, 16 };
+            final long[] lastProgressUi = { 0L };
             String error;
             try {
                 inferenceEngine.resetStop();
                 error = inferenceEngine.generateSpeech(modelHandle,
                         SpeechPrompt.tts(reply, "en", "female"),
-                        new SpeechOptions("en", "female", Math.min(512, inferenceSettings.maxTokens)),
+                        new SpeechOptions("en", "female", speechFrames),
                         new InferenceEngine.AudioSink() {
                             @Override public void onAudioFormat(int sampleRateHz, int channelCount, int bitsPerSample) {
                                 format[0] = sampleRateHz; format[1] = channelCount; format[2] = bitsPerSample;
@@ -696,6 +714,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                             @Override public void onAudioPcm(byte[] interleavedLittleEndianPcm) {
                                 try { pcm.write(interleavedLittleEndianPcm); }
                                 catch (java.io.IOException e) { throw new IllegalStateException(e); }
+                                long now = android.os.SystemClock.uptimeMillis();
+                                if (now - lastProgressUi[0] < 250L) return;
+                                lastProgressUi[0] = now;
+                                final int bytes = pcm.size();
+                                final int rate = Math.max(8000, format[0]);
+                                final float seconds = bytes / 2f / rate;
+                                mainHandler.post(() -> {
+                                    if (destroyed || !speaking || speechCancelRequested) return;
+                                    status.setText(String.format(java.util.Locale.US,
+                                            "Generating spoken response… %.1fs audio so far", seconds));
+                                });
                             }
                         });
             } catch (Throwable t) {
@@ -703,22 +732,31 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             }
             final String failure = error;
             final byte[] audio = pcm.toByteArray();
+            final boolean cancelled = speechCancelRequested;
             mainHandler.post(() -> {
                 if (destroyed) return;
+                speaking = false;
+                speechCancelRequested = false;
+                if (cancelled) {
+                    busy = recordingActive() || generating || playbackActive();
+                    status.setText("Spoken response cancelled.");
+                    updateControls();
+                    return;
+                }
                 if (failure != null) {
-                    busy = recordingActive() || generating;
+                    busy = recordingActive() || generating || playbackActive();
                     status.setText("Spoken response failed: " + failure);
                     updateControls();
                     return;
                 }
                 if (audio.length == 0) {
-                    busy = recordingActive() || generating;
+                    busy = recordingActive() || generating || playbackActive();
                     status.setText("Spoken response produced no audio.");
                     updateControls();
                     return;
                 }
                 if (!playbackController.play(audio, format[0], format[1], format[2])) {
-                    busy = recordingActive() || generating;
+                    busy = recordingActive() || generating || playbackActive();
                     status.setText("Could not start spoken playback.");
                     updateControls();
                 }
@@ -900,7 +938,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void stopActiveWork() {
         if (recordingActive()) recordingController.stop();
         else if (playbackActive()) playbackController.stop();
-        else if (importCancellation != null) {
+        else if (speaking) {
+            speechCancelRequested = true;
+            inferenceEngine.stop();
+            status.setText("Stopping spoken response...");
+            updateControls();
+        } else if (importCancellation != null) {
             importCancellation.set(true);
             status.setText("Cancelling import...");
         } else {
