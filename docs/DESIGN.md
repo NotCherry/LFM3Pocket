@@ -1,6 +1,6 @@
 # Hanami — Atlas design system
 
-Authoritative visual and interaction guide for the **Atlas** UI epic (tracker [#135](https://github.com/NotCherry/LFM3Pocket/issues/135) / U00). Implementers of `PocketTheme` (#120 / U03) and screen issues (#126–#131) must follow this document.
+Authoritative visual and interaction guide for the **Atlas** UI epic (tracker [#135](https://github.com/NotCherry/LFM3Pocket/issues/135) / U00). Implementers of `PocketTheme` (#120 / U03) and screen issues (#126–#131) must follow this document. Decisions that outlive a screen recipe are recorded under [`adr/`](adr/README.md).
 
 The chosen product direction is **Stillwater**: warm-charcoal field, chalk ink, a single candle accent, serif display type, open text blocks, and a left **Reasoning** rail (collapsed by default, with a one-line preview). It does **not** replace Stage 1 AT-01..AT-09 gates; UI acceptance is tracked as UT-01..UT-08 in [`UI_ACCEPTANCE_MATRIX.md`](UI_ACCEPTANCE_MATRIX.md).
 
@@ -165,12 +165,14 @@ Atlas prefers **borders over shadows**.
 
 - Small preview thumbnail + remove control (`image_preview`, `image_remove`, etc.).
 - Border `border`; no floating sticker overlay on the transcript hero.
+- Caption distinguishes a still prepared for the projector from one kept at its original size (see §12).
 
 ### 6.7 Settings row (U13)
 
 - Group on `surface` with optional section `headline`.
 - Row: `label` + control (stepper, switch, field) aligned; `mono` for numeric/endpoint values where appropriate.
 - Keep IDs: `settings_context`, `settings_threads`, `settings_tokens`, `search_*`, `import_*`.
+- **Images** group holds the vision-preparation controls (see §12). Keep that group on the Settings host, not in the first chat viewport. Persist it with the other private settings.
 
 ### 6.8 History list + reader (U12)
 
@@ -254,7 +256,21 @@ Do **not**:
 
 ---
 
-## 12. References
+## 12. Vision image input
+
+Gallery picks, camera captures, and share-sheet images pass through one local preparation stage before the vision projector. The decision is [ADR-0001](adr/0001-prepare-vision-images-before-projector.md).
+
+| Point | Behavior |
+| --- | --- |
+| Entry | The still is brought into private app storage. The gallery item, camera roll, and the sharing app's file are not modified. |
+| Preparation | On by default. Longest-side cap, default 512 (the projector's nominal vision size); presets 384, 512, 768, 1024, and Original. Aspect ratio kept. Optional square crop stays off, because this projector is a native-resolution encoder. A prepared copy bakes orientation into a private JPEG, and that copy is what the projector sees. |
+| Retention | Prepared copies are temporary private cache and are removed by the existing history media cleanup. |
+| Settings → Images | On/off, cap, square crop, and JPEG quality (40–95, default 85) persist in private preferences, with the other settings. |
+| Share sheet | The app is a share target for images. A shared image opens chat and takes the same preparation path. It does not approve tools. Preparation and inference stay on the device. |
+
+The attachment chip (6.6) is the only chat-surface hint that a still was prepared or kept original.
+
+## 13. References
 
 | Doc / issue | Role |
 | --- | --- |
@@ -264,3 +280,4 @@ Do **not**:
 | [`UI_ACCEPTANCE_MATRIX.md`](UI_ACCEPTANCE_MATRIX.md) | UT-01..UT-08 |
 | [`UI_E2E_CONTRACT.md`](UI_E2E_CONTRACT.md) | Flat transcript + ID contract |
 | [`ACCEPTANCE_MATRIX.md`](ACCEPTANCE_MATRIX.md) | Stage 1 AT-01..AT-09 (unchanged authority for product capability) |
+| [`adr/`](adr/README.md) | Architecture decision records. [ADR-0001](adr/0001-prepare-vision-images-before-projector.md) is vision image preparation. |
