@@ -30,6 +30,9 @@ jobs:
     steps:
       - name: Checkout runner selection script
         uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts/pick-runner.py
+          sparse-checkout-cone-mode: false
 
       - name: Select self-hosted or GitHub-hosted
         id: choose
@@ -54,8 +57,11 @@ jobs:
               result='"ubuntu-latest"'
               ;;
           esac
-          # The script is checked out from the triggering ref. A fork can edit
-          # it, so the workflow forces ubuntu-latest again here.
+          # Defense in depth only. On a pull_request from a fork, this file and
+          # the caller are taken from the fork, so a fork can delete this check
+          # and set runs-on to [self-hosted, cherry-tree] directly. The control
+          # that stops that run is the repository setting "Require approval for
+          # all outside collaborators". Read the workflow diff before approving.
           head_lc=$(printf '%s' "$HEAD_REPO" | tr '[:upper:]' '[:lower:]')
           repo_lc=$(printf '%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$head_lc" != "$repo_lc" ]; then

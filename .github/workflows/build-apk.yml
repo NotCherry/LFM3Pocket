@@ -126,7 +126,8 @@ jobs:
         run: bash .github/scripts/provision-smoke-model.sh
       - name: Assemble emulator app and instrumentation APKs
         run: gradle :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
-      - name: Enable KVM access for Android emulator
+      - name: Enable KVM on the GitHub-hosted runner
+        if: runner.environment == 'github-hosted'
         run: |
           set -euo pipefail
           if [ ! -e /dev/kvm ]; then
@@ -137,9 +138,22 @@ jobs:
             echo "/dev/kvm is already accessible to the runner user."
             exit 0
           fi
+          # This runner is ephemeral. The rule does not persist onto CHERRY-TREE.
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Require existing KVM access on the self-hosted runner
+        if: runner.environment == 'self-hosted'
+        run: |
+          set -euo pipefail
+          if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo "/dev/kvm is accessible to the runner user."
+            exit 0
+          fi
+          echo "ERROR: /dev/kvm is not accessible to the runner user on this self-hosted machine." >&2
+          echo "Add that user to the kvm group, then restart the runner service." >&2
+          echo "This job does not install udev rules on CHERRY-TREE." >&2
+          exit 1
       - name: Execute connected JNI smoke and real UI E2E tests
         uses: reactivecircus/android-emulator-runner@v2
         with:

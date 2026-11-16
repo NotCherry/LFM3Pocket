@@ -2,9 +2,9 @@
 """Choose runs-on for CHERRY-TREE or GitHub-hosted ubuntu-latest.
 
 The pick-runner job calls this on ubuntu-latest. Fork pull requests always
-stay on ubuntu-latest. Otherwise an online runner labeled cherry-tree is
-selected when RUNNER_STATUS_TOKEN can list it. A missing secret or a failed
-API call falls back to ubuntu-latest and still exits 0.
+stay on ubuntu-latest. Otherwise an online, idle runner labeled cherry-tree
+is selected when RUNNER_STATUS_TOKEN can list it. A busy runner, a missing
+secret, or a failed API call falls back to ubuntu-latest and still exits 0.
 
 Stdout is one JSON value and nothing else:
   ["self-hosted","cherry-tree"]
@@ -98,15 +98,17 @@ def select_runs_on(
         else:
             idle.append(runner)
 
-    chosen = idle[0] if idle else (busy[0] if busy else None)
-    if chosen is None:
-        print("No online cherry-tree runner; using ubuntu-latest.", file=sys.stderr)
+    if not idle:
+        if busy:
+            print(
+                "cherry-tree is online but busy; using ubuntu-latest.",
+                file=sys.stderr,
+            )
+        else:
+            print("No online cherry-tree runner; using ubuntu-latest.", file=sys.stderr)
         return GITHUB_HOSTED
-    state = "idle" if chosen in idle else "busy"
-    print(
-        f"Using cherry-tree ({chosen.get('name')}, {state}).",
-        file=sys.stderr,
-    )
+    chosen = idle[0]
+    print(f"Using cherry-tree ({chosen.get('name')}, idle).", file=sys.stderr)
     return SELF_HOSTED
 
 
@@ -307,7 +309,7 @@ def self_test() -> None:
         base_env,
         lambda repository, token: [_runner("CHERRY-TREE", "online", True, ["self-hosted", "cherry-tree"])],
     )
-    expect(result == SELF_HOSTED, "online busy runner is still selected")
+    expect(result == GITHUB_HOSTED, "online busy runner falls back")
 
     result, _log = _capture(
         base_env,

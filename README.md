@@ -17,7 +17,7 @@ Model weights are never bundled in the APK. Import LFM3 / LFM3-Omni GGUFs in the
 
 ## Build
 
-GitHub Actions builds the ARM64 phone APK, runs an x86_64 emulator smoke test through the JNI generation path, and uploads the phone APK artifact. It checks out llama.cpp `v0.8.0` (`8642541b255bfb5dc39cd351a178be09013a55d6`) for LFM3 and multimodal support. When the `cherry-tree` runner is online, those jobs run there; otherwise they run on `ubuntu-latest`. See [CI](#ci).
+GitHub Actions builds the ARM64 phone APK, runs an x86_64 emulator smoke test through the JNI generation path, and uploads the phone APK artifact. It checks out llama.cpp `v0.8.0` (`8642541b255bfb5dc39cd351a178be09013a55d6`) for LFM3 and multimodal support. When the `cherry-tree` runner is online and idle, the Stage 1 build jobs run there. The release workflow stays on `ubuntu-latest`. See [CI](#ci).
 
 Locally, install JDK 17, Android SDK/NDK and Gradle 8.13; run `git clone --branch v0.8.0 --depth 1 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp` then `gradle :app:assemblePhoneDebug`. A `vMAJOR.MINOR.PATCH` tag on HEAD sets `versionName` and `versionCode`. Untagged builds are `0.1.0` (versionCode 1000).
 
@@ -25,9 +25,9 @@ The Stage 1 release recipe is in [`docs/RELEASE.md`](docs/RELEASE.md). Signing, 
 
 ## CI
 
-Workflows prefer the owner's self-hosted runner when it is online. Register that machine on this repository with the labels `self-hosted` and `cherry-tree`. The `pick-runner` job runs on `ubuntu-latest`, calls `GET /repos/{owner}/{repo}/actions/runners` with the `RUNNER_STATUS_TOKEN` secret, and sets the build jobs to `["self-hosted", "cherry-tree"]` or `"ubuntu-latest"`. Fork pull requests stay on `ubuntu-latest`. The jobs install Temurin JDK 17, Gradle 8.13, Python 3.12, and the Android SDK themselves.
+Stage 1 build jobs prefer the owner's self-hosted runner when it is online and idle. Register that machine on this repository with the labels `self-hosted` and `cherry-tree`. The `pick-runner` job runs on `ubuntu-latest`, calls `GET /repos/{owner}/{repo}/actions/runners` with the `RUNNER_STATUS_TOKEN` secret, and sets those jobs to `["self-hosted","cherry-tree"]` or `"ubuntu-latest"`. A busy runner, an offline runner, a missing token, and every fork pull request stay on `ubuntu-latest`. The release workflow always uses `ubuntu-latest`. The build jobs install Temurin JDK 17, Gradle 8.13, Python 3.12, and the Android SDK themselves.
 
-The runner prerequisites, the fine-grained PAT (Administration: Read), and the fork-approval setting are in [`docs/ci.md`](docs/ci.md).
+The runner prerequisites, the fine-grained PAT (Administration: Read), and the fork-approval setting are in [`docs/ci.md`](docs/ci.md). The decision record is [`docs/adr/0001-self-hosted-ci-runner.md`](docs/adr/0001-self-hosted-ci-runner.md).
 
 ## App navigation
 

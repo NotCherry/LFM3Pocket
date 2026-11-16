@@ -10,6 +10,10 @@ name: Publish GitHub Release
 # Signing secrets (optional on auto-release):
 #   HANAMI_KEYSTORE_BASE64, HANAMI_STORE_PASSWORD, HANAMI_KEY_ALIAS, HANAMI_KEY_PASSWORD
 # Missing secrets → unsigned APK with a clear note in the release body. Main stays green.
+#
+# This job stays on ubuntu-latest. It has contents: write and publishes the APK.
+# CHERRY-TREE's disk persists across pull-request jobs, so the release build
+# does not run there. See docs/adr/0001-self-hosted-ci-runner.md.
 on:
   push:
     branches: [main]
@@ -38,15 +42,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  pick-runner:
-    uses: ./.github/workflows/pick-runner.yml
-    secrets:
-      RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
-
   publish:
     name: Attach APK to GitHub Release
-    needs: pick-runner
-    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - name: Checkout application
@@ -63,9 +61,6 @@ jobs:
 
       - name: Prove version bump logic
         run: python3 .github/scripts/next-hanami-version.py --self-test
-
-      - name: Prove runner selection stays off fork pull requests
-        run: python3 .github/scripts/pick-runner.py --self-test
 
       - name: Resolve release metadata
         id: meta
