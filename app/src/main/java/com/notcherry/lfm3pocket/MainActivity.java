@@ -78,6 +78,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private TextView status;
     private TextView brandTitle;
     private TextView modePill;
+    private View topBarView;
     private ModelManagerPanel modelManager;
     private View settingsHost;
     private View chatShell;
@@ -136,7 +137,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         session = new ChatSession(inferenceEngine, worker,
                 (task, delay) -> mainHandler.postDelayed(task, delay), () -> modelHandle,
                 WebSearch::search, turn -> {
-                    if("New conversation".equals(historyTitle)) historyTitle=titleForQuestion(turn.userText);
+                    if("New conversation".equals(historyTitle)) {
+                        historyTitle=titleForQuestion(turn.userText);
+                        if (brandTitle != null) brandTitle.setText(historyTitle);
+                    }
                     if(turn.assistantText!=null && !turn.assistantText.isBlank())
                         lastAssistantReply=turn.assistantText;
                     HistoryRepository.Status resultStatus=HistoryRepository.Status.valueOf(turn.status.name());
@@ -199,38 +203,41 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void buildUi() {
-        // Atlas charcoal shell — chat owns the primary viewport; model/search live in Settings (U10/U13).
-        int surface = Color.parseColor("#0E1116");
-        int raised = Color.parseColor("#151A21");
-        int ink = Color.parseColor("#E8EAED");
-        int inkMuted = Color.parseColor("#9AA3AD");
-        int accent = Color.parseColor("#5B8FA8");
+        int surface = StillwaterUi.SURFACE;
+        int ink = StillwaterUi.INK;
+        int inkMuted = StillwaterUi.MUTED;
+        int accent = StillwaterUi.CANDLE;
+        getWindow().setStatusBarColor(surface);
+        getWindow().setNavigationBarColor(surface);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(surface);
-        root.setPadding(dp(12), dp(12), dp(12), dp(10));
+        root.setPadding(dp(16), dp(8), dp(16), dp(8));
 
         LinearLayout topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
-        brandTitle = label("LFM3", 22, ink);
-        brandTitle.setTypeface(null, 1);
-        topBar.addView(brandTitle, new LinearLayout.LayoutParams(0, -2, 1f));
-        modePill = label(searchEnabled ? "Search" : "Offline", 12, accent);
-        modePill.setPadding(dp(10), dp(4), dp(10), dp(4));
-        modePill.setBackgroundColor(raised);
-        topBar.addView(modePill);
-        settingsOpenButton = button("Settings");
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        brandTitle = label(historyTitle, 20, ink);
+        brandTitle.setTypeface(StillwaterUi.serif(this));
+        titles.addView(brandTitle);
+        modePill = label(searchEnabled ? "Web search + local model" : "Mode · Local / offline", 12, inkMuted);
+        modePill.setTypeface(StillwaterUi.sans(this));
+        titles.addView(modePill);
+        topBar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
+        settingsOpenButton = button("");
         settingsOpenButton.setId(R.id.settings_open);
-        settingsOpenButton.setTextColor(ink);
-        settingsOpenButton.setBackgroundColor(Color.TRANSPARENT);
+        settingsOpenButton.setContentDescription("Settings");
+        settingsOpenButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_still_gear, 0, 0, 0);
+        StillwaterUi.quiet(settingsOpenButton);
         settingsOpenButton.setOnClickListener(v -> setSettingsOpen(true));
-        topBar.addView(settingsOpenButton, new LinearLayout.LayoutParams(-2, dp(40)));
+        topBar.addView(settingsOpenButton, new LinearLayout.LayoutParams(dp(40), dp(40)));
         Button overflow = button("⋮");
         overflow.setId(R.id.chat_overflow);
+        StillwaterUi.quiet(overflow);
         overflow.setTextColor(inkMuted);
-        overflow.setBackgroundColor(Color.TRANSPARENT);
         overflow.setOnClickListener(v -> {
             android.widget.PopupMenu menu = new android.widget.PopupMenu(this, v);
             menu.getMenu().add(0, 1, 0, "Settings");
@@ -242,7 +249,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             });
             menu.show();
         });
-        topBar.addView(overflow, new LinearLayout.LayoutParams(-2, dp(40)));
+        topBar.addView(overflow, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        topBarView = topBar;
         root.addView(topBar);
 
         status = label("Starting...", 13, inkMuted);
@@ -256,11 +264,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         settingsRoot.setBackgroundColor(surface);
         Button settingsBack = button("Back to chat");
         settingsBack.setId(R.id.settings_back);
+        StillwaterUi.quiet(settingsBack);
+        settingsBack.setTextColor(accent);
         settingsBack.setOnClickListener(v -> setSettingsOpen(false));
-        settingsRoot.addView(settingsBack, new LinearLayout.LayoutParams(-1, dp(44)));
-        TextView settingsHeading = label("Settings", 20, ink);
-        settingsHeading.setTypeface(null, 1);
-        settingsHeading.setPadding(0, dp(8), 0, dp(8));
+        settingsRoot.addView(settingsBack, new LinearLayout.LayoutParams(-2, dp(44)));
+        TextView settingsHeading = label("Settings", 34, ink);
+        settingsHeading.setTypeface(StillwaterUi.serif(this));
+        settingsHeading.setPadding(0, dp(4), 0, dp(8));
         settingsRoot.addView(settingsHeading);
 
         LinearLayout configuration = new LinearLayout(this);
@@ -270,8 +280,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         modelControls.setOrientation(LinearLayout.HORIZONTAL);
         modelButton = button("Import model");
         modelButton.setId(R.id.import_model);
+        StillwaterUi.quiet(modelButton);
+        modelButton.setTextColor(accent);
         mmprojButton = button("Import projector");
         mmprojButton.setId(R.id.import_projector);
+        StillwaterUi.quiet(mmprojButton);
+        mmprojButton.setTextColor(accent);
         modelControls.addView(modelButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         modelControls.addView(mmprojButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         configuration.addView(modelControls);
@@ -280,28 +294,24 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings);
         configuration.addView(modelManager);
 
-        TextView inferenceHeading = label("Inference", 16, ink);
-        inferenceHeading.setTypeface(null, 1);
-        inferenceHeading.setPadding(0, dp(12), 0, dp(4));
+        TextView inferenceHeading = label("INFERENCE", 11, inkMuted);
+        inferenceHeading.setTypeface(StillwaterUi.sansMedium(this));
+        inferenceHeading.setLetterSpacing(0.12f);
+        inferenceHeading.setPadding(0, dp(16), 0, dp(4));
         configuration.addView(inferenceHeading);
-        settingsContextField = settingInput(configuration,
-                "Context tokens (512–8192, steps of 256)",
-                inferenceSettings.contextTokens, R.id.settings_context);
-        settingsContextField.setTextColor(ink);
-        settingsThreadsField = settingInput(configuration,
-                "Decode threads (1–8, capped to available CPUs)",
-                inferenceSettings.threads, R.id.settings_threads);
-        settingsThreadsField.setTextColor(ink);
-        settingsTokensField = settingInput(configuration,
-                "Max response tokens (1–2048, less than context)",
-                inferenceSettings.maxTokens, R.id.settings_tokens);
-        settingsTokensField.setTextColor(ink);
-        settingsInlineError = label("", 13, Color.parseColor("#C45B5B"));
+        settingsContextField = settingInput(configuration, "Context", "512–8192, step 256",
+                inferenceSettings.contextTokens, R.id.settings_context, 256, 512, 8192);
+        settingsThreadsField = settingInput(configuration, "Decode threads", "1–8, capped to CPUs",
+                inferenceSettings.threads, R.id.settings_threads, 1, 1, 8);
+        settingsTokensField = settingInput(configuration, "Response tokens", "1–2048, below context",
+                inferenceSettings.maxTokens, R.id.settings_tokens, 1, 1, 2048);
+        settingsInlineError = label("", 13, StillwaterUi.DANGER);
         configuration.addView(settingsInlineError);
 
-        TextView searchHeading = label("SearXNG", 16, ink);
-        searchHeading.setTypeface(null, 1);
-        searchHeading.setPadding(0, dp(12), 0, dp(4));
+        TextView searchHeading = label("SEARXNG", 11, inkMuted);
+        searchHeading.setTypeface(StillwaterUi.sansMedium(this));
+        searchHeading.setLetterSpacing(0.12f);
+        searchHeading.setPadding(0, dp(16), 0, dp(4));
         configuration.addView(searchHeading);
         searchEndpointField = new EditText(this);
         searchEndpointField.setId(R.id.search_endpoint);
@@ -310,6 +320,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         searchEndpointField.setHint("https://your-searxng.example.org/search");
         searchEndpointField.setHintTextColor(inkMuted);
         searchEndpointField.setTextColor(ink);
+        searchEndpointField.setTypeface(StillwaterUi.mono(this));
+        searchEndpointField.setBackgroundColor(Color.TRANSPARENT);
         searchEndpointField.setText(searchEndpoint);
         configuration.addView(searchEndpointField);
         searchEnabledBox = new CheckBox(this);
@@ -320,29 +332,32 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         configuration.addView(searchEnabledBox);
         searchButton = button("Web search: off");
         searchButton.setId(R.id.web_search);
+        StillwaterUi.quiet(searchButton);
         searchButton.setOnClickListener(v -> showSearchSettings());
-        configuration.addView(searchButton, new LinearLayout.LayoutParams(-1, dp(48)));
+        configuration.addView(searchButton, new LinearLayout.LayoutParams(-1, dp(44)));
 
         ScrollView configurationScroll = new ScrollView(this);
         configurationScroll.setId(R.id.model_configuration_scroll);
-        configurationScroll.setBackgroundColor(raised);
-        configurationScroll.setPadding(dp(8), dp(8), dp(8), dp(8));
+        configurationScroll.setBackgroundColor(surface);
+        configurationScroll.setPadding(0, dp(4), 0, dp(8));
         configurationScroll.addView(configuration);
         settingsRoot.addView(configurationScroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         // Sticky Save controls stay on-screen (small emulator + IME) for UiAutomator Stage 1 IDs.
         LinearLayout settingsActions = new LinearLayout(this);
         settingsActions.setOrientation(LinearLayout.VERTICAL);
-        settingsActions.setBackgroundColor(raised);
-        settingsActions.setPadding(dp(8), dp(6), dp(8), dp(6));
+        settingsActions.setBackgroundColor(surface);
+        settingsActions.setPadding(0, dp(6), 0, dp(6));
         Button saveInference = button("Save");
         saveInference.setId(R.id.settings_save);
+        StillwaterUi.primary(saveInference);
         saveInference.setOnClickListener(v -> saveInlineInferenceSettings());
-        settingsActions.addView(saveInference, new LinearLayout.LayoutParams(-1, dp(48)));
+        settingsActions.addView(saveInference, new LinearLayout.LayoutParams(-1, dp(52)));
         Button saveSearch = button("Save search");
         saveSearch.setId(R.id.search_save);
+        StillwaterUi.quiet(saveSearch);
         saveSearch.setOnClickListener(v -> saveInlineSearchSettings());
-        settingsActions.addView(saveSearch, new LinearLayout.LayoutParams(-1, dp(48)));
+        settingsActions.addView(saveSearch, new LinearLayout.LayoutParams(-2, dp(44)));
         settingsRoot.addView(settingsActions, new LinearLayout.LayoutParams(-1, -2));
 
         settingsHost = settingsRoot;
@@ -366,15 +381,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
         LinearLayout mediaControls = new LinearLayout(this);
         mediaControls.setOrientation(LinearLayout.HORIZONTAL);
-        mediaControls.setBackgroundColor(raised);
-        mediaControls.setPadding(dp(2), dp(4), dp(2), dp(2));
-        photoButton = button("Photo");
+        mediaControls.setBackgroundColor(surface);
+        mediaControls.setPadding(0, dp(2), 0, dp(2));
+        photoButton = mediaButton("Photo", R.drawable.ic_still_photo);
         photoButton.setId(R.id.chat_photo);
-        cameraButton = button("Camera");
+        cameraButton = mediaButton("Camera", R.drawable.ic_still_camera);
         cameraButton.setId(R.id.chat_camera);
-        recordButton = button("Voice input");
+        recordButton = mediaButton("Voice input", R.drawable.ic_still_mic);
         recordButton.setId(R.id.voice_record);
-        speakButton = button("Speak reply");
+        speakButton = mediaButton("Speak reply", R.drawable.ic_still_speak);
         speakButton.setId(R.id.voice_speak);
         mediaControls.addView(photoButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
         mediaControls.addView(cameraButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
@@ -404,12 +419,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (settingsHost != null) settingsHost.setVisibility(open ? View.VISIBLE : View.GONE);
         if (chatShell != null) chatShell.setVisibility(open ? View.GONE : View.VISIBLE);
         if (settingsOpenButton != null) settingsOpenButton.setVisibility(open ? View.GONE : View.VISIBLE);
+        if (topBarView != null) topBarView.setVisibility(open ? View.GONE : View.VISIBLE);
         if (open) syncInlineSettingsFields();
     }
 
     private void updateControls() {
         searchButton.setText(searchEnabled ? "Web search: on" : "Web search: off");
-        if (modePill != null) modePill.setText(searchEnabled ? "Search" : "Offline");
+        if (modePill != null) modePill.setText(searchEnabled ? "Web search + local model" : "Mode · Local / offline");
         searchButton.setEnabled(!busy);
         modelButton.setEnabled(!busy);
         mmprojButton.setEnabled(!busy);
@@ -465,14 +481,61 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         });
     }
 
-    private EditText settingInput(LinearLayout form,String labelText,int value,int id) {
-        TextView label=new TextView(this);label.setText(labelText);
-        label.setTextColor(Color.parseColor("#9AA3AD"));form.addView(label);
-        EditText field=new EditText(this);field.setId(id);field.setSingleLine(true);
-        field.setInputType(InputType.TYPE_CLASS_NUMBER);field.setText(Integer.toString(value));
-        field.setTextColor(Color.parseColor("#E8EAED"));
-        field.setHintTextColor(Color.parseColor("#5C6670"));
-        form.addView(field);return field;
+    private Button mediaButton(String title, int icon) {
+        Button button = button(title);
+        button.setTextSize(12);
+        button.setCompoundDrawablesWithIntrinsicBounds(icon, 0, 0, 0);
+        button.setCompoundDrawablePadding(dp(4));
+        StillwaterUi.quiet(button);
+        return button;
+    }
+
+    private EditText settingInput(LinearLayout form, String title, String hint, int value, int id,
+                                  int step, int min, int max) {
+        TextView name = label(title, 15, StillwaterUi.INK);
+        name.setTypeface(StillwaterUi.sansMedium(this));
+        name.setPadding(0, dp(10), 0, 0);
+        form.addView(name);
+        TextView hintView = label(hint, 12, StillwaterUi.MUTED);
+        hintView.setTypeface(StillwaterUi.sans(this));
+        form.addView(hintView);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        Button minus = button("–");
+        StillwaterUi.quiet(minus);
+        minus.setTextColor(StillwaterUi.SOFT);
+        EditText field = new EditText(this);
+        field.setId(id);
+        field.setSingleLine(true);
+        field.setInputType(InputType.TYPE_CLASS_NUMBER);
+        field.setText(Integer.toString(value));
+        field.setTextColor(StillwaterUi.INK);
+        field.setTextSize(18);
+        field.setGravity(Gravity.CENTER);
+        field.setBackgroundColor(Color.TRANSPARENT);
+        field.setTypeface(StillwaterUi.sansMedium(this));
+        Button plus = button("+");
+        StillwaterUi.quiet(plus);
+        plus.setTextColor(StillwaterUi.SOFT);
+        minus.setOnClickListener(v -> nudge(field, -step, min, max));
+        plus.setOnClickListener(v -> nudge(field, step, min, max));
+        row.addView(minus, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        row.addView(field, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(plus, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        form.addView(row);
+        return field;
+    }
+
+    private void nudge(EditText field, int delta, int min, int max) {
+        int current;
+        try {
+            current = Integer.parseInt(field.getText().toString().trim());
+        } catch (NumberFormatException invalid) {
+            current = min;
+        }
+        int next = Math.max(min, Math.min(max, current + delta));
+        field.setText(Integer.toString(next));
     }
 
     private void syncInlineSettingsFields() {

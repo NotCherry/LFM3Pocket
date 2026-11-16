@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Stillwater" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#0E0E0C</item>
+        <item name="android:colorBackground">#0E0E0C</item>
+        <item name="android:textColor">#F3EFE6</item>
+        <item name="android:textColorPrimary">#F3EFE6</item>
+        <item name="android:textColorSecondary">#8F897C</item>
+        <item name="android:statusBarColor">#0E0E0C</item>
+        <item name="android:navigationBarColor">#0E0E0C</item>
+        <item name="android:colorAccent">#E6C27A</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

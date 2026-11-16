@@ -170,19 +170,21 @@ private fun HistoryScreen(
             TextButton(onClick = onBack, modifier = Modifier.testTag(tag("history_back"))) {
                 Text(if (selected == null) "Home" else "Back")
             }
-            Button(onClick = onNewChat, modifier = Modifier.testTag(tag("history_new_chat"))) {
+            Button(
+                onClick = onNewChat,
+                modifier = Modifier.testTag(tag("history_new_chat")),
+                shape = MaterialTheme.shapes.extraSmall,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = atlas.accent,
+                    contentColor = atlas.candleInk,
+                ),
+            ) {
                 Text("New chat")
             }
         }
-        Text(
-            "History stays on this device and is excluded from Android backup. Conversation text and any saved speech transcript are retained; audio and image attachments are temporary and removed after processing.",
-            style = type.bodySmall,
-            color = atlas.inkMuted,
-            modifier = Modifier.padding(vertical = 8.dp).testTag(tag("history_retention_notice")),
-        )
         if (selected == null) {
             Text(
-                "Saved conversations",
+                "History",
                 style = type.headline,
                 color = atlas.ink,
                 modifier = Modifier.testTag(tag("history_list_title")),
@@ -210,9 +212,7 @@ private fun HistoryScreen(
                         Column(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                                .border(1.dp, atlas.border)
-                                .padding(10.dp),
+                                .padding(vertical = 4.dp),
                         ) {
                             Row(
                                 Modifier.fillMaxWidth(),
@@ -249,13 +249,20 @@ private fun HistoryScreen(
                                     onClick = { deleteTarget = row.id to row.title },
                                     modifier = Modifier.testTag(tag("history_delete_${row.id}")),
                                 ) {
-                                    Text("Delete")
+                                    Text("Delete", color = atlas.danger)
                                 }
                             }
+                            HorizontalDivider(color = atlas.border)
                         }
                     }
                 }
             }
+            Text(
+                "Saved on this phone. Excluded from Android backup. Audio and photos are temporary and removed after processing.",
+                style = type.bodySmall,
+                color = atlas.inkMuted,
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp).testTag(tag("history_retention_notice")),
+            )
         } else {
             Text(
                 selected.conversation.title,

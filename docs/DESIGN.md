@@ -2,7 +2,7 @@
 
 Authoritative visual and interaction guide for the **Atlas** UI epic (tracker [#135](https://github.com/NotCherry/LFM3Pocket/issues/135) / U00). Implementers of `PocketTheme` (#120 / U03) and screen issues (#126–#131) must follow this document.
 
-Atlas is a **dark editorial** direction: charcoal field, chalk ink, steel-blue accent, open text blocks, bordered mono tool panels, and a left **Reasoning** rail (collapsed by default). It does **not** replace Stage 1 AT-01..AT-09 gates; UI acceptance is tracked as UT-01..UT-08 in [`UI_ACCEPTANCE_MATRIX.md`](UI_ACCEPTANCE_MATRIX.md).
+The chosen product direction is **Stillwater**: warm-charcoal field, chalk ink, a single candle accent, serif display type, open text blocks, and a left **Reasoning** rail (collapsed by default, with a one-line preview). It does **not** replace Stage 1 AT-01..AT-09 gates; UI acceptance is tracked as UT-01..UT-08 in [`UI_ACCEPTANCE_MATRIX.md`](UI_ACCEPTANCE_MATRIX.md).
 
 ---
 
@@ -26,21 +26,22 @@ Use these names in code (`PocketTheme` / `AtlasColors`). Hex values are normativ
 
 | Token | Hex | Role |
 | --- | --- | --- |
-| `surface` | `#0E1116` | App background (charcoal). Full-bleed. |
-| `surfaceRaised` | `#151A21` | Slightly lifted panels (composer bar, tool panel fill, settings groups). Still charcoal family — not grey Material cards. |
-| `surfaceOverlay` | `#1C232D` | Modals, consent sheet, overflow menus. |
-| `ink` | `#E8EAED` | Primary chalk text (body, headlines). |
-| `inkMuted` | `#9AA3AD` | Secondary text, timestamps, hints, collapsed rail label. |
-| `inkDisabled` | `#5C6670` | Disabled controls and placeholder. |
-| `accent` | `#5B8FA8` | Steel-blue: links, focus ring, primary CTA fill/outline, source chips, active pill. |
-| `accentMuted` | `#3D6478` | Pressed/hover accent, subtle selection. |
-| `border` | `#2A3340` | Hairline borders for tool panels, composer, rail, inputs. |
-| `borderStrong` | `#3E4A5A` | Emphasized borders (focused input, selected tool). |
-| `danger` | `#C45B5B` | Destructive / Reject — desaturated red, not neon. |
-| `ok` | `#6B9B7A` | Success / approved tool result — muted green. |
-| `warn` | `#C4A35A` | Caution / elevated tool risk — muted amber. |
-| `codeBg` | `#0A0D11` | Fenced code / mono blocks (slightly deeper than surface). |
-| `cursor` | `#E8EAED` | Streaming block cursor `▌` (chalk). |
+| `surface` | `#0E0E0C` | App background. Full-bleed. |
+| `surfaceRaised` | `#161614` | Slightly lifted panels (tool panel fill, settings groups). |
+| `surfaceOverlay` | `#1C1C18` | Modals, consent sheet, overflow menus. |
+| `ink` | `#F3EFE6` | Primary chalk text (body, headlines). |
+| `inkMuted` | `#8F897C` | Secondary text, timestamps, hints. |
+| `inkDisabled` | `#6E6A60` | Disabled controls and placeholder. |
+| `accent` | `#E6C27A` | Candle: links, primary CTA fill, source links, stream cursor. |
+| `accentMuted` | `#8C7340` | Pressed accent, subtle selection. |
+| `border` | `#2C2B28` | Hairline borders for tool panels, composer, inputs. |
+| `borderStrong` | `#4A473F` | Emphasized borders. |
+| `danger` | `#E08A78` | Destructive / Reject. |
+| `ok` | `#9DBEA4` | Success / approved tool result. |
+| `warn` | `#C4A35A` | Caution / elevated tool risk. |
+| `codeBg` | `#0A0A09` | Fenced code / mono blocks. |
+| `cursor` | `#E6C27A` | Streaming block cursor `▌`. |
+| `candleInk` | `#1C1508` | Text on candle fills. |
 
 **Contrast:** Body text (`ink` on `surface`) must remain clearly readable outdoors-ish; do not drop body below chalk on charcoal. Accent is for affordances, not large filled backgrounds behind paragraphs.
 
@@ -53,7 +54,7 @@ Use these names in code (`PocketTheme` / `AtlasColors`). Hex values are normativ
 | `onBackground` / `onSurface` | `ink` |
 | `onSurfaceVariant` | `inkMuted` |
 | `primary` | `accent` |
-| `onPrimary` | `surface` (dark ink on steel fill) |
+| `onPrimary` | `candleInk` (dark ink on candle fill) |
 | `outline` | `border` |
 | `error` | `danger` |
 
@@ -67,7 +68,7 @@ Prefer a purposeful pairing already shippable on Android without new font APK bl
 
 | Role | Spec | Use |
 | --- | --- | --- |
-| `display` | Sans, semi-bold/bold, ~32–40sp, tight tracking | Home brand / hero product name |
+| `display` | Serif, regular, ~56–72sp, tight tracking | Home brand / hero product name |
 | `headline` | Sans, semi-bold, ~22–28sp | Screen titles (Settings, History) |
 | `title` | Sans, medium, ~18–20sp | Section titles, turn role labels if shown |
 | `body` | Sans, regular, ~16sp, line height ~1.35–1.45 | Assistant and user message bodies |
@@ -102,7 +103,7 @@ Base unit **4dp**. Prefer this scale:
 - Turn vertical gap: `space4`–`space5`.
 - Composer inner padding: `space3`–`space4`.
 - Reasoning rail width (expanded): ~36–42% of chat width on phone landscape / large; on narrow portrait, rail becomes a top-of-turn collapsible strip still **leading** (start side) aligned.
-- Corner radius: **4–8dp** for inputs and tool panels. Avoid pill (`rounded-full`) chrome except tiny status dots.
+- Corner radius: **0–2dp** for inputs, buttons, and tool panels. Avoid pill chrome except tiny status dots.
 
 ---
 

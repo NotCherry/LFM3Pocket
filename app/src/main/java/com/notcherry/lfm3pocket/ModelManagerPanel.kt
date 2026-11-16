@@ -33,10 +33,12 @@ class ModelManagerPanel(
     @Composable override fun Content() {
         PocketTheme {
             val state = selection
-            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                Text("Model: ${state.model.ifEmpty { "None selected" }}", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("Projector: ${state.projector.ifEmpty { "None — text only" }}", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(settingsSummary, style=MaterialTheme.typography.bodySmall)
+            val ink = MaterialTheme.colorScheme.onSurface
+            val muted = MaterialTheme.colorScheme.onSurfaceVariant
+            Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                Text("Model: ${state.model.ifEmpty { "None selected" }}", maxLines = 1, overflow = TextOverflow.Ellipsis, color = ink)
+                Text("Projector: ${state.projector.ifEmpty { "None — text only" }}", maxLines = 1, overflow = TextOverflow.Ellipsis, color = muted)
+                Text(settingsSummary, style = MaterialTheme.typography.bodySmall, color = muted)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { reload.run() }, enabled = !state.busy && state.model.isNotEmpty(), contentPadding=PaddingValues(horizontal=8.dp)) {
                         Text(if (state.failed) "Retry load" else if (state.loaded) "Reload model" else "Load model")

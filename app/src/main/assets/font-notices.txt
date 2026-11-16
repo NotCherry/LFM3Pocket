@@ -1,0 +1,5 @@
+Stillwater UI fonts, SIL Open Font License 1.1.
+
+Inter — https://github.com/rsms/inter
+Noto Serif Display — https://github.com/notofonts/latin-greek-cyrillic
+JetBrains Mono — https://github.com/JetBrains/JetBrainsMono

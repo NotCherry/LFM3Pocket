@@ -17,9 +17,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -241,7 +243,9 @@ class ChatPanel(
                     packageName = context.packageName,
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp),
+                    onSuggest = { input = it },
                 )
                 attachment?.let { image ->
                     Column(
@@ -279,43 +283,46 @@ class ChatPanel(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .background(atlas.surfaceRaised)
+                        .background(atlas.surface)
                         .border(width = 1.dp, color = atlas.border)
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
                     ChatLiveStatus(idleMode, liveStatus, context.packageName)
                     Spacer(Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value = input,
-                        onValueChange = { input = it },
-                        placeholder = { Text("Write a message…", color = atlas.inkDisabled) },
-                        minLines = 1,
-                        maxLines = 4,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = atlas.ink,
-                            unfocusedTextColor = atlas.ink,
-                            focusedBorderColor = atlas.borderStrong,
-                            unfocusedBorderColor = atlas.border,
-                            cursorColor = atlas.accent,
-                            focusedContainerColor = atlas.surface,
-                            unfocusedContainerColor = atlas.surface,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag(tag("chat_input")),
-                    )
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        TextButton(onClick = { clear.run() }, enabled = controls.clear) {
-                            Text("Clear")
-                        }
-                        TextButton(
+                        OutlinedTextField(
+                            value = input,
+                            onValueChange = { input = it },
+                            placeholder = { Text("Write a message…", color = atlas.inkDisabled) },
+                            minLines = 1,
+                            maxLines = 4,
+                            shape = RoundedCornerShape(0.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = atlas.ink,
+                                unfocusedTextColor = atlas.ink,
+                                focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                                unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                                cursorColor = atlas.accent,
+                                focusedContainerColor = atlas.surface,
+                                unfocusedContainerColor = atlas.surface,
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag(tag("chat_input")),
+                        )
+                        OutlinedButton(
                             onClick = { stop.run() },
                             enabled = controls.stop,
                             modifier = Modifier.testTag(tag("chat_stop")),
+                            shape = RoundedCornerShape(0.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = atlas.accent,
+                                disabledContentColor = atlas.inkDisabled,
+                            ),
                         ) { Text("Stop") }
                         Button(
                             onClick = {
@@ -327,7 +334,23 @@ class ChatPanel(
                             },
                             enabled = controls.send,
                             modifier = Modifier.testTag(tag("chat_send")),
+                            shape = RoundedCornerShape(0.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = atlas.accent,
+                                contentColor = atlas.candleInk,
+                                disabledContainerColor = atlas.accent.copy(alpha = 0.38f),
+                                disabledContentColor = atlas.candleInk.copy(alpha = 0.5f),
+                            ),
                         ) { Text("Send") }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = { clear.run() }, enabled = controls.clear) {
+                            Text("Clear", color = atlas.inkMuted)
+                        }
                     }
                 }
             }
