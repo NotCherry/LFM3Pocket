@@ -9,7 +9,7 @@ Owner report: the same LFM3 Q4_K_M GGUF ran at ~10+ tok/s decode in PocketPal AI
 | Setting | PocketPal (llama.rn) | ChatterUI (cui-llama.rn) | Hanami before | Hanami after |
 | --- | --- | --- | --- | --- |
 | CPU ISA | Runtime ladder; prefers `armv8.2-a+dotprod[+i8mm]` | Same ladder via cui-llama.rn | Baseline NEON (`GGML_NATIVE=OFF`, empty `GGML_CPU_ARM_ARCH`) | Single `arm64-v8a` `.so` with `GGML_CPU_ARM_ARCH=armv8.2-a+dotprod` |
-| `-O3` | Always (`-O3 -DNDEBUG` on kernels) | Same | Debug APKs used NDK Debug/`-O2` | Debug+Release force `-O3 -DNDEBUG` |
+| `-O3` | Always (`-O3 -DNDEBUG` on kernels) | Same | Debug APKs used NDK Debug/`-O0`/`-O2` | Append Debug `-O3` (no `CACHE FORCE`, no Debug `-DNDEBUG`) |
 | OpenMP | Off for Android | Off | Off | Off (unchanged; llama.cpp android.md) |
 | KleidiAI | Not required for CPU ladder | Not required | Off | Off (FetchContent breaks offline/F-Droid) |
 | Threads default | 80% of cores if &gt;4 | `availableProcessors()` | Fixed 4 | Big+mid frequency clusters (PocketPal 80% fallback) |
@@ -23,7 +23,7 @@ Owner report: the same LFM3 Q4_K_M GGUF ran at ~10+ tok/s decode in PocketPal AI
 | Change | Expected impact |
 | --- | --- |
 | `armv8.2-a+dotprod` | Primary decode win for Q4_K_M (DOTPROD GEMM). Reasoned: ~1.5–2.5× tg vs baseline NEON on modern phones — closes most of 4→10+ tok/s. |
-| `-O3` on Debug | CI/Obtainium Debug APKs stop shipping under-optimized kernels. ~10–30% if previously `-O0`/`-O2`. |
+| Debug `-O3` (append, no `-DNDEBUG`) | CI/Obtainium Debug APKs stop shipping under-optimized kernels; asserts stay on. ~10–30% if previously `-O0`/`-O2`. |
 | KV / prefix reuse | Multi-turn chat stops re-prefilling the shared history each send. Large pp saving after turn 1; tg unchanged. |
 | Topology thread default | Avoid under-subscribing big/mid cores (fixed 4). Device-dependent; often modest tg gain. |
 | `n_batch` ≤1024 | Faster prompt processing; little effect on single-token decode. |
