@@ -262,7 +262,7 @@ Stillwater chrome must stay readable when the user enlarges text or display size
 | Truncation | Do not ellipsize chrome labels (buttons, section titles). Dynamic previews (history snippets, long paths) may use bounded `maxLines` + ellipsis. |
 | Locales | Ship **English** (`values/`) and **Polish** (`values-pl/`) for user-visible chrome. Polish strings are often longer — layouts must wrap, not clip. Brand `app_name` stays `translatable="false"`. |
 | Interface size | Compact / Default / Large (or 80–130% slider) must not reintroduce clipping. Keep wrapping + `minHeight` (`StillwaterReadable`). |
-| New Activity | Every Activity **must** call `InterfaceSize.wrap` from `attachBaseContext` and `InterfaceSize.recreateIfChanged` from `onResume` with the scale captured at attach (see [`docs/adr/0001-interface-size-density.md`](adr/0001-interface-size-density.md)). |
+| New Activity | Every Activity **must** call `InterfaceSize.wrap` from `attachBaseContext` and `InterfaceSize.recreateIfChanged` from `onResume` with the scale captured at attach (see [`docs/adr/0002-interface-size-density.md`](adr/0002-interface-size-density.md)). |
 | Touch targets | Visual chrome may be denser; interactive hit areas stay ≥ **48dp** (Compose `minimumInteractiveComponentSize`, View `InterfaceSize.minTouchPx` using system density). |
 | Tests | Emulator coverage: fontScale `0.85`–`2.0`, EN/PL, density variants, **and each interface-size preset** (`TextReadableAtScaleE2eTest`, `ComposeTextReadableTest`). Assert text is fully visible after layout, not only `assertIsDisplayed`. |
 

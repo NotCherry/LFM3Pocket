@@ -1,4 +1,4 @@
-# ADR 0001 — App-wide interface size via densityDpi context wrap
+# ADR 0002 — App-wide interface size via densityDpi context wrap
 
 ## Status
 
