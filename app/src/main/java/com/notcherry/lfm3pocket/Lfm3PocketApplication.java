@@ -41,12 +41,15 @@ public class Lfm3PocketApplication extends Application {
                 .listFiles((directory, name) -> name.endsWith(".partial"));
         if (partials != null) for (java.io.File partial : partials) partial.delete();
         HistoryMediaCleanup.deleteTemporaryAttachments(this);
-        try {
-            new HistoryRepository(HistoryDatabase.get(this))
-                    .markInterruptedGenerations(System.currentTimeMillis());
-        } catch (Exception ignored) {
-            // History recovery must not block launch.
-        }
+        // Room forbids main-thread queries; mark interrupted turns off the UI thread.
+        java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                new HistoryRepository(HistoryDatabase.get(this))
+                        .markInterruptedGenerations(System.currentTimeMillis());
+            } catch (Exception ignored) {
+                // History recovery must not block launch.
+            }
+        });
     }
 
     /** Activities currently started; used to decide when a reply-ready notification is needed. */

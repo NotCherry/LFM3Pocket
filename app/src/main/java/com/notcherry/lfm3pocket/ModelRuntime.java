@@ -294,16 +294,45 @@ public final class ModelRuntime {
         return session.retryInterrupted(turnId, tokens);
     }
 
-    /** Force a Room rehydrate after conversation id changes on a cold process. */
+    /**
+     * Force a Room rehydrate after conversation id changes on a cold process.
+     * Room work runs on the runtime worker; the live session is updated on the main thread.
+     */
     public void restoreOpenConversation() {
         ensureSession();
-        hydrateSessionIfNeeded();
-        if (session != null) {
-            lastSnapshot = session.snapshot();
-            lastTranscript = FlatTranscript.format(lastSnapshot);
-            lastStatus = lastSnapshot == null ? "" : lastSnapshot.status;
-            lastGenerating = session.isGenerating();
-        }
+        final String id = conversationId;
+        final int born = sessionEpoch;
+        worker.execute(() -> {
+            if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
+            try {
+                history.markInterruptedGenerations(System.currentTimeMillis());
+            } catch (Exception ignored) {
+            }
+            if (id == null || id.isBlank()) return;
+            java.util.List<HistoryRepository.StoredMessage> rows;
+            try {
+                rows = history.messages(id);
+            } catch (Exception ignored) {
+                return;
+            }
+            if (rows.isEmpty()) return;
+            java.util.ArrayList<ChatSession.RestoredMessage> restored = new java.util.ArrayList<>();
+            for (HistoryRepository.StoredMessage row : rows) {
+                restored.add(new ChatSession.RestoredMessage(
+                        row.getRole(), row.getText(), row.getTurnId(), row.getTurnStatus(), row.getMediaRef()));
+            }
+            main.post(() -> {
+                if (born != sessionEpoch || session == null) return;
+                if (session.isGenerating()) return;
+                ChatSnapshot existing = session.snapshot();
+                if (existing != null && !existing.turns.isEmpty()) return;
+                session.restore(restored);
+                lastSnapshot = session.snapshot();
+                lastTranscript = FlatTranscript.format(lastSnapshot);
+                lastStatus = lastSnapshot == null ? "" : lastSnapshot.status;
+                lastGenerating = session.isGenerating();
+            });
+        });
     }
 
     public void speak(String replyText) {
@@ -581,24 +610,6 @@ public final class ModelRuntime {
                     if (born != sessionEpoch) return;
                     onSnapshot(snapshot);
                 });
-        hydrateSessionIfNeeded();
-    }
-
-    /** Reload Room rows into an empty live session after process death. */
-    private void hydrateSessionIfNeeded() {
-        if (session == null || history == null) return;
-        if (session.isGenerating()) return;
-        ChatSnapshot existing = session.snapshot();
-        if (existing != null && !existing.turns.isEmpty()) return;
-        if (conversationId == null || conversationId.isBlank()) return;
-        java.util.List<HistoryRepository.StoredMessage> rows = history.messages(conversationId);
-        if (rows.isEmpty()) return;
-        java.util.ArrayList<ChatSession.RestoredMessage> restored = new java.util.ArrayList<>();
-        for (HistoryRepository.StoredMessage row : rows) {
-            restored.add(new ChatSession.RestoredMessage(
-                    row.getRole(), row.getText(), row.getTurnId(), row.getTurnStatus(), row.getMediaRef()));
-        }
-        session.restore(restored);
     }
 
     private void beginTurn(ChatSession.StartedTurn turn) throws Exception {
