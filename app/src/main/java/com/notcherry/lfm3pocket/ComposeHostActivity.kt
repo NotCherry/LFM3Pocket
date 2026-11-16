@@ -53,11 +53,9 @@ class ComposeHostActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     PocketNavigation(
                         onOpenChat = {
-                            startActivity(
-                                Intent(this@ComposeHostActivity, MainActivity::class.java)
-                                    .putExtra(MainActivity.EXTRA_HISTORY_CONVERSATION_ID, java.util.UUID.randomUUID().toString())
-                                    .putExtra(MainActivity.EXTRA_HISTORY_TITLE, "New conversation"),
-                            )
+                            // Resume the live session. A fresh id would wipe a reply that is
+                            // still generating after the user stepped back to Home.
+                            startActivity(Intent(this@ComposeHostActivity, MainActivity::class.java))
                         },
                         onOpenHistory = {
                             startActivity(Intent(this@ComposeHostActivity, HistoryActivity::class.java))

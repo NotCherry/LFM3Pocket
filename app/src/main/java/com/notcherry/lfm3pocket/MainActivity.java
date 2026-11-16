@@ -48,8 +48,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final int REQUEST_CAMERA = 47;
 
 
-    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private ExecutorService worker;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private ModelRuntime runtime;
     private ChatSession session;
     private ChatPanel chatPanel;
     private ToolCoordinator toolCoordinator;
@@ -57,17 +58,19 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private String historyConversationId="default";
     private String historyTitle="LFM3 Pocket";
     private InferenceEngine inferenceEngine;
-    private volatile long modelHandle = 0L;
     private boolean busy = false;
     private boolean generating = false;
     private boolean speaking = false;
-    private volatile boolean speechCancelRequested = false;
     private volatile boolean destroyed = false;
     private volatile AtomicBoolean importCancellation;
     private final ExecutorService audioWorker = Executors.newSingleThreadExecutor();
     private RecordingController recordingController;
     private PlaybackController playbackController;
-    private AndroidPlaybackFocus playbackFocus;
+    private CheckBox keepLoadedBox;
+    private Button idleOffButton;
+    private Button idle15Button;
+    private Button idle60Button;
+    private CheckBox lockPreviewBox;
     private boolean foreground;
     private boolean microphoneRequested;
     private boolean cameraRequested;
@@ -97,20 +100,52 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private String searchEndpoint = "";
     private String mmprojPath = "";
 
+    private final ModelRuntime.Ui viewer = new ModelRuntime.Ui() {
+        @Override public void onChat(String transcript, String message, boolean running) {
+            if (destroyed || chatPanel == null || status == null) return;
+            generating = running;
+            busy = running || recordingActive() || playbackActive() || speaking;
+            chatPanel.render(transcript, message);
+            status.setText(message);
+            status.setVisibility(running ? View.GONE : View.VISIBLE);
+            updateControls();
+        }
+        @Override public void onSnapshot(ChatSnapshot snapshot) {
+            if (destroyed || chatPanel == null) return;
+            chatPanel.renderSnapshot(snapshot);
+        }
+        @Override public void onAssistantReply(String text) {
+            if (text != null && !text.isBlank()) lastAssistantReply = text;
+        }
+        @Override public void onHistoryTitle(String title) {
+            if (title == null || title.isBlank()) return;
+            historyTitle = title;
+            if (brandTitle != null) brandTitle.setText(historyTitle);
+        }
+        @Override public void onPlayback(String message) {
+            if (destroyed || status == null) return;
+            busy = recordingActive() || playbackActive() || generating || speaking;
+            status.setText(message);
+            updateControls();
+        }
+        @Override public void onSpeech(boolean active, String message) {
+            if (destroyed || status == null) return;
+            speaking = active;
+            busy = active || recordingActive() || playbackActive() || generating;
+            status.setText(message);
+            updateControls();
+        }
+        @Override public boolean isUsable() { return !destroyed && chatPanel != null; }
+    };
+
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        inferenceEngine = ((Lfm3PocketApplication) getApplication()).newInferenceSession();
+        runtime = ((Lfm3PocketApplication) getApplication()).modelRuntime();
+        worker = runtime.worker();
+        inferenceEngine = runtime.engine();
+        playbackController = runtime.playback();
         historyRepository = new HistoryRepository(HistoryDatabase.get(this));
-        android.content.SharedPreferences historyPreferences=getPreferences(MODE_PRIVATE);
-        String requestedConversation=getIntent().getStringExtra(EXTRA_HISTORY_CONVERSATION_ID);
-        String requestedTitle=getIntent().getStringExtra(EXTRA_HISTORY_TITLE);
-        historyConversationId=requestedConversation==null || requestedConversation.isBlank()
-                ? historyPreferences.getString("history_conversation_id",java.util.UUID.randomUUID().toString())
-                : requestedConversation;
-        historyTitle=requestedTitle==null || requestedTitle.isBlank()
-                ? historyPreferences.getString("history_title","New conversation") : requestedTitle;
-        historyPreferences.edit().putString("history_conversation_id",historyConversationId)
-                .putString("history_title",historyTitle).apply();
+        adoptConversation(getIntent());
         recordingController = new RecordingController(new File(getCacheDir(), "recordings"),
                 ((Lfm3PocketApplication)getApplication())::newRecordingSource,
                 () -> ((Lfm3PocketApplication)getApplication()).hasMicrophonePermission(),
@@ -124,43 +159,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     }
                     updateControls();
                 });
-        playbackFocus = new AndroidPlaybackFocus(this);
-        playbackController = new PlaybackController(
-                ((Lfm3PocketApplication) getApplication()).newPlaybackTrackFactory(),
-                playbackFocus::request,
-                playbackFocus::abandon, audioWorker, task -> mainHandler.post(task), (playState, message) -> {
-                    if (destroyed) return;
-                    busy = recordingActive() || playbackActive() || generating || speaking;
-                    status.setText(message);
-                    updateControls();
-                });
-        session = new ChatSession(inferenceEngine, worker,
-                (task, delay) -> mainHandler.postDelayed(task, delay), () -> modelHandle,
-                WebSearch::search, turn -> {
-                    if("New conversation".equals(historyTitle)) {
-                        historyTitle=titleForQuestion(turn.userText);
-                        if (brandTitle != null) brandTitle.setText(historyTitle);
-                    }
-                    if(turn.assistantText!=null && !turn.assistantText.isBlank())
-                        lastAssistantReply=turn.assistantText;
-                    HistoryRepository.Status resultStatus=HistoryRepository.Status.valueOf(turn.status.name());
-                    historyRepository.completeTurn(new HistoryRepository.Turn(turn.id,
-                            historyConversationId,historyTitle,turn.userText,turn.assistantText,
-                            turn.speechTranscript,resultStatus,turn.completedAt,null,turn.speechTranscriptStatus));
-                }, path -> HistoryMediaCleanup.deleteAttachment(this,path), (text, message, running) -> {
-                    if (destroyed) return;
-                    generating = running;
-                    busy = running || recordingActive() || playbackActive() || speaking;
-                    chatPanel.render(text,message);
-                    status.setText(message);
-                    status.setVisibility(running ? View.GONE : View.VISIBLE);
-                    updateControls();
-                }, snapshot -> {
-                    if (destroyed || chatPanel == null) return;
-                    chatPanel.renderSnapshot(snapshot);
-                });
         settingsStore=new InferenceSettingsStore(this);
         buildUi();
+        session = runtime.session();
+        runtime.attach(viewer);
         updateControls();
         settingsStore.load(settings -> {
             if (destroyed) return;
@@ -178,12 +180,76 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         searchEnabled = getPreferences(MODE_PRIVATE).getBoolean("search_enabled", false);
         chatPanel.setIdleMode(searchEnabled);
         syncInlineSettingsFields();
-        if (!previous.isEmpty() && new File(previous).isFile()) {
+        syncBackgroundControls();
+        if (runtime.handle() != 0L && previous.equals(runtime.loadedPath())) {
+            if (!runtime.isGenerating()) status.setText(mmprojPath == null || mmprojPath.isEmpty()
+                    ? "Text model ready \u0007 offline" : "Model and projector loaded • offline");
+        } else if (!previous.isEmpty() && new File(previous).isFile()) {
             loadModelInBackground(previous, mmprojPath);
-        } else {
+        } else if (runtime.handle() == 0L) {
             status.setText("No model loaded. Select an LFM3 GGUF file.");
         }
+        if (pendingSwitchId != null) confirmSwitchConversation();
     }
+
+    private String pendingSwitchId;
+    private String pendingSwitchTitle;
+
+    private void adoptConversation(Intent intent) {
+        String requested = intent == null ? null : intent.getStringExtra(EXTRA_HISTORY_CONVERSATION_ID);
+        String requestedTitle = intent == null ? null : intent.getStringExtra(EXTRA_HISTORY_TITLE);
+        boolean explicit = requested != null && !requested.isBlank();
+        android.content.SharedPreferences prefs = getPreferences(MODE_PRIVATE);
+        OpenConversation choice = OpenConversation.choose(
+                explicit ? requested : null,
+                prefs.getString("history_conversation_id", ""),
+                runtime.conversationId(),
+                runtime.isGenerating(),
+                java.util.UUID.randomUUID().toString());
+        String id = choice.id;
+        String title = requestedTitle != null && !requestedTitle.isBlank() ? requestedTitle
+                : prefs.getString("history_title", runtime.historyTitle());
+        if (choice.confirmSwitch) {
+            pendingSwitchId = id;
+            pendingSwitchTitle = title;
+            historyConversationId = runtime.conversationId();
+            historyTitle = runtime.historyTitle();
+            return;
+        }
+        if (!runtime.conversationId().isBlank() && !id.equals(runtime.conversationId())) {
+            runtime.clearConversation();
+            lastAssistantReply = "";
+        }
+        historyConversationId = id;
+        historyTitle = title == null || title.isBlank() ? "New conversation" : title;
+        runtime.setConversation(historyConversationId, historyTitle);
+    }
+
+    private void confirmSwitchConversation() {
+        String id = pendingSwitchId;
+        String title = pendingSwitchTitle;
+        pendingSwitchId = null;
+        pendingSwitchTitle = null;
+        new AlertDialog.Builder(this)
+                .setTitle("Reply still running")
+                .setMessage("Stop the current reply and start a new conversation?")
+                .setPositiveButton("Stop and start new", (dialog, which) -> {
+                    runtime.stopTurn();
+                    runtime.clearConversation();
+                    lastAssistantReply = "";
+                    historyConversationId = id;
+                    historyTitle = title == null || title.isBlank() ? "New conversation" : title;
+                    runtime.setConversation(historyConversationId, historyTitle);
+                    if (brandTitle != null) brandTitle.setText(historyTitle);
+                })
+                .setNegativeButton("Keep this reply", (dialog, which) -> {
+                    historyConversationId = runtime.conversationId();
+                    historyTitle = runtime.historyTitle();
+                })
+                .show();
+    }
+
+    private long modelHandle() { return runtime == null ? 0L : runtime.handle(); }
 
     private int dp(int n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
 
@@ -339,6 +405,35 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         searchButton.setOnClickListener(v -> showSearchSettings());
         configuration.addView(searchButton, new LinearLayout.LayoutParams(-1, dp(44)));
 
+        TextView backgroundHeading = label("BACKGROUND", 11, inkMuted);
+        backgroundHeading.setTypeface(StillwaterUi.sansMedium(this));
+        backgroundHeading.setLetterSpacing(0.12f);
+        backgroundHeading.setPadding(0, dp(16), 0, dp(4));
+        configuration.addView(backgroundHeading);
+        keepLoadedBox = new CheckBox(this);
+        keepLoadedBox.setId(R.id.settings_keep_loaded);
+        keepLoadedBox.setText("Keep the model loaded when I leave");
+        StillwaterUi.styleCheck(keepLoadedBox);
+        keepLoadedBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
+        configuration.addView(keepLoadedBox);
+        configuration.addView(label("Unload after idle", 16, ink));
+        LinearLayout idleRow = new LinearLayout(this);
+        idleRow.setId(R.id.settings_idle_unload);
+        idleRow.setOrientation(LinearLayout.HORIZONTAL);
+        idleOffButton = idleChoice("Off", 0, R.id.settings_idle_off);
+        idle15Button = idleChoice("15 min", 15, R.id.settings_idle_15);
+        idle60Button = idleChoice("60 min", 60, R.id.settings_idle_60);
+        idleRow.addView(idleOffButton, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        idleRow.addView(idle15Button, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        idleRow.addView(idle60Button, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        configuration.addView(idleRow);
+        lockPreviewBox = new CheckBox(this);
+        lockPreviewBox.setId(R.id.settings_lock_preview);
+        lockPreviewBox.setText("Show the reply on the lock screen");
+        StillwaterUi.styleCheck(lockPreviewBox);
+        lockPreviewBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
+        configuration.addView(lockPreviewBox);
+
         ScrollView configurationScroll = new ScrollView(this);
         configurationScroll.setId(R.id.model_configuration_scroll);
         configurationScroll.setBackgroundColor(surface);
@@ -378,7 +473,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             lastAssistantReply = "";
             if (playbackActive()) playbackController.stop();
             chatPanel.clearImageAttachment();
-            session.clear();
+            runtime.clearConversation();
+            lastAssistantReply = "";
         });
         chatRoot.addView(chatPanel, new LinearLayout.LayoutParams(-1, 0, 1f));
 
@@ -439,12 +535,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 : recordingActive() ? "Stop recording" : "Voice input");
         recordButton.setEnabled(capture != RecordingController.State.STOPPING && (!busy || recordingActive()));
         PlaybackController.State playback = playbackController.state();
-        speakButton.setText(playback == PlaybackController.State.STOPPING || speechCancelRequested
+        speakButton.setText(playback == PlaybackController.State.STOPPING
                 ? "Stopping speech..."
                 : (playbackActive() || speaking) ? "Stop speech" : "Speak reply");
         speakButton.setEnabled((!busy || playbackActive() || speaking) && (playbackActive() || speaking
-                || (modelHandle != 0L && settingsLoaded && !lastAssistantReply.isBlank())));
-        chatPanel.updateControls(!busy && modelHandle != 0L && settingsLoaded,
+                || (modelHandle() != 0L && settingsLoaded && !lastAssistantReply.isBlank())));
+        chatPanel.updateControls(!busy && modelHandle() != 0L && settingsLoaded,
                 generating || speaking || recordingActive() || playbackActive() || importCancellation != null,
                 !busy || generating);
 
@@ -456,7 +552,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             modelManager.updateSelection(
                     model.isEmpty() ? "" : getPreferences(MODE_PRIVATE).getString("model_name", new File(model).getName()),
                     projector.isEmpty() ? "" : getPreferences(MODE_PRIVATE).getString("projector_name", new File(projector).getName()),
-                    busy, modelHandle != 0, description.startsWith("Model error") || description.startsWith("Import failed"));
+                    busy, modelHandle() != 0, description.startsWith("Model error") || description.startsWith("Import failed"));
         }
     }
 
@@ -468,19 +564,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void unloadSelectedModel() {
-        if (busy || modelHandle == 0) return;
+        if (busy || modelHandle() == 0) return;
         busy = true;
         status.setText("Unloading model...");
         updateControls();
-        worker.execute(() -> {
-            inferenceEngine.unloadModel(modelHandle);
-            modelHandle = 0;
-            runOnUiThread(() -> {
-                if (destroyed) return;
-                busy = false;
-                status.setText("Model unloaded. Selected files remain available for reload.");
-                updateControls();
-            });
+        runtime.unload("user", () -> {
+            if (destroyed) return;
+            busy = false;
+            status.setText("Model unloaded. Selected files remain available for reload.");
+            updateControls();
         });
     }
 
@@ -743,91 +835,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void toggleSpokenReply() {
-        if (playbackActive()) { playbackController.stop(); return; }
-        if (speaking) {
-            speechCancelRequested = true;
-            inferenceEngine.stop();
-            status.setText("Stopping spoken response...");
-            updateControls();
+        if (playbackActive() || speaking) {
+            runtime.speak(lastAssistantReply);
             return;
         }
-        if (busy || !foreground || modelHandle == 0L || lastAssistantReply.isBlank()) return;
-        final String reply = SpeechPrompt.spokenText(lastAssistantReply);
-        if (reply.isBlank()) {
-            status.setText("Nothing speakable in the last reply.");
-            return;
-        }
-        final int speechFrames = SpeechOptions.framesForText(reply);
+        if (busy || !foreground || modelHandle() == 0L || lastAssistantReply.isBlank()) return;
         busy = true;
         speaking = true;
-        speechCancelRequested = false;
-        status.setText("Generating spoken response locally…");
         updateControls();
-        worker.execute(() -> {
-            java.io.ByteArrayOutputStream pcm = new java.io.ByteArrayOutputStream();
-            final int[] format = new int[] { 24000, 1, 16 };
-            final long[] lastProgressUi = { 0L };
-            String error;
-            try {
-                inferenceEngine.resetStop();
-                error = inferenceEngine.generateSpeech(modelHandle,
-                        SpeechPrompt.tts(reply, "en", "female"),
-                        new SpeechOptions("en", "female", speechFrames),
-                        new InferenceEngine.AudioSink() {
-                            @Override public void onAudioFormat(int sampleRateHz, int channelCount, int bitsPerSample) {
-                                format[0] = sampleRateHz; format[1] = channelCount; format[2] = bitsPerSample;
-                            }
-                            @Override public void onAudioPcm(byte[] interleavedLittleEndianPcm) {
-                                try { pcm.write(interleavedLittleEndianPcm); }
-                                catch (java.io.IOException e) { throw new IllegalStateException(e); }
-                                long now = android.os.SystemClock.uptimeMillis();
-                                if (now - lastProgressUi[0] < 250L) return;
-                                lastProgressUi[0] = now;
-                                final int bytes = pcm.size();
-                                final int rate = Math.max(8000, format[0]);
-                                final float seconds = bytes / 2f / rate;
-                                mainHandler.post(() -> {
-                                    if (destroyed || !speaking || speechCancelRequested) return;
-                                    status.setText(String.format(java.util.Locale.US,
-                                            "Generating spoken response… %.1fs audio so far", seconds));
-                                });
-                            }
-                        });
-            } catch (Throwable t) {
-                error = t.toString();
-            }
-            final String failure = error;
-            final byte[] audio = pcm.toByteArray();
-            final boolean cancelled = speechCancelRequested;
-            mainHandler.post(() -> {
-                if (destroyed) return;
-                speaking = false;
-                speechCancelRequested = false;
-                if (cancelled) {
-                    busy = recordingActive() || generating || playbackActive();
-                    status.setText("Spoken response cancelled.");
-                    updateControls();
-                    return;
-                }
-                if (failure != null) {
-                    busy = recordingActive() || generating || playbackActive();
-                    status.setText("Spoken response failed: " + failure);
-                    updateControls();
-                    return;
-                }
-                if (audio.length == 0) {
-                    busy = recordingActive() || generating || playbackActive();
-                    status.setText("Spoken response produced no audio.");
-                    updateControls();
-                    return;
-                }
-                if (!playbackController.play(audio, format[0], format[1], format[2])) {
-                    busy = recordingActive() || generating || playbackActive();
-                    status.setText("Could not start spoken playback.");
-                    updateControls();
-                }
-            });
-        });
+        runtime.speak(lastAssistantReply);
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -919,10 +935,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                         bytes -> runOnUiThread(() -> {
                             if (!destroyed && !cancellation.get()) status.setText("Importing GGUF: " + (bytes / 1024 / 1024) + " MiB. Stop to cancel.");
                         }));
-                if (destroyed || cancellation.get()) throw new IOException("Import cancelled");
+                if (cancellation.get()) throw new IOException("Import cancelled");
                 String model = isProjector ? previousModel : imported.getAbsolutePath();
                 String projector = isProjector ? imported.getAbsolutePath() : "";
-                if (loadModelOnWorker(model, projector)) {
+                if (runtime.loadBlocking(model, projector, statusText -> runOnUiThread(() -> {
+                    if (!destroyed) status.setText(statusText);
+                }))) {
                     getPreferences(MODE_PRIVATE).edit().putString("model", model)
                             .putString("mmproj", projector)
                             .putString(isProjector ? "projector_name" : "model_name", importedName).apply();
@@ -955,66 +973,23 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         busy = true;
         updateControls();
         status.setText("Loading model from private storage...");
-        worker.execute(() -> loadModelOnWorker(path, projector));
-    }
-
-    private boolean loadModelOnWorker(String path, String projector) {
-        long next = 0;
-        String error = null;
-        long started = android.os.SystemClock.elapsedRealtime();
-        try {
-            GgufSelection.validate(new File(path), projector == null || projector.isEmpty() ? null : new File(projector));
-            next = inferenceEngine.loadModel(path, projector == null || projector.isEmpty() ? null : projector);
-            if (next == 0L) error = "Native engine could not load model (check RAM and GGUF compatibility)";
-        } catch (Throwable e) {
-            error = e.toString();
-        }
-        long loadMs = android.os.SystemClock.elapsedRealtime() - started;
-        final long loaded = next;
-        final String failure = error;
-        LocalDiagnostics diagnostics = ((Lfm3PocketApplication) getApplication()).diagnostics();
-        diagnostics.record(LocalDiagnostics.Kind.MODEL_LOAD, loadMs,
-                failure == null ? "ok path=" + new File(path).getName() : "error=" + failure);
-        try {
-            diagnostics.writeTo(new File(getFilesDir(), "diagnostics.ndjson"));
-        } catch (Exception ignored) {
-        }
-        if (loaded != 0L && destroyed) {
-            inferenceEngine.unloadModel(loaded);
-            return false;
-        }
-        if (loaded != 0L) {
-            if (modelHandle != 0L) inferenceEngine.unloadModel(modelHandle);
-            modelHandle = loaded;
-            getPreferences(MODE_PRIVATE).edit().putString("model", path).apply();
-        }
-        runOnUiThread(() -> {
+        runtime.load(path, projector, statusText -> {
             if (destroyed) return;
             busy = false;
-            status.setText(failure == null
-                    ? (projector == null || projector.isEmpty()
-                        ? "Text model ready  offline"
-                        : "Model and projector loaded • offline")
-                    : "Model error: " + failure);
+            status.setText(statusText);
             updateControls();
         });
-        return loaded != 0L;
     }
 
     private void stopActiveWork() {
         if (recordingActive()) recordingController.stop();
         else if (playbackActive()) playbackController.stop();
-        else if (speaking) {
-            speechCancelRequested = true;
-            inferenceEngine.stop();
-            status.setText("Stopping spoken response...");
-            updateControls();
-        } else if (importCancellation != null) {
+        else if (speaking) runtime.speak(lastAssistantReply);
+        else if (importCancellation != null) {
             importCancellation.set(true);
             status.setText("Cancelling import...");
         } else {
-            inferenceEngine.stop();
-            session.stop();
+            runtime.stopTurn();
         }
     }
 
@@ -1045,7 +1020,56 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         Runnable approve = pending ? () -> resolveToolOutcome(proposal, actionRequest, true) : null;
         Runnable reject = pending ? () -> resolveToolOutcome(proposal, actionRequest, false) : null;
         chatPanel.renderToolCard(details, risk, toolOutcomeLabel(outcome), result, pending, approve, reject);
+        if (pending && proposal != null) {
+            runtime.showConsent(proposal.id, ToolCoordinator.describe(proposal.request),
+                    proposal.risk == ToolCoordinator.Risk.SAFE);
+        } else {
+            runtime.clearConsent();
+        }
         if(!pending && request!=null && outcome.result!=null) persistToolOutcome(proposal,request,outcome);
+    }
+
+    private void syncBackgroundControls() {
+        if (keepLoadedBox == null || runtime == null) return;
+        RuntimePreferences prefs = new RuntimePreferences(this);
+        bindingBackground = true;
+        keepLoadedBox.setChecked(prefs.keepLoaded());
+        lockPreviewBox.setChecked(prefs.lockPreview());
+        paintIdle(prefs.idleMinutes());
+        bindingBackground = false;
+    }
+
+    private boolean bindingBackground;
+
+    private void saveBackgroundSettings() {
+        if (bindingBackground || keepLoadedBox == null) return;
+        int idle = idle15Button.isSelected() ? 15 : idle60Button.isSelected() ? 60 : 0;
+        runtime.updateBackgroundSettings(keepLoadedBox.isChecked(), idle, lockPreviewBox.isChecked());
+        paintIdle(idle);
+    }
+
+    private Button idleChoice(String label, int minutes, int id) {
+        Button choice = button(label);
+        choice.setId(id);
+        StillwaterUi.quiet(choice);
+        choice.setOnClickListener(v -> {
+            idleOffButton.setSelected(minutes == 0);
+            idle15Button.setSelected(minutes == 15);
+            idle60Button.setSelected(minutes == 60);
+            saveBackgroundSettings();
+        });
+        return choice;
+    }
+
+    private void paintIdle(int minutes) {
+        styleIdle(idleOffButton, minutes == 0);
+        styleIdle(idle15Button, minutes == 15);
+        styleIdle(idle60Button, minutes == 60);
+    }
+
+    private void styleIdle(Button choice, boolean selected) {
+        choice.setSelected(selected);
+        choice.setTextColor(selected ? StillwaterUi.CANDLE : StillwaterUi.INK);
     }
 
     private void persistToolOutcome(ToolCoordinator.Proposal proposal,ToolRegistry.Request request,
@@ -1090,7 +1114,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void send(String text) {
-        if (busy || modelHandle == 0L || !settingsLoaded) return;
+        if (busy || modelHandle() == 0L || !settingsLoaded) return;
+        if (!runtime.acceptsTurn()) {
+            status.setText("Phone is too warm for a new reply.");
+            return;
+        }
+        runtime.noteSubmission(text, inferenceSettings.maxTokens);
+        session = runtime.session();
         List<ChatSession.Attachment> attachments=new ArrayList<>();
         if(!pendingImagePath.isEmpty())attachments.add(new ChatSession.Attachment(
                 pendingImagePath,ChatSession.AttachmentKind.PHOTO));
@@ -1103,33 +1133,27 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         }
     }
 
-    private static String titleForQuestion(String question) {
-        String title=question==null?"New conversation":question.replaceAll("\\s+"," ").trim();
-        if(title.length()>60) title=title.substring(0,57)+"…";
-        return title.isEmpty()?"New conversation":title;
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        adoptConversation(intent);
+        if (pendingSwitchId != null) confirmSwitchConversation();
+        if (intent != null && intent.getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) setSettingsOpen(true);
     }
 
     @Override protected void onDestroy() {
         destroyed = true;
+        if (runtime != null) runtime.detach(viewer);
         HistoryMediaCleanup.deleteAttachment(this,pendingImagePath);
         HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
         pendingImagePath = "";
         pendingAudioPath = "";
-        session.close();
-        settingsStore.close();
+        if (settingsStore != null) settingsStore.close();
         mainHandler.removeCallbacksAndMessages(null);
         if (importCancellation != null) importCancellation.set(true);
-        recordingController.close();
-        playbackController.close();
+        if (recordingController != null) recordingController.close();
         audioWorker.shutdown();
-        inferenceEngine.stop();
-        worker.execute(() -> {
-            if (modelHandle != 0L) {
-                inferenceEngine.unloadModel(modelHandle);
-                modelHandle = 0L;
-            }
-        });
-        worker.shutdown();
+        if (runtime != null && isFinishing() && !isChangingConfigurations()) runtime.onChatFinished();
         super.onDestroy();
     }
 }

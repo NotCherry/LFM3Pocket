@@ -41,4 +41,10 @@
     <item name="web_search" type="id"/>
     <item name="search_endpoint" type="id"/>
     <item name="search_enabled" type="id"/>
+    <item name="settings_keep_loaded" type="id"/>
+    <item name="settings_idle_unload" type="id"/>
+    <item name="settings_idle_off" type="id"/>
+    <item name="settings_idle_15" type="id"/>
+    <item name="settings_idle_60" type="id"/>
+    <item name="settings_lock_preview" type="id"/>
 </resources>

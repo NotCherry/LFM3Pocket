@@ -1,10 +1,11 @@
 package com.notcherry.lfm3pocket;
 
+import android.app.Activity;
 import android.app.Application;
+import android.os.Bundle;
 import android.os.SystemClock;
 
 import java.io.File;
-import java.util.Map;
 
 /**
  * Per-process dependency factory. Instrumentation can install a test subclass
@@ -12,9 +13,24 @@ import java.util.Map;
  */
 public class Lfm3PocketApplication extends Application {
     private final LocalDiagnostics diagnostics = new LocalDiagnostics(SystemClock::elapsedRealtime);
+    private ModelRuntime modelRuntime;
+    private int startedActivities;
 
     @Override public void onCreate() {
         super.onCreate();
+        registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
+            @Override public void onActivityStarted(Activity activity) { startedActivities++; }
+            @Override public void onActivityStopped(Activity activity) {
+                startedActivities = Math.max(0, startedActivities - 1);
+                if (startedActivities == 0 && !activity.isChangingConfigurations() && modelRuntime != null)
+                    modelRuntime.onAppBackgrounded();
+            }
+            @Override public void onActivityCreated(Activity activity, Bundle savedInstanceState) {}
+            @Override public void onActivityResumed(Activity activity) {}
+            @Override public void onActivityPaused(Activity activity) {}
+            @Override public void onActivitySaveInstanceState(Activity activity, Bundle outState) {}
+            @Override public void onActivityDestroyed(Activity activity) {}
+        });
         // No activity/import worker exists yet: discard remnants of a killed import.
         java.io.File[] partials = new java.io.File(getFilesDir(), "models")
                 .listFiles((directory, name) -> name.endsWith(".partial"));
@@ -31,6 +47,7 @@ public class Lfm3PocketApplication extends Application {
         Runtime runtime = Runtime.getRuntime();
         long usedMb = Math.max(0L, (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L));
         diagnostics.record(LocalDiagnostics.Kind.MEMORY, 0L, "trim=" + level + ",usedMb=" + usedMb);
+        if (modelRuntime != null) modelRuntime.onTrimMemory(level);
         try {
             diagnostics.writeTo(new File(getFilesDir(), "diagnostics.ndjson"));
         } catch (Exception ignored) {
@@ -88,6 +105,16 @@ public class Lfm3PocketApplication extends Application {
 
     public final InferenceEngine newInferenceSession() {
         return createInferenceEngine();
+    }
+
+    public final synchronized ModelRuntime modelRuntime() {
+        if (modelRuntime == null) modelRuntime = new ModelRuntime(this);
+        return modelRuntime;
+    }
+
+    /** Already-built runtime, or null when chat has not created one. Used by instrumentation resets. */
+    public final ModelRuntime existingRuntime() {
+        return modelRuntime;
     }
 
     public final RecordingController.Source newRecordingSource() throws Exception {

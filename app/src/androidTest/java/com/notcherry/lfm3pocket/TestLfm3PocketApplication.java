@@ -77,6 +77,10 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
 
     @Override protected InferenceEngine createInferenceEngine() {
         scripted = new ScriptedInferenceEngine();
+        scripted.onReset(() -> {
+            ModelRuntime runtime = existingRuntime();
+            if (runtime != null) runtime.discardForTest();
+        });
         return scripted;
     }
 
@@ -155,7 +159,10 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         public List<List<String>> mediaByCall() { return new ArrayList<>(mediaByCall); }
         public List<String> promptsByCall() { return new ArrayList<>(promptsByCall); }
 
+        private Runnable onReset;
+        public void onReset(Runnable reset) { onReset = reset; }
         public void resetForTest() {
+            if (onReset != null) onReset.run();
             turns.set(0);
             assistantTurns.set(0);
             asrCalls.set(0);
