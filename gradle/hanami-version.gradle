@@ -1,0 +1,76 @@
+// Derives versionName / versionCode from a vMAJOR.MINOR.PATCH tag.
+// The parser lives in ReleaseVersion.java so unit tests and this script agree.
+// -Phanami.versionName and -Phanami.versionCode override the tag.
+// HANAMI_RELEASE_TAG, or a GitHub Actions tag ref, must parse or the build fails.
+// An unrelated exact tag such as "latest" falls back to v0.1.0.
+
+def overrideName = findProperty('hanami.versionName')?.toString()?.trim()
+def overrideCode = findProperty('hanami.versionCode')?.toString()?.trim()
+
+def runParser = { String tag ->
+    def classes = layout.buildDirectory.dir('hanami-release-version').get().asFile
+    classes.mkdirs()
+    def source = file('src/main/java/com/notcherry/lfm3pocket/ReleaseVersion.java')
+    exec {
+        commandLine 'javac', '-d', classes.absolutePath, source.absolutePath
+    }
+    def parsed = new ByteArrayOutputStream()
+    def errors = new ByteArrayOutputStream()
+    def parsedResult = exec {
+        commandLine 'java', '-cp', classes.absolutePath, 'com.notcherry.lfm3pocket.ReleaseVersion', tag
+        standardOutput = parsed
+        errorOutput = errors
+        ignoreExitValue = true
+    }
+    if (parsedResult.exitValue != 0) {
+        return null
+    }
+    def text = parsed.toString()
+    return [
+            name: (text =~ /versionName=(\S+)/)[0][1],
+            code: ((text =~ /versionCode=(\d+)/)[0][1]) as int,
+    ]
+}
+
+if (overrideName || overrideCode) {
+    if (!overrideName || !overrideCode) {
+        throw new GradleException('Pass both -Phanami.versionName and -Phanami.versionCode, or neither.')
+    }
+    if (!(overrideCode ==~ /\d+/)) {
+        throw new GradleException('hanami.versionCode must be an integer')
+    }
+    ext.hanamiVersionName = overrideName
+    ext.hanamiVersionCode = Integer.parseInt(overrideCode)
+} else {
+    def explicit = (System.getenv('HANAMI_RELEASE_TAG') ?: '').trim()
+    def githubRef = System.getenv('GITHUB_REF') ?: ''
+    def githubRefName = (System.getenv('GITHUB_REF_NAME') ?: '').trim()
+    if (!explicit && githubRef.startsWith('refs/tags/')) explicit = githubRefName
+
+    def described = ''
+    if (!explicit) {
+        def stdout = new ByteArrayOutputStream()
+        def result = exec {
+            commandLine 'git', 'describe', '--tags', '--exact-match', 'HEAD'
+            workingDir rootDir
+            standardOutput = stdout
+            errorOutput = new ByteArrayOutputStream()
+            ignoreExitValue = true
+        }
+        if (result.exitValue == 0) described = stdout.toString().trim()
+    }
+
+    def chosen = explicit ?: (described ?: 'v0.1.0')
+    def parsed = runParser(chosen)
+    if (parsed == null) {
+        if (explicit) {
+            throw new GradleException("Could not derive a version from tag '${explicit}'. Expected vMAJOR.MINOR.PATCH.")
+        }
+        parsed = runParser('v0.1.0')
+    }
+    if (parsed == null) {
+        throw new GradleException('Could not derive the untagged Hanami version from v0.1.0')
+    }
+    ext.hanamiVersionName = parsed.name
+    ext.hanamiVersionCode = parsed.code
+}

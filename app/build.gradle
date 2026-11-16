@@ -5,19 +5,30 @@ plugins {
     id 'com.google.devtools.ksp'
 }
 
+apply from: rootProject.file('gradle/hanami-version.gradle')
+
+def hanamiKeystore = System.getenv('HANAMI_KEYSTORE_FILE')
+def hanamiStorePassword = System.getenv('HANAMI_STORE_PASSWORD')
+def hanamiKeyAlias = System.getenv('HANAMI_KEY_ALIAS')
+def hanamiKeyPassword = System.getenv('HANAMI_KEY_PASSWORD')
+def hanamiSigningReady = hanamiKeystore && hanamiStorePassword && hanamiKeyAlias && hanamiKeyPassword
+
 android {
+    // Source package stays put so the Java/Kotlin tree does not move.
+    // Install id is applicationId below.
     namespace 'com.notcherry.lfm3pocket'
     compileSdk 35
     ndkVersion '27.2.12479018'
 
     defaultConfig {
-        applicationId 'com.notcherry.lfm3pocket'
+        // New install id. Existing com.notcherry.lfm3pocket installs will not upgrade in place.
+        applicationId 'dev.notcherry.hanami'
         minSdk 26
         targetSdk 35
-        versionCode 1
-        versionName '0.1.0'
+        versionCode project.hanamiVersionCode
+        versionName project.hanamiVersionName
         testInstrumentationRunner 'com.notcherry.lfm3pocket.UiE2eTestRunner'
-        manifestPlaceholders = [appLabel: 'LFM3 Pocket']
+        manifestPlaceholders = [appLabel: 'Hanami']
         externalNativeBuild {
             cmake {
                 arguments '-DANDROID_STL=c++_shared',
@@ -48,7 +59,7 @@ android {
         deviceCheck {
             dimension 'runtime'
             applicationIdSuffix '.devicecheck'
-            manifestPlaceholders = [appLabel: 'LFM3 Pocket Device Test']
+            manifestPlaceholders = [appLabel: 'Hanami device test']
             testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
             ndk { abiFilters 'arm64-v8a', 'x86_64' }
         }
@@ -69,8 +80,21 @@ android {
     kotlinOptions {
         jvmTarget = '17'
     }
+    if (hanamiSigningReady) {
+        signingConfigs {
+            release {
+                storeFile file(hanamiKeystore)
+                storePassword hanamiStorePassword
+                keyAlias hanamiKeyAlias
+                keyPassword hanamiKeyPassword
+            }
+        }
+    }
     buildTypes {
-        release { minifyEnabled false }
+        release {
+            minifyEnabled false
+            if (hanamiSigningReady) signingConfig signingConfigs.release
+        }
     }
     packaging {
         jniLibs {

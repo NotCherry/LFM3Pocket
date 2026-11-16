@@ -1,8 +1,6 @@
 package com.notcherry.lfm3pocket;
 
 import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
@@ -14,21 +12,14 @@ import android.os.Build;
  * end up with dark Stillwater ink on a dark notification.
  */
 final class RuntimeNotifications {
-    static final String CHANNEL_ID = "model_runtime";
+    static final String CHANNEL_ID = HanamiNotifications.MODEL_RUNTIME_CHANNEL_ID;
     static final int NOTIFICATION_ID = 1001;
     private static final int CANDLE = 0xFFE6C27A;
 
     private RuntimeNotifications() {}
 
     static void ensureChannel(Context context) {
-        if (Build.VERSION.SDK_INT < 26) return;
-        NotificationManager manager = context.getSystemService(NotificationManager.class);
-        if (manager == null) return;
-        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Model runtime",
-                NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription("Shows while a model is loaded or a reply is generating.");
-        channel.setShowBadge(false);
-        manager.createNotificationChannel(channel);
+        HanamiNotifications.ensureChannels(context);
     }
 
     static Notification build(Context context, RuntimeNotice notice, String conversationId, String title) {

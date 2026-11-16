@@ -56,7 +56,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private ToolCoordinator toolCoordinator;
     private HistoryRepository historyRepository;
     private String historyConversationId="default";
-    private String historyTitle="LFM3 Pocket";
+    private String historyTitle="Hanami";
     private InferenceEngine inferenceEngine;
     private boolean busy = false;
     private boolean generating = false;
@@ -174,10 +174,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             settingsLoaded=true;status.setText("Settings unavailable; using defaults: "+error);
             syncInlineSettingsFields();updateControls();
         });
-        String previous = getPreferences(MODE_PRIVATE).getString("model", "");
-        mmprojPath = getPreferences(MODE_PRIVATE).getString("mmproj", "");
-        searchEndpoint = getPreferences(MODE_PRIVATE).getString("search_endpoint", "");
-        searchEnabled = getPreferences(MODE_PRIVATE).getBoolean("search_enabled", false);
+        String previous = pocketPreferences().getString("model", "");
+        mmprojPath = pocketPreferences().getString("mmproj", "");
+        searchEndpoint = pocketPreferences().getString("search_endpoint", "");
+        searchEnabled = pocketPreferences().getBoolean("search_enabled", false);
         chatPanel.setIdleMode(searchEnabled);
         syncInlineSettingsFields();
         syncBackgroundControls();
@@ -199,7 +199,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         String requested = intent == null ? null : intent.getStringExtra(EXTRA_HISTORY_CONVERSATION_ID);
         String requestedTitle = intent == null ? null : intent.getStringExtra(EXTRA_HISTORY_TITLE);
         boolean explicit = requested != null && !requested.isBlank();
-        android.content.SharedPreferences prefs = getPreferences(MODE_PRIVATE);
+        android.content.SharedPreferences prefs = pocketPreferences();
         OpenConversation choice = OpenConversation.choose(
                 explicit ? requested : null,
                 prefs.getString("history_conversation_id", ""),
@@ -546,21 +546,21 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
         if (modelManager != null) {
             modelManager.showSettings(settingsLoaded ? inferenceSettings.summary() : "Loading inference settings...");
-            String model = getPreferences(MODE_PRIVATE).getString("model", "");
-            String projector = getPreferences(MODE_PRIVATE).getString("mmproj", "");
+            String model = pocketPreferences().getString("model", "");
+            String projector = pocketPreferences().getString("mmproj", "");
             String description = status.getText().toString();
             modelManager.updateSelection(
-                    model.isEmpty() ? "" : getPreferences(MODE_PRIVATE).getString("model_name", new File(model).getName()),
-                    projector.isEmpty() ? "" : getPreferences(MODE_PRIVATE).getString("projector_name", new File(projector).getName()),
+                    model.isEmpty() ? "" : pocketPreferences().getString("model_name", new File(model).getName()),
+                    projector.isEmpty() ? "" : pocketPreferences().getString("projector_name", new File(projector).getName()),
                     busy, modelHandle() != 0, description.startsWith("Model error") || description.startsWith("Import failed"));
         }
     }
 
     private void reloadSelectedModel() {
         if (busy) return;
-        String model = getPreferences(MODE_PRIVATE).getString("model", "");
+        String model = pocketPreferences().getString("model", "");
         if (!model.isEmpty()) loadModelInBackground(model,
-                getPreferences(MODE_PRIVATE).getString("mmproj", ""));
+                pocketPreferences().getString("mmproj", ""));
     }
 
     private void unloadSelectedModel() {
@@ -682,7 +682,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         }
         searchEndpoint = value;
         searchEnabled = SearchEndpointPolicy.enabled(searchEnabledBox.isChecked(), value);
-        getPreferences(MODE_PRIVATE).edit()
+        pocketPreferences().edit()
                 .putString("search_endpoint", searchEndpoint)
                 .putBoolean("search_enabled", searchEnabled).apply();
         chatPanel.setIdleMode(searchEnabled);
@@ -918,8 +918,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             File imported = null;
             boolean isProjector = code == PICK_MMPROJ;
             try {
-                String previousModel = getPreferences(MODE_PRIVATE).getString("model", "");
-                String previousProjector = getPreferences(MODE_PRIVATE).getString("mmproj", "");
+                String previousModel = pocketPreferences().getString("model", "");
+                String previousProjector = pocketPreferences().getString("mmproj", "");
                 if (isProjector && previousModel.isEmpty()) throw new IOException("Import a model before its multimodal projector");
                 long expected = -1;
                 String importedName = "Imported GGUF";
@@ -941,10 +941,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 if (runtime.loadBlocking(model, projector, statusText -> runOnUiThread(() -> {
                     if (!destroyed) status.setText(statusText);
                 }))) {
-                    getPreferences(MODE_PRIVATE).edit().putString("model", model)
+                    pocketPreferences().edit().putString("model", model)
                             .putString("mmproj", projector)
                             .putString(isProjector ? "projector_name" : "model_name", importedName).apply();
-                    if (!isProjector) getPreferences(MODE_PRIVATE).edit().remove("projector_name").apply();
+                    if (!isProjector) pocketPreferences().edit().remove("projector_name").apply();
                     // Only delete owned obsolete imports after the new selection loads.
                     deleteImportedModel(isProjector ? previousProjector : previousModel);
                     if (!isProjector) deleteImportedModel(previousProjector);
@@ -1155,6 +1155,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         audioWorker.shutdown();
         if (runtime != null && isFinishing() && !isChangingConfigurations()) runtime.onChatFinished();
         super.onDestroy();
+    }
+
+    /**
+     * The shared model and conversation file. {@code getPreferences} would name
+     * that file from the install id and miss the seeded {@code MainActivity} file.
+     */
+    private android.content.SharedPreferences pocketPreferences() {
+        return getSharedPreferences(RuntimePreferences.FILE, MODE_PRIVATE);
     }
 }
 

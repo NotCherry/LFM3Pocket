@@ -5,11 +5,31 @@ import android.content.SharedPreferences;
 
 /**
  * Model path and background-mode switches. The file name stays {@code MainActivity}
- * so existing instrumentation that seeds that file keeps working, and the service
- * can open it without an activity.
+ * so instrumentation that seeds that file, and the service, share it with chat.
+ *
+ * <p>Do not switch callers to {@code Activity.getPreferences}. That API names the
+ * file from the install id. The install id is {@code dev.notcherry.hanami} while
+ * the activity class is still in {@code com.notcherry.lfm3pocket}, so
+ * {@code getPreferences} would open a different file and ignore a seeded model.
  */
 public final class RuntimePreferences {
     static final String FILE = "MainActivity";
+
+    /**
+     * Mirrors {@code Activity.getLocalClassName}, which {@code getPreferences} uses
+     * as the file name. When the install id and the class package differ, the file
+     * name is the full class name rather than the simple name.
+     */
+    static String activityPreferenceName(String installPackage, String className) {
+        if (installPackage != null && className != null
+                && className.startsWith(installPackage)
+                && className.length() > installPackage.length()
+                && className.charAt(installPackage.length()) == '.') {
+            return className.substring(installPackage.length() + 1);
+        }
+        return className == null ? "" : className;
+    }
+
     private final SharedPreferences prefs;
 
     public RuntimePreferences(Context context) {

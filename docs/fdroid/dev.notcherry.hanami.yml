@@ -1,0 +1,64 @@
+# Draft fdroiddata metadata for the owner to submit.
+# Copy to fdroiddata as metadata/dev.notcherry.hanami.yml after the first vMAJOR.MINOR.PATCH tag exists.
+# Replace PLACEHOLDER_FIRST_HANAMI_TAG with that tag (the commit F-Droid checks out).
+# versionCode for vMAJOR.MINOR.PATCH is major*1000000 + minor*1000 + patch.
+# v0.1.0 -> 1000. See docs/RELEASING.md.
+#
+# Do not commit a signing key. F-Droid builds an unsigned release APK and signs it
+# with the F-Droid key. That signature will not match GitHub Release APKs.
+
+Categories:
+  - Science & Education
+  - Internet
+License: MIT
+AuthorName: NotCherry
+SourceCode: https://github.com/NotCherry/LFM3Pocket
+IssueTracker: https://github.com/NotCherry/LFM3Pocket/issues
+Changelog: https://github.com/NotCherry/LFM3Pocket/releases
+Translation: https://github.com/NotCherry/LFM3Pocket
+
+Name: Hanami
+AutoName: Hanami
+Summary: On-device chat for Liquid AI LFM3 models
+Description: |-
+  Hanami is an offline-first Android chat app. It runs Liquid AI LFM3
+  models on the phone through llama.cpp. LFM3 is the model family.
+  Hanami is the app.
+
+  Model weights are not included. Import a quantized GGUF yourself.
+  Text inference stays on the device. Optional web search talks only to
+  a SearXNG server you configure. There is no telemetry.
+
+RepoType: git
+Repo: https://github.com/NotCherry/LFM3Pocket.git
+
+Builds:
+  - versionName: '0.1.0'
+    versionCode: 1000
+    commit: PLACEHOLDER_FIRST_HANAMI_TAG
+    timeout: 10800
+    subdir: app
+    sudo:
+      - apt-get update
+      - apt-get install -y openjdk-17-jdk-headless git
+    gradle:
+      - phone
+    output: build/outputs/apk/phone/release/app-phone-release-unsigned.apk
+    prebuild:
+      - sdkmanager "platforms;android-35" "build-tools;35.0.0" "cmake;3.22.1"
+      - mkdir -p ../third_party
+      - git clone --depth 1 --branch v0.8.0 https://github.com/ggml-org/llama.cpp.git ../third_party/llama.cpp
+      - git -C ../third_party/llama.cpp checkout 8642541b255bfb5dc39cd351a178be09013a55d6
+      - rm -f ../third_party/llama.cpp/examples/llama.android/gradle/wrapper/gradle-wrapper.jar
+    scandelete:
+      - third_party/llama.cpp/examples/llama.android/gradle/wrapper/gradle-wrapper.jar
+    ndk: 27.2.12479018
+
+# versionName/versionCode are computed from the git tag at build time, so a
+# regex over build.gradle will not see the tagged version. Leave auto-update
+# off until a maintainer wires a check that applies major*1000000+minor*1000+patch.
+AutoUpdateMode: None
+UpdateCheckMode: None
+
+CurrentVersion: '0.1.0'
+CurrentVersionCode: 1000

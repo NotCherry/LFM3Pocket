@@ -1,6 +1,6 @@
 # Stage 1 release build and verification
 
-This document is the reproducible APK / model-import / test-gate recipe for LFM3 Pocket Stage 1 (R03). It consolidates what a clean checkout must do and what CI does **not** prove.
+This document is the reproducible APK / model-import / test-gate recipe for Hanami (the app formerly described here as LFM3 Pocket) Stage 1 (R03). It consolidates what a clean checkout must do and what CI does **not** prove. Signed tags, Obtainium, IzzyOnDroid, and F-Droid are in [`RELEASING.md`](RELEASING.md). The app runs Liquid AI LFM3 models. LFM3 is not the product name.
 
 ## Clean checkout → phone APK
 
@@ -40,22 +40,15 @@ Pinned smoke fixture SHA-256 and host provisioning are documented in `docs/TEST_
 
 ## GitHub Releases (downloadable APK)
 
-Workflow **Publish GitHub Release** (`.github/workflows/release.yml`):
+Workflow **Publish GitHub Release** (`.github/workflows/release.yml`). Tag releases are signed and described in [`RELEASING.md`](RELEASING.md).
 
 | Trigger | Release | Asset |
 | --- | --- | --- |
-| Green **Android Stage 1 CI** on `main` | Pre-release tag `latest` (rolling) | `LFM3Pocket-latest-arm64-debug.apk` |
-| Push tag `v*` (e.g. `v0.1.0`) | Versioned release | `LFM3Pocket-0.1.0-arm64-debug.apk` |
+| Green **Android Stage 1 CI** on `main` | Pre-release tag `latest` (rolling debug) | `Hanami-latest-arm64-debug.apk` |
+| Push tag `v*` (e.g. `v0.1.0`) | Signed versioned release | `Hanami-v0.1.0-arm64-v8a.apk` |
 | Manual **workflow_dispatch** | Rebuild `latest`, or publish a `v*` tag if supplied | same as above |
 
-Action run artifacts still expire; use the [Releases](https://github.com/notcherry/lfm3pocket/releases) page for durable downloads.
-
-Publish a numbered release from a clean `main`:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+`v0.1.0` sets versionName `0.1.0` and versionCode `1000`. Action run artifacts still expire; use the [Releases](https://github.com/NotCherry/LFM3Pocket/releases) page for durable downloads.
 
 ## Model import expectations
 
@@ -81,7 +74,7 @@ git push origin v0.1.0
 
 | Component | License |
 | --- | --- |
-| LFM3 Pocket application source | MIT (`LICENSE`) |
+| Hanami application source | MIT (`LICENSE`) |
 | llama.cpp (pinned `v0.8.0`) | MIT (upstream) |
 | Liquid AI LFM3 / LFM3-Omni GGUF weights | Liquid AI model license (not redistributed in the APK) |
 
