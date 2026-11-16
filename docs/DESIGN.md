@@ -143,6 +143,7 @@ Atlas prefers **borders over shadows**.
 - Sources: steel-accent text links or compact link row under the answer — not chips stuck on a hero.
 - Media: preview chip / thumbnail row under the turn or above composer (see 6.6) — not only `[photo attached]` plain text when a bitmap is available.
 - Streaming: append chalk block cursor `▌` to the active assistant body.
+- Interrupted reply (the process died while this answer was generating): show any saved partial text, then an accent **Retry** control (`chat_retry_interrupted`). Retry is live-chat only. See §13.
 
 ### 6.3 Reasoning rail (U08)
 
@@ -177,11 +178,13 @@ Atlas prefers **borders over shadows**.
 - Group on `surface` with optional section `headline`.
 - Row: `label` + control (stepper, switch, field) aligned; `mono` for numeric/endpoint values where appropriate.
 - Keep IDs: `settings_context`, `settings_threads`, `settings_tokens`, `search_*`, `import_*`.
+- Crash log group: view, share, or clear the on-device log (`settings_crash_log_view`, `settings_crash_log_export`, `settings_crash_log_clear`, `settings_crash_log_text`). The body stays on the phone unless the user shares it. See §13.
 
 ### 6.8 History list + reader (U12)
 
 - List: charcoal rows, `ink` title, `inkMuted` preview/time — not Material outlined cards stack.
 - Reader: **same** turn / markdown / reasoning components as live chat for parity (UT-06).
+- A saved assistant turn that is not completed gets a quiet status line (interrupted, cancelled, failed, or still generating). Retry stays on the live chat turn; reopen the conversation there to send it again.
 
 ### 6.9 Consent + camera chrome (U14)
 
@@ -192,6 +195,7 @@ Atlas prefers **borders over shadows**.
 
 - Offline / search opt-in: compact label + optional accent outline; not a cluster of marketing chips.
 - Live generation status (`chat_live_*`): readable chalk on charcoal; do not obscure the transcript.
+- An interrupted reply is drawn on the restored assistant turn (§6.2), with Retry on that turn.
 
 ---
 
@@ -276,10 +280,42 @@ Stillwater chrome must stay readable when the user enlarges text or display size
 - [ ] UT row(s) noted in PR; matrix updated when evidence lands.
 - [ ] Screenshots (if any) filed under device evidence for U16 — they do not flip AT rows.
 - [ ] Font-scale / narrow-width / PL chrome still readable (section 11).
+- [ ] Turn persistence, interrupted Retry, and the Settings crash log follow section 13. Neither is uploaded by the app.
 
 ---
 
-## 13. References
+## 13. Turn lifecycle, persistence, and privacy
+
+Durable rules: [ADR 0003](adr/0003-turn-write-ahead.md) (write-ahead turns, recovery, oversized images) and [ADR 0004](adr/0004-local-crash-log.md) (on-device crash log). This section is the product behavior those records decide. It does not replace the schema note in [`HISTORY_SCHEMA.md`](HISTORY_SCHEMA.md) or the diagnostics note in [`DIAGNOSTICS.md`](DIAGNOSTICS.md).
+
+### 13.1 Turn lifecycle
+
+A submitted turn moves **persisted → generating → completed**, or to another terminal state.
+
+| State | What the person sees | What is stored |
+| --- | --- | --- |
+| Persisted | The user message is already in the thread. Inference has not started. | User text is committed. A photo, if any, has a private copy. An assistant row exists and is generating. |
+| Generating | Streaming answer with the block cursor. Stop stays available. | Partial answer text is written as tokens arrive. Generation continues under the existing foreground service. |
+| Completed | Finished answer. | Generating row replaced with the reply. |
+| Interrupted | Restored after process death. Partial text if any was saved, otherwise a short interrupted placeholder, plus **Retry** on the live chat turn. | Leftover generating rows are marked interrupted on the next process start. |
+| Cancelled | The user stopped the reply. | Terminal state for that stop. |
+| Failed | A readable failure, including an image the phone could not decode safely. | User message kept. Assistant row records the failure. Native vision errors are caught, stored as a failed turn, and the process stays up. |
+
+Leaving the chat does not mark a turn interrupted. The foreground service keeps generation going, and a local notification can say the reply is ready when it finishes with no screen visible. Interrupted means the process died while the assistant row was still generating.
+
+**Retry** resends the saved question and the private photo copy when that file is still there. It starts a new turn. The interrupted answer stays in the thread. The history reader shows the non-completed status; Retry stays on the live chat turn.
+
+Photos still use the existing prepare/downscale path. A bounded decode checks the attached file before native vision and does not write a second inference image.
+
+### 13.2 Crash log
+
+Settings includes a crash log: view, share, or clear. It holds the last uncaught exception and, on Android 11 and newer, recent platform process-exit reasons. It is capped, app-private, and separate from conversation history. The app does not upload it. Share hands the text to the system share sheet; the text leaves the phone only if the user picks a target.
+
+### 13.3 Privacy
+
+Conversation text, speech transcripts, tool outcomes, private photo copies, timing breadcrumbs, and the crash log stay in app-private storage. Nothing in this lifecycle is sent by the app. An explicit crash-log share is the only export, and it is user-chosen. Deleting a conversation deletes its private photo copies; deleting all history deletes them all.
+
+## 14. References
 
 | Doc / issue | Role |
 | --- | --- |
@@ -289,3 +325,7 @@ Stillwater chrome must stay readable when the user enlarges text or display size
 | [`UI_ACCEPTANCE_MATRIX.md`](UI_ACCEPTANCE_MATRIX.md) | UT-01..UT-08 |
 | [`UI_E2E_CONTRACT.md`](UI_E2E_CONTRACT.md) | Flat transcript + ID contract |
 | [`ACCEPTANCE_MATRIX.md`](ACCEPTANCE_MATRIX.md) | Stage 1 AT-01..AT-09 (unchanged authority for product capability) |
+| [`adr/0003-turn-write-ahead.md`](adr/0003-turn-write-ahead.md) | Write-ahead turns, interrupted recovery, oversized images ([#170](https://github.com/NotCherry/LFM3Pocket/pull/170)) |
+| [`adr/0004-local-crash-log.md`](adr/0004-local-crash-log.md) | On-device crash log ([#170](https://github.com/NotCherry/LFM3Pocket/pull/170)) |
+| [`HISTORY_SCHEMA.md`](HISTORY_SCHEMA.md) | Conversation store, including in-flight recovery |
+| [`DIAGNOSTICS.md`](DIAGNOSTICS.md) | Local timing breadcrumbs and crash log |
