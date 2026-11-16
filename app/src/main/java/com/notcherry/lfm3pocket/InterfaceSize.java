@@ -1,8 +1,9 @@
 package com.notcherry.lfm3pocket;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.res.Configuration;
-import android.util.DisplayMetrics;
+import android.content.res.Resources;
 
 /**
  * App-level interface scale applied on top of the system font scale / density.
@@ -11,6 +12,10 @@ import android.util.DisplayMetrics;
  * slider: Compact {@link #COMPACT}, Default {@link #DEFAULT}, Large {@link #LARGE}. The density
  * is scaled so both typography (sp) and spacing (dp) shrink or grow together while the system
  * {@code fontScale} continues to apply on top.
+ *
+ * <p>Every Activity must call {@link #wrap(Context)} from {@code attachBaseContext} and
+ * {@link #recreateIfChanged(Activity, float)} from {@code onResume} with the scale captured at
+ * attach time, so back-stack screens pick up a Settings change.
  */
 public final class InterfaceSize {
     public static final float MIN = 0.80f;
@@ -78,14 +83,24 @@ public final class InterfaceSize {
     }
 
     /**
+     * Recreates {@code activity} when the persisted interface scale differs from the scale that
+     * was applied in {@code attachBaseContext}. Call from {@code onResume} so back-stack hosts
+     * (Home, History, …) refresh after Settings changes the density.
+     */
+    public static void recreateIfChanged(Activity activity, float attachedScale) {
+        if (activity == null) return;
+        float current = read(activity);
+        if (Math.abs(current - attachedScale) > 0.001f) activity.recreate();
+    }
+
+    /**
      * Pixel size of a {@link #MIN_TOUCH_DP} target in <em>system</em> density, independent of the
      * interface scale. Use for View minWidth/minHeight so compact visuals keep a 48dp finger target.
      */
     public static int minTouchPx(Context context) {
-        float scale = read(context);
-        DisplayMetrics metrics = context.getResources().getDisplayMetrics();
-        // metrics.density already includes interface scale when the Context was wrapped.
-        float systemDensity = metrics.density / Math.max(0.01f, scale);
+        // Prefer the real system density so unwrapped Application/Service contexts stay correct
+        // even when prefs hold a non-1.0 scale (densityDpi rounding / floor 120 do not apply here).
+        float systemDensity = Resources.getSystem().getDisplayMetrics().density;
         return Math.round(MIN_TOUCH_DP * systemDensity);
     }
 

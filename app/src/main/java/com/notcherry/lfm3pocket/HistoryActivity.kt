@@ -53,8 +53,16 @@ class HistoryActivity : ComponentActivity() {
     private var loading by mutableStateOf(true)
     private var error by mutableStateOf<String?>(null)
 
+    private var attachedInterfaceScale = InterfaceSize.DEFAULT
+
     override fun attachBaseContext(newBase: Context) {
+        attachedInterfaceScale = InterfaceSize.read(newBase)
         super.attachBaseContext(InterfaceSize.wrap(newBase))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        InterfaceSize.recreateIfChanged(this, attachedInterfaceScale)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -12,9 +12,16 @@ import android.widget.*;
 public final class ToolConfirmationActivity extends Activity {
     private ToolCoordinator coordinator;private String id;
     private TextView details,status;private Button approve,reject;
+    private float attachedInterfaceScale = InterfaceSize.DEFAULT;
 
     @Override protected void attachBaseContext(Context newBase) {
+        attachedInterfaceScale = InterfaceSize.read(newBase);
         super.attachBaseContext(InterfaceSize.wrap(newBase));
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        InterfaceSize.recreateIfChanged(this, attachedInterfaceScale);
     }
 
     @Override public void onCreate(Bundle state){

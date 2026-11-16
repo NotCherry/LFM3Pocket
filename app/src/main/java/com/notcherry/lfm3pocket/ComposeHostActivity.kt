@@ -49,8 +49,16 @@ import com.notcherry.lfm3pocket.ui.theme.atlasTypography
  * Home shell. Native inference, import, media and chat stay in [MainActivity].
  */
 class ComposeHostActivity : ComponentActivity() {
+    private var attachedInterfaceScale = InterfaceSize.DEFAULT
+
     override fun attachBaseContext(newBase: Context) {
+        attachedInterfaceScale = InterfaceSize.read(newBase)
         super.attachBaseContext(InterfaceSize.wrap(newBase))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        InterfaceSize.recreateIfChanged(this, attachedInterfaceScale)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

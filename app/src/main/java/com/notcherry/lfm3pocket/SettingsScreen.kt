@@ -23,6 +23,10 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -111,6 +115,11 @@ fun SettingsScreen(
             Text(stringResource(R.string.appearance_heading), style = type.title, color = atlas.ink)
             Text(stringResource(R.string.interface_size_label), style = type.body, color = atlas.ink)
             Text(stringResource(R.string.interface_size_help), style = type.bodySmall, color = atlas.inkMuted)
+            // Recipe / test host: keep a local draft while dragging; commit on finish so a
+            // future write+recreate host does not recreate on every step.
+            var draftScale by remember(interfaceScale) {
+                mutableFloatStateOf(InterfaceSize.clamp(interfaceScale))
+            }
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -119,38 +128,48 @@ fun SettingsScreen(
             ) {
                 InterfacePresetChip(
                     label = stringResource(R.string.interface_size_compact),
-                    selected = InterfaceSize.isCompact(interfaceScale),
-                    onClick = { onInterfaceScaleChange(InterfaceSize.COMPACT) },
+                    selected = InterfaceSize.isCompact(draftScale),
+                    onClick = {
+                        draftScale = InterfaceSize.COMPACT
+                        onInterfaceScaleChange(InterfaceSize.COMPACT)
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .testTag(tag("settings_interface_compact")),
                 )
                 InterfacePresetChip(
                     label = stringResource(R.string.interface_size_default),
-                    selected = InterfaceSize.isDefault(interfaceScale),
-                    onClick = { onInterfaceScaleChange(InterfaceSize.DEFAULT) },
+                    selected = InterfaceSize.isDefault(draftScale),
+                    onClick = {
+                        draftScale = InterfaceSize.DEFAULT
+                        onInterfaceScaleChange(InterfaceSize.DEFAULT)
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .testTag(tag("settings_interface_default")),
                 )
                 InterfacePresetChip(
                     label = stringResource(R.string.interface_size_large),
-                    selected = InterfaceSize.isLarge(interfaceScale),
-                    onClick = { onInterfaceScaleChange(InterfaceSize.LARGE) },
+                    selected = InterfaceSize.isLarge(draftScale),
+                    onClick = {
+                        draftScale = InterfaceSize.LARGE
+                        onInterfaceScaleChange(InterfaceSize.LARGE)
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .testTag(tag("settings_interface_large")),
                 )
             }
             Text(
-                stringResource(R.string.interface_size_percent, InterfaceSize.percent(interfaceScale)),
+                stringResource(R.string.interface_size_percent, InterfaceSize.percent(draftScale)),
                 style = type.bodySmall,
                 color = atlas.inkMuted,
                 modifier = Modifier.testTag(tag("settings_interface_value")),
             )
             Slider(
-                value = InterfaceSize.clamp(interfaceScale),
-                onValueChange = { onInterfaceScaleChange(InterfaceSize.clamp(it)) },
+                value = draftScale,
+                onValueChange = { draftScale = InterfaceSize.clamp(it) },
+                onValueChangeFinished = { onInterfaceScaleChange(draftScale) },
                 valueRange = InterfaceSize.MIN..InterfaceSize.MAX,
                 steps = 49,
                 modifier = Modifier

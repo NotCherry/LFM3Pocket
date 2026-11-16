@@ -37,9 +37,16 @@ public final class CameraCaptureActivity extends ComponentActivity {
     private ImageCapture imageCapture;
     private ProcessCameraProvider cameraProvider;
     private boolean captureStarted;
+    private float attachedInterfaceScale = InterfaceSize.DEFAULT;
 
     @Override protected void attachBaseContext(Context newBase) {
+        attachedInterfaceScale = InterfaceSize.read(newBase);
         super.attachBaseContext(InterfaceSize.wrap(newBase));
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        InterfaceSize.recreateIfChanged(this, attachedInterfaceScale);
     }
 
     @Override protected void onCreate(Bundle state) {

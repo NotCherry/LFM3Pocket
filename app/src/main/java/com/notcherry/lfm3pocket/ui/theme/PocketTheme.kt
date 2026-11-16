@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
@@ -25,7 +26,9 @@ fun PocketTheme(content: @Composable () -> Unit) {
     val atlas = AtlasColors()
     val roles = AtlasTypeRoles()
     val spacing = AtlasSpacing()
-    val scale = InterfaceSize.read(LocalContext.current)
+    val context = LocalContext.current
+    // Scale only changes through Activity recreate after prefs write.
+    val scale = remember(context) { InterfaceSize.read(context) }
     // densityDpi is already scaled; enlarge the Dp floor so the resulting pixels stay ~48 system-dp.
     val minTouch: Dp = (InterfaceSize.MIN_TOUCH_DP / scale).dp
     val scheme = darkColorScheme(

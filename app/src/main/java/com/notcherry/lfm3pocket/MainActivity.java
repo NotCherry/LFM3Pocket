@@ -83,6 +83,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private SeekBar interfaceSizeSlider;
     private TextView interfaceSizeValue;
     private boolean bindingInterfaceSize;
+    private boolean interfaceSliderTracking;
+    private float pendingInterfaceSliderScale = InterfaceSize.DEFAULT;
+    private float attachedInterfaceScale = InterfaceSize.DEFAULT;
+    private final Runnable applyInterfaceSlider = () -> {
+        if (destroyed || bindingInterfaceSize || interfaceSliderTracking) return;
+        applyInterfaceSize(pendingInterfaceSliderScale);
+    };
     private Button openModelUriButton, openProjectorUriButton, defaultAssistantButton;
     private boolean foreground;
     private boolean microphoneRequested;
@@ -167,12 +174,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     };
 
     @Override protected void attachBaseContext(Context newBase) {
+        attachedInterfaceScale = InterfaceSize.read(newBase);
         super.attachBaseContext(InterfaceSize.wrap(newBase));
     }
 
     @Override public void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putBoolean("settings_open", settingsOpen);
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        InterfaceSize.recreateIfChanged(this, attachedInterfaceScale);
     }
 
     @Override public void onCreate(Bundle state) {
@@ -977,9 +990,20 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 interfaceSizeValue.setText(getString(R.string.interface_size_percent, InterfaceSize.percent(scale)));
                 if (!fromUser || bindingInterfaceSize) return;
                 highlightInterfaceSize(scale);
+                // TalkBack / D-pad change progress without start/stop tracking. Debounce those
+                // writes so finger drags still apply only on stop.
+                if (!interfaceSliderTracking) {
+                    pendingInterfaceSliderScale = scale;
+                    mainHandler.removeCallbacks(applyInterfaceSlider);
+                    mainHandler.postDelayed(applyInterfaceSlider, 350);
+                }
             }
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {
+                interfaceSliderTracking = true;
+                mainHandler.removeCallbacks(applyInterfaceSlider);
+            }
             @Override public void onStopTrackingTouch(SeekBar seekBar) {
+                interfaceSliderTracking = false;
                 if (bindingInterfaceSize) return;
                 applyInterfaceSize(InterfaceSize.fromPercent(80 + seekBar.getProgress()));
             }
