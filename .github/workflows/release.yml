@@ -120,6 +120,9 @@ jobs:
           SHA: ${{ steps.meta.outputs.sha }}
         run: |
           set -euo pipefail
+          # Annotated tags need an identity; Actions runners do not set one.
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
           git tag -a "$TAG" "$SHA" -m "Hanami $TAG"
           git push origin "refs/tags/$TAG"
 
