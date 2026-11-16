@@ -2,34 +2,37 @@
 
 Status: **planning only**. No implementation in this change. Builds on the background-mode design record ([`background-mode.md`](background-mode.md)) and the tool contract ([`ANDROID_TOOLS.md`](../ANDROID_TOOLS.md)).
 
-Hanami (`dev.notcherry.hanami`) already keeps LFM3 resident via a `specialUse` foreground service, posts Stop / Unload / Open (plus RemoteInput Ask) on the ongoing notification, bridges model text into `ToolCoordinator` proposals with shade + consent-sheet approval, accepts share/ASK intents, and exposes an opt-in loopback API that cannot call `approve`. **Untrusted text never authorizes an action.** Voice must reuse that path: speech is another way to type a user message and another way to resolve a pending proposal id. It is not a second authorization channel.
+Hanami (`dev.notcherry.hanami`) already keeps LFM3 resident via a `specialUse` foreground service, posts Stop / Unload / Open (plus RemoteInput Ask) on the ongoing notification, bridges model text into `ToolCoordinator` proposals with shade + consent-sheet approval, accepts share/ASK intents, and exposes an opt-in loopback API that cannot call `approve`. **Untrusted text never authorizes an action.** Voice must reuse that path: spoken audio is another user turn into the loaded multimodal model, and spoken confirm resolves a pending proposal id. It is not a second authorization channel.
 
 The milestone:
 
 1. Hands-free voice interaction that can request and, after confirmation, perform phone actions.
-2. Phase 1 is the **voice loop**: push-to-talk → on-device STT → model turn (existing generate + tool bridge) → TTS reply, including with the screen off while the model service is running.
-3. Approvals can be spoken: the app reads back the pending action, the user says yes/no, and only that maps to `approve(id)` / `reject(id)`.
+2. Phase 1 is the **voice loop**: push-to-talk → capture → **LFM3-Omni (or other audio-capable LFM3 multimodal GGUF) via llama.cpp `mtmd`** → tool bridge → spoken reply, including with the screen off while the model service is running. Polish is a first-class spoken language.
+3. Approvals can be spoken: the app reads back the exact pending action, the user says tak/nie or yes/no, and only that maps to `approve(id)` / `reject(id)`.
 4. First action set (user-chosen): timers/alarms/reminders, sending messages, calendar read/write, reading and summarizing notifications.
+
+**Decision (locked):** speech input goes through the multimodal model itself (audio-in). Do **not** use Android `SpeechRecognizer`, whisper.cpp, or Vosk as the primary (or parallel) path — small Whisper packs handle Polish poorly, and a second ASR stack fights Omni for RAM.
 
 ## Current state (relevant bits)
 
 | Piece | Today | Voice implication |
 | --- | --- | --- |
-| Model residency | `ModelRuntimeService` `specialUse` (+ `mediaPlayback` while speaking) | Screen-off turns are already in scope for generation and spoken playback |
-| Mic | `RECORD_AUDIO`; `RecordingController` cancels in activity `onStop` | Background PTT needs `microphone` FGS type + visible capture indicator for the listen window only |
-| Speech out | `PlaybackController` under `mediaPlayback` | Reuse for TTS replies and confirmation read-backs |
-| Tools | Allowlisted JSON → `propose(MODEL_PROPOSAL)` → Approve/Reject | Voice confirm is `approve`/`reject` on the pending id, never "the transcript said yes so run it" |
+| Model residency | `ModelRuntimeService` `specialUse` (+ `mediaPlayback` while speaking) | Screen-off turns already in scope for generation and spoken playback |
+| Mic capture | `AudioRecord` 16 kHz mono PCM16 → private WAV (`RecordingController`); cancels in activity `onStop` | Reuse format; background PTT needs `microphone` FGS for the listen window only |
+| Audio-in | `generateWithMedia` + matching `mmproj`; chat today often runs a separate Omni "Perform ASR" pass then answers from transcript | Voice-action loop should prefer **one** multimodal turn with the WAV attached (answer + optional tool JSON); keep ASR-as-history optional |
+| Speech out | Omni `generateSpeech` / `mtmd_helper_gen_audio` (PCM16 mono, typically 24 kHz); `SpeechPrompt` already encodes language (`pl` / `en`) | Prefer Omni audio-out when `gen_audio` is present; system TTS with a Polish voice only as labelled fallback |
+| Tools | Allowlisted JSON → `propose(MODEL_PROPOSAL)` → Approve/Reject | Voice confirm is `approve`/`reject` on the pending id |
 | Timer / alarm | `AlarmClock` intents; timer `SAFE`, alarm `CONFIRM` | Keep; reminders are new |
 | Notification listener | Not shipped | New, default off, summarize-on-request |
-| Loopback / share text | Untrusted for authorization | Same rule for STT text and notification text |
+| Loopback / share text | Untrusted for authorization | Same for notification/calendar/message bodies; Omni audio is user origin for the turn, not for tool args invented in the reply |
 
 ## Design invariants
 
-1. STT output is **user text** into `ChatSession.submit` (or into a narrow yes/no matcher for a known proposal id). It is never `USER_ACTION` for tool arguments the model invented.
-2. Notification bodies, calendar descriptions, SMS/WhatsApp preview text, and any other retrieved content enter the prompt as data. They use an untrusted source class (`DOCUMENT` / equivalent). They cannot call `propose` or `approve`.
-3. Voice "yes" only resolves a **single, already-pending** proposal whose read-back the user just heard. No free-form "yes, send that message to Mom" from ambient audio.
-4. Screen-off work rides the existing foreground service. Do not invent a second long-lived process or a wake-word daemon in Phase 1.
-5. Fail closed: mic denial, STT failure, ambiguous confirmation, expired proposal, missing permission → spoken error + shade update, no side effect.
+1. Captured PTT audio is a **user media attachment** on a normal generate path (`MODEL_PROPOSAL` for any tool JSON in the reply). It is never `USER_ACTION` for tool arguments the model invented.
+2. Notification bodies, calendar descriptions, SMS/WhatsApp preview text, and other retrieved content enter the prompt as data (`DOCUMENT` / equivalent). They cannot call `propose` or `approve`.
+3. Spoken "tak" / "yes" only resolves a **single, already-pending** proposal whose exact `describe` read-back the user just heard. No free-form "tak, wyślij do Mamy" from ambient audio.
+4. Screen-off work rides the existing foreground service. No always-on mic in Phase 1.
+5. Fail closed: mic denial, no audio-capable model (unless labelled fallback), empty/clip failure, ambiguous confirmation, expired proposal, missing permission → spoken error + shade update, no side effect.
 
 ## Phase 1 — voice loop
 
@@ -39,80 +42,95 @@ The milestone:
 
 | Control | Behavior |
 | --- | --- |
-| In-app hold-to-talk | Existing mic affordance; while held, capture; on release, STT → submit |
-| Shade action "Talk" | Starts a timed listen window (e.g. 8 s, cancelable). Requires `microphone` FGS type for that window. Notification text: "Listening…" then "Heard: …" |
+| In-app hold-to-talk | Existing mic affordance; while held, capture; on release, run multimodal generate with the WAV |
+| Shade action "Talk" | Timed listen window (e.g. 8 s, cancelable). Requires `microphone` FGS for that window. Shade: "Listening…" → "Thinking…" (no third-party "Heard: …" STT line required) |
 | Hardware / headset PTT | Nice later; same listen session API |
-| Screen off | Works only while `ModelRuntimeService` is already foreground. User starts listen from the shade (or a prior in-app arm). No always-on mic |
+| Screen off | Only while `ModelRuntimeService` is already foreground; start listen from shade Talk or prior in-app arm |
 
-Listen window holds a partial wake lock and `FOREGROUND_SERVICE_TYPE_MICROPHONE` in addition to `specialUse`. Drop `microphone` the moment capture ends. Keep `mediaPlayback` only while TTS plays.
+Listen window: partial wake lock + `FOREGROUND_SERVICE_TYPE_MICROPHONE` on top of `specialUse`. Drop `microphone` when capture ends. Keep `mediaPlayback` only while audio plays.
 
-After the model replies (and after any tool outcome), TTS speaks a short answer. If a proposal is pending, TTS reads `ToolCoordinator.describe(request)` and prompts "Say yes to confirm, or no to cancel." A small on-device yes/no classifier (keyword list + optional STT of a short follow-up) calls `approve` / `reject`. Ambiguous audio rejects.
+### Audio capture, resampling, chunking / VAD
 
-### STT engine variants
+Reuse `RecordingController` / `AndroidMicrophone` contracts:
 
-| | A. `SpeechRecognizer` on-device | B. whisper.cpp (bundled GGUF/ggml) | C. Vosk |
-| --- | --- | --- | --- |
-| What | Platform recognizer with on-device preference (`EXTRA_PREFER_OFFLINE` / on-device speech recognition where available) | Same llama.cpp family stack; extra encoder weights in private storage | Lightweight offline ASR, separate native lib + language model pack |
-| Network | Often none when on-device pack is present; OEM-dependent; can fall back online unless forced offline | None | None |
-| Quality | Good for short commands on Pixel/stock; uneven on OEM skins; language packs are a user/system install | Strong multilingual; heavier RAM/CPU beside LFM3 | Decent command English; weaker free-form |
-| RAM fight with LFM3 | Low | High — risk of LMK while model resident | Medium |
-| Integration cost | Small; Intent/`SpeechRecognizer` API; no new NDK | Medium–large; another native decode path; model download UX | Medium; JNI + asset/model management |
-| F-Droid / Play | Platform API; no extra blobs | Large binary + weights; licensing of weights must be clean | Typically fine if models are free |
-| Screen-off / FGS | Works with mic FGS; some OEMs throttle recognizer when screen off | Fully under app control | Fully under app control |
-| **Recommendation** | **Phase 1 default**, with forced-offline where the API allows and a clear error if the on-device pack is missing | Spike only if A is unusable on target devices; do not ship beside a large LFM3 by default | Fallback candidate if A is flaky and whisper is too heavy |
-
-**Recommended:** Variant A for PTT commands and confirmation phrases. Keep B/C as documented retreats, not parallel engines in v1.
-
-### TTS
-
-Reuse or thin-wrap `PlaybackController`:
-
-| Option | Trade-off |
+| Item | Spec |
 | --- | --- |
-| **`TextToSpeech` (recommended)** | System voices, no extra weights, works under `mediaPlayback`. Quality and language vary by OEM |
-| LFM3 speech / bundled vocoder | Already have speech-generation paths in places; heavier, competes with text model |
-| Cloud TTS | Out of scope; breaks on-device story |
+| Capture | `AudioRecord`, `MIC`, **16 kHz**, mono, PCM16 LE |
+| Container | Private cache WAV (existing writer); delete after the turn finishes (today's cleanup rule) |
+| Resample | Capture stays 16 kHz. If a future projector documents a different native rate, resample **once** before `mtmd` ingest (libsamplerate or a small JNI resampler) — do not rely on Android `SpeechRecognizer` resampling |
+| Max length | Cap PTT (e.g. 15–30 s) so audio tokens + LFM3 fit RAM; existing `MAX_SAMPLES` is 60 s — tighten for voice-action turns |
+| VAD / chunking | **PTT release is the primary end-of-utterance.** Optional energy VAD only to trim leading/trailing silence after release (faster encode, fewer tokens). Do **not** stream overlapping Omni chunks mid-utterance in V1 — one WAV per turn |
+| Shade Talk timeout | End on silence (VAD) or hard timeout, whichever first; cancel drops the clip |
 
-Read-backs for confirmation must use the same exact `describe` string shown on the shade/sheet (escape control/bidi the same way). Do not paraphrase with the LLM for the confirm prompt — paraphrasing can drift from the approved arguments.
+### Multimodal path (`mtmd`)
 
-### Wake word (later, not Phase 1)
+Already wired in `native.cpp`: load GGUF + matching `mmproj` → `mtmd_init_from_file` → on generate, `mtmd_helper_bitmap_init_from_file` for each media path → `mtmd_tokenize` with `<__media__>` markers → `mtmd_helper_eval_chunks` → text decode.
 
-| | PTT (Phase 1) | Always-on wake word (later) |
+Voice-action turn:
+
+1. Write WAV; attach as `VOICE_RECORDING`.
+2. Build chat prompt with tool card + one `<__media__>` for the clip (Polish or English spoken content — Omni handles both; no separate language pack).
+3. Single `generateWithMedia` → stream text → `ModelToolBridge` → optional `propose`.
+4. Optional: persist a short user-visible transcript only if the model emits one or a cheap secondary "ASR-only" pass is requested for history — **not** required to authorize tools. Prefer answering from audio in one pass (avoids today's double Omni cost: ASR then reply).
+
+**Fallback (labelled, only if loaded model has no audio input):** if there is no multimodal projector, or `mtmd` cannot ingest audio for this pair, show/speak a clear status ("This model cannot hear audio — load an LFM3-Omni GGUF with matching mmproj") and disable Talk / PTT for actions. Do **not** silently switch to `SpeechRecognizer`, Whisper, or Vosk. Text RemoteInput Ask remains available.
+
+### Latency and memory (phone)
+
+| Budget | Guidance |
+| --- | --- |
+| RAM | One Omni + mmproj only. No second ASR network. Idle residency unchanged; audio encode + KV for the clip is the spike |
+| Threads | Stay within existing 1–8 inference thread setting; do not pin max during mic capture |
+| Latency | Dominated by audio tokenize/eval then first text token. Trim silence; short tool-oriented replies; cap confirm clips to ~2 s |
+| Thermal | Same ladder as background-mode; cancel listen at `SEVERE`+ |
+| Concurrent speech out | Do not run `generateSpeech` while an audio-in generate holds `decode_mutex`; serialize (reply text first, then speech, or stream speech only after tool resolve) |
+
+Measure on ARM64 Omni (existing probe protocol); treat x86_64 emulator Omni as wiring proof only.
+
+### Speech output (audio-out vs Polish system TTS)
+
+| Option | When |
+| --- | --- |
+| **Omni `generateSpeech` (recommended when available)** | Loaded pair reports `gen_audio` (`mtmd_gen_audio_get_info` ≠ none). Use `SpeechPrompt.tts(..., "pl" or "en", voice)` for replies and for confirmation read-backs of the **exact** `ToolCoordinator.describe` string (do not LLM-paraphrase the action) |
+| **Fallback: Android `TextToSpeech` with a Polish voice** | Clearly labelled in Settings/status when Omni has no `gen_audio`, or speech generation fails. Prefer a installed `pl` voice; if missing, say so and fall back to English TTS or shade-only text — still never invent a cloud TTS path |
+| Cloud TTS | Out of scope |
+
+`docs/VOICE_OUTPUT.md` today rejects system TTS; voice-actions **amends** that for the no-`gen_audio` case only. Omni audio-out remains the default when the model can speak.
+
+### Wake word vs PTT
+
+| | PTT (Phase 1) | Always-on wake word |
 | --- | --- | --- |
-| Mic | Only while user arms listen | Continuous or duty-cycled |
-| FGS | `microphone` for short windows | Harder Play story; battery; OEM kill |
-| False triggers | Near zero | Real; must not authorize tools |
-| **Choice** | **Ship PTT** | Explicit later milestone; still cannot skip confirm |
+| Mic | Only while armed | Continuous |
+| Cost | One Omni turn per press | Extra detector + false triggers |
+| **Choice** | **Ship PTT** | Later; still cannot skip confirm |
 
 ### Small-model tool format (LFM3)
 
-Keep one strict JSON object, same `ToolRegistry` / `StrictToolJson` limits. Voice does not loosen parsing.
+Keep one strict JSON object (`ToolRegistry` / `StrictToolJson`). Audio-in does not loosen parsing.
 
 | Prompt approach | Trade-off |
 | --- | --- |
-| **Short tool card in system/preamble (recommended)** | List only enabled tools + one example object; instruct "output either a normal reply or exactly one JSON tool object, never both mixed in prose" |
-| Few-shot multi-example | Better recall, burns context (512–8192 budget) |
-| Free-form then scrape | Forbidden — already rejected by design |
-| Separate "voice command" grammar outside the LLM | Fast for timers ("set timer five minutes") but duplicates NLU; optional fast-path later for SAFE clock intents only, still via `propose` |
+| **Short tool card (recommended)** | Enabled tools + one example; "reply in the user's language (Polish or English) or emit exactly one JSON tool object" |
+| Few-shot multi-example | Better recall, burns context |
+| Free-form then scrape | Forbidden |
+| Separate non-Omni command grammar | Out of path — would reintroduce a parallel NLU stack |
 
-**Recommended:** short tool card; no prose scrape; optional later keyword fast-path for `set_timer` / `set_alarm` that still goes through the coordinator.
+Confirmation after read-back: short PTT/confirm listen → Omni audio (or tiny confirm prompt) → match closed lexicon — **do not** ask the model "czy użytkownik zatwierdził?".
 
-Confirmation phrases: match a tiny closed set (`yes`, `confirm`, `no`, `cancel`, plus a few locales you actually ship). Do not ask LFM3 to interpret the confirm utterance.
+**Confirm lexicon (Polish + English):** approve: `tak`, `tak.`, `potwierdzam`, `yes`, `yep`, `confirm`; reject: `nie`, `nie.`, `anuluj`, `no`, `cancel`, `nope`. Case-fold, strip punctuation. Ambiguous → reject (optional one re-prompt).
 
 ```mermaid
 flowchart LR
-  PTT[PTT / Talk] --> STT[On-device STT]
-  STT --> Submit[ChatSession.submit user text]
-  Submit --> Gen[LFM3 generate]
-  Gen --> Bridge[ModelToolBridge]
-  Bridge -->|no tool| TTS[TTS reply]
+  PTT[PTT / Talk] --> WAV[16 kHz WAV + optional VAD trim]
+  WAV --> Omni[LFM3-Omni mtmd audio-in]
+  Omni --> Bridge[ModelToolBridge]
+  Bridge -->|no tool| Speak[Omni speech or pl TTS fallback]
   Bridge -->|tool JSON| Propose[propose MODEL_PROPOSAL]
-  Propose --> Readback[TTS read-back describe]
-  Readback --> YesNo[Short STT yes/no]
-  YesNo -->|yes| Approve[approve id]
-  YesNo -->|no / ambiguous| Reject[reject id]
-  Approve --> TTS
-  Reject --> TTS
+  Propose --> Readback[Speak exact describe]
+  Readback --> Confirm[Short audio-in]
+  Confirm -->|tak / yes| Approve[approve id]
+  Confirm -->|nie / no / ambiguous| Reject[reject id]
 ```
 
 ## Action set
@@ -127,15 +145,15 @@ Every new power is a typed `ToolRegistry` row (or a read-only **context provider
 | --- | --- | --- |
 | Timer (exists) | `AlarmClock.ACTION_SET_TIMER` | `SET_ALARM`; opens clock UI; app cannot verify creation |
 | Alarm (exists) | `AlarmClock.ACTION_SET_ALARM` | Same |
-| Reminder via notification | `Notification` + `WorkManager` / `AlarmManager` exact optional | `POST_NOTIFICATIONS`; exact alarms need `SCHEDULE_EXACT_ALARM` or `USE_EXACT_ALARM` (policy-sensitive). Prefer inexact + WorkManager for soft reminders |
-| Reminder via calendar | `CalendarContract` event/reminder | See calendar section; heavier |
+| Reminder via notification | `Notification` + `WorkManager` / `AlarmManager` exact optional | `POST_NOTIFICATIONS`; prefer inexact + WorkManager; exact needs `SCHEDULE_EXACT_ALARM` / `USE_EXACT_ALARM` (policy-sensitive) |
+| Reminder via calendar | `CalendarContract` | See calendar; heavier |
 
 **Tool schemas (model-visible)**
 
 ```json
-{"tool":"set_timer","arguments":{"seconds":300,"label":"Tea"}}
-{"tool":"set_alarm","arguments":{"hour":7,"minute":0,"label":"Wake"}}
-{"tool":"set_reminder","arguments":{"when_epoch_sec":1731780000,"title":"Call dentist","body":""}}
+{"tool":"set_timer","arguments":{"seconds":300,"label":"Herbata"}}
+{"tool":"set_alarm","arguments":{"hour":7,"minute":0,"label":"Pobudka"}}
+{"tool":"set_reminder","arguments":{"when_epoch_sec":1731780000,"title":"Zadzwoń do dentysty","body":""}}
 ```
 
 - `set_timer` / `set_alarm`: keep current validation.
@@ -145,15 +163,15 @@ Every new power is a typed `ToolRegistry` row (or a read-only **context provider
 
 | Tool | Risk | Voice confirm |
 | --- | --- | --- |
-| `set_timer` | `SAFE` (today) | Optional read-back still recommended for voice so the user hears the duration; shade Approve allowed when description fits |
-| `set_alarm` | `CONFIRM` | Required read-back + yes |
-| `set_reminder` | `CONFIRM` | Required; fires a notification the user will see later |
+| `set_timer` | `SAFE` (today) | Spoken read-back still recommended (duration); shade Approve OK when description fits |
+| `set_alarm` | `CONFIRM` | Exact describe + tak/nie |
+| `set_reminder` | `CONFIRM` | Exact describe + tak/nie |
 
-**Variant:** reminder as calendar event vs local notification. **Recommended:** local notification + WorkManager first (no calendar permission). Offer calendar-backed reminders only after calendar tools ship and the user enabled calendar write.
+**Variant:** reminder as calendar event vs local notification. **Recommended:** notification + WorkManager first (no calendar permission). Calendar-backed reminders after calendar tools + user-enabled write.
 
-**Failure modes:** no clock app; background `startActivity` blocked (must approve from shade/sheet that brings UI forward); exact-alarm denied → fall back to inexact and say so; notification permission denied → fail closed; device reboot before WorkManager runs → rely on WM persistence, test boot.
+**Failure modes:** no clock app; background `startActivity` blocked; exact-alarm denied → inexact + spoken notice; notification permission denied → fail closed; reboot before WM runs → rely on WM persistence.
 
-**Tests (meaningful):** JVM schema bounds for `set_reminder`; coordinator risk; fake `AlarmManager`/`WorkManager` that records scheduled time/title; instrumentation: approve path posts notification with exact title; reject/expiry schedule nothing; voice yes/no harness with injected transcript (no emulator ASR required).
+**Tests:** JVM schema bounds; coordinator risk; fake WM records time/title; approve posts exact title; reject/expiry schedules nothing; confirm lexicon (tak/nie/yes/no) with injected transcripts — no emulator ASR.
 
 ### 2) Sending messages (SMS / WhatsApp / etc.)
 
@@ -161,41 +179,32 @@ Every new power is a typed `ToolRegistry` row (or a read-only **context provider
 
 | Approach | API | Permissions | Play / F-Droid |
 | --- | --- | --- | --- |
-| **A. Draft via intent (recommended)** | `ACTION_SEND` / `ACTION_SENDTO` (`smsto:`, WhatsApp/Telegram package-targeted share) | None beyond what the target app asks; no `SEND_SMS` | Friendly. User finishes in the other app unless you only pre-fill |
-| B. `SmsManager` send | `SmsManager.sendTextMessage` | `SEND_SMS`; SMS permissions are heavily scrutinized on Play; F-Droid more tolerant but still user-hostile if surprising | Play: default SMS handler / restricted; declare use. Prefer sideload-only if ever |
-| C. WhatsApp without UI | No public send API | Would need accessibility or undocumented tricks | Out of scope |
+| **A. Draft via intent (recommended)** | `ACTION_SEND` / `ACTION_SENDTO` (`smsto:`, package-targeted share) | No `SEND_SMS` | Friendly |
+| B. `SmsManager` send | `SmsManager.sendTextMessage` | `SEND_SMS`; Play-restricted | Prefer sideload-only if ever |
+| C. WhatsApp without UI | No public send API | Accessibility / undocumented | Out of scope |
 
-**Recommended path:** always **draft → TTS read-back of recipient + body → explicit yes → launch send UI or, only if a future opt-in "send SMS directly" is enabled and Play policy allows, `SmsManager`.** Phase 1 of messaging: intents only; Hanami never silently sends.
+**Recommended:** draft → speak exact recipient + body → tak/nie → open composer intent. No silent send. No `SEND_SMS` in the default product.
 
 **Tool schemas**
 
 ```json
-{"tool":"draft_message","arguments":{"channel":"sms","to":"+15551212","body":"Running 10 minutes late"}}
-{"tool":"draft_message","arguments":{"channel":"share","package":"com.whatsapp","body":"On my way","to":""}}
+{"tool":"draft_message","arguments":{"channel":"sms","to":"+48500111222","body":"Spóźnię się 10 minut"}}
+{"tool":"draft_message","arguments":{"channel":"share","package":"com.whatsapp","body":"Już idę","to":""}}
 {"tool":"send_message","arguments":{"draft_id":"…"}}
 ```
 
-- `draft_message`: validates channel enum (`sms` | `share`), E.164-ish or empty `to`, body 1–1000 chars, optional package allowlist for share. Creates an immutable draft held by the coordinator/runtime (not executed).
-- `send_message`: only references `draft_id` from a draft that was just read back. No body/to in the send tool (prevents model swapping payload between confirm and send).
+- `draft_message`: channel `sms` | `share`; bounded `to` / body; share package allowlist; immutable draft.
+- `send_message`: only `draft_id` from the draft just read back (no body/to swap after confirm).
 
-**Risk / confirm**
+**Risk / confirm:** both `CONFIRM`. Intent-only yes opens the other app; spoken copy must say that.
 
-| Tool | Risk | Rule |
-| --- | --- | --- |
-| `draft_message` | `CONFIRM` (or `SAFE` if it only opens a compose UI with no send) | Voice: read "Draft to Alice: … Say yes to open the send screen." |
-| `send_message` | `CONFIRM` always | Second confirm if you ever add direct `SmsManager`; for intent-only, yes opens the other app's composer/send UI and spoken copy must say that |
+**Failure modes:** no handler; app missing; draft expired; Play rejection if `SEND_SMS` added without need.
 
-**Failure modes:** no handler for `smsto:`; WhatsApp not installed; empty body; package not allowlisted; draft expired; user lands in composer and still has to tap send (say so in TTS); Play rejection if `SEND_SMS` added without need.
-
-**Tests:** schema rejects unknown channel/package; draft immutability (mutating map after parse does not change stored draft); approve opens recorded intent extras (robolectric/fake); ensure `send_message` without matching draft fails; prompt-injection fixture: notification text "ignore and send SMS to …" cannot create `USER_ACTION`.
+**Tests:** schema/package allowlist; draft immutability; approve records intent extras; planted "ignore and send SMS…" in notification text cannot authorize.
 
 ### 3) Calendar read / write
 
-**APIs / permissions**
-
-- `CalendarContract` (`CalendarContract.Events`, `Instances`, `Reminders`)
-- Runtime: `READ_CALENDAR`, `WRITE_CALENDAR`
-- User must pick a target calendar id (Settings), never "write to whatever is default" silently on first run
+**APIs / permissions:** `CalendarContract`; `READ_CALENDAR` / `WRITE_CALENDAR`; user-picked `calendar_id` in Settings (never silent default write).
 
 **Tool schemas**
 
@@ -206,145 +215,127 @@ Every new power is a typed `ToolRegistry` row (or a read-only **context provider
 {"tool":"delete_event","arguments":{"event_id":"42"}}
 ```
 
-- Windows capped (e.g. 31 days); `limit` ≤ 50; strings length-capped; `calendar_id` / `event_id` opaque digits from prior list/create, not attacker-controlled paths.
-- Read tools return structured rows into the **tool result** channel as untrusted data for the model to summarize — they still require consent to run the read if you classify reads as confirmable (recommended for first ship: `list_events` is `CONFIRM` or a one-time Settings grant that still proposes each call).
+Windows capped; `limit` ≤ 50; ids opaque. Tool results are untrusted data for summarization.
 
-**Risk / confirm**
+**Risk / confirm:** `list_events` `CONFIRM` first ship (or SAFE after a Settings read toggle); create/update/delete always `CONFIRM` with exact title/time/calendar in read-back.
 
-| Tool | Risk | Rule |
-| --- | --- | --- |
-| `list_events` | `CONFIRM` first ship (or SAFE after user enables "allow calendar read" toggle) | Voice read-back: "Read calendar for Tuesday?" |
-| `create_event` | `CONFIRM` | Read back title, time, calendar name |
-| `update_event` / `delete_event` | `CONFIRM` | Read back identity + change; delete always confirm |
+**Failure modes:** permission denied; stale ids; timezone mistakes (device default zone in read-back).
 
-**Failure modes:** permission denied; empty calendar list; stale `event_id`; timezone confusion (store/display in device default zone, say the zone in read-back); sync adapters overwrite; all-day vs timed mistakes.
-
-**Tests:** JVM validators for window/limit; fake `ContentResolver` returns fixtures; delete without confirm never hits provider; voice read-back string includes title and local time; permission revoke between propose and approve → `PERMISSION_DENIED`.
+**Tests:** validators; fake `ContentResolver`; revoke between propose and approve → `PERMISSION_DENIED`.
 
 ### 4) Reading and summarizing notifications
 
-This is a **context provider**, not a free-form action authorizer.
+Context provider, not an authorizer.
 
-**APIs / permissions**
-
-- `NotificationListenerService` + user enable in system Settings (`BIND_NOTIFICATION_LISTENER_SERVICE`)
-- In-app **per-app allowlist** (default empty / deny). Master toggle default **off**
-- Optional: `POST_NOTIFICATIONS` unrelated (posting our own)
-
-**Tool / context schema**
+**APIs:** `NotificationListenerService` + system enable; in-app per-app allowlist (default empty); master toggle default **off**.
 
 ```json
 {"tool":"list_notifications","arguments":{"limit":20,"package":""}}
 ```
 
-- Returns package, title, text, when — only for allowlisted packages.
-- No tools like `tap_notification` / `dismiss_notification` in this phase (dismiss can be a later `CONFIRM` tool).
+**Risk:** `CONFIRM` (or SAFE after toggle + non-empty allowlist). Returned text is `DOCUMENT`-class — planted tool JSON must create zero proposals (regression test).
 
-**Risk / confirm**
-
-| Tool | Risk | Rule |
-| --- | --- | --- |
-| `list_notifications` | `CONFIRM` or SAFE after master toggle + non-empty allowlist | User asked; still propose so the shade shows "Read notifications from Gmail, Signal (12)?" |
-
-**Hard rule:** returned notification text is `DOCUMENT`-class (or feed only as tool-result content with the same untrusted treatment as SearXNG). The generate path must not parse tool JSON out of that text for authorization. Add a regression test that plants `{"tool":"set_alarm",...}` inside a fake notification body and asserts no proposal.
-
-**Failure modes:** listener not enabled in system settings; allowlist empty; OEM hides sensitive notification content on lock screen (respect; do not demand extras); service unbound on reboot until user re-enables; large text truncation.
-
-**Tests:** allowlist filter unit test; unbound service → clear error; planted tool JSON in notification text → zero proposals; limit/truncation; disable master toggle mid-flight fails closed.
+**Failure modes:** listener disabled; empty allowlist; lock-screen redaction; reboot unbind.
 
 ## Voice confirmation protocol
 
-1. Model emits tool JSON → `propose` → pending id (existing).
-2. Shade shows describe; TTS speaks describe + "Yes or no?"
-3. Arm a short confirm listen (STT or keyword spotter).
-4. Match closed lexicon → `approve(id)` / `reject(id)`.
-5. Anything else → `reject` (or re-prompt once, then reject). Never ask LFM3 "did they mean yes?".
-6. Proposal expiry: keep the longer shade hold from background-mode (10 minutes) for voice-pending confirms; if TTS read-back is mid-flight, do not expire until read-back finishes plus confirm window.
-
-`SAFE` tools may still use spoken read-back for voice sessions even when the shade would allow one-tap Approve — hearing the timer length prevents "I said five, it heard fifty."
+1. Model emits tool JSON → `propose` → pending id.
+2. Shade shows `describe`; speak that **exact** string (Omni speech or pl TTS fallback) + "Tak czy nie?" / "Yes or no?".
+3. Short confirm listen → Omni audio-in → closed **tak/nie + yes/no** lexicon → `approve` / `reject`.
+4. Ambiguous → reject (or one re-prompt). Never ask LFM3 whether they meant yes.
+5. Expiry: shade hold (10 minutes from background-mode); do not expire mid read-back or during the confirm window.
 
 ## Platform: screen off and mic FGS
 
-Extend `ModelRuntimeService` types:
+- Idle / generating: `specialUse` (today)
+- Playing Omni/TTS audio: add `mediaPlayback`
+- **PTT listening:** add `microphone` only for capture; manifest `FOREGROUND_SERVICE_MICROPHONE`
 
-- Idle resident: `specialUse` (today)
-- Generating: `specialUse` (+ wake lock today)
-- TTS playing: add `mediaPlayback` (today)
-- **PTT listening:** add `microphone` only for the capture window; manifest `FOREGROUND_SERVICE_MICROPHONE`; Play declaration video shows user tapping Talk
-
-Android 12+ cannot start a mic FGS from the background arbitrarily. Talk must be started from a notification action `PendingIntent` or a started activity. That matches shade "Talk".
-
-Cancel listen on: Stop, Unload, timeout, focus loss, and thermal `SEVERE`+.
+Android 12+: start mic FGS from notification `PendingIntent` or a started activity (shade Talk). Cancel listen on Stop, Unload, timeout, focus loss, thermal `SEVERE`+.
 
 ## Phased rollout
 
 | Phase | Scope | Done when |
 | --- | --- | --- |
-| **V0 — Plan** | This document | Merged as draft design |
-| **V1 — Voice loop** | PTT + SpeechRecognizer offline preference + TTS reply + spoken confirm for existing tools; mic FGS window; shade Talk | Screen off, model loaded: Talk → hear question → hear answer; pending alarm reads back and yes/no works with injected transcripts |
-| **V2 — Clock complete** | `set_reminder` via notification/WorkManager; tighten timer/alarm spoken UX | Reminder fires after process death; no calendar permission required |
-| **V3 — Messages** | `draft_message` + intent launch; no `SEND_SMS` | Draft read-back then opens SMS/WhatsApp composer |
-| **V4 — Calendar** | list/create/update/delete with Settings calendar pick | Permission revoke and stale ids covered by tests |
+| **V0 — Plan** | This document | Merged as design |
+| **V1 — Voice loop** | PTT → Omni `mtmd` audio-in → tool bridge → Omni speech (pl/en) or labelled TTS fallback; spoken tak/nie confirm; mic FGS; shade Talk | Screen off + Omni loaded: Polish Talk turn works; alarm read-back + tak/nie with injected confirm text; text-only GGUF disables Talk with clear message |
+| **V2 — Clock complete** | `set_reminder` via notification/WorkManager | Reminder survives process death |
+| **V3 — Messages** | `draft_message` + intent; no `SEND_SMS` | Draft read-back opens composer |
+| **V4 — Calendar** | list/create/update/delete + calendar pick | Permission revoke / stale ids tested |
 | **V5 — Notification summarize** | Listener + allowlist + `list_notifications` | Planted tool JSON cannot authorize; default off |
-| **V6 — Optional** | whisper/Vosk retreat if A fails; wake word; direct SMS opt-in; dismiss notification | Only with explicit product yes |
+| **V6 — Default assistant** | `RoleManager.ROLE_ASSISTANT` / `VoiceInteractionService`; long-press power (or assistant gesture) opens a Hanami voice session against the resident Omni | Role granted in Settings; cold start still loads GGUF if not resident; **confirm rules unchanged**; not a control channel for other apps |
+| **V7 — Optional** | Wake word; direct SMS opt-in flavor; dismiss-notification tool | Explicit product yes |
 
-Do not block V1 on new tools — existing timer/alarm/flashlight already exercise confirm + TTS.
+Do not block V1 on new tools — existing timer/alarm/flashlight exercise confirm + speech.
+
+## Next after voice
+
+**GPU / NPU acceleration.** Today's native load is CPU-only (`n_gpu_layers = 0`). After the voice loop is solid, evaluate llama.cpp backends that actually build and run on shipping phones: **Vulkan** first (widest Android GPU story, measurable prefills for Omni audio+text), then **OpenCL** where vendor drivers are less broken than Vulkan, and treat **Qualcomm Hexagon / QNN-style NPU** as a separate, SoC-specific spike — not a default dependency for F-Droid/GitHub universal APKs. Success metric is wall-clock time to first token on a fixed Omni+mmproj pair and thermal headroom during a PTT turn, with a clean CPU fallback when the backend fails to init.
+
+**Memory and summarization.** Long voice sessions will blow the 512–8192 context budget and RSS. Add an explicit, user-visible summarize-and-compact step (model-authored rolling summary replacing older turns in the live prompt, full transcript still in Room) plus keep trim/thermal unload from background-mode. Do not silently drop user audio attachments the user may still need for history playback.
+
+**Local document chat.** Let the user attach on-device PDFs/text (SAF) into the same consent-gated chat: chunk, embed or window into the prompt, cite filenames in answers. Document bytes are `DOCUMENT`-class — they may inform the reply and must never authorize tools (same injection rule as notifications). Defer RAG index complexity until a single-file / few-file path proves useful under Omni RAM limits.
 
 ## Out of scope (explicit)
 
-- Accessibility-service UI automation (tap Send, drive arbitrary apps)
-- Always-on wake word / assistant role as the first mic story
-- External devices, LAN bind, Wear PTT (loopback remains text-only, still cannot approve)
-- Cloud STT/TTS as the default path
+- Accessibility-service UI automation
+- Always-on wake word as the first mic story (assistant role is V6, still PTT/session based)
+- External devices / LAN bind / Wear (loopback stays text-only, cannot approve)
+- **Separate STT stacks:** `SpeechRecognizer`, whisper.cpp, Vosk (including as silent fallback)
+- Cloud STT/TTS
 - Scraping tool calls from notification or message text
 - `SmsManager` silent send in the default build
-- Shell bridge, arbitrary intents, or model-supplied action strings
-- Auto-grant tools for the voice session ("voice means trusted")
-- Emulator-based ASR quality gates as merge blockers (use injected transcripts)
+- Shell bridge, arbitrary intents, model-supplied action strings
+- Auto-grant tools for the voice session
+- Emulator ASR quality gates as merge blockers (inject audio fixtures / confirm text)
 
 ## Risks
 
-- **OEM SpeechRecognizer offline gaps.** Mitigation: detect failure, speak "On-device speech not available", link to system voice settings; keep whisper/Vosk as retreat.
-- **RAM:** mic + TTS + LFM3. Mitigation: no second ASR neural net in V1; short listen windows; unload policy unchanged.
-- **Play mic + specialUse scrutiny.** Mitigation: GitHub Releases first; declarations and short demo video when Play matters.
-- **Confirmation spoofing via loud media.** Mitigation: closed lexicon, short window, require Talk/PTT for confirm (not open mic), reject on ambiguity.
-- **Background activity starts for clock/SMS intents.** Mitigation: run handler from approval UI or notification-provided foreground start, same as today's open-app tools.
-- **Policy on SMS and notification listener.** Mitigation: intents-first messaging; listener default off + allowlist.
+- **Omni audio latency / RAM on mid phones.** Mitigation: silence trim, short caps, one-pass audio→reply, serialize speech-out, measure on ARM64.
+- **Text-only GGUF loaded.** Mitigation: labelled disable of Talk; RemoteInput remains.
+- **Polish TTS gaps on OEM system voices.** Mitigation: prefer Omni `gen_audio` with `pl`; system TTS only when labelled; shade text always shows describe.
+- **Confirm spoofing.** Mitigation: closed lexicon, short window, armed listen only, ambiguous → reject.
+- **Play mic + specialUse + later ROLE_ASSISTANT scrutiny.** Mitigation: GitHub Releases first; declarations/videos when Play matters; assistant role does not bypass consent.
+- **Background activity starts for clock/SMS.** Mitigation: run from approval UI / notification foreground start.
+- **SMS / notification-listener policy.** Mitigation: intents-first messaging; listener default off + allowlist.
 
 ## Open decisions
 
-Recommended defaults if you do not override them:
+Locked or recommended defaults:
 
-1. **STT.** Recommended: platform `SpeechRecognizer` preferring on-device. Override: Vosk if OEMs fail; whisper.cpp only after a RAM budget spike.
-2. **PTT vs wake word.** Recommended: PTT / shade Talk only in V1. Override: wake word as a separate project.
-3. **TTS.** Recommended: `TextToSpeech` + existing `PlaybackController` focus path. Override: on-device neural TTS later.
-4. **Confirm UX.** Recommended: always spoken read-back in voice sessions; ambiguous → reject. Override: re-prompt twice before reject.
-5. **Reminders.** Recommended: notification + WorkManager before calendar. Override: calendar-only reminders.
-6. **Messaging.** Recommended: draft + intent; no `SEND_SMS` in default product. Override: direct SMS as sideload/F-Droid flavor with extra confirm.
-7. **Calendar reads.** Recommended: `CONFIRM` each `list_events` until a Settings "allow reads this session" exists. Override: SAFE after master toggle.
-8. **Notification listener.** Recommended: default off, empty allowlist, summarize-on-request only. Override: broader defaults (not advised).
-9. **LFM3 tool prompt.** Recommended: short tool card, one JSON object, no prose scrape. Override: larger few-shot if tool recall is poor on small quantizations.
-10. **Mic after leave.** Recommended: allow only via shade Talk / armed PTT under mic FGS; keep cancelling ambient capture when chat stops. Override: continuous listen (out of scope).
+1. **Speech in.** **Locked:** LFM3 multimodal audio-in (`mtmd`). No SpeechRecognizer / whisper / Vosk primary path.
+2. **No-audio model.** **Locked:** disable voice-action mic with a clear message; text Ask still works.
+3. **Speech out.** Recommended: Omni `generateSpeech` when `gen_audio` exists; labelled system TTS with Polish voice otherwise.
+4. **PTT vs wake word.** Recommended: PTT / shade Talk in V1; wake word later.
+5. **Confirm UX.** Recommended: exact describe read-back; tak/nie + yes/no; ambiguous → reject.
+6. **Reminders.** Recommended: notification + WorkManager before calendar.
+7. **Messaging.** Recommended: draft + intent; no default `SEND_SMS`.
+8. **Calendar reads.** Recommended: `CONFIRM` each list until a Settings toggle exists.
+9. **Notification listener.** Recommended: default off, empty allowlist, summarize-on-request.
+10. **LFM3 tool prompt.** Recommended: short tool card; one JSON object; no prose scrape.
+11. **Default assistant role.** Recommended: V6 after V1–V5; still consent-gated; residency expected for acceptable latency.
 
 ## Meaningful test plan (not coverage filler)
 
 | Layer | What to prove |
 | --- | --- |
-| JVM STT session state | Idle → listening → transcribed → cancelled/timeout; mic type flag set only while listening |
-| JVM confirm matcher | yes/no/locale variants; garbage → reject; empty → reject |
-| Tool schemas | New tools' bounds; unknown keys; immutability |
-| Coordinator | Voice path still `MODEL_PROPOSAL`; approve once; expiry; permission revoke |
-| Injection | Notification/SMS/calendar text containing tool JSON creates no proposal |
-| Fake clock/WM/SMS intent/Calendar provider | Side effects recorded only after approve |
-| Instrumentation (device, when harness exists) | Shade Talk starts listen with FGS mic type; screen off + Talk still submits; no emulator ASR dependency — inject final hypothesis string |
+| JVM listen session | Idle → listening → WAV ready → cancelled/timeout; mic FGS flag only while listening; silence trim bounds |
+| Confirm lexicon | tak/nie/potwierdzam/yes/no/cancel; garbage → reject; empty → reject |
+| Native/Omni wiring | Existing media path accepts 16 kHz WAV; no-audio model returns labelled error (fake engine + one ARM64 probe) |
+| Tool schemas / coordinator | New tools; voice path still `MODEL_PROPOSAL`; approve once; expiry; permission revoke |
+| Injection | Notification/SMS/calendar text with tool JSON → zero proposals |
+| Fake clock/WM/SMS/Calendar | Side effects only after approve |
+| Instrumentation | Shade Talk + screen off submits audio turn with FGS mic type; inject WAV fixture / confirm text — no SpeechRecognizer dependency |
 
 ## References
 
 - Background mode / FGS / consent: [`background-mode.md`](background-mode.md)
 - Tool contract: [`ANDROID_TOOLS.md`](../ANDROID_TOOLS.md)
-- SpeechRecognizer: https://developer.android.com/reference/android/speech/SpeechRecognizer
-- On-device speech recognition: https://developer.android.com/reference/android/speech/SpeechRecognizer#on-device-speech-recognition
+- Local speech out (Omni): [`VOICE_OUTPUT.md`](../VOICE_OUTPUT.md)
+- ARM64 Omni evidence: [`ARM64_OMNI_TEST_PROTOCOL.md`](../ARM64_OMNI_TEST_PROTOCOL.md)
 - FGS microphone type: https://developer.android.com/develop/background-work/services/fgs/service-types
+- RoleManager assistant: https://developer.android.com/reference/android/app/role/RoleManager
+- VoiceInteractionService: https://developer.android.com/reference/android/service/voice/VoiceInteractionService
 - AlarmClock: https://developer.android.com/reference/android/provider/AlarmClock
 - CalendarContract: https://developer.android.com/reference/android/provider/CalendarContract
 - NotificationListenerService: https://developer.android.com/reference/android/service/notification/NotificationListenerService
