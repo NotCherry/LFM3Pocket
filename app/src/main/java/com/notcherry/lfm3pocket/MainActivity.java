@@ -178,11 +178,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         super.attachBaseContext(InterfaceSize.wrap(newBase));
     }
 
-    @Override public void onSaveInstanceState(Bundle outState) {
-        super.onSaveInstanceState(outState);
-        outState.putBoolean("settings_open", settingsOpen);
-    }
-
     @Override protected void onResume() {
         super.onResume();
         InterfaceSize.recreateIfChanged(this, attachedInterfaceScale);
@@ -670,14 +665,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         cameraButton.setOnClickListener(v -> takePhoto());
         recordButton.setOnClickListener(v -> toggleRecording());
         speakButton.setOnClickListener(v -> toggleSpokenReply());
-        boolean openSettings = getIntent() != null && getIntent().getBooleanExtra(EXTRA_OPEN_SETTINGS, false);
-        if (state != null && state.getBoolean("settings_open", false)) openSettings = true;
-        if (openSettings) setSettingsOpen(true);
+        // Keep Settings open across interface-size recreate via EXTRA_OPEN_SETTINGS only.
+        // Do not persist settings_open in savedInstanceState — InferenceSettingsE2eTest and
+        // other recreate paths expect to return to chat after scenario.recreate().
+        if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) {
+            setSettingsOpen(true);
+        }
         applyDraft(getIntent());
     }
 
     private void setSettingsOpen(boolean open) {
         settingsOpen = open;
+        if (!open && getIntent() != null) {
+            // Interface-size recreate sets EXTRA_OPEN_SETTINGS; clear it when the user leaves
+            // Settings so a later scenario.recreate() returns to chat.
+            getIntent().removeExtra(EXTRA_OPEN_SETTINGS);
+        }
         if (settingsHost != null) settingsHost.setVisibility(open ? View.VISIBLE : View.GONE);
         if (chatShell != null) chatShell.setVisibility(open ? View.GONE : View.VISIBLE);
         if (settingsOpenButton != null) settingsOpenButton.setVisibility(open ? View.GONE : View.VISIBLE);

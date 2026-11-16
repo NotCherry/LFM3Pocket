@@ -256,7 +256,18 @@ public final class TextReadableAtScaleE2eTest {
                     new Intent(context, MainActivity.class)
                             .putExtra(MainActivity.EXTRA_OPEN_SETTINGS, true))) {
                 assertNotNull(device.wait(Until.findObject(By.res(pkg, "model_configuration_scroll")), WAIT));
-                // Wait for the Compose model manager to bind selection text, then assert view chrome.
+                // Appearance section sits under the model manager; scroll so Compose text is bound
+                // into the hierarchy even at fontScale 2.0.
+                try {
+                    androidx.test.uiautomator.UiScrollable scroll =
+                            new androidx.test.uiautomator.UiScrollable(
+                                    new androidx.test.uiautomator.UiSelector()
+                                            .resourceId(pkg + ":id/model_configuration_scroll"));
+                    scroll.setAsVerticalList();
+                    scroll.scrollToBeginning(20);
+                    scroll.scrollIntoView(new androidx.test.uiautomator.UiSelector().textContains("Model:"));
+                } catch (Exception ignored) {
+                }
                 assertNotNull("model manager bound @" + scale,
                         device.wait(Until.findObject(By.textContains("Model:")), WAIT));
                 AtomicReference<String> failure = new AtomicReference<>();
