@@ -244,17 +244,33 @@ Do **not**:
 
 ---
 
-## 11. Implementation checklist (for PR authors)
+## 11. Accessibility, font scale, and i18n
+
+Stillwater chrome must stay readable when the user enlarges text or display size, and when copy is longer (Polish). Prefer wrapping and flexible heights over shrinking text.
+
+| Rule | Detail |
+| --- | --- |
+| Text size unit | Use **sp** for readable copy (View `setTextSize` / Compose `.sp`). Never size body or labels in **dp**. |
+| Control height | Prefer `WRAP_CONTENT` with a **`minHeight`** floor. Do not hard-code fixed `dp` heights on buttons that can wrap. |
+| Side-by-side rows | Keep import / open / idle / media rows **horizontal** on typical phone widths (~360–411dp) at default font. Stack to a column when `fontScale ≥ 1.3` or width &lt; **320dp** (`StillwaterReadable`). |
+| Truncation | Do not ellipsize chrome labels (buttons, section titles). Dynamic previews (history snippets, long paths) may use bounded `maxLines` + ellipsis. |
+| Locales | Ship **English** (`values/`) and **Polish** (`values-pl/`) for user-visible chrome. Polish strings are often longer — layouts must wrap, not clip. Brand `app_name` stays `translatable="false"`. |
+| Tests | Emulator coverage: fontScale `0.85`–`2.0`, EN/PL, density variants (`TextReadableAtScaleE2eTest`, `ComposeTextReadableTest`). Assert text is fully visible after layout, not only `assertIsDisplayed`. |
+
+---
+
+## 12. Implementation checklist (for PR authors)
 
 - [ ] Colors come from Atlas tokens / `PocketTheme`, not one-off hex in composables (except this doc’s source of truth).
 - [ ] New interactive chrome either reuses a recipe above or extends DESIGN.md in the same PR.
 - [ ] E2E IDs preserved; flat transcript contract intact.
 - [ ] UT row(s) noted in PR; matrix updated when evidence lands.
 - [ ] Screenshots (if any) filed under device evidence for U16 — they do not flip AT rows.
+- [ ] Font-scale / narrow-width / PL chrome still readable (section 11).
 
 ---
 
-## 12. References
+## 13. References
 
 | Doc / issue | Role |
 | --- | --- |
