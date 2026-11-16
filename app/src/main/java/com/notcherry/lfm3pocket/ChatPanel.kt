@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.TextSelectionColors
@@ -365,7 +366,9 @@ class ChatPanel(
                         OutlinedButton(
                             onClick = { stop.run() },
                             enabled = controls.stop,
-                            modifier = Modifier.testTag(tag("chat_stop")),
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag(tag("chat_stop")),
                             shape = RoundedCornerShape(0.dp),
                             colors = StillwaterControls.outlinedColors(),
                         ) { Text("Stop") }
@@ -378,7 +381,9 @@ class ChatPanel(
                                 send.accept(text)
                             },
                             enabled = controls.send,
-                            modifier = Modifier.testTag(tag("chat_send")),
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag(tag("chat_send")),
                             shape = RoundedCornerShape(0.dp),
                             colors = StillwaterControls.buttonColors(),
                         ) { Text("Send") }
