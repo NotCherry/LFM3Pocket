@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +45,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import com.notcherry.lfm3pocket.ui.theme.PocketTheme
+import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 import java.io.File
@@ -228,11 +230,13 @@ class ChatPanel(
                                 TextButton(
                                     onClick = { card.reject?.run() },
                                     modifier = Modifier.testTag(tag("tool_reject")),
-                                    colors = ButtonDefaults.textButtonColors(contentColor = atlas.danger),
+                                    colors = StillwaterControls.dangerTextColors(),
                                 ) { Text("Reject") }
                                 Button(
                                     onClick = { card.approve?.run() },
                                     modifier = Modifier.testTag(tag("tool_approve")),
+                                    shape = RoundedCornerShape(0.dp),
+                                    colors = StillwaterControls.buttonColors(),
                                 ) { Text("Approve") }
                             }
                         }
@@ -277,6 +281,7 @@ class ChatPanel(
                         TextButton(
                             onClick = { image.onRemove.run() },
                             modifier = Modifier.testTag(tag("image_remove")),
+                            colors = StillwaterControls.textButtonColors(),
                         ) { Text("Remove image") }
                     }
                 }
@@ -304,11 +309,18 @@ class ChatPanel(
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = atlas.ink,
                                 unfocusedTextColor = atlas.ink,
+                                disabledTextColor = atlas.inkDisabled,
                                 focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
                                 unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
                                 cursorColor = atlas.accent,
                                 focusedContainerColor = atlas.surface,
                                 unfocusedContainerColor = atlas.surface,
+                                focusedPlaceholderColor = atlas.inkDisabled,
+                                unfocusedPlaceholderColor = atlas.inkDisabled,
+                                selectionColors = TextSelectionColors(
+                                    handleColor = atlas.accent,
+                                    backgroundColor = atlas.accent.copy(alpha = 0.35f),
+                                ),
                             ),
                             modifier = Modifier
                                 .weight(1f)
@@ -319,10 +331,7 @@ class ChatPanel(
                             enabled = controls.stop,
                             modifier = Modifier.testTag(tag("chat_stop")),
                             shape = RoundedCornerShape(0.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = atlas.accent,
-                                disabledContentColor = atlas.inkDisabled,
-                            ),
+                            colors = StillwaterControls.outlinedColors(),
                         ) { Text("Stop") }
                         Button(
                             onClick = {
@@ -335,12 +344,7 @@ class ChatPanel(
                             enabled = controls.send,
                             modifier = Modifier.testTag(tag("chat_send")),
                             shape = RoundedCornerShape(0.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = atlas.accent,
-                                contentColor = atlas.candleInk,
-                                disabledContainerColor = atlas.accent.copy(alpha = 0.38f),
-                                disabledContentColor = atlas.candleInk.copy(alpha = 0.5f),
-                            ),
+                            colors = StillwaterControls.buttonColors(),
                         ) { Text("Send") }
                     }
                     Row(
@@ -348,8 +352,12 @@ class ChatPanel(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton(onClick = { clear.run() }, enabled = controls.clear) {
-                            Text("Clear", color = atlas.inkMuted)
+                        TextButton(
+                            onClick = { clear.run() },
+                            enabled = controls.clear,
+                            colors = StillwaterControls.textButtonColors(),
+                        ) {
+                            Text("Clear")
                         }
                     }
                 }

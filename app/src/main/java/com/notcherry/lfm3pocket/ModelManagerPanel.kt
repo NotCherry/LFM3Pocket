@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.notcherry.lfm3pocket.ui.theme.PocketTheme
+import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
 
 /** Incremental Compose manager, paired with the existing tested SAF controls and status view. */
 class ModelManagerPanel(
@@ -40,13 +41,28 @@ class ModelManagerPanel(
                 Text("Projector: ${state.projector.ifEmpty { "None — text only" }}", maxLines = 1, overflow = TextOverflow.Ellipsis, color = muted)
                 Text(settingsSummary, style = MaterialTheme.typography.bodySmall, color = muted)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { reload.run() }, enabled = !state.busy && state.model.isNotEmpty(), contentPadding=PaddingValues(horizontal=8.dp)) {
+                    OutlinedButton(
+                        onClick = { reload.run() },
+                        enabled = !state.busy && state.model.isNotEmpty(),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                        colors = StillwaterControls.outlinedColors(),
+                    ) {
                         Text(if (state.failed) "Retry load" else if (state.loaded) "Reload model" else "Load model")
                     }
-                    OutlinedButton(onClick = { unload.run() }, enabled = !state.busy && state.loaded, contentPadding=PaddingValues(horizontal=8.dp)) {
+                    OutlinedButton(
+                        onClick = { unload.run() },
+                        enabled = !state.busy && state.loaded,
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                        colors = StillwaterControls.outlinedColors(),
+                    ) {
                         Text("Unload model")
                     }
-                    TextButton(onClick={settings.run()},enabled=!state.busy,contentPadding=PaddingValues(horizontal=8.dp)) { Text("Settings") }
+                    TextButton(
+                        onClick = { settings.run() },
+                        enabled = !state.busy,
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                        colors = StillwaterControls.textButtonColors(),
+                    ) { Text("Settings") }
                 }
             }
         }

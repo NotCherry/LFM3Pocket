@@ -15,7 +15,7 @@ data class AtlasColors(
     val surfaceOverlay: Color = Color(0xFF1C1C18),
     val ink: Color = Color(0xFFF3EFE6),
     val inkMuted: Color = Color(0xFF8F897C),
-    val inkDisabled: Color = Color(0xFF6E6A60),
+    val inkDisabled: Color = Color(0xFFA39E92),
     val accent: Color = Color(0xFFE6C27A),
     val accentMuted: Color = Color(0xFF8C7340),
     val border: Color = Color(0xFF2C2B28),

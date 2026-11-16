@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import com.notcherry.lfm3pocket.ui.theme.atlasColors
 
 internal fun chatStatusLabel(status: String): String = when {
     status.startsWith("Searching web") -> "Web search · searching…"
@@ -31,7 +32,8 @@ internal fun chatStatusLabel(status: String): String = when {
 internal fun ChatLiveStatus(mode: String, status: String, packageName: String) {
     fun tag(name: String) = "$packageName:id/$name"
 
-    Text(mode, style = MaterialTheme.typography.labelMedium,
+    val atlas = MaterialTheme.atlasColors
+    Text(mode, style = MaterialTheme.typography.labelMedium, color = atlas.inkMuted,
         modifier = Modifier.testTag(tag("chat_live_mode")))
     if (status.isNotBlank()) {
         val announcedStatus = chatStatusLabel(status)
@@ -43,9 +45,12 @@ internal fun ChatLiveStatus(mode: String, status: String, packageName: String) {
                     stateDescription = announcedStatus
                 }.testTag(tag("chat_live_announcer")),
             verticalAlignment = Alignment.CenterVertically) {
-            if (active) CircularProgressIndicator(Modifier.size(18.dp)
-                .testTag(tag("chat_live_progress")), strokeWidth = 2.dp)
-            Text(announcedStatus, style = MaterialTheme.typography.bodyMedium,
+            if (active) CircularProgressIndicator(
+                Modifier.size(18.dp).testTag(tag("chat_live_progress")),
+                color = atlas.accent,
+                strokeWidth = 2.dp,
+            )
+            Text(announcedStatus, style = MaterialTheme.typography.bodyMedium, color = atlas.ink,
                 modifier = Modifier.padding(start = 8.dp).testTag(tag("chat_live_status")))
         }
     }

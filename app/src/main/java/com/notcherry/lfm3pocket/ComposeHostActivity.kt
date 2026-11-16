@@ -35,6 +35,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.notcherry.lfm3pocket.ui.theme.PocketTheme
+import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 
@@ -109,8 +110,11 @@ private fun PocketNavigation(
                     style = type.body,
                     color = atlas.inkMuted,
                 )
-                TextButton(onClick = { controller.popBackStack() }) {
-                    Text("Back to home", color = atlas.accent)
+                TextButton(
+                    onClick = { controller.popBackStack() },
+                    colors = StillwaterControls.textButtonColors(),
+                ) {
+                    Text("Back to home")
                 }
             }
         }
@@ -165,10 +169,7 @@ private fun StillwaterHome(
                 onClick = onOpenChat,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = MaterialTheme.shapes.extraSmall,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = atlas.accent,
-                    contentColor = atlas.candleInk,
-                ),
+                colors = StillwaterControls.buttonColors(),
             ) {
                 Text("Open chat", style = type.body.copy(color = atlas.candleInk))
             }
@@ -180,26 +181,15 @@ private fun StillwaterHome(
                 TextButton(
                     onClick = onOpenHistory,
                     modifier = Modifier.testTag("${context.packageName}:id/history_open"),
+                    colors = StillwaterControls.textButtonColors(),
                 ) {
-                    Text(
-                        "History",
-                        color = Color(0xFFC9C2B4),
-                        textDecoration = TextDecoration.Underline,
-                    )
+                    Text("History", textDecoration = TextDecoration.Underline)
                 }
-                TextButton(onClick = onOpenSettings) {
-                    Text(
-                        "Settings",
-                        color = Color(0xFFC9C2B4),
-                        textDecoration = TextDecoration.Underline,
-                    )
+                TextButton(onClick = onOpenSettings, colors = StillwaterControls.textButtonColors()) {
+                    Text("Settings", textDecoration = TextDecoration.Underline)
                 }
-                TextButton(onClick = onAbout) {
-                    Text(
-                        "About offline mode",
-                        color = Color(0xFFC9C2B4),
-                        textDecoration = TextDecoration.Underline,
-                    )
+                TextButton(onClick = onAbout, colors = StillwaterControls.textButtonColors()) {
+                    Text("About offline mode", textDecoration = TextDecoration.Underline)
                 }
             }
             Text(

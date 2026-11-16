@@ -239,7 +239,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         StillwaterUi.quiet(overflow);
         overflow.setTextColor(inkMuted);
         overflow.setOnClickListener(v -> {
-            android.widget.PopupMenu menu = new android.widget.PopupMenu(this, v);
+            android.view.ContextThemeWrapper menuContext =
+                    new android.view.ContextThemeWrapper(this, R.style.Theme_Stillwater);
+            android.widget.PopupMenu menu = new android.widget.PopupMenu(menuContext, v);
             menu.getMenu().add(0, 1, 0, "Settings");
             menu.getMenu().add(0, 2, 1, "Web search");
             menu.setOnMenuItemClickListener(item -> {
@@ -322,12 +324,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         searchEndpointField.setTextColor(ink);
         searchEndpointField.setTypeface(StillwaterUi.mono(this));
         searchEndpointField.setBackgroundColor(Color.TRANSPARENT);
+        StillwaterUi.styleInput(searchEndpointField);
         searchEndpointField.setText(searchEndpoint);
         configuration.addView(searchEndpointField);
         searchEnabledBox = new CheckBox(this);
         searchEnabledBox.setId(R.id.search_enabled);
         searchEnabledBox.setText("Use web search for new questions");
-        searchEnabledBox.setTextColor(ink);
+        StillwaterUi.styleCheck(searchEnabledBox);
         searchEnabledBox.setChecked(searchEnabled);
         configuration.addView(searchEnabledBox);
         searchButton = button("Web search: off");
@@ -510,11 +513,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         field.setSingleLine(true);
         field.setInputType(InputType.TYPE_CLASS_NUMBER);
         field.setText(Integer.toString(value));
-        field.setTextColor(StillwaterUi.INK);
         field.setTextSize(18);
         field.setGravity(Gravity.CENTER);
         field.setBackgroundColor(Color.TRANSPARENT);
         field.setTypeface(StillwaterUi.sansMedium(this));
+        StillwaterUi.styleInput(field);
         Button plus = button("+");
         StillwaterUi.quiet(plus);
         plus.setTextColor(StillwaterUi.SOFT);

@@ -31,7 +31,7 @@ Use these names in code (`PocketTheme` / `AtlasColors`). Hex values are normativ
 | `surfaceOverlay` | `#1C1C18` | Modals, consent sheet, overflow menus. |
 | `ink` | `#F3EFE6` | Primary chalk text (body, headlines). |
 | `inkMuted` | `#8F897C` | Secondary text, timestamps, hints. |
-| `inkDisabled` | `#6E6A60` | Disabled controls and placeholder. |
+| `inkDisabled` | `#A39E92` | Disabled controls and placeholders. Light enough for WCAG AA on `surface`. |
 | `accent` | `#E6C27A` | Candle: links, primary CTA fill, source links, stream cursor. |
 | `accentMuted` | `#8C7340` | Pressed accent, subtle selection. |
 | `border` | `#2C2B28` | Hairline borders for tool panels, composer, inputs. |

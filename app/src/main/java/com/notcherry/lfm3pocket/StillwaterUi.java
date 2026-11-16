@@ -6,7 +6,10 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.EditText;
 
+import androidx.core.content.ContextCompat;
 import androidx.core.content.res.ResourcesCompat;
 
 /** Shared Stillwater colors and button chrome for the view-based screens. */
@@ -16,6 +19,7 @@ final class StillwaterUi {
     static final int INK = 0xFFF3EFE6;
     static final int SOFT = 0xFFC9C2B4;
     static final int MUTED = 0xFF8F897C;
+    static final int DISABLED = 0xFFA39E92;
     static final int CANDLE = 0xFFE6C27A;
     static final int CANDLE_INK = 0xFF1C1508;
     static final int DANGER = 0xFFE08A78;
@@ -69,5 +73,25 @@ final class StillwaterUi {
 
     static void tintIcon(Button button, int color) {
         button.setCompoundDrawableTintList(ColorStateList.valueOf(color));
+    }
+
+    /** Chalk text, candle caret, and a light hint. Disabled text stays above WCAG AA. */
+    static void styleInput(EditText field) {
+        field.setTextColor(ColorStateList.valueOf(INK));
+        field.setHintTextColor(MUTED);
+        field.setHighlightColor(0x66E6C27A);
+        field.setLinkTextColor(CANDLE);
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            android.graphics.drawable.GradientDrawable cursor = new android.graphics.drawable.GradientDrawable();
+            cursor.setColor(CANDLE);
+            cursor.setSize(Math.max(2, (int) (2 * field.getResources().getDisplayMetrics().density)), 0);
+            field.setTextCursorDrawable(cursor);
+        }
+    }
+
+    static void styleCheck(CheckBox box) {
+        box.setTextColor(INK);
+        box.setButtonTintList(ContextCompat.getColorStateList(box.getContext(), R.color.still_control));
+        box.setHighlightColor(0x66E6C27A);
     }
 }

@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
+import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 
@@ -72,7 +73,11 @@ fun SettingsScreen(
             .semantics { testTagsAsResourceId = true }
             .padding(16.dp),
     ) {
-        TextButton(onClick = onBack, modifier = Modifier.testTag(tag("settings_back"))) {
+        TextButton(
+            onClick = onBack,
+            modifier = Modifier.testTag(tag("settings_back")),
+            colors = StillwaterControls.textButtonColors(),
+        ) {
             Text("Back to chat")
         }
         Text("Settings", style = type.headline, color = atlas.ink)
@@ -123,12 +128,16 @@ fun SettingsScreen(
             Button(
                 onClick = onSaveInference,
                 modifier = Modifier.fillMaxWidth().testTag(tag("settings_save")),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+                colors = StillwaterControls.buttonColors(),
             ) {
                 Text("Save")
             }
             Button(
                 onClick = onSaveSearch,
                 modifier = Modifier.fillMaxWidth().testTag(tag("search_save")),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+                colors = StillwaterControls.buttonColors(),
             ) {
                 Text("Save search")
             }
@@ -153,7 +162,10 @@ private fun StepperField(
     Text(title, style = type.body, color = atlas.ink)
     Text(hint, style = type.bodySmall, color = atlas.inkMuted)
     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        TextButton(onClick = { onChange(nudge(value, -step, min, max)) }) { Text("–", color = atlas.ink) }
+        TextButton(
+            onClick = { onChange(nudge(value, -step, min, max)) },
+            colors = StillwaterControls.textButtonColors(),
+        ) { Text("–") }
         OutlinedTextField(
             value = value,
             onValueChange = onChange,
@@ -162,7 +174,10 @@ private fun StepperField(
             colors = colors,
             modifier = modifier.weight(1f),
         )
-        TextButton(onClick = { onChange(nudge(value, step, min, max)) }) { Text("+", color = atlas.ink) }
+        TextButton(
+            onClick = { onChange(nudge(value, step, min, max)) },
+            colors = StillwaterControls.textButtonColors(),
+        ) { Text("+") }
     }
 }
 
