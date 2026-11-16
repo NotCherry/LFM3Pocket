@@ -2,7 +2,6 @@ package com.notcherry.lfm3pocket;
 
 import android.content.Context;
 import android.content.res.Configuration;
-import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
@@ -13,10 +12,14 @@ import android.widget.TextView;
 /**
  * Layout helpers so Stillwater chrome stays readable at large fontScale / display size
  * and on narrow widths. Prefer wrapping + minHeight over fixed heights or shrinking text.
+ *
+ * Side-by-side rows stay horizontal on typical phone widths (~360–411dp) at default font;
+ * they stack only when fontScale is elevated or the screen is extremely narrow, because
+ * WRAP_CONTENT height already keeps wrapped labels fully visible in a two-column row.
  */
 final class StillwaterReadable {
-    /** Stack side-by-side control rows below this width (dp) or at elevated fontScale. */
-    static final int STACK_BELOW_WIDTH_DP = 400;
+    /** Extreme narrow width (dp) — below a ~320dp “small phone” class. */
+    static final int STACK_BELOW_WIDTH_DP = 320;
     static final float STACK_AT_FONT_SCALE = 1.3f;
 
     private StillwaterReadable() {}
@@ -60,8 +63,9 @@ final class StillwaterReadable {
     }
 
     /**
-     * Adds {@code buttons} in a horizontal row, or stacked vertically when the screen is
-     * narrow / fontScale is large. Heights are WRAP_CONTENT with a minHeight floor.
+     * Adds {@code buttons} in a horizontal row, or stacked vertically when fontScale is
+     * large or the width is extremely narrow. Heights are WRAP_CONTENT with a minHeight floor,
+     * so wrapped labels stay fully visible even while side-by-side.
      */
     static LinearLayout addFlexibleButtonRow(LinearLayout parent, Context context, int minHeightDp,
                                              Button... buttons) {
@@ -131,19 +135,5 @@ final class StillwaterReadable {
     /** sp-sized text helper — never use dp for readable copy. */
     static void setTextSizeSp(TextView view, float sp) {
         view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
-    }
-
-    static boolean isEllipsized(TextView view) {
-        if (view == null) return false;
-        if (view.getEllipsize() == TextUtils.TruncateAt.END
-                || view.getEllipsize() == TextUtils.TruncateAt.MIDDLE
-                || view.getEllipsize() == TextUtils.TruncateAt.START) {
-            android.text.Layout layout = view.getLayout();
-            if (layout == null) return false;
-            for (int i = 0; i < layout.getLineCount(); i++) {
-                if (layout.getEllipsisCount(i) > 0) return true;
-            }
-        }
-        return false;
     }
 }

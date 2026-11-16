@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
@@ -371,7 +372,7 @@ class ChatPanel(
                                 .testTag(tag("chat_stop")),
                             shape = RoundedCornerShape(0.dp),
                             colors = StillwaterControls.outlinedColors(),
-                        ) { Text("Stop") }
+                        ) { Text(stringResource(R.string.stop)) }
                         Button(
                             onClick = {
                                 val text = input
@@ -386,7 +387,7 @@ class ChatPanel(
                                 .testTag(tag("chat_send")),
                             shape = RoundedCornerShape(0.dp),
                             colors = StillwaterControls.buttonColors(),
-                        ) { Text("Send") }
+                        ) { Text(stringResource(R.string.send)) }
                     }
                     Row(
                         Modifier.fillMaxWidth(),

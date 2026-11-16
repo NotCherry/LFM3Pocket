@@ -82,7 +82,12 @@ fun SettingsScreen(
         ) {
             Text(stringResource(R.string.back_to_chat))
         }
-        Text(stringResource(R.string.settings_title), style = type.headline, color = atlas.ink)
+        Text(
+            stringResource(R.string.settings_title),
+            style = type.headline,
+            color = atlas.ink,
+            modifier = Modifier.fillMaxWidth(),
+        )
         Spacer(Modifier.height(8.dp))
         Column(
             Modifier
@@ -95,7 +100,7 @@ fun SettingsScreen(
                 .testTag(tag("model_configuration_scroll")),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Model", style = type.title, color = atlas.ink)
+            Text(stringResource(R.string.model_section), style = type.title, color = atlas.ink)
             Text(modelSummary, style = type.bodySmall, color = atlas.inkMuted)
             Text(stringResource(R.string.inference_heading), style = type.title, color = atlas.ink)
             StepperField(
