@@ -68,42 +68,48 @@ Prefer a purposeful pairing already shippable on Android without new font APK bl
 
 | Role | Spec | Use |
 | --- | --- | --- |
-| `display` | Serif, regular, ~56–72sp, tight tracking | Home brand / hero product name |
-| `headline` | Sans, semi-bold, ~22–28sp | Screen titles (Settings, History) |
-| `title` | Sans, medium, ~18–20sp | Section titles, turn role labels if shown |
-| `body` | Sans, regular, ~16sp, line height ~1.35–1.45 | Assistant and user message bodies |
-| `bodySmall` | Sans, regular, ~13–14sp | Captions, timestamps, rail collapsed hint |
-| `label` | Sans, medium, ~12–13sp, slight letter-spacing | Pills, buttons, settings row labels |
-| `mono` | Monospace (e.g. `FontFamily.Monospace`), ~13–14sp | Tool names, JSON args, paths, fenced code, risk codes |
+| `display` | Serif, regular, ~56–64sp, tight tracking | Home brand / hero product name |
+| `headline` | Serif, regular, ~24–28sp | Screen titles (Settings, History) |
+| `title` | Serif, regular, ~16–18sp | Section titles, turn role labels if shown |
+| `body` | Sans, regular, **~14sp**, line height ~1.4 | Assistant and user message bodies (compact default) |
+| `bodySmall` | Sans, regular, ~12sp | Captions, timestamps, rail collapsed hint |
+| `label` | Sans, semi-bold, ~10–12sp, slight letter-spacing | Pills, buttons, settings row labels |
+| `mono` | Monospace (e.g. `FontFamily.Monospace`), ~12sp | Tool names, JSON args, paths, fenced code, risk codes |
 
 **Rules**
 - User vs assistant: same `body` size; distinguish by subtle role label or left gutter — **not** by large colored bubbles.
 - Markdown headings map into `title` / `headline` scale; do not introduce a third decorative display face in chat.
 - Avoid default “AI purple” or Inter-as-brand; system sans is acceptable if roles above are consistent.
+- Defaults are intentionally dense (chat-assistant density). Users can raise or lower size via **Settings → Appearance → Interface size**.
 
 ---
 
 ## 4. Spacing and layout scale
 
-Base unit **4dp**. Prefer this scale:
+Base unit **4dp**. Prefer this compact scale (`AtlasSpacing`):
 
 | Token | dp |
 | --- | --- |
+| `space1` | 4 |
 | `space2` | 8 |
-| `space3` | 12 |
-| `space4` | 16 |
-| `space5` | 20 |
-| `space6` | 24 |
-| `space8` | 32 |
-| `space10` | 40 |
+| `space3` | 10 |
+| `space4` | 12 |
+| `space5` | 16 |
+| `space6` | 20 |
+| `space8` | 28 |
+| `space10` | 36 |
 | `space12` | 48 |
 
 **Layout**
-- Screen horizontal padding: `space4` (16) phone; keep content readable, not edge-glued.
-- Turn vertical gap: `space4`–`space5`.
-- Composer inner padding: `space3`–`space4`.
+- Screen horizontal padding: ~12dp phone (`AtlasSpacing.screen`); keep content readable, not edge-glued.
+- Turn vertical padding: ~7dp; tighter than the first Atlas pass.
+- Composer inner padding: ~8dp; smaller top bar / chrome icons (~36dp visual) with a **48dp** touch floor.
 - Reasoning rail width (expanded): ~36–42% of chat width on phone landscape / large; on narrow portrait, rail becomes a top-of-turn collapsible strip still **leading** (start side) aligned.
 - Corner radius: **0–2dp** for inputs, buttons, and tool panels. Avoid pill chrome except tiny status dots.
+
+### 4.1 Interface size (Appearance)
+
+Persisted multiplier **80%–130%** (`InterfaceSize`, SharedPreferences key `interface_scale`). Presets: **Compact** 85%, **Default** 100%, **Large** 115%. Applied app-wide by scaling `densityDpi` in `attachBaseContext` so typography **and** spacing move together **on top of** the system font scale. Compose keeps `minimumInteractiveComponentSize` at a system **48dp** finger target so compact visuals do not shrink touch targets.
 
 ---
 
@@ -255,7 +261,9 @@ Stillwater chrome must stay readable when the user enlarges text or display size
 | Side-by-side rows | Keep import / open / idle / media rows **horizontal** on typical phone widths (~360–411dp) at default font. Stack to a column when `fontScale ≥ 1.3` or width &lt; **320dp** (`StillwaterReadable`). |
 | Truncation | Do not ellipsize chrome labels (buttons, section titles). Dynamic previews (history snippets, long paths) may use bounded `maxLines` + ellipsis. |
 | Locales | Ship **English** (`values/`) and **Polish** (`values-pl/`) for user-visible chrome. Polish strings are often longer — layouts must wrap, not clip. Brand `app_name` stays `translatable="false"`. |
-| Tests | Emulator coverage: fontScale `0.85`–`2.0`, EN/PL, density variants (`TextReadableAtScaleE2eTest`, `ComposeTextReadableTest`). Assert text is fully visible after layout, not only `assertIsDisplayed`. |
+| Interface size | Compact / Default / Large (or 80–130% slider) must not reintroduce clipping. Keep wrapping + `minHeight` (`StillwaterReadable`). |
+| Touch targets | Visual chrome may be denser; interactive hit areas stay ≥ **48dp** (Compose `minimumInteractiveComponentSize`, View `InterfaceSize.minTouchPx`). |
+| Tests | Emulator coverage: fontScale `0.85`–`2.0`, EN/PL, density variants, **and each interface-size preset** (`TextReadableAtScaleE2eTest`, `ComposeTextReadableTest`). Assert text is fully visible after layout, not only `assertIsDisplayed`. |
 
 ---
 

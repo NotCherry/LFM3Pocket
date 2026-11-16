@@ -42,6 +42,13 @@
     <string name="starting">Starting…</string>
     <string name="inference_heading">INFERENCE</string>
     <string name="searxng_heading">SEARXNG</string>
+    <string name="appearance_heading">APPEARANCE</string>
+    <string name="interface_size_label">Interface size</string>
+    <string name="interface_size_help">Scales typography and spacing on top of the system font size. Compact is denser; Large is roomier.</string>
+    <string name="interface_size_compact">Compact</string>
+    <string name="interface_size_default">Default</string>
+    <string name="interface_size_large">Large</string>
+    <string name="interface_size_percent">%1$d%%</string>
     <string name="background_heading">BACKGROUND</string>
     <string name="tools_heading">TOOLS</string>
     <string name="context_label">Context</string>

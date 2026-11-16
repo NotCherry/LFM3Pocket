@@ -38,16 +38,19 @@ class ModelManagerPanel(
             val muted = MaterialTheme.colorScheme.onSurfaceVariant
             val modelName = state.model.ifEmpty { stringResource(R.string.model_none_selected) }
             val projectorName = state.projector.ifEmpty { stringResource(R.string.projector_none) }
-            Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                 // Wrap long GGUF names instead of ellipsizing chrome labels.
-                Text(stringResource(R.string.model_label, modelName), color = ink)
-                Text(stringResource(R.string.projector_label, projectorName), color = muted)
+                Text(stringResource(R.string.model_label, modelName), color = ink,
+                    style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.projector_label, projectorName), color = muted,
+                    style = MaterialTheme.typography.bodySmall)
                 Text(settingsSummary, style = MaterialTheme.typography.bodySmall, color = muted)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedButton(
                         onClick = { reload.run() },
                         enabled = !state.busy && state.model.isNotEmpty(),
-                        contentPadding = PaddingValues(horizontal = 8.dp),
+                        modifier = Modifier.minimumInteractiveComponentSize(),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         colors = StillwaterControls.outlinedColors(),
                     ) {
                         Text(
@@ -61,7 +64,8 @@ class ModelManagerPanel(
                     OutlinedButton(
                         onClick = { unload.run() },
                         enabled = !state.busy && state.loaded,
-                        contentPadding = PaddingValues(horizontal = 8.dp),
+                        modifier = Modifier.minimumInteractiveComponentSize(),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         colors = StillwaterControls.outlinedColors(),
                     ) {
                         Text(stringResource(R.string.unload_model))
@@ -69,7 +73,8 @@ class ModelManagerPanel(
                     TextButton(
                         onClick = { settings.run() },
                         enabled = !state.busy,
-                        contentPadding = PaddingValues(horizontal = 8.dp),
+                        modifier = Modifier.minimumInteractiveComponentSize(),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         colors = StillwaterControls.textButtonColors(),
                     ) { Text(stringResource(R.string.settings_title)) }
                 }

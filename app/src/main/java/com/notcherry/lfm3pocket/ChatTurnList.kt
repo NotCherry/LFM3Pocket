@@ -78,10 +78,10 @@ fun ChatTurnList(
                     assistantMessageTag = assistantMessageTag,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
                 )
                 if (index < turns.lastIndex) {
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
                 }
             }
         }
@@ -107,7 +107,7 @@ fun ChatTurn(
     }
     Column(modifier) {
         Text(roleLabel, style = type.label, color = atlas.inkMuted)
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         if (isUser) {
             SelectionContainer {
                 Text(

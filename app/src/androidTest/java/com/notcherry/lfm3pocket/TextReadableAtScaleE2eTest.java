@@ -70,6 +70,7 @@ public final class TextReadableAtScaleE2eTest {
                 .putString("model", file.getAbsolutePath())
                 .putString("model_name", "ReadableScaleModel.gguf")
                 .putBoolean("search_enabled", false)
+                .putFloat("interface_scale", InterfaceSize.DEFAULT)
                 .commit());
     }
 
@@ -184,6 +185,59 @@ public final class TextReadableAtScaleE2eTest {
         }
     }
 
+    /**
+     * Interface size presets (Compact / Default / Large) must keep Settings chrome readable
+     * across the same fontScale and locale matrix as the system-scale suite.
+     */
+    @Test public void settingsStayReadableAcrossInterfaceSizePresetsAndFontScales() throws Exception {
+        float[] interfaceSizes = {
+                InterfaceSize.COMPACT, InterfaceSize.DEFAULT, InterfaceSize.LARGE,
+        };
+        for (String language : LOCALES) {
+            for (float fontScale : new float[]{0.85f, 1.0f, 2.0f}) {
+                for (float interfaceScale : interfaceSizes) {
+                    setSystemLocale(language);
+                    applyDensity(1.0f);
+                    setSystemFontScale(fontScale);
+                    setInterfaceScale(interfaceScale);
+                    String tag = "iface" + InterfaceSize.percent(interfaceScale)
+                            + "/font" + fontScale + "/" + language;
+                    try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(
+                            new Intent(context, MainActivity.class)
+                                    .putExtra(MainActivity.EXTRA_OPEN_SETTINGS, true))) {
+                        assertNotNull("settings @" + tag,
+                                device.wait(Until.findObject(By.res(pkg, "open_model_uri")), WAIT));
+                        AtomicReference<String> failure = new AtomicReference<>();
+                        scenario.onActivity(activity -> {
+                            try {
+                                assertEquals("activity fontScale @" + tag,
+                                        fontScale, activity.getResources().getConfiguration().fontScale, 0.05f);
+                                assertEquals("persisted interface @" + tag,
+                                        interfaceScale, InterfaceSize.read(activity), 0.001f);
+                                assertReadableAfterLayout(activity.findViewById(R.id.open_model_uri),
+                                        "open_model_uri@" + tag);
+                                assertReadableAfterLayout(activity.findViewById(R.id.open_projector_uri),
+                                        "open_projector_uri@" + tag);
+                                assertReadableAfterLayout(activity.findViewById(R.id.settings_interface_compact),
+                                        "interface_compact@" + tag);
+                                assertReadableAfterLayout(activity.findViewById(R.id.settings_interface_default),
+                                        "interface_default@" + tag);
+                                assertReadableAfterLayout(activity.findViewById(R.id.settings_interface_large),
+                                        "interface_large@" + tag);
+                                assertReadableAfterLayout(activity.findViewById(R.id.settings_save),
+                                        "settings_save@" + tag);
+                            } catch (AssertionError | InterruptedException error) {
+                                failure.set(error.getMessage());
+                            }
+                        });
+                        assertTrue(failure.get() == null ? "ok" : failure.get(), failure.get() == null);
+                    }
+                }
+            }
+        }
+        setInterfaceScale(InterfaceSize.DEFAULT);
+    }
+
     @Test public void homeAndModelManagerLabelsStayReadable() throws Exception {
         for (float scale : new float[]{1.0f, 2.0f}) {
             setSystemLocale("en");
@@ -228,6 +282,13 @@ public final class TextReadableAtScaleE2eTest {
         device.executeShellCommand("settings put system font_scale " + scale);
         // Give SettingsProvider a beat before launching activities.
         Thread.sleep(400);
+    }
+
+    private void setInterfaceScale(float scale) {
+        assertTrue(context.getSharedPreferences("MainActivity", Context.MODE_PRIVATE)
+                .edit()
+                .putFloat("interface_scale", InterfaceSize.clamp(scale))
+                .commit());
     }
 
     private void setSystemLocale(String language) throws Exception {

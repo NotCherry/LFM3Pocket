@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -33,8 +34,9 @@ import java.util.Locale
 
 /**
  * Compose Settings *recipe* labels remain fully on-screen at large fontScale / narrow width /
- * Polish locale. Production Settings chrome is covered by [TextReadableAtScaleE2eTest]
- * against MainActivity views; this suite also asserts Compose semantics report no visual overflow.
+ * Polish locale / interface-size presets. Production Settings chrome is covered by
+ * [TextReadableAtScaleE2eTest] against MainActivity views; this suite also asserts Compose
+ * semantics report no visual overflow.
  */
 @RunWith(AndroidJUnit4::class)
 @OptIn(ExperimentalTestApi::class)
@@ -44,7 +46,7 @@ class ComposeTextReadableTest {
     private val packageName = "com.notcherry.lfm3pocket"
 
     @Test fun settingsScreenReadableAtFontScaleTwoEnglish() {
-        renderSettings(fontScale = 2f, widthDp = 320, heightDp = 780, locale = Locale.ENGLISH)
+        renderSettings(fontScale = 2f, widthDp = 320, heightDp = 900, locale = Locale.ENGLISH)
         assertDisplayedWithoutOverflow("Settings")
         assertDisplayedWithoutOverflow("Back to chat")
         assertDisplayedWithoutOverflow("Save")
@@ -52,13 +54,14 @@ class ComposeTextReadableTest {
         assertDisplayedWithoutOverflow("Context")
         assertDisplayedWithoutOverflow("Decode threads")
         assertDisplayedWithoutOverflow("Model")
+        assertDisplayedWithoutOverflow("Interface size")
     }
 
     @Test fun settingsScreenReadableAtFontScaleTwoPolish() {
         renderSettings(
             fontScale = 2f,
             widthDp = 320,
-            heightDp = 900,
+            heightDp = 1000,
             locale = Locale.forLanguageTag("pl"),
         )
         assertDisplayedWithoutOverflow("Ustawienia")
@@ -68,18 +71,51 @@ class ComposeTextReadableTest {
         assertDisplayedWithoutOverflow("Kontekst")
         assertDisplayedWithoutOverflow("Wątki dekodowania")
         assertDisplayedWithoutOverflow("Model")
+        assertDisplayedWithoutOverflow("Rozmiar interfejsu")
     }
 
     @Test fun settingsScreenReadableAtSmallFont() {
         renderSettings(fontScale = 0.85f, widthDp = 411, heightDp = 800, locale = Locale.ENGLISH)
         assertDisplayedWithoutOverflow("Settings")
         assertDisplayedWithoutOverflow("Response tokens")
+        assertDisplayedWithoutOverflow("Compact")
     }
 
     @Test fun settingsScreenReadableAtFontScaleOnePointThree() {
-        renderSettings(fontScale = 1.3f, widthDp = 360, heightDp = 800, locale = Locale.ENGLISH)
+        renderSettings(fontScale = 1.3f, widthDp = 360, heightDp = 900, locale = Locale.ENGLISH)
         assertDisplayedWithoutOverflow("Settings")
         assertDisplayedWithoutOverflow("Save search")
+        assertDisplayedWithoutOverflow("Default")
+    }
+
+    @Test fun settingsScreenReadableAtEachInterfaceSizePreset() {
+        for (scale in floatArrayOf(InterfaceSize.COMPACT, InterfaceSize.DEFAULT, InterfaceSize.LARGE)) {
+            renderSettings(
+                fontScale = 1.0f,
+                widthDp = 360,
+                heightDp = 800,
+                locale = Locale.ENGLISH,
+                interfaceScale = scale,
+            )
+            assertDisplayedWithoutOverflow("Interface size")
+            assertDisplayedWithoutOverflow("Compact")
+            assertDisplayedWithoutOverflow("Default")
+            assertDisplayedWithoutOverflow("Large")
+            assertDisplayedWithoutOverflow("Settings")
+        }
+    }
+
+    @Test fun settingsScreenReadableAtCompactInterfaceAndLargeFontPolish() {
+        renderSettings(
+            fontScale = 2f,
+            widthDp = 320,
+            heightDp = 1100,
+            locale = Locale.forLanguageTag("pl"),
+            interfaceScale = InterfaceSize.COMPACT,
+        )
+        assertDisplayedWithoutOverflow("Rozmiar interfejsu")
+        assertDisplayedWithoutOverflow("Kompaktowy")
+        assertDisplayedWithoutOverflow("Ustawienia")
     }
 
     private fun assertDisplayedWithoutOverflow(text: String) {
@@ -108,7 +144,13 @@ class ComposeTextReadableTest {
         )
     }
 
-    private fun renderSettings(fontScale: Float, widthDp: Int, heightDp: Int, locale: Locale) {
+    private fun renderSettings(
+        fontScale: Float,
+        widthDp: Int,
+        heightDp: Int,
+        locale: Locale,
+        interfaceScale: Float = InterfaceSize.DEFAULT,
+    ) {
         compose.setContent {
             DeviceConfigurationOverride(
                 DeviceConfigurationOverride.FontScale(fontScale)
@@ -132,6 +174,7 @@ class ComposeTextReadableTest {
                         var maxTokens by remember { mutableStateOf("512") }
                         var endpoint by remember { mutableStateOf("") }
                         var search by remember { mutableStateOf(false) }
+                        var size by remember { mutableFloatStateOf(interfaceScale) }
                         SettingsScreen(
                             packageName = packageName,
                             modelSummary = "Model: None selected",
@@ -150,6 +193,8 @@ class ComposeTextReadableTest {
                             onSaveSearch = {},
                             onBack = {},
                             modifier = Modifier.fillMaxSize(),
+                            interfaceScale = size,
+                            onInterfaceScaleChange = { size = it },
                         )
                     }
                 }

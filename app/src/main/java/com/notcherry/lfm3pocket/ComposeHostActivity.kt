@@ -1,9 +1,11 @@
 package com.notcherry.lfm3pocket
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.minimumInteractiveComponentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,12 +42,17 @@ import androidx.navigation.compose.rememberNavController
 import com.notcherry.lfm3pocket.ui.theme.PocketTheme
 import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
+import com.notcherry.lfm3pocket.ui.theme.atlasSpacing
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 
 /**
  * Home shell. Native inference, import, media and chat stay in [MainActivity].
  */
 class ComposeHostActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(InterfaceSize.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (routeExternalAsk(intent)) return
@@ -179,6 +186,7 @@ private fun StillwaterHome(
 ) {
     val atlas = MaterialTheme.atlasColors
     val type = MaterialTheme.atlasTypography
+    val space = MaterialTheme.atlasSpacing
     val context = LocalContext.current
     val modelName = context.getSharedPreferences("MainActivity", android.content.Context.MODE_PRIVATE)
         .getString("model_name", "")
@@ -195,7 +203,7 @@ private fun StillwaterHome(
             )
             .statusBarsPadding()
             .semantics { testTagsAsResourceId = true }
-            .padding(horizontal = 26.dp, vertical = 18.dp),
+            .padding(horizontal = space.space6, vertical = space.space5),
     ) {
         Column(Modifier.fillMaxSize()) {
             Text(
@@ -203,9 +211,9 @@ private fun StillwaterHome(
                 style = type.label,
                 color = atlas.accent,
             )
-            Spacer(Modifier.height(36.dp))
+            Spacer(Modifier.height(space.space8))
             Text("Hanami", style = type.display, color = atlas.ink)
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(space.space5))
             Text(
                 "Liquid AI LFM3 models, on this phone.",
                 style = type.body,
@@ -217,14 +225,15 @@ private fun StillwaterHome(
                 onClick = onOpenChat,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 52.dp)
+                    .minimumInteractiveComponentSize()
+                    .heightIn(min = 48.dp)
                     .testTag("${context.packageName}:id/open_chat"),
                 shape = MaterialTheme.shapes.extraSmall,
                 colors = StillwaterControls.buttonColors(),
             ) {
                 Text(stringResource(R.string.open_chat), style = type.body.copy(color = atlas.candleInk))
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(space.space4))
             // Flow so Polish "O trybie offline" does not collide with History/Settings at large fonts.
             FlowRow(
                 Modifier.fillMaxWidth(),

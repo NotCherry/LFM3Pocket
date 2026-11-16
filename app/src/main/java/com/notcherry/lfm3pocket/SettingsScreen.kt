@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.minimumInteractiveComponentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
@@ -18,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,6 +31,7 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
+import com.notcherry.lfm3pocket.ui.theme.atlasSpacing
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 
 /**
@@ -55,10 +58,13 @@ fun SettingsScreen(
     onSaveSearch: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    interfaceScale: Float = InterfaceSize.DEFAULT,
+    onInterfaceScaleChange: (Float) -> Unit = {},
 ) {
     val tag = { name: String -> "$packageName:id/$name" }
     val atlas = MaterialTheme.atlasColors
     val type = MaterialTheme.atlasTypography
+    val space = MaterialTheme.atlasSpacing
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedTextColor = atlas.ink,
         unfocusedTextColor = atlas.ink,
@@ -73,11 +79,13 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(atlas.surface)
             .semantics { testTagsAsResourceId = true }
-            .padding(16.dp),
+            .padding(space.screen),
     ) {
         TextButton(
             onClick = onBack,
-            modifier = Modifier.testTag(tag("settings_back")),
+            modifier = Modifier
+                .minimumInteractiveComponentSize()
+                .testTag(tag("settings_back")),
             colors = StillwaterControls.textButtonColors(),
         ) {
             Text(stringResource(R.string.back_to_chat))
@@ -88,7 +96,7 @@ fun SettingsScreen(
             color = atlas.ink,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(space.space2))
         Column(
             Modifier
                 .weight(1f)
@@ -96,10 +104,61 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .border(1.dp, atlas.border)
                 .background(atlas.surfaceRaised)
-                .padding(12.dp)
+                .padding(space.space4)
                 .testTag(tag("model_configuration_scroll")),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(space.space3),
         ) {
+            Text(stringResource(R.string.appearance_heading), style = type.title, color = atlas.ink)
+            Text(stringResource(R.string.interface_size_label), style = type.body, color = atlas.ink)
+            Text(stringResource(R.string.interface_size_help), style = type.bodySmall, color = atlas.inkMuted)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .testTag(tag("settings_interface_size")),
+                horizontalArrangement = Arrangement.spacedBy(space.space2),
+            ) {
+                InterfacePresetChip(
+                    label = stringResource(R.string.interface_size_compact),
+                    selected = InterfaceSize.isCompact(interfaceScale),
+                    onClick = { onInterfaceScaleChange(InterfaceSize.COMPACT) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag(tag("settings_interface_compact")),
+                )
+                InterfacePresetChip(
+                    label = stringResource(R.string.interface_size_default),
+                    selected = InterfaceSize.isDefault(interfaceScale),
+                    onClick = { onInterfaceScaleChange(InterfaceSize.DEFAULT) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag(tag("settings_interface_default")),
+                )
+                InterfacePresetChip(
+                    label = stringResource(R.string.interface_size_large),
+                    selected = InterfaceSize.isLarge(interfaceScale),
+                    onClick = { onInterfaceScaleChange(InterfaceSize.LARGE) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag(tag("settings_interface_large")),
+                )
+            }
+            Text(
+                stringResource(R.string.interface_size_percent, InterfaceSize.percent(interfaceScale)),
+                style = type.bodySmall,
+                color = atlas.inkMuted,
+                modifier = Modifier.testTag(tag("settings_interface_value")),
+            )
+            Slider(
+                value = InterfaceSize.clamp(interfaceScale),
+                onValueChange = { onInterfaceScaleChange(InterfaceSize.clamp(it)) },
+                valueRange = InterfaceSize.MIN..InterfaceSize.MAX,
+                steps = 49,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .testTag(tag("settings_interface_slider")),
+            )
+
             Text(stringResource(R.string.model_section), style = type.title, color = atlas.ink)
             Text(modelSummary, style = type.bodySmall, color = atlas.inkMuted)
             Text(stringResource(R.string.inference_heading), style = type.title, color = atlas.ink)
@@ -153,14 +212,18 @@ fun SettingsScreen(
             )
         }
         // Sticky Save row — Stage 1 Automator must find settings_save / search_save on-screen.
-        Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            Modifier.fillMaxWidth().padding(top = space.space2),
+            verticalArrangement = Arrangement.spacedBy(space.space2),
+        ) {
             Button(
                 onClick = onSaveInference,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 52.dp)
+                    .minimumInteractiveComponentSize()
+                    .heightIn(min = 48.dp)
                     .testTag(tag("settings_save")),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+                shape = RoundedCornerShape(0.dp),
                 colors = StillwaterControls.buttonColors(),
             ) {
                 Text(stringResource(R.string.save))
@@ -169,14 +232,38 @@ fun SettingsScreen(
                 onClick = onSaveSearch,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 44.dp)
+                    .minimumInteractiveComponentSize()
+                    .heightIn(min = 40.dp)
                     .testTag(tag("search_save")),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+                shape = RoundedCornerShape(0.dp),
                 colors = StillwaterControls.buttonColors(),
             ) {
                 Text(stringResource(R.string.save_search))
             }
         }
+    }
+}
+
+@Composable
+private fun InterfacePresetChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (selected) {
+        Button(
+            onClick = onClick,
+            modifier = modifier.minimumInteractiveComponentSize().heightIn(min = 40.dp),
+            shape = RoundedCornerShape(0.dp),
+            colors = StillwaterControls.buttonColors(),
+        ) { Text(label) }
+    } else {
+        TextButton(
+            onClick = onClick,
+            modifier = modifier.minimumInteractiveComponentSize().heightIn(min = 40.dp),
+            colors = StillwaterControls.textButtonColors(),
+        ) { Text(label) }
     }
 }
 
@@ -199,6 +286,7 @@ private fun StepperField(
     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         TextButton(
             onClick = { onChange(nudge(value, -step, min, max)) },
+            modifier = Modifier.minimumInteractiveComponentSize(),
             colors = StillwaterControls.textButtonColors(),
         ) { Text("–") }
         OutlinedTextField(
@@ -211,6 +299,7 @@ private fun StepperField(
         )
         TextButton(
             onClick = { onChange(nudge(value, step, min, max)) },
+            modifier = Modifier.minimumInteractiveComponentSize(),
             colors = StillwaterControls.textButtonColors(),
         ) { Text("+") }
     }

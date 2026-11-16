@@ -1,6 +1,7 @@
 package com.notcherry.lfm3pocket;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
@@ -11,6 +12,11 @@ import android.widget.*;
 public final class ToolConfirmationActivity extends Activity {
     private ToolCoordinator coordinator;private String id;
     private TextView details,status;private Button approve,reject;
+
+    @Override protected void attachBaseContext(Context newBase) {
+        super.attachBaseContext(InterfaceSize.wrap(newBase));
+    }
+
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
         coordinator=((Lfm3PocketApplication)getApplication()).toolCoordinator();

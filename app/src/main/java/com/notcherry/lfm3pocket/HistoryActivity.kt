@@ -1,5 +1,6 @@
 package com.notcherry.lfm3pocket
 
+import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -51,6 +52,10 @@ class HistoryActivity : ComponentActivity() {
     private var selected by mutableStateOf<HistoryTranscript?>(null)
     private var loading by mutableStateOf(true)
     private var error by mutableStateOf<String?>(null)
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(InterfaceSize.wrap(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

@@ -24,6 +24,7 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import java.io.File;
@@ -78,6 +79,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private CheckBox lockPreviewBox;
     private CheckBox loopbackBox;
     private CheckBox networkToolsBox;
+    private Button interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton;
+    private SeekBar interfaceSizeSlider;
+    private TextView interfaceSizeValue;
+    private boolean bindingInterfaceSize;
     private Button openModelUriButton, openProjectorUriButton, defaultAssistantButton;
     private boolean foreground;
     private boolean microphoneRequested;
@@ -161,6 +166,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         @Override public boolean isUsable() { return !destroyed && chatPanel != null; }
     };
 
+    @Override protected void attachBaseContext(Context newBase) {
+        super.attachBaseContext(InterfaceSize.wrap(newBase));
+    }
+
+    @Override public void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putBoolean("settings_open", settingsOpen);
+    }
+
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         runtime = ((Lfm3PocketApplication) getApplication()).modelRuntime();
@@ -184,7 +198,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 });
         settingsStore=new InferenceSettingsStore(this);
         imageSettingsStore=new ImageSettingsStore(this);
-        buildUi();
+        buildUi(state);
         session = runtime.session();
         runtime.attach(viewer);
         updateControls();
@@ -310,7 +324,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         return b;
     }
 
-    private void buildUi() {
+    private void buildUi(Bundle state) {
         int surface = StillwaterUi.SURFACE;
         int ink = StillwaterUi.INK;
         int inkMuted = StillwaterUi.MUTED;
@@ -321,18 +335,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(surface);
-        root.setPadding(dp(16), dp(8), dp(16), dp(8));
+        root.setPadding(dp(12), dp(6), dp(12), dp(6));
 
         LinearLayout topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
-        brandTitle = label(historyTitle, 20, ink);
+        brandTitle = label(historyTitle, 17, ink);
         brandTitle.setTypeface(StillwaterUi.serif(this));
         StillwaterReadable.prepareWrappingLabel(brandTitle);
         titles.addView(brandTitle);
-        modePill = label(searchEnabled ? getString(R.string.mode_web_search) : getString(R.string.mode_local), 12, inkMuted);
+        modePill = label(searchEnabled ? getString(R.string.mode_web_search) : getString(R.string.mode_local), 11, inkMuted);
         modePill.setTypeface(StillwaterUi.sans(this));
         StillwaterReadable.prepareWrappingLabel(modePill);
         titles.addView(modePill);
@@ -343,7 +357,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         settingsOpenButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_still_gear, 0, 0, 0);
         StillwaterUi.quiet(settingsOpenButton);
         settingsOpenButton.setOnClickListener(v -> setSettingsOpen(true));
-        topBar.addView(settingsOpenButton, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        LinearLayout.LayoutParams settingsIconParams = new LinearLayout.LayoutParams(dp(36), dp(36));
+        settingsOpenButton.setMinimumWidth(InterfaceSize.minTouchPx(this));
+        settingsOpenButton.setMinimumHeight(InterfaceSize.minTouchPx(this));
+        topBar.addView(settingsOpenButton, settingsIconParams);
         Button overflow = button("⋮");
         overflow.setId(R.id.chat_overflow);
         StillwaterUi.quiet(overflow);
@@ -361,13 +378,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             });
             menu.show();
         });
-        topBar.addView(overflow, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        overflow.setMinimumWidth(InterfaceSize.minTouchPx(this));
+        overflow.setMinimumHeight(InterfaceSize.minTouchPx(this));
+        topBar.addView(overflow, new LinearLayout.LayoutParams(dp(36), dp(36)));
         topBarView = topBar;
         root.addView(topBar);
 
-        status = label(getString(R.string.starting), 13, inkMuted);
+        status = label(getString(R.string.starting), 12, inkMuted);
         status.setId(R.id.chat_status);
-        status.setPadding(0, dp(6), 0, dp(6));
+        status.setPadding(0, dp(4), 0, dp(4));
         StillwaterReadable.prepareWrappingLabel(status);
         root.addView(status);
 
@@ -382,9 +401,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         settingsBack.setOnClickListener(v -> setSettingsOpen(false));
         StillwaterReadable.prepareWrappingControl(settingsBack, dp(44));
         settingsRoot.addView(settingsBack, new LinearLayout.LayoutParams(-2, -2));
-        TextView settingsHeading = label(getString(R.string.settings_title), 34, ink);
+        TextView settingsHeading = label(getString(R.string.settings_title), 28, ink);
         settingsHeading.setTypeface(StillwaterUi.serif(this));
-        settingsHeading.setPadding(0, dp(4), 0, dp(8));
+        settingsHeading.setPadding(0, dp(2), 0, dp(6));
         StillwaterReadable.prepareWrappingLabel(settingsHeading);
         settingsRoot.addView(settingsHeading);
 
@@ -414,6 +433,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         modelManager = new ModelManagerPanel(this,
                 this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings);
         configuration.addView(modelManager, new LinearLayout.LayoutParams(-1, -2));
+
+        addAppearanceSettingsSection(configuration, ink, inkMuted);
 
         TextView inferenceHeading = label(getString(R.string.inference_heading), 11, inkMuted);
         inferenceHeading.setTypeface(StillwaterUi.sansMedium(this));
@@ -636,10 +657,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         cameraButton.setOnClickListener(v -> takePhoto());
         recordButton.setOnClickListener(v -> toggleRecording());
         speakButton.setOnClickListener(v -> toggleSpokenReply());
-
-        if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) {
-            setSettingsOpen(true);
-        }
+        boolean openSettings = getIntent() != null && getIntent().getBooleanExtra(EXTRA_OPEN_SETTINGS, false);
+        if (state != null && state.getBoolean("settings_open", false)) openSettings = true;
+        if (openSettings) setSettingsOpen(true);
         applyDraft(getIntent());
     }
 
@@ -915,6 +935,106 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (searchEndpointField != null) searchEndpointField.requestFocus();
     }
 
+    private void addAppearanceSettingsSection(LinearLayout configuration, int ink, int inkMuted) {
+        LinearLayout section = new LinearLayout(this);
+        section.setId(R.id.settings_appearance);
+        section.setOrientation(LinearLayout.VERTICAL);
+        TextView heading = label(getString(R.string.appearance_heading), 11, inkMuted);
+        heading.setTypeface(StillwaterUi.sansMedium(this));
+        heading.setLetterSpacing(0.12f);
+        heading.setPadding(0, dp(16), 0, dp(4));
+        section.addView(heading);
+        TextView title = label(getString(R.string.interface_size_label), 14, ink);
+        StillwaterReadable.prepareWrappingLabel(title);
+        section.addView(title);
+        TextView help = label(getString(R.string.interface_size_help), 12, inkMuted);
+        StillwaterReadable.prepareWrappingLabel(help);
+        section.addView(help);
+
+        interfaceCompactButton = interfacePreset(getString(R.string.interface_size_compact),
+                InterfaceSize.COMPACT, R.id.settings_interface_compact);
+        interfaceDefaultButton = interfacePreset(getString(R.string.interface_size_default),
+                InterfaceSize.DEFAULT, R.id.settings_interface_default);
+        interfaceLargeButton = interfacePreset(getString(R.string.interface_size_large),
+                InterfaceSize.LARGE, R.id.settings_interface_large);
+        LinearLayout presets = StillwaterReadable.addFlexibleButtonRow(section, this, 44,
+                interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton);
+        presets.setId(R.id.settings_interface_size);
+
+        interfaceSizeValue = label("", 12, inkMuted);
+        interfaceSizeValue.setId(R.id.settings_interface_value);
+        StillwaterReadable.prepareWrappingLabel(interfaceSizeValue);
+        interfaceSizeValue.setPadding(0, dp(8), 0, dp(2));
+        section.addView(interfaceSizeValue);
+
+        interfaceSizeSlider = new SeekBar(this);
+        interfaceSizeSlider.setId(R.id.settings_interface_slider);
+        interfaceSizeSlider.setMax(50); // 80..130 in 1% steps
+        interfaceSizeSlider.setMinimumHeight(InterfaceSize.minTouchPx(this));
+        interfaceSizeSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                float scale = InterfaceSize.fromPercent(80 + progress);
+                interfaceSizeValue.setText(getString(R.string.interface_size_percent, InterfaceSize.percent(scale)));
+                if (!fromUser || bindingInterfaceSize) return;
+                highlightInterfaceSize(scale);
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {
+                if (bindingInterfaceSize) return;
+                applyInterfaceSize(InterfaceSize.fromPercent(80 + seekBar.getProgress()));
+            }
+        });
+        section.addView(interfaceSizeSlider, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        configuration.addView(section);
+        syncInterfaceSizeControls();
+    }
+
+    private Button interfacePreset(String title, float scale, int id) {
+        Button button = button(title);
+        button.setId(id);
+        StillwaterUi.quiet(button);
+        button.setOnClickListener(v -> {
+            if (bindingInterfaceSize) return;
+            applyInterfaceSize(scale);
+        });
+        return button;
+    }
+
+    private void applyInterfaceSize(float scale) {
+        float next = InterfaceSize.clamp(scale);
+        if (Math.abs(next - InterfaceSize.read(this)) < 0.001f) {
+            syncInterfaceSizeControls();
+            return;
+        }
+        InterfaceSize.write(this, next);
+        if (getIntent() != null) getIntent().putExtra(EXTRA_OPEN_SETTINGS, true);
+        settingsOpen = true;
+        recreate();
+    }
+
+    private void syncInterfaceSizeControls() {
+        if (interfaceSizeSlider == null) return;
+        bindingInterfaceSize = true;
+        float scale = InterfaceSize.read(this);
+        interfaceSizeSlider.setProgress(InterfaceSize.percent(scale) - 80);
+        interfaceSizeValue.setText(getString(R.string.interface_size_percent, InterfaceSize.percent(scale)));
+        highlightInterfaceSize(scale);
+        bindingInterfaceSize = false;
+    }
+
+    private void highlightInterfaceSize(float scale) {
+        styleInterfacePreset(interfaceCompactButton, InterfaceSize.isCompact(scale));
+        styleInterfacePreset(interfaceDefaultButton, InterfaceSize.isDefault(scale));
+        styleInterfacePreset(interfaceLargeButton, InterfaceSize.isLarge(scale));
+    }
+
+    private void styleInterfacePreset(Button button, boolean selected) {
+        if (button == null) return;
+        if (selected) StillwaterUi.primary(button);
+        else StillwaterUi.quiet(button);
+    }
+
     private void addImagesSettingsSection(LinearLayout configuration, int ink, int inkMuted) {
         LinearLayout section = new LinearLayout(this);
         section.setId(R.id.settings_images);
@@ -942,25 +1062,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         section.addView(maxTitle);
         section.addView(label(getString(R.string.settings_image_max_help), 12, inkMuted));
 
-        LinearLayout maxRow1 = new LinearLayout(this);
-        maxRow1.setId(R.id.settings_image_max_size);
-        maxRow1.setOrientation(LinearLayout.HORIZONTAL);
         imageMax384Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_384, R.id.settings_image_max_384);
         imageMax512Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_512, R.id.settings_image_max_512);
         imageMax768Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_768, R.id.settings_image_max_768);
-        maxRow1.addView(imageMax384Button, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        maxRow1.addView(imageMax512Button, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        maxRow1.addView(imageMax768Button, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        section.addView(maxRow1);
+        LinearLayout maxRow1 = StillwaterReadable.addFlexibleButtonRow(section, this, 44,
+                imageMax384Button, imageMax512Button, imageMax768Button);
+        maxRow1.setId(R.id.settings_image_max_size);
 
-        LinearLayout maxRow2 = new LinearLayout(this);
-        maxRow2.setOrientation(LinearLayout.HORIZONTAL);
         imageMax1024Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_1024, R.id.settings_image_max_1024);
         imageMaxOriginalButton = imageMaxChoice(ImageSettings.MaxSide.ORIGINAL, R.id.settings_image_max_original);
-        maxRow2.addView(imageMax1024Button, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        maxRow2.addView(imageMaxOriginalButton, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        maxRow2.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
-        section.addView(maxRow2);
+        StillwaterReadable.addFlexibleButtonRow(section, this, 44,
+                imageMax1024Button, imageMaxOriginalButton);
 
         imageCropBox = new CheckBox(this);
         imageCropBox.setId(R.id.settings_image_crop);

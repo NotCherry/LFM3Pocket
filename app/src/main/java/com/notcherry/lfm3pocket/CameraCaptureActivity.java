@@ -1,6 +1,7 @@
 package com.notcherry.lfm3pocket;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.GradientDrawable;
@@ -36,6 +37,10 @@ public final class CameraCaptureActivity extends ComponentActivity {
     private ImageCapture imageCapture;
     private ProcessCameraProvider cameraProvider;
     private boolean captureStarted;
+
+    @Override protected void attachBaseContext(Context newBase) {
+        super.attachBaseContext(InterfaceSize.wrap(newBase));
+    }
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.minimumInteractiveComponentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.TextSelectionColors
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import com.notcherry.lfm3pocket.ui.theme.PocketTheme
 import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
+import com.notcherry.lfm3pocket.ui.theme.atlasSpacing
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 import java.io.File
 import java.util.function.Consumer
@@ -182,6 +184,7 @@ class ChatPanel(
             val keyboard = LocalSoftwareKeyboardController.current
             val atlas = MaterialTheme.atlasColors
             val type = MaterialTheme.atlasTypography
+            val space = MaterialTheme.atlasSpacing
             var previewBitmap by remember(attachment?.path) { mutableStateOf<Bitmap?>(null) }
             LaunchedEffect(attachment?.path) {
                 val path = attachment?.path
@@ -203,13 +206,13 @@ class ChatPanel(
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .padding(horizontal = space.space4, vertical = space.space2)
                             .background(atlas.surfaceRaised, MaterialTheme.shapes.large)
                             .border(1.dp, atlas.border, MaterialTheme.shapes.large)
-                            .padding(12.dp),
+                            .padding(space.space4),
                     ) {
                         Text("Android action", style = type.title, color = atlas.ink)
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(space.space1))
                         Text(
                             card.details,
                             style = type.mono,
@@ -268,16 +271,16 @@ class ChatPanel(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 6.dp),
+                        .padding(horizontal = space.space1),
                     onSuggest = { input = it },
                 )
                 attachment?.let { image ->
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .padding(horizontal = space.space4, vertical = space.space1)
                             .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
-                            .padding(10.dp)
+                            .padding(space.space3)
                             .testTag(tag("image_attachment")),
                     ) {
                         Text(
@@ -328,14 +331,14 @@ class ChatPanel(
                         .fillMaxWidth()
                         .background(atlas.surface)
                         .border(width = 1.dp, color = atlas.border)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = space.composer, vertical = space.space2),
                 ) {
                     ChatLiveStatus(idleMode, liveStatus, context.packageName)
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(space.space1))
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(space.space2),
                     ) {
                         OutlinedTextField(
                             value = input,
@@ -368,7 +371,8 @@ class ChatPanel(
                             onClick = { stop.run() },
                             enabled = controls.stop,
                             modifier = Modifier
-                                .heightIn(min = 48.dp)
+                                .minimumInteractiveComponentSize()
+                                .heightIn(min = 40.dp)
                                 .testTag(tag("chat_stop")),
                             shape = RoundedCornerShape(0.dp),
                             colors = StillwaterControls.outlinedColors(),
@@ -383,7 +387,8 @@ class ChatPanel(
                             },
                             enabled = controls.send,
                             modifier = Modifier
-                                .heightIn(min = 48.dp)
+                                .minimumInteractiveComponentSize()
+                                .heightIn(min = 40.dp)
                                 .testTag(tag("chat_send")),
                             shape = RoundedCornerShape(0.dp),
                             colors = StillwaterControls.buttonColors(),
