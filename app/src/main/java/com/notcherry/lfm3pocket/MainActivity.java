@@ -755,7 +755,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 inferenceEngine.configure(next);
                 persistImageSettings(nextImages);
                 updateControls();
-                status.setText(next.summary() + " · " + nextImages.summary());
+                // Keep the inference summary exact for Stage 1 Automator contracts.
+                status.setText(next.summary());
             }, failure -> {
                 if (destroyed) return;
                 if (settingsInlineError != null)

@@ -27,5 +27,5 @@
     <string name="image_remove">Remove image</string>
     <string name="importing_photo">Importing photo…</string>
     <string name="preparing_photo">Preparing photo for vision…</string>
-    <string name="photo_attached_status">Photo attached. Add a question and press Send.</string>
+    <string name="photo_attached_status">photo attached. Add a question and press Send.</string>
 </resources>
