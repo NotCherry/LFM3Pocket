@@ -200,19 +200,23 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         String requestedTitle = intent == null ? null : intent.getStringExtra(EXTRA_HISTORY_TITLE);
         boolean explicit = requested != null && !requested.isBlank();
         android.content.SharedPreferences prefs = getPreferences(MODE_PRIVATE);
-        String id = explicit ? requested
-                : (!runtime.conversationId().isBlank() ? runtime.conversationId()
-                : prefs.getString("history_conversation_id", java.util.UUID.randomUUID().toString()));
+        OpenConversation choice = OpenConversation.choose(
+                explicit ? requested : null,
+                prefs.getString("history_conversation_id", ""),
+                runtime.conversationId(),
+                runtime.isGenerating(),
+                java.util.UUID.randomUUID().toString());
+        String id = choice.id;
         String title = requestedTitle != null && !requestedTitle.isBlank() ? requestedTitle
                 : prefs.getString("history_title", runtime.historyTitle());
-        if (explicit && runtime.hasTranscript() && !id.equals(runtime.conversationId())) {
-            if (runtime.isGenerating()) {
-                pendingSwitchId = id;
-                pendingSwitchTitle = title;
-                historyConversationId = runtime.conversationId();
-                historyTitle = runtime.historyTitle();
-                return;
-            }
+        if (choice.confirmSwitch) {
+            pendingSwitchId = id;
+            pendingSwitchTitle = title;
+            historyConversationId = runtime.conversationId();
+            historyTitle = runtime.historyTitle();
+            return;
+        }
+        if (!runtime.conversationId().isBlank() && !id.equals(runtime.conversationId())) {
             runtime.clearConversation();
             lastAssistantReply = "";
         }
@@ -1116,6 +1120,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             return;
         }
         runtime.noteSubmission(text, inferenceSettings.maxTokens);
+        session = runtime.session();
         List<ChatSession.Attachment> attachments=new ArrayList<>();
         if(!pendingImagePath.isEmpty())attachments.add(new ChatSession.Attachment(
                 pendingImagePath,ChatSession.AttachmentKind.PHOTO));

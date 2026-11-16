@@ -104,10 +104,11 @@ public final class ModelRuntime {
     public void setConversation(String id, String title) {
         if (id != null && !id.isBlank()) conversationId = id;
         if (title != null && !title.isBlank()) historyTitle = title;
+        // commit: the next screen and instrumentation read this file immediately.
         preferences.raw().edit()
                 .putString("history_conversation_id", conversationId)
                 .putString("history_title", historyTitle)
-                .apply();
+                .commit();
     }
 
     public ChatSession session() {
@@ -313,8 +314,13 @@ public final class ModelRuntime {
         else if (ModelRuntimeService.ACTION_REJECT.equals(action)) resolveConsent(proposalId, false);
     }
 
-    /** Instrumentation resets the fake engine between tests. Drops the live session without a new process. */
+    /**
+     * Instrumentation resets the fake engine between tests. Drops the live session
+     * without a new process. A reset while chat is on screen only clears engine
+     * counters: unloading here would make the open activity's next send a no-op.
+     */
     public void discardForTest() {
+        if (ui != null && ui.isUsable()) return;
         sessionEpoch++;
         ChatSession old = session;
         session = null;
