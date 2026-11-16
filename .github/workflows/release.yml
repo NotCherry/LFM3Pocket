@@ -1,21 +1,23 @@
 name: Publish GitHub Release
 
-# Versioned releases on v* tags are signed arm64 release APKs.
-# A rolling "Latest" prerelease still tracks green main CI debug builds.
+# Auto-release on every non-docs push to main: bump a v* tag, build the APK,
+# and publish Hanami-v<ver>-arm64-v8a.apk. Tag pushes with GITHUB_TOKEN do not
+# re-trigger workflows, so tagging and publishing stay in this one file.
 #
-# Tag releases need these repository secrets (Actions → Secrets). Do not
-# commit a keystore or put passwords in the workflow file.
-#   HANAMI_KEYSTORE_BASE64  base64 of the release keystore (PKCS12 or JKS)
-#   HANAMI_STORE_PASSWORD   keystore password
-#   HANAMI_KEY_ALIAS        key alias inside the keystore
-#   HANAMI_KEY_PASSWORD     key password
+# Manual v* tags still publish. workflow_dispatch rebuilds Latest or a named tag.
+# The old workflow_run "Latest" path is removed so a main push does not build twice.
+#
+# Signing secrets (optional on auto-release):
+#   HANAMI_KEYSTORE_BASE64, HANAMI_STORE_PASSWORD, HANAMI_KEY_ALIAS, HANAMI_KEY_PASSWORD
+# Missing secrets → unsigned APK with a clear note in the release body. Main stays green.
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
     tags:
       - 'v*'
-  workflow_run:
-    workflows: ['Android Stage 1 CI']
-    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -29,47 +31,61 @@ permissions:
 
 concurrency:
   group: publish-github-release-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   publish:
     name: Attach APK to GitHub Release
-    if: >
-      github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - name: Checkout application
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
+          # Need a token that can push the auto-release tag.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prove version bump logic
+        run: python3 .github/scripts/next-hanami-version.py --self-test
 
       - name: Resolve release metadata
         id: meta
         env:
           EVENT_NAME: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
           DISPATCH_TAG: ${{ inputs.tag }}
-          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
           PUSH_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           short_sha() { echo "$1" | cut -c1-7; }
 
-          if [ "$EVENT_NAME" = 'push' ]; then
+          if [ "$EVENT_NAME" = 'push' ] && [ "$REF_TYPE" = 'tag' ]; then
             tag="$REF_NAME"
             echo "mode=versioned" >> "$GITHUB_OUTPUT"
             echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "create_tag=false" >> "$GITHUB_OUTPUT"
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
             echo "make_latest=true" >> "$GITHUB_OUTPUT"
             echo "sha=$PUSH_SHA" >> "$GITHUB_OUTPUT"
             echo "source=build" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" = 'push' ] && [ "$REF_NAME" = 'main' ]; then
+            eval "$(python3 .github/scripts/next-hanami-version.py | sed 's/^/export /')"
+            test -n "${tag:-}"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "Tag $tag already exists; refusing to republish from main." >&2
+              exit 1
+            fi
+            echo "mode=versioned" >> "$GITHUB_OUTPUT"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "create_tag=true" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+            echo "sha=$PUSH_SHA" >> "$GITHUB_OUTPUT"
+            echo "source=build" >> "$GITHUB_OUTPUT"
+            echo "bump=$bump" >> "$GITHUB_OUTPUT"
+            echo "previous=$previous" >> "$GITHUB_OUTPUT"
           elif [ "$EVENT_NAME" = 'workflow_dispatch' ] && [ -n "${DISPATCH_TAG:-}" ]; then
             tag="$DISPATCH_TAG"
             case "$tag" in
@@ -78,27 +94,34 @@ jobs:
             esac
             echo "mode=versioned" >> "$GITHUB_OUTPUT"
             echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "create_tag=false" >> "$GITHUB_OUTPUT"
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
             echo "make_latest=true" >> "$GITHUB_OUTPUT"
             echo "sha=$PUSH_SHA" >> "$GITHUB_OUTPUT"
             echo "source=build" >> "$GITHUB_OUTPUT"
           else
-            sha="${RUN_SHA:-$PUSH_SHA}"
+            sha="$PUSH_SHA"
             echo "mode=latest" >> "$GITHUB_OUTPUT"
             echo "tag=latest" >> "$GITHUB_OUTPUT"
+            echo "create_tag=false" >> "$GITHUB_OUTPUT"
             echo "name=Latest CI build" >> "$GITHUB_OUTPUT"
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
             echo "make_latest=false" >> "$GITHUB_OUTPUT"
             echo "asset=Hanami-latest-arm64-debug.apk" >> "$GITHUB_OUTPUT"
             echo "sha=$sha" >> "$GITHUB_OUTPUT"
-            if [ "$EVENT_NAME" = 'workflow_run' ]; then
-              echo "source=artifact" >> "$GITHUB_OUTPUT"
-              echo "run_id=${{ github.event.workflow_run.id }}" >> "$GITHUB_OUTPUT"
-            else
-              echo "source=build" >> "$GITHUB_OUTPUT"
-            fi
+            echo "source=build" >> "$GITHUB_OUTPUT"
             echo "short_sha=$(short_sha "$sha")" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Create auto-release tag
+        if: steps.meta.outputs.create_tag == 'true'
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          SHA: ${{ steps.meta.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git tag -a "$TAG" "$SHA" -m "Hanami $TAG"
+          git push origin "refs/tags/$TAG"
 
       - name: Set up Java
         if: steps.meta.outputs.source == 'build'
@@ -128,7 +151,8 @@ jobs:
           echo "asset=Hanami-v${name}-arm64-v8a.apk" >> "$GITHUB_OUTPUT"
           echo "name=Hanami $TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Require release signing secrets
+      - name: Decide signing
+        id: signing
         if: steps.meta.outputs.mode == 'versioned'
         env:
           HANAMI_KEYSTORE_BASE64: ${{ secrets.HANAMI_KEYSTORE_BASE64 }}
@@ -140,32 +164,25 @@ jobs:
           missing=0
           for name in HANAMI_KEYSTORE_BASE64 HANAMI_STORE_PASSWORD HANAMI_KEY_ALIAS HANAMI_KEY_PASSWORD; do
             if [ -z "${!name}" ]; then
-              echo "Missing repository secret: $name" >&2
+              echo "Missing repository secret: $name"
               missing=1
             fi
           done
-          if [ "$missing" -ne 0 ]; then
-            echo "Create the secrets under Settings → Secrets and variables → Actions. Do not commit a keystore." >&2
-            exit 1
+          if [ "$missing" -eq 0 ]; then
+            echo "mode=signed" >> "$GITHUB_OUTPUT"
+          else
+            echo "HANAMI_* secrets are incomplete. Publishing an unsigned APK so main stays green."
+            echo "mode=unsigned" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Decode release keystore
-        if: steps.meta.outputs.mode == 'versioned'
+        if: steps.meta.outputs.mode == 'versioned' && steps.signing.outputs.mode == 'signed'
         env:
           HANAMI_KEYSTORE_BASE64: ${{ secrets.HANAMI_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
           echo "$HANAMI_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/hanami-release.keystore"
           test -s "$RUNNER_TEMP/hanami-release.keystore"
-
-      - name: Download APK from Stage 1 CI
-        if: steps.meta.outputs.source == 'artifact'
-        uses: actions/download-artifact@v4
-        with:
-          name: LFM3Pocket-arm64-debug
-          path: release-apk
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ steps.meta.outputs.run_id }}
 
       - name: Fetch llama.cpp (LFM3-capable)
         if: steps.meta.outputs.source == 'build'
@@ -195,13 +212,22 @@ jobs:
           gradle-version: '8.13'
 
       - name: Build signed ARM64 release APK
-        if: steps.meta.outputs.mode == 'versioned'
+        if: steps.meta.outputs.mode == 'versioned' && steps.signing.outputs.mode == 'signed'
         env:
           HANAMI_RELEASE_TAG: ${{ steps.meta.outputs.tag }}
           HANAMI_KEYSTORE_FILE: ${{ runner.temp }}/hanami-release.keystore
           HANAMI_STORE_PASSWORD: ${{ secrets.HANAMI_STORE_PASSWORD }}
           HANAMI_KEY_ALIAS: ${{ secrets.HANAMI_KEY_ALIAS }}
           HANAMI_KEY_PASSWORD: ${{ secrets.HANAMI_KEY_PASSWORD }}
+        run: |
+          gradle :app:assemblePhoneRelease --no-daemon --stacktrace \
+            -Phanami.versionName='${{ steps.version.outputs.version_name }}' \
+            -Phanami.versionCode='${{ steps.version.outputs.version_code }}'
+
+      - name: Build unsigned ARM64 release APK
+        if: steps.meta.outputs.mode == 'versioned' && steps.signing.outputs.mode == 'unsigned'
+        env:
+          HANAMI_RELEASE_TAG: ${{ steps.meta.outputs.tag }}
         run: |
           gradle :app:assemblePhoneRelease --no-daemon --stacktrace \
             -Phanami.versionName='${{ steps.version.outputs.version_name }}' \
@@ -214,20 +240,23 @@ jobs:
       - name: Stage release APK
         env:
           MODE: ${{ steps.meta.outputs.mode }}
+          SIGNING: ${{ steps.signing.outputs.mode }}
           ASSET: ${{ steps.version.outputs.asset || steps.meta.outputs.asset }}
         run: |
           set -euo pipefail
           mkdir -p release-out
           if [ "$MODE" = 'versioned' ]; then
-            src='app/build/outputs/apk/phone/release/app-phone-release.apk'
-          elif [ '${{ steps.meta.outputs.source }}' = 'artifact' ]; then
-            src="$(find release-apk -type f -name '*.apk' | head -n 1)"
+            if [ "$SIGNING" = 'signed' ]; then
+              src='app/build/outputs/apk/phone/release/app-phone-release.apk'
+            else
+              src="$(find app/build/outputs/apk/phone/release -type f -name '*.apk' | head -n 1)"
+            fi
           else
             src='app/build/outputs/apk/phone/debug/app-phone-debug.apk'
           fi
           test -s "$src"
           cp "$src" "release-out/$ASSET"
-          if [ "$MODE" = 'versioned' ]; then
+          if [ "$MODE" = 'versioned' ] && [ "$SIGNING" = 'signed' ]; then
             APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort | tail -n 1)"
             "$APKSIGNER" verify --print-certs "release-out/$ASSET" >/dev/null
           fi
@@ -244,14 +273,20 @@ jobs:
           ASSET: ${{ steps.version.outputs.asset || steps.meta.outputs.asset }}
           SHA: ${{ steps.meta.outputs.sha }}
           SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
-          RUN_ID: ${{ steps.meta.outputs.run_id }}
           VERSION_NAME: ${{ steps.version.outputs.version_name }}
           VERSION_CODE: ${{ steps.version.outputs.version_code }}
+          SIGNING: ${{ steps.signing.outputs.mode }}
+          BUMP: ${{ steps.meta.outputs.bump }}
+          PREVIOUS: ${{ steps.meta.outputs.previous }}
+          CREATE_TAG: ${{ steps.meta.outputs.create_tag }}
         run: |
           set -euo pipefail
           notes_file="$(mktemp)"
           if [ "$MODE" = 'versioned' ]; then
-            prev="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -vx "$TAG" | head -n 1 || true)"
+            prev="${PREVIOUS:-}"
+            if [ -z "$prev" ]; then
+              prev="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -vx "$TAG" | head -n 1 || true)"
+            fi
             changelog="$(mktemp)"
             if [ -n "$prev" ]; then
               git log --no-merges --pretty=format:'- %s' "${prev}..${SHA}" > "$changelog" || true
@@ -265,6 +300,14 @@ jobs:
             {
               echo "Hanami **$TAG** runs Liquid AI LFM3 models on device through llama.cpp. Model weights are not in the APK."
               echo
+              if [ "${CREATE_TAG:-}" = 'true' ]; then
+                echo "Automatic release from \`main\` (bump: \`${BUMP:-unknown}\`)."
+                echo
+              fi
+              if [ "${SIGNING:-}" = 'unsigned' ]; then
+                echo "> **Unsigned APK.** Repository secrets \`HANAMI_KEYSTORE_BASE64\`, \`HANAMI_STORE_PASSWORD\`, \`HANAMI_KEY_ALIAS\`, and \`HANAMI_KEY_PASSWORD\` are not all set. Main stayed green. Install only if you trust this build; Android will not upgrade a later signed APK over this package without uninstalling."
+                echo
+              fi
               echo "## Changes"
               echo
               cat "$changelog"
@@ -276,6 +319,7 @@ jobs:
               echo "- applicationId: \`dev.notcherry.hanami\`"
               echo "- ABI: \`arm64-v8a\`"
               echo "- Asset: \`$ASSET\`"
+              echo "- Signature: \`${SIGNING:-unknown}\`"
               echo "- SHA-256: \`$digest\`"
               echo "- Commit: \`$SHA\`"
               echo
@@ -298,22 +342,19 @@ jobs:
                 --target "$SHA"
                 --latest
               )
-              if [ '${{ github.event_name }}' = 'push' ]; then
+              if [ '${{ github.event_name }}' = 'push' ] && [ '${{ github.ref_type }}' = 'tag' ]; then
                 create_args+=(--verify-tag)
               fi
               gh release create "${create_args[@]}"
             fi
           else
             {
-              echo "Rolling ARM64 phone debug APK from the latest green **main** CI run. This is not a signed Hanami release."
+              echo "Rolling ARM64 phone debug APK. This is not a signed Hanami release."
               echo
               echo "- Commit: \`$SHA\`"
-              if [ -n "${RUN_ID:-}" ]; then
-                echo "- CI run: https://github.com/NotCherry/LFM3Pocket/actions/runs/$RUN_ID"
-              fi
               echo "- Asset: \`$ASSET\`"
               echo
-              echo "Prefer a numbered \`v*\` release. Those assets are named \`Hanami-v<version>-arm64-v8a.apk\` and are signed. Model weights are not bundled."
+              echo "Prefer a numbered \`v*\` release. Those assets are named \`Hanami-v<version>-arm64-v8a.apk\`."
             } > "$notes_file"
             if gh release view latest >/dev/null 2>&1; then
               gh release delete latest --yes --cleanup-tag

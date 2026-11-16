@@ -4,12 +4,27 @@ Hanami is the app name. It runs Liquid AI LFM3 models. The GitHub repository is 
 
 ## Version from the tag
 
-Pushing a tag `vMAJOR.MINOR.PATCH` (each component 0–999, no pre-release suffix) is the release. `ReleaseVersion` sets:
+Every non-docs push to `main` creates the next `vMAJOR.MINOR.PATCH` tag and publishes a GitHub Release. Manual tags still work. `ReleaseVersion` sets:
 
 - `versionName` = `MAJOR.MINOR.PATCH` (the leading `v` is dropped)
 - `versionCode` = `MAJOR * 1000000 + MINOR * 1000 + PATCH`
 
 Examples: `v0.1.0` → `0.1.0` / `1000`, `v1.2.3` → `1.2.3` / `1002003`. A later semver tag always has a higher `versionCode`. Tags such as `v1.2.3-rc.1` fail the build on purpose.
+
+### Automatic bump on `main`
+
+`.github/scripts/next-hanami-version.py` looks at commits since the latest `v*` tag:
+
+| Signal | Bump |
+| --- | --- |
+| No `v*` tag yet | Always `v0.1.0` |
+| Default | patch (`v0.1.0` → `v0.1.1`) |
+| `feat:` / `feat(scope):` | minor |
+| `type!:` or a `BREAKING CHANGE:` footer | major |
+| `[release patch\|minor\|major]` in a subject | that bump (overrides conventional commits in the same range) |
+| `release-as: vX.Y.Z` on its own line | that exact tag |
+
+Docs-only merges (`docs/**` and `*.md`) do not start the release workflow. The tag is created with `GITHUB_TOKEN` inside the same workflow that builds the APK, so the tag push does not start a second run.
 
 Untagged builds, including local debug builds, use `0.1.0` / `1000`. The Java/Kotlin package stays `com.notcherry.lfm3pocket`. The install id is `dev.notcherry.hanami`.
 
@@ -35,17 +50,21 @@ keytool -genkeypair -v -keystore hanami-release.keystore -alias hanami \
   -keyalg RSA -keysize 4096 -validity 10000
 ```
 
-Keep a backup of the keystore outside the repository. Losing it means every later GitHub APK is a different signer, and Android will refuse to upgrade. The workflow decodes the secret into a temp file and passes it as `HANAMI_KEYSTORE_FILE`. A release build without those variables is unsigned, which is what F-Droid's buildserver needs. A tag push without the four secrets fails before it publishes.
+Keep a backup of the keystore outside the repository. Losing it means every later GitHub APK is a different signer, and Android will refuse to upgrade. The workflow decodes the secret into a temp file and passes it as `HANAMI_KEYSTORE_FILE`.
 
-## What the tag workflow publishes
+If any of the four secrets is missing, the auto-release (and a versioned tag build) still publishes. The APK is **unsigned**, the release body says so, and the Actions job stays green so `main` is not red for missing keys. Do not create signing keys in this repository. F-Droid's buildserver also builds unsigned and signs with its own key.
 
-On `v*`:
+## What the release workflow publishes
+
+On each auto-tagged `main` push (and on a manual `v*` tag):
 
 1. Checks out llama.cpp `v0.8.0` at `8642541b255bfb5dc39cd351a178be09013a55d6` and builds the `phone` release flavor (`arm64-v8a` only), native code included.
 2. Sets `versionName` / `versionCode` from the tag.
-3. Signs the APK with the secrets above and checks the signature with `apksigner`.
+3. Signs the APK when the four secrets are present and checks the signature with `apksigner`. Otherwise attaches an unsigned APK and notes that in the release body.
 4. Writes a changelog from commit subjects since the previous `vMAJOR.MINOR.PATCH` tag (or the latest 30 subjects if there is no previous tag).
 5. Publishes a GitHub Release. The APK is `Hanami-v<versionName>-arm64-v8a.apk`, plus a `.sha256` file.
+
+`workflow_dispatch` without a tag still rebuilds the rolling `latest` debug APK. That path is manual so a normal `main` merge does not build twice.
 
 Obtainium matches that name stably: the only changing piece is the version. Ignore pre-releases. Asset filter:
 

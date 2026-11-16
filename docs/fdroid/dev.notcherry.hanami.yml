@@ -1,5 +1,6 @@
 # Draft fdroiddata metadata for the owner to submit.
 # Copy to fdroiddata as metadata/dev.notcherry.hanami.yml after the first vMAJOR.MINOR.PATCH tag exists.
+# Main now auto-tags on non-docs merges; the first tag is v0.1.0 when none exist.
 # Replace PLACEHOLDER_FIRST_HANAMI_TAG with that tag (the commit F-Droid checks out).
 # versionCode for vMAJOR.MINOR.PATCH is major*1000000 + minor*1000 + patch.
 # v0.1.0 -> 1000. See docs/RELEASING.md.
