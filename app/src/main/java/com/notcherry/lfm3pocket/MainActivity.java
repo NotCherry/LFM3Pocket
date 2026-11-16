@@ -40,6 +40,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     public static final String EXTRA_HISTORY_CONVERSATION_ID="history_conversation_id";
     public static final String EXTRA_HISTORY_TITLE="history_title";
     public static final String EXTRA_OPEN_SETTINGS = "open_settings";
+    public static final String EXTRA_DRAFT_TEXT = "draft_text";
     private static final int PICK_MODEL = 42;
     private static final int PICK_MMPROJ = 43;
     private static final int PICK_PHOTO = 44;
@@ -71,6 +72,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private Button idle15Button;
     private Button idle60Button;
     private CheckBox lockPreviewBox;
+    private CheckBox loopbackBox;
     private boolean foreground;
     private boolean microphoneRequested;
     private boolean cameraRequested;
@@ -134,6 +136,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             busy = active || recordingActive() || playbackActive() || generating;
             status.setText(message);
             updateControls();
+        }
+        @Override public void onToolOutcome(ToolRegistry.Request request, ToolCoordinator.Outcome outcome) {
+            if (destroyed) return;
+            presentToolOutcome(request, outcome);
         }
         @Override public boolean isUsable() { return !destroyed && chatPanel != null; }
     };
@@ -433,6 +439,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         StillwaterUi.styleCheck(lockPreviewBox);
         lockPreviewBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
         configuration.addView(lockPreviewBox);
+        loopbackBox = new CheckBox(this);
+        loopbackBox.setId(R.id.settings_loopback);
+        loopbackBox.setText("Allow prompts from 127.0.0.1 (cannot approve tools)");
+        StillwaterUi.styleCheck(loopbackBox);
+        loopbackBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
+        configuration.addView(loopbackBox);
 
         ScrollView configurationScroll = new ScrollView(this);
         configurationScroll.setId(R.id.model_configuration_scroll);
@@ -511,6 +523,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) {
             setSettingsOpen(true);
         }
+        applyDraft(getIntent());
     }
 
     private void setSettingsOpen(boolean open) {
@@ -1035,6 +1048,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         bindingBackground = true;
         keepLoadedBox.setChecked(prefs.keepLoaded());
         lockPreviewBox.setChecked(prefs.lockPreview());
+        if (loopbackBox != null) loopbackBox.setChecked(prefs.loopbackEnabled());
         paintIdle(prefs.idleMinutes());
         bindingBackground = false;
     }
@@ -1044,8 +1058,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void saveBackgroundSettings() {
         if (bindingBackground || keepLoadedBox == null) return;
         int idle = idle15Button.isSelected() ? 15 : idle60Button.isSelected() ? 60 : 0;
-        runtime.updateBackgroundSettings(keepLoadedBox.isChecked(), idle, lockPreviewBox.isChecked());
+        boolean loopback = loopbackBox != null && loopbackBox.isChecked();
+        runtime.updateBackgroundSettings(keepLoadedBox.isChecked(), idle, lockPreviewBox.isChecked(), loopback);
         paintIdle(idle);
+    }
+
+    private void applyDraft(Intent intent) {
+        if (intent == null || chatPanel == null) return;
+        String draft = intent.getStringExtra(EXTRA_DRAFT_TEXT);
+        if (draft == null || draft.isBlank()) return;
+        chatPanel.setDraft(draft);
+        intent.removeExtra(EXTRA_DRAFT_TEXT);
     }
 
     private Button idleChoice(String label, int minutes, int id) {
@@ -1139,6 +1162,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         adoptConversation(intent);
         if (pendingSwitchId != null) confirmSwitchConversation();
         if (intent != null && intent.getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) setSettingsOpen(true);
+        applyDraft(intent);
     }
 
     @Override protected void onDestroy() {

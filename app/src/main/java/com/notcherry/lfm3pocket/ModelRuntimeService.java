@@ -13,6 +13,7 @@ public final class ModelRuntimeService extends Service {
     static final String ACTION_UNLOAD = "com.notcherry.lfm3pocket.action.UNLOAD_MODEL";
     static final String ACTION_APPROVE = "com.notcherry.lfm3pocket.action.APPROVE_TOOL";
     static final String ACTION_REJECT = "com.notcherry.lfm3pocket.action.REJECT_TOOL";
+    static final String ACTION_ASK = "com.notcherry.lfm3pocket.action.ASK_FROM_NOTIFICATION";
     static final String EXTRA_PROPOSAL_ID = "proposal_id";
 
     private boolean promoted;
@@ -38,7 +39,15 @@ public final class ModelRuntimeService extends Service {
                 notice.mediaPlayback);
         runtime.serviceReady(this);
         if (intent != null && intent.getAction() != null) {
-            runtime.onServiceAction(intent.getAction(), intent.getStringExtra(EXTRA_PROPOSAL_ID));
+            String ask = null;
+            if (ACTION_ASK.equals(intent.getAction())) {
+                android.os.Bundle remote = android.app.RemoteInput.getResultsFromIntent(intent);
+                if (remote != null) {
+                    CharSequence value = remote.getCharSequence(RuntimeNotifications.REMOTE_ASK_KEY);
+                    ask = value == null ? null : value.toString();
+                }
+            }
+            runtime.onServiceAction(intent.getAction(), intent.getStringExtra(EXTRA_PROPOSAL_ID), ask);
         }
         return START_NOT_STICKY;
     }

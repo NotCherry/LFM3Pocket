@@ -45,6 +45,7 @@ import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 class ComposeHostActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (routeExternalAsk(intent)) return
         window.statusBarColor = 0xFF0E0E0C.toInt()
         window.navigationBarColor = 0xFF0E0E0C.toInt()
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
@@ -70,6 +71,36 @@ class ComposeHostActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        routeExternalAsk(intent)
+    }
+
+    /**
+     * Share targets and typed ASK intents open chat with a draft. They never
+     * authorize a tool; only the user can approve from the phone UI.
+     */
+    private fun routeExternalAsk(intent: Intent?): Boolean {
+        if (intent == null) return false
+        val draft = when {
+            Intent.ACTION_SEND == intent.action && intent.type?.startsWith("text/") == true ->
+                intent.getStringExtra(Intent.EXTRA_TEXT)
+            "com.notcherry.lfm3pocket.action.ASK" == intent.action ->
+                intent.getStringExtra(Intent.EXTRA_TEXT)
+                    ?: intent.getStringExtra("prompt")
+            else -> null
+        }?.trim().orEmpty()
+        if (draft.isEmpty()) return false
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_DRAFT_TEXT, draft)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        )
+        finish()
+        return true
     }
 }
 

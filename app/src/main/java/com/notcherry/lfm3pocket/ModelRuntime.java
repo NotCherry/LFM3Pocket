@@ -29,6 +29,7 @@ public final class ModelRuntime {
         void onHistoryTitle(String title);
         void onPlayback(String message);
         void onSpeech(boolean speaking, String status);
+        void onToolOutcome(ToolRegistry.Request request, ToolCoordinator.Outcome outcome);
         boolean isUsable();
     }
 
@@ -69,6 +70,7 @@ public final class ModelRuntime {
     private ChatSnapshot lastSnapshot;
     private final AtomicInteger pendingTokens = new AtomicInteger();
     private final AtomicBoolean tokenFlushPosted = new AtomicBoolean();
+    private final LoopbackAgentApi loopback;
     private final Runnable idleTick = new Runnable() {
         @Override public void run() {
             apply(policy.onClock(SystemClock.elapsedRealtime()));
@@ -83,11 +85,25 @@ public final class ModelRuntime {
         this.playbackFocus = new AndroidPlaybackFocus(app);
         this.playback = new PlaybackController(app.newPlaybackTrackFactory(), playbackFocus::request,
                 playbackFocus::abandon, audioWorker, main::post, (state, message) -> onPlayback(state, message));
+        this.loopback = new LoopbackAgentApi(this::submitFromLoopback, message -> {});
         apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
+        syncLoopback();
         listenForHeat();
         listenForBattery();
         main.postDelayed(idleTick, 15_000L);
+    }
+
+    private void syncLoopback() {
+        loopback.setEnabled(preferences.loopbackEnabled());
+    }
+
+    /** Loopback can only submit text. It never reaches {@code approve}. */
+    private boolean submitFromLoopback(String prompt) {
+        if (prompt == null || prompt.isBlank()) return false;
+        if (handle == 0L || isGenerating()) return false;
+        main.post(() -> askFromNotification(prompt));
+        return true;
     }
 
     public InferenceEngine engine() { return engine; }
@@ -145,9 +161,15 @@ public final class ModelRuntime {
     }
 
     public void updateBackgroundSettings(boolean keep, int idleMinutes, boolean preview) {
+        updateBackgroundSettings(keep, idleMinutes, preview, preferences.loopbackEnabled());
+    }
+
+    public void updateBackgroundSettings(boolean keep, int idleMinutes, boolean preview, boolean loopback) {
         preferences.setKeepLoaded(keep);
         preferences.setIdleMinutes(idleMinutes);
         preferences.setLockPreview(preview);
+        preferences.setLoopbackEnabled(loopback);
+        syncLoopback();
         apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
     }
@@ -308,10 +330,49 @@ public final class ModelRuntime {
     }
 
     public void onServiceAction(String action, String proposalId) {
+        onServiceAction(action, proposalId, null);
+    }
+
+    public void onServiceAction(String action, String proposalId, String askText) {
         if (ModelRuntimeService.ACTION_STOP.equals(action)) stopTurn();
         else if (ModelRuntimeService.ACTION_UNLOAD.equals(action)) unload("notification", null);
         else if (ModelRuntimeService.ACTION_APPROVE.equals(action)) resolveConsent(proposalId, true);
         else if (ModelRuntimeService.ACTION_REJECT.equals(action)) resolveConsent(proposalId, false);
+        else if (ModelRuntimeService.ACTION_ASK.equals(action)) askFromNotification(askText);
+    }
+
+    /** RemoteInput Ask inserts a user message. It never authorizes a tool. */
+    public void askFromNotification(String text) {
+        if (text == null || text.isBlank()) return;
+        if (handle == 0L) {
+            apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
+                    preferences.lockPreview(), SystemClock.elapsedRealtime()));
+            return;
+        }
+        if (isGenerating()) return;
+        ensureSession();
+        noteSubmission(text.trim(), 512);
+        if (!session.submit(text.trim(), java.util.Collections.emptyList(), false, "", 512)) {
+            // Still answering or handle raced to zero.
+        }
+    }
+
+    private void proposeToolsFromAssistant(String assistantText) {
+        worker.execute(() -> {
+            ToolCoordinator.Outcome outcome = ModelToolBridge.proposeFromAssistant(
+                    new ToolRegistry(), app.toolCoordinator(), assistantText);
+            if (outcome == null) return;
+            main.post(() -> {
+                if ("PENDING_CONFIRMATION".equals(outcome.status) && outcome.proposal != null) {
+                    showConsent(outcome.proposal.id, ToolCoordinator.describe(outcome.proposal.request),
+                            outcome.proposal.risk == ToolCoordinator.Risk.SAFE);
+                }
+                if (ui != null && ui.isUsable()) {
+                    ToolRegistry.Request request = outcome.proposal == null ? null : outcome.proposal.request;
+                    ui.onToolOutcome(request, outcome);
+                }
+            });
+        });
     }
 
     /**
@@ -353,12 +414,14 @@ public final class ModelRuntime {
                     ? coordinator.approve(proposalId) : coordinator.reject(proposalId);
             main.post(() -> {
                 clearConsent();
-                if (ui != null && ui.isUsable()) {
-                    // The open chat renders the outcome itself when it is in front.
+                if (outcome != null && ui != null && ui.isUsable()) {
+                    ToolRegistry.Request request = outcome.proposal == null ? null : outcome.proposal.request;
+                    ui.onToolOutcome(request, outcome);
                 }
-                if (outcome != null && "PENDING_CONFIRMATION".equals(outcome.status)) showConsent(
-                        outcome.proposal.id, ToolCoordinator.describe(outcome.proposal.request),
-                        outcome.proposal.risk == ToolCoordinator.Risk.SAFE);
+                if (outcome != null && "PENDING_CONFIRMATION".equals(outcome.status) && outcome.proposal != null) {
+                    showConsent(outcome.proposal.id, ToolCoordinator.describe(outcome.proposal.request),
+                            outcome.proposal.risk == ToolCoordinator.Risk.SAFE);
+                }
             });
         });
     }
@@ -456,6 +519,10 @@ public final class ModelRuntime {
         if (turn.assistantText != null && !turn.assistantText.isBlank()) {
             lastAssistant = turn.assistantText;
             main.post(() -> { if (ui != null && ui.isUsable()) ui.onAssistantReply(lastAssistant); });
+            // Only COMPLETED replies become tool proposals. Cancelled text is inert.
+            if ("COMPLETED".equals(turn.status == null ? "" : turn.status.name())) {
+                proposeToolsFromAssistant(turn.assistantText);
+            }
         }
         String title = historyTitle;
         if ("New conversation".equals(title)) {
@@ -537,15 +604,7 @@ public final class ModelRuntime {
         if (!serviceStartRequested) {
             serviceStartRequested = true;
             Intent intent = new Intent(app, ModelRuntimeService.class);
-            // startForegroundService arms a few-second deadline. The main thread is often
-            // still drawing the first frame, so that deadline fires before onCreate runs.
-            // startService does not arm it; onCreate still promotes immediately.
-            try {
-                app.startService(intent);
-            } catch (IllegalStateException background) {
-                if (Build.VERSION.SDK_INT >= 26) app.startForegroundService(intent);
-                else throw background;
-            }
+            RuntimeServiceStarter.start(app, intent);
         }
     }
 

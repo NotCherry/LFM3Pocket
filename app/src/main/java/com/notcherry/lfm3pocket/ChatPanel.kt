@@ -81,6 +81,7 @@ class ChatPanel(
     private var toolCard by mutableStateOf<ToolCardState?>(null)
     private var attachment by mutableStateOf<Attachment?>(null)
     private var controls by mutableStateOf(Controls())
+    private var pendingDraft by mutableStateOf<String?>(null)
 
     private val transcriptHost = TextView(context).apply {
         id = R.id.chat_transcript
@@ -152,12 +153,25 @@ class ChatPanel(
         attachment = null
     }
 
+    /** Prefills the composer. Share targets and typed ASK intents use this. */
+    fun setDraft(text: String?) {
+        if (text.isNullOrBlank()) return
+        pendingDraft = text.trim()
+    }
+
     private fun tag(name: String) = "${context.packageName}:id/$name"
 
     @Composable
     private fun ChatPanelContent() {
         PocketTheme {
             var input by remember { mutableStateOf("") }
+            val draft = pendingDraft
+            LaunchedEffect(draft) {
+                if (draft != null) {
+                    input = draft
+                    pendingDraft = null
+                }
+            }
             val focus = LocalFocusManager.current
             val keyboard = LocalSoftwareKeyboardController.current
             val atlas = MaterialTheme.atlasColors

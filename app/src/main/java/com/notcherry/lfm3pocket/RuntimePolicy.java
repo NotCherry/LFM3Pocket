@@ -324,7 +324,8 @@ public final class RuntimePolicy {
         if (idleMinutes > 0) body = body + "\nUnloads after " + idleMinutes + " idle minutes";
         if (!warning.isEmpty()) body = body + "\n" + warning;
         return RuntimeNotice.of(RuntimeNotice.Kind.RESIDENT, "Model loaded", body, false,
-                0, 0, "", false, RuntimeNotice.Action.UNLOAD, RuntimeNotice.Action.OPEN);
+                0, 0, "", false, RuntimeNotice.Action.ASK, RuntimeNotice.Action.UNLOAD,
+                RuntimeNotice.Action.OPEN);
     }
 
     private String warning() {
