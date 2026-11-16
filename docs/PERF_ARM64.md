@@ -9,10 +9,10 @@ Owner report: the same LFM3 Q4_K_M GGUF ran at ~10+ tok/s decode in PocketPal AI
 | Setting | PocketPal (llama.rn) | ChatterUI (cui-llama.rn) | Hanami before | Hanami after |
 | --- | --- | --- | --- | --- |
 | CPU ISA | Runtime ladder; prefers `armv8.2-a+dotprod[+i8mm]` | Same ladder via cui-llama.rn | Baseline NEON (`GGML_NATIVE=OFF`, empty `GGML_CPU_ARM_ARCH`) | Single `arm64-v8a` `.so` with `GGML_CPU_ARM_ARCH=armv8.2-a+dotprod` |
-| `-O3` | Always (`-O3 -DNDEBUG` on kernels) | Same | Debug APKs used NDK Debug/`-O0`/`-O2` | Append Debug `-O3` (no `CACHE FORCE`, no Debug `-DNDEBUG`) |
+| `-O3` | Always (`-O3 -DNDEBUG` on kernels) | Same | Debug APKs used NDK Debug/`-O0`/`-O2` | Append `-O3` for Debug/Release/RelWithDebInfo (no `CACHE FORCE`, no Debug `-DNDEBUG`) |
 | OpenMP | Off for Android | Off | Off | Off (unchanged; llama.cpp android.md) |
 | KleidiAI | Not required for CPU ladder | Not required | Off | Off (FetchContent breaks offline/F-Droid) |
-| Threads default | 80% of cores if &gt;4 | `availableProcessors()` | Fixed 4 | Big+mid frequency clusters (PocketPal 80% fallback) |
+| Threads default | 80% of cores if &gt;4 | `availableProcessors()` | Fixed 4 | Highest cluster only when 2 clusters (e.g. RMX2170 2+6→2); big+mid when ≥3 clusters; else PocketPal 80% |
 | `n_batch` | 512 | 512 | 512 | ≤1024 when context allows |
 | Flash attn | Off on Android CPU | Default / unset | llama.cpp AUTO | Explicit AUTO |
 | mmap / mlock | mmap often false on Android; mlock false | mmap+mlock true | mmap AUTO, no mlock | Unchanged (no mlock; LMK policy) |
@@ -25,7 +25,7 @@ Owner report: the same LFM3 Q4_K_M GGUF ran at ~10+ tok/s decode in PocketPal AI
 | `armv8.2-a+dotprod` | Primary decode win for Q4_K_M (DOTPROD GEMM). Reasoned: ~1.5–2.5× tg vs baseline NEON on modern phones — closes most of 4→10+ tok/s. |
 | Debug `-O3` (append, no `-DNDEBUG`) | CI/Obtainium Debug APKs stop shipping under-optimized kernels; asserts stay on. ~10–30% if previously `-O0`/`-O2`. |
 | KV / prefix reuse | Multi-turn chat stops re-prefilling the shared history each send. Large pp saving after turn 1; tg unchanged. |
-| Topology thread default | Avoid under-subscribing big/mid cores (fixed 4). Device-dependent; often modest tg gain. |
+| Topology thread default | Avoid little-core oversubscription on 2-cluster SoCs; use big+mid only when a mid cluster exists (≥3). Device-dependent. |
 | `n_batch` ≤1024 | Faster prompt processing; little effect on single-token decode. |
 | Infer thread priority | Avoids occasional background nice; small/situational. |
 
@@ -33,7 +33,7 @@ Owner report: the same LFM3 Q4_K_M GGUF ran at ~10+ tok/s decode in PocketPal AI
 
 - **Before (owner, physical arm64):** ~4 tok/s decode for LFM3 Q4_K_M.
 - **Peer apps (owner):** 10+ tok/s decode, same weights.
-- **After (reasoned):** ~8–12 tok/s decode on the same class of phone once DOTPROD + `-O3` land; multi-turn pp much lower wall time via KV reuse. Emulator x86_64 is not representative of arm64 DOTPROD — use Settings → **Run speed test** on device and copy the pp/tg report.
+- **After (reasoned):** ~8–12 tok/s decode on the same class of phone once DOTPROD + `-O3` land; multi-turn pp much lower wall time via KV reuse. Emulator x86_64 is not representative of arm64 DOTPROD — use Settings → **Run speed test** on device and copy the pp/tg report. **RMX2170 measured tok/s still pending** (owner device follow-up).
 
 ## Reproducibility
 

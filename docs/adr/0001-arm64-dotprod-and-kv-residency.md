@@ -28,7 +28,7 @@ hybrid memory for shared prompt prefixes. That conflicts with the Phase-1 note i
 | `+i8mm` | **Omitted** | Snapdragon 720G (RMX2170) has DOTPROD, not i8mm |
 | `GGML_OPENMP` | `OFF` | llama.cpp Android NDK limitation |
 | `GGML_CPU_KLEIDIAI` | `OFF` | FetchContent breaks offline / reproducible builds |
-| Debug `-O3` | Via `add_compile_options` (not `CACHE FORCE`) | CI ships Debug APKs; keep NDK flags and asserts (`-DNDEBUG` not forced in Debug) |
+| Debug/Release `-O3` | Via `add_compile_options` on Debug, Release, and RelWithDebInfo (not `CACHE FORCE`) | Applies to ggml-cpu as well as JNI; keep NDK flags and asserts (`-DNDEBUG` not forced in Debug) |
 
 ### 2. Devices without DOTPROD
 

@@ -5,11 +5,15 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# CI ships Debug APKs. Append -O3 so Clang's last -O wins over NDK Debug -O0,
-# without CACHE FORCE (which wiped other NDK flags) and without -DNDEBUG in
-# Debug (keeps asserts). See docs/adr/0001-arm64-dotprod-and-kv-residency.md.
+# Append -O3 for Debug and Release so ggml-cpu (and other llama.cpp targets)
+# get it too — not only lfm3pocket. Clang's last -O wins over NDK Debug -O0.
+# No CACHE FORCE (keeps other NDK flags) and no Debug -DNDEBUG (keeps asserts).
+# See docs/adr/0001-arm64-dotprod-and-kv-residency.md.
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    add_compile_options("$<$<CONFIG:Debug>:-O3>")
+    add_compile_options(
+        "$<$<CONFIG:Debug>:-O3>"
+        "$<$<CONFIG:Release>:-O3>"
+        "$<$<CONFIG:RelWithDebInfo>:-O3>")
 endif()
 
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
