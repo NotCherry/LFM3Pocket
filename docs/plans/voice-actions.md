@@ -1,6 +1,8 @@
 # Voice actions
 
-Status: **planning only**. No implementation in this change. Builds on the background-mode design record ([`background-mode.md`](background-mode.md)) and the tool contract ([`ANDROID_TOOLS.md`](../ANDROID_TOOLS.md)).
+Status: **planning + tracked execution**. Design record and ordered work breakdown. No app code in the planning PR. Builds on [`background-mode.md`](background-mode.md) and [`ANDROID_TOOLS.md`](../ANDROID_TOOLS.md).
+
+**Epic:** [#167 Voice actions](https://github.com/NotCherry/LFM3Pocket/issues/167)
 
 Hanami (`dev.notcherry.hanami`) already keeps LFM3 resident via a `specialUse` foreground service, posts Stop / Unload / Open (plus RemoteInput Ask) on the ongoing notification, bridges model text into `ToolCoordinator` proposals with shade + consent-sheet approval, accepts share/ASK intents, and exposes an opt-in loopback API that cannot call `approve`. **Untrusted text never authorizes an action.** Voice must reuse that path: spoken audio is another user turn into the loaded multimodal model, and spoken confirm resolves a pending proposal id. It is not a second authorization channel.
 
@@ -253,28 +255,200 @@ Context provider, not an authorizer.
 
 Android 12+: start mic FGS from notification `PendingIntent` or a started activity (shade Talk). Cancel listen on Stop, Unload, timeout, focus loss, thermal `SEVERE`+.
 
-## Phased rollout
+## Definition of Ready
 
-| Phase | Scope | Done when |
+A work item is **Ready** when:
+
+1. It is linked from epic [#167](https://github.com/NotCherry/LFM3Pocket/issues/167) with a clear phase order.
+2. Dependencies are named (issues or shipped main features). **Do not start work that duplicates in-progress quick-wins** (timers/alarms tools, built-in tool bridge polish, default-assistant entry, SAF model picker) — wait on or extend those.
+3. Scope / out of scope and acceptance criteria are checkbox-ready in the issue.
+4. Privacy/safety rules are acknowledged: exact action read-back + tak/nie (or yes/no) for side effects; notification/calendar/message/document text is untrusted.
+5. Any new dangerous permission has a one-paragraph justification draft for the PR.
+6. Test approach is named (JVM / instrumentation / arm64 checklist) — emulator ASR quality is not a merge gate.
+
+## Definition of Done (project-wide)
+
+Every voice-actions PR must satisfy:
+
+- [ ] Code reviewed
+- [ ] Unit tests added or updated; Android CI green
+- [ ] Polish **and** English user-visible strings
+- [ ] On-device manual test on an **arm64** phone using the checklist below (or explicit N/A with reason on the issue)
+- [ ] No new dangerous permissions without PR justification
+- [ ] Docs updated (this plan and any touched `docs/*`)
+- [ ] Privacy/safety respected: exact `describe` read-back + tak/nie confirmation for side effects; notification (and similar) text treated as untrusted and cannot authorize actions
+
+## Execution plan
+
+Order is dependency order within a phase. Do not block **V1** on new tools — existing timer/alarm/flashlight on main exercise confirm + speech.
+
+**External dependencies (do not duplicate):** timer/alarm tools ([#37](https://github.com/NotCherry/LFM3Pocket/issues/37), [#38](https://github.com/NotCherry/LFM3Pocket/issues/38)), tool bridge / built-in tools ([#147](https://github.com/NotCherry/LFM3Pocket/pull/147)), SAF GGUF import/picker ([#15](https://github.com/NotCherry/LFM3Pocket/issues/15) + any in-progress quick-wins picker), default-assistant entry quick-wins (coordinate in [#163](https://github.com/NotCherry/LFM3Pocket/issues/163)).
+
+### Milestone Voice V1 — Voice loop
+
+#### [#153](https://github.com/NotCherry/LFM3Pocket/issues/153) Mic FGS listen session (PTT + shade Talk)
+
+| | |
+| --- | --- |
+| **Scope** | 16 kHz WAV capture; optional silence trim; mic FGS only while listening; shade Talk `PendingIntent`; cancel/timeout paths |
+| **Deps** | Residency + N2 notification on main (#143, #147) |
+| **Approach** | Extend `ModelRuntimeService` types; reuse `RecordingController`; PTT release = EOU |
+| **Risks** | OEM blocks background mic FGS; stuck Listening state |
+| **Accept** | Screen-off Talk works while model FGS running; mic type only during capture |
+| **Tests** | JVM listen state machine; instrumentation shade Talk + cancel |
+
+#### [#154](https://github.com/NotCherry/LFM3Pocket/issues/154) One-pass Omni audio-in + no-audio disable
+
+| | |
+| --- | --- |
+| **Scope** | One `generateWithMedia` turn with WAV; Polish/English; disable Talk if no audio-capable model |
+| **Deps** | #153; Omni+mmproj load / SAF picker (quick-wins — do not rebuild) |
+| **Approach** | Prefer audio→reply(+tool) over ASR-then-text double pass for voice-action sessions |
+| **Risks** | RAM/latency; text-only GGUF confusion |
+| **Accept** | Polish PTT grounded reply; no SpeechRecognizer/whisper/Vosk; clear disable copy |
+| **Tests** | Fake engine media once; no-audio labelled error; ARM64 Polish sample |
+
+#### [#155](https://github.com/NotCherry/LFM3Pocket/issues/155) Spoken output: Omni speech + Polish system TTS fallback
+
+| | |
+| --- | --- |
+| **Scope** | Omni `generateSpeech` when `gen_audio`; labelled `TextToSpeech` + `pl` voice otherwise; exact describe for confirms |
+| **Deps** | #154; existing V04/V05 speech on main |
+| **Approach** | Amend `VOICE_OUTPUT.md` for labelled fallback only |
+| **Risks** | Missing OEM Polish TTS voice; concurrent decode/speech |
+| **Accept** | Omni pl speech works; fallback labelled; Stop interrupts |
+| **Tests** | SpeechPrompt pl/en; fake playback; device checklist |
+
+#### [#156](https://github.com/NotCherry/LFM3Pocket/issues/156) Voice confirmation (exact read-back + tak/nie)
+
+| | |
+| --- | --- |
+| **Scope** | Exact `describe` spoken; short confirm listen; closed pl+en lexicon → `approve`/`reject`; ambiguous → reject |
+| **Deps** | #153–#155; `ToolCoordinator` on main |
+| **Approach** | Lexicon match only; never ask LFM3 if they meant yes |
+| **Risks** | False approve from media noise; expiry mid read-back |
+| **Accept** | Alarm needs confirm; tak/yes once; nie/no rejects; replay inert |
+| **Tests** | JVM lexicon; coordinator; injected confirm transcripts |
+
+#### [#157](https://github.com/NotCherry/LFM3Pocket/issues/157) Voice tool prompt card + pl/en strings
+
+| | |
+| --- | --- |
+| **Scope** | Short tool card; all voice UX strings in `values` + `values-pl` |
+| **Deps** | #154–#156 call sites |
+| **Approach** | One JSON object instruction; no prose scrape |
+| **Risks** | Context burn from over-long few-shot |
+| **Accept** | Locale switch shows pl/en; StrictToolJson unchanged |
+| **Tests** | Resource key presence; prompt unit assert |
+
+#### [#158](https://github.com/NotCherry/LFM3Pocket/issues/158) Arm64 voice-loop device checklist
+
+| | |
+| --- | --- |
+| **Scope** | Checklist + recorded PASS/FAIL/NOT_RUN on physical arm64 (Polish PTT, shade Talk screen-off, tak/nie, text-only disable, Stop) |
+| **Deps** | #153–#157 |
+| **Approach** | Same evidence honesty as `ARM64_OMNI_TEST_PROTOCOL.md` |
+| **Risks** | Fabricated PASS; emulator-only evidence |
+| **Accept** | Checklist in repo; device identity + outcomes filed |
+| **Tests** | Manual arm64 only |
+
+**V1 done when:** screen off + Omni loaded → Polish Talk → reply; confirm tak/nie; text-only GGUF disables Talk clearly.
+
+### Milestone Voice V2 — Reminders
+
+#### [#159](https://github.com/NotCherry/LFM3Pocket/issues/159) `set_reminder` via notification + WorkManager
+
+| | |
+| --- | --- |
+| **Scope** | New tool; `CONFIRM`; inexact WM default; survive process death |
+| **Deps** | Existing timer/alarm (#37, #38) — **do not reimplement**; #156 for voice path |
+| **Approach** | Schema bounds; fake WM in tests; exact alarm only with justified permission |
+| **Risks** | Play exact-alarm policy; OEM notification delay |
+| **Accept** | Approve schedules exact title; reject/expiry none; fires after force-stop |
+| **Tests** | JVM schema + fake WM; injected voice confirm |
+
+### Milestone Voice V3 — Messages
+
+#### [#160](https://github.com/NotCherry/LFM3Pocket/issues/160) `draft_message` + `send_message` (intent path)
+
+| | |
+| --- | --- |
+| **Scope** | Draft → read-back → confirm → `ACTION_SENDTO` / allowlisted share; no default `SEND_SMS` |
+| **Deps** | #156 |
+| **Approach** | Immutable draft; `send_message` only `draft_id` |
+| **Risks** | Background activity start; Play SMS scrutiny if someone adds `SmsManager` |
+| **Accept** | Intent extras correct; injection cannot authorize; no `SEND_SMS` from this work |
+| **Tests** | Schema/allowlist; fake intents; injection fixture |
+
+### Milestone Voice V4 — Calendar
+
+#### [#161](https://github.com/NotCherry/LFM3Pocket/issues/161) Calendar read/write tools + calendar picker
+
+| | |
+| --- | --- |
+| **Scope** | list/create/update/delete; Settings `calendar_id`; READ/WRITE_CALENDAR justified |
+| **Deps** | #156 |
+| **Approach** | Bounded windows; opaque ids; results untrusted |
+| **Risks** | Sync adapters; timezone mistakes |
+| **Accept** | No write without pick+permission; stale id fails; revoke → PERMISSION_DENIED |
+| **Tests** | Fake ContentResolver; validators; optional device smoke |
+
+### Milestone Voice V5 — Notifications
+
+#### [#162](https://github.com/NotCherry/LFM3Pocket/issues/162) Notification listener + `list_notifications`
+
+| | |
+| --- | --- |
+| **Scope** | Default-off listener; per-app allowlist; summarize-on-request; no tap/dismiss yet |
+| **Deps** | #156 |
+| **Approach** | `DOCUMENT`-class results; planted tool JSON → zero proposals |
+| **Risks** | Spyware appearance; lock-screen redaction |
+| **Accept** | Default off; allowlist filter; injection regression green |
+| **Tests** | JVM allowlist + injection; unbound service error |
+
+### Milestone Voice V6 — Default assistant
+
+#### [#163](https://github.com/NotCherry/LFM3Pocket/issues/163) Default Android assistant role (coordinate, do not duplicate)
+
+| | |
+| --- | --- |
+| **Scope** | `ROLE_ASSISTANT` / `VoiceInteractionService` opens Hanami voice session; consent unchanged |
+| **Deps** | V1 complete; **in-progress quick-wins default-assistant entry** (extend, do not fork); residency #143; SAF picker as load path |
+| **Approach** | Single system entry → resident Omni session; cold start loads GGUF |
+| **Risks** | Play assistant policy; latency without residency |
+| **Accept** | Role grant + gesture opens Hanami; tools still confirm; one entry path with quick-wins |
+| **Tests** | Manual arm64; bootstrap intent unit tests |
+
+### Milestone Voice next — After voice
+
+#### [#164](https://github.com/NotCherry/LFM3Pocket/issues/164) GPU/NPU acceleration spike (Vulkan first)
+
+CPU-only today (`n_gpu_layers = 0`). Spike **Vulkan** first for Omni PTT TTFT; then OpenCL notes; Hexagon/QNN as SoC-only experiment. Clean CPU fallback. Report devices, deltas, recommendation. Depends on stable V1 workload.
+
+#### [#165](https://github.com/NotCherry/LFM3Pocket/issues/165) Rolling memory summarization
+
+User-visible summarize-and-compact for long voice sessions; Room keeps full transcript; keep trim/thermal unload. Fail closed if summary fails.
+
+#### [#166](https://github.com/NotCherry/LFM3Pocket/issues/166) Local document chat (SAF, untrusted)
+
+Few-file SAF attach; chunk into prompt; cite filenames; `DOCUMENT`-class injection rules. Reuse SAF patterns from model import quick-wins — do not rebuild the GGUF picker.
+
+### Arm64 manual checklist (V1)
+
+Record device, APK SHA, Omni+mmproj SHA, then:
+
+| ID | Action | Expect |
 | --- | --- | --- |
-| **V0 — Plan** | This document | Merged as design |
-| **V1 — Voice loop** | PTT → Omni `mtmd` audio-in → tool bridge → Omni speech (pl/en) or labelled TTS fallback; spoken tak/nie confirm; mic FGS; shade Talk | Screen off + Omni loaded: Polish Talk turn works; alarm read-back + tak/nie with injected confirm text; text-only GGUF disables Talk with clear message |
-| **V2 — Clock complete** | `set_reminder` via notification/WorkManager | Reminder survives process death |
-| **V3 — Messages** | `draft_message` + intent; no `SEND_SMS` | Draft read-back opens composer |
-| **V4 — Calendar** | list/create/update/delete + calendar pick | Permission revoke / stale ids tested |
-| **V5 — Notification summarize** | Listener + allowlist + `list_notifications` | Planted tool JSON cannot authorize; default off |
-| **V6 — Default assistant** | `RoleManager.ROLE_ASSISTANT` / `VoiceInteractionService`; long-press power (or assistant gesture) opens a Hanami voice session against the resident Omni | Role granted in Settings; cold start still loads GGUF if not resident; **confirm rules unchanged**; not a control channel for other apps |
-| **V7 — Optional** | Wake word; direct SMS opt-in flavor; dismiss-notification tool | Explicit product yes |
+| VL-01 | Omni loaded; Polish PTT command | Grounded local reply; no network STT |
+| VL-02 | Shade Talk, screen off | Listen → reply while FGS up |
+| VL-03 | Propose alarm; say **tak** | Exact read-back; approve once |
+| VL-04 | Propose; say **nie** / garbage | Reject; no side effect |
+| VL-05 | Text-only GGUF | Talk disabled; clear pl+en message |
+| VL-06 | Stop during listen / speech | Clean idle; no stuck FGS mic |
 
-Do not block V1 on new tools — existing timer/alarm/flashlight exercise confirm + speech.
+### Labels and milestones (owner)
 
-## Next after voice
-
-**GPU / NPU acceleration.** Today's native load is CPU-only (`n_gpu_layers = 0`). After the voice loop is solid, evaluate llama.cpp backends that actually build and run on shipping phones: **Vulkan** first (widest Android GPU story, measurable prefills for Omni audio+text), then **OpenCL** where vendor drivers are less broken than Vulkan, and treat **Qualcomm Hexagon / QNN-style NPU** as a separate, SoC-specific spike — not a default dependency for F-Droid/GitHub universal APKs. Success metric is wall-clock time to first token on a fixed Omni+mmproj pair and thermal headroom during a PTT turn, with a clean CPU fallback when the backend fails to init.
-
-**Memory and summarization.** Long voice sessions will blow the 512–8192 context budget and RSS. Add an explicit, user-visible summarize-and-compact step (model-authored rolling summary replacing older turns in the live prompt, full transcript still in Room) plus keep trim/thermal unload from background-mode. Do not silently drop user audio attachments the user may still need for history playback.
-
-**Local document chat.** Let the user attach on-device PDFs/text (SAF) into the same consent-gated chat: chunk, embed or window into the prompt, cite filenames in answers. Document bytes are `DOCUMENT`-class — they may inform the reply and must never authorize tools (same injection rule as notifications). Defer RAG index complexity until a single-file / few-file path proves useful under Omni RAM limits.
+Issue create works for this agent; **creating labels and milestones returned HTTP 403**. Please create labels `voice`, `epic`, `phase-1`…`phase-6`, `phase-next`, `android`, `needs-device-test` and the Voice V1–V6 / Voice next milestones, then apply them to [#167](https://github.com/NotCherry/LFM3Pocket/issues/167) and [#153](https://github.com/NotCherry/LFM3Pocket/issues/153)–[#166](https://github.com/NotCherry/LFM3Pocket/issues/166). Also close permission-probe issues #150–#152.
 
 ## Out of scope (explicit)
 
