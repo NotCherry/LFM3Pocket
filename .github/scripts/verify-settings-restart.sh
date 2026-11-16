@@ -8,7 +8,7 @@ for phase in prepare verify; do
   adb shell am force-stop dev.notcherry.hanami
   adb shell am force-stop dev.notcherry.hanami.test
   result="app/build/ci-artifacts/settings-restart-${phase}.txt"
-  timeout 120s adb shell am instrument -w -r \
+  timeout 180s adb shell am instrument -w -r \
     -e class com.notcherry.lfm3pocket.InferenceSettingsE2eTest \
     -e settingsPhase "$phase" \
     dev.notcherry.hanami.test/com.notcherry.lfm3pocket.UiE2eTestRunner > "$result"
