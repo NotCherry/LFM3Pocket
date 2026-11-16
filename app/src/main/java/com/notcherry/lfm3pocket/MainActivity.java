@@ -110,6 +110,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private Button settingsOpenButton;
     private EditText settingsContextField, settingsThreadsField, settingsTokensField;
     private TextView settingsInlineError;
+    private TextView settingsBenchResult;
+    private TextView settingsBuildInfo;
+    private boolean benchmarkRunning;
     private EditText searchEndpointField;
     private CheckBox searchEnabledBox;
     private boolean searchEnabled = false;
@@ -421,12 +424,46 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         configuration.addView(inferenceHeading);
         settingsContextField = settingInput(configuration, "Context", "512–8192, step 256",
                 inferenceSettings.contextTokens, R.id.settings_context, 256, 512, 8192);
-        settingsThreadsField = settingInput(configuration, "Decode threads", "1–8, capped to CPUs",
+        settingsThreadsField = settingInput(configuration, "Decode threads",
+                "1–8, default from big/mid CPU cores",
                 inferenceSettings.threads, R.id.settings_threads, 1, 1, 8);
         settingsTokensField = settingInput(configuration, "Response tokens", "1–2048, below context",
                 inferenceSettings.maxTokens, R.id.settings_tokens, 1, 1, 2048);
         settingsInlineError = label("", 13, StillwaterUi.DANGER);
         configuration.addView(settingsInlineError);
+
+        TextView benchHeading = label("BENCHMARK", 11, inkMuted);
+        benchHeading.setTypeface(StillwaterUi.sansMedium(this));
+        benchHeading.setLetterSpacing(0.12f);
+        benchHeading.setPadding(0, dp(16), 0, dp(4));
+        configuration.addView(benchHeading);
+        configuration.addView(label(
+                "Measures prompt-processing (pp) and decode (tg) tok/s on the loaded model, like llama-bench.",
+                12, inkMuted));
+        Button runBench = button("Run speed test");
+        runBench.setId(R.id.settings_bench_run);
+        StillwaterUi.quiet(runBench);
+        runBench.setOnClickListener(v -> runInlineBenchmark());
+        configuration.addView(runBench, new LinearLayout.LayoutParams(-1, dp(48)));
+        settingsBenchResult = label("Load a model, then run the speed test. Results wrap and can be copied.", 13, ink);
+        settingsBenchResult.setId(R.id.settings_bench_result);
+        settingsBenchResult.setSingleLine(false);
+        settingsBenchResult.setMaxLines(24);
+        settingsBenchResult.setHorizontallyScrolling(false);
+        settingsBenchResult.setPadding(0, dp(8), 0, dp(4));
+        configuration.addView(settingsBenchResult);
+        Button copyBench = button("Copy results");
+        copyBench.setId(R.id.settings_bench_copy);
+        StillwaterUi.quiet(copyBench);
+        copyBench.setOnClickListener(v -> copyBenchmarkResults());
+        configuration.addView(copyBench, new LinearLayout.LayoutParams(-1, dp(44)));
+        settingsBuildInfo = label(safeNativeBuildInfo(), 12, inkMuted);
+        settingsBuildInfo.setId(R.id.settings_build_info);
+        settingsBuildInfo.setSingleLine(false);
+        settingsBuildInfo.setMaxLines(8);
+        settingsBuildInfo.setHorizontallyScrolling(false);
+        settingsBuildInfo.setPadding(0, dp(4), 0, dp(8));
+        configuration.addView(settingsBuildInfo);
 
         TextView searchHeading = label("SEARXNG", 11, inkMuted);
         searchHeading.setTypeface(StillwaterUi.sansMedium(this));
@@ -770,6 +807,66 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             if (settingsInlineError != null) settingsInlineError.setText(invalid.getMessage());
             status.setText(invalid.getMessage());
         }
+    }
+
+    private static String safeNativeBuildInfo() {
+        try {
+            return NativeBridge.nativeBuildInfo();
+        } catch (UnsatisfiedLinkError | Exception ignored) {
+            return "Native build info unavailable until the library loads.";
+        }
+    }
+
+    private void runInlineBenchmark() {
+        if (destroyed || benchmarkRunning || busy || generating) return;
+        long handle = runtime != null ? runtime.handle() : 0L;
+        if (handle == 0L) {
+            if (settingsBenchResult != null)
+                settingsBenchResult.setText("Load a GGUF model first, then run the speed test.");
+            return;
+        }
+        InferenceSettings limits = inferenceSettings;
+        try {
+            if (settingsLoaded && settingsContextField != null) {
+                limits = new InferenceSettings(
+                        Integer.parseInt(settingsContextField.getText().toString()),
+                        Integer.parseInt(settingsThreadsField.getText().toString()),
+                        Integer.parseInt(settingsTokensField.getText().toString()));
+            }
+        } catch (RuntimeException ignored) {
+            limits = inferenceSettings;
+        }
+        final InferenceSettings benchLimits = limits;
+        benchmarkRunning = true;
+        if (settingsBenchResult != null)
+            settingsBenchResult.setText("Running prompt-processing and decode benchmark…");
+        updateControls();
+        worker.execute(() -> {
+            String report;
+            try {
+                report = NativeBridge.runBenchmark(handle, benchLimits);
+            } catch (UnsatisfiedLinkError | RuntimeException e) {
+                report = "Benchmark failed: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            }
+            final String text = report == null ? "Benchmark returned no result." : report;
+            mainHandler.post(() -> {
+                benchmarkRunning = false;
+                if (destroyed) return;
+                if (settingsBenchResult != null) settingsBenchResult.setText(text);
+                updateControls();
+            });
+        });
+    }
+
+    private void copyBenchmarkResults() {
+        if (settingsBenchResult == null) return;
+        CharSequence text = settingsBenchResult.getText();
+        if (text == null || text.length() == 0) return;
+        android.content.ClipboardManager clipboard =
+                (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null) return;
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Hanami benchmark", text));
+        if (status != null) status.setText("Benchmark results copied.");
     }
 
     private void saveInlineSearchSettings() {

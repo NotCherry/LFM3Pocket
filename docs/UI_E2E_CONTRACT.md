@@ -85,6 +85,10 @@ Complete checklist from `app/src/main/res/values/ids.xml`:
 | `settings_context` | Context-length setting |
 | `settings_threads` | Threads setting |
 | `settings_tokens` | Max-tokens setting |
+| `settings_bench_run` | Run llama-bench style pp/tg speed test |
+| `settings_bench_result` | Wrapping benchmark report text |
+| `settings_bench_copy` | Copy benchmark results |
+| `settings_build_info` | Native build / ARM feature summary |
 | `settings_save` | Save inference limits (not AlertDialog `android:button1`) |
 | `search_save` | Save SearXNG endpoint / opt-in |
 | `tool_details` | Tool card details |
