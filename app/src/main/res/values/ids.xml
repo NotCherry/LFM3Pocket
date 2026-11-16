@@ -67,4 +67,11 @@
     <item name="settings_image_max_original" type="id"/>
     <item name="settings_image_crop" type="id"/>
     <item name="settings_image_quality" type="id"/>
+    <item name="settings_appearance" type="id"/>
+    <item name="settings_interface_size" type="id"/>
+    <item name="settings_interface_compact" type="id"/>
+    <item name="settings_interface_default" type="id"/>
+    <item name="settings_interface_large" type="id"/>
+    <item name="settings_interface_slider" type="id"/>
+    <item name="settings_interface_value" type="id"/>
 </resources>

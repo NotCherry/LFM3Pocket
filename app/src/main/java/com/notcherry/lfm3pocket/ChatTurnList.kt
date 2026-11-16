@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.rememberScrollState
@@ -78,10 +78,10 @@ fun ChatTurnList(
                     assistantMessageTag = assistantMessageTag,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
                 )
                 if (index < turns.lastIndex) {
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
                 }
             }
         }
@@ -107,7 +107,7 @@ fun ChatTurn(
     }
     Column(modifier) {
         Text(roleLabel, style = type.label, color = atlas.inkMuted)
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         if (isUser) {
             SelectionContainer {
                 Text(
@@ -136,7 +136,7 @@ fun ChatTurn(
                         reasoning = turn.reasoning!!,
                         modifier = Modifier
                             .padding(end = 10.dp)
-                            .width(120.dp),
+                            .widthIn(min = 96.dp, max = 168.dp),
                     )
                 }
                 Column(Modifier.weight(1f)) {

@@ -1,5 +1,6 @@
 package com.notcherry.lfm3pocket
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -8,24 +9,28 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.style.TextDecoration
@@ -37,12 +42,25 @@ import androidx.navigation.compose.rememberNavController
 import com.notcherry.lfm3pocket.ui.theme.PocketTheme
 import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
+import com.notcherry.lfm3pocket.ui.theme.atlasSpacing
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 
 /**
  * Home shell. Native inference, import, media and chat stay in [MainActivity].
  */
 class ComposeHostActivity : ComponentActivity() {
+    private var attachedInterfaceScale = InterfaceSize.DEFAULT
+
+    override fun attachBaseContext(newBase: Context) {
+        attachedInterfaceScale = InterfaceSize.read(newBase)
+        super.attachBaseContext(InterfaceSize.wrap(newBase))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        InterfaceSize.recreateIfChanged(this, attachedInterfaceScale)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (routeExternalAsk(intent)) return
@@ -166,6 +184,7 @@ private fun PocketNavigation(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StillwaterHome(
     onOpenChat: () -> Unit,
@@ -175,6 +194,7 @@ private fun StillwaterHome(
 ) {
     val atlas = MaterialTheme.atlasColors
     val type = MaterialTheme.atlasTypography
+    val space = MaterialTheme.atlasSpacing
     val context = LocalContext.current
     val modelName = context.getSharedPreferences("MainActivity", android.content.Context.MODE_PRIVATE)
         .getString("model_name", "")
@@ -191,7 +211,7 @@ private fun StillwaterHome(
             )
             .statusBarsPadding()
             .semantics { testTagsAsResourceId = true }
-            .padding(horizontal = 26.dp, vertical = 18.dp),
+            .padding(horizontal = space.space6, vertical = space.space5),
     ) {
         Column(Modifier.fillMaxSize()) {
             Text(
@@ -199,9 +219,9 @@ private fun StillwaterHome(
                 style = type.label,
                 color = atlas.accent,
             )
-            Spacer(Modifier.height(36.dp))
+            Spacer(Modifier.height(space.space8))
             Text("Hanami", style = type.display, color = atlas.ink)
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(space.space5))
             Text(
                 "Liquid AI LFM3 models, on this phone.",
                 style = type.body,
@@ -211,14 +231,19 @@ private fun StillwaterHome(
             Spacer(Modifier.weight(1f))
             Button(
                 onClick = onOpenChat,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .heightIn(min = 48.dp)
+                    .testTag("${context.packageName}:id/open_chat"),
                 shape = MaterialTheme.shapes.extraSmall,
                 colors = StillwaterControls.buttonColors(),
             ) {
-                Text("Open chat", style = type.body.copy(color = atlas.candleInk))
+                Text(stringResource(R.string.open_chat), style = type.body.copy(color = atlas.candleInk))
             }
-            Spacer(Modifier.height(16.dp))
-            androidx.compose.foundation.layout.Row(
+            Spacer(Modifier.height(space.space4))
+            // Flow so Polish "O trybie offline" does not collide with History/Settings at large fonts.
+            FlowRow(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -227,13 +252,17 @@ private fun StillwaterHome(
                     modifier = Modifier.testTag("${context.packageName}:id/history_open"),
                     colors = StillwaterControls.textButtonColors(),
                 ) {
-                    Text("History", textDecoration = TextDecoration.Underline)
+                    Text(stringResource(R.string.history), textDecoration = TextDecoration.Underline)
                 }
-                TextButton(onClick = onOpenSettings, colors = StillwaterControls.textButtonColors()) {
-                    Text("Settings", textDecoration = TextDecoration.Underline)
+                TextButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.testTag("${context.packageName}:id/home_settings"),
+                    colors = StillwaterControls.textButtonColors(),
+                ) {
+                    Text(stringResource(R.string.settings_title), textDecoration = TextDecoration.Underline)
                 }
                 TextButton(onClick = onAbout, colors = StillwaterControls.textButtonColors()) {
-                    Text("About offline mode", textDecoration = TextDecoration.Underline)
+                    Text(stringResource(R.string.about_offline_mode), textDecoration = TextDecoration.Underline)
                 }
             }
             Text(
