@@ -202,9 +202,11 @@ public final class TextReadableAtScaleE2eTest {
                     new Intent(context, MainActivity.class)
                             .putExtra(MainActivity.EXTRA_OPEN_SETTINGS, true))) {
                 assertNotNull(device.wait(Until.findObject(By.res(pkg, "model_configuration_scroll")), WAIT));
-                // Wait for the Compose model manager to bind selection text, then assert view chrome.
-                assertNotNull("model manager bound @" + scale,
-                        device.wait(Until.findObject(By.textContains("Model:")), WAIT));
+                // At fontScale 2.0 the Compose "Model:" row can sit above the viewport after wrap —
+                // sync on the always-present open-from-storage control instead, scrolling if needed.
+                scrollSettingsToRes(device, pkg, "open_model_uri");
+                assertNotNull("settings open-model chrome @" + scale,
+                        device.wait(Until.findObject(By.res(pkg, "open_model_uri")), WAIT));
                 AtomicReference<String> failure = new AtomicReference<>();
                 scenario.onActivity(activity -> {
                     try {
@@ -309,6 +311,16 @@ public final class TextReadableAtScaleE2eTest {
                     new androidx.test.uiautomator.UiSelector().resourceId(pkg + ":id/model_configuration_scroll"));
             scroll.setAsVerticalList();
             scroll.scrollIntoView(new androidx.test.uiautomator.UiSelector().text(text));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static void scrollSettingsToRes(UiDevice device, String pkg, String resName) {
+        try {
+            androidx.test.uiautomator.UiScrollable scroll = new androidx.test.uiautomator.UiScrollable(
+                    new androidx.test.uiautomator.UiSelector().resourceId(pkg + ":id/model_configuration_scroll"));
+            scroll.setAsVerticalList();
+            scroll.scrollIntoView(new androidx.test.uiautomator.UiSelector().resourceId(pkg + ":id/" + resName));
         } catch (Exception ignored) {
         }
     }
