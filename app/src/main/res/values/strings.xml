@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Hanami</string>
+    <string name="app_name" translatable="false">Hanami</string>
+    <string name="stop">Stop</string>
+    <string name="send">Send</string>
+    <string name="model_section">Model</string>
     <string name="notification_channel_model_runtime">Hanami model</string>
     <string name="notification_channel_model_runtime_desc">Shown while Hanami keeps a Liquid AI LFM3 model loaded on this phone.</string>
     <string name="import_model">Import model</string>

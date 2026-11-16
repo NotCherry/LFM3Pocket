@@ -2,34 +2,39 @@ package com.notcherry.lfm3pocket
 
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.FontScale
 import androidx.compose.ui.test.ForcedSize
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.then
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.notcherry.lfm3pocket.ui.theme.PocketTheme
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.Locale
 
 /**
- * Compose Settings recipe labels remain fully on-screen at large fontScale,
- * narrow width, and Polish locale (longer copy).
+ * Compose Settings *recipe* labels remain fully on-screen at large fontScale / narrow width /
+ * Polish locale. Production Settings chrome is covered by [TextReadableAtScaleE2eTest]
+ * against MainActivity views; this suite also asserts Compose semantics report no visual overflow.
  */
 @RunWith(AndroidJUnit4::class)
 @OptIn(ExperimentalTestApi::class)
@@ -40,12 +45,13 @@ class ComposeTextReadableTest {
 
     @Test fun settingsScreenReadableAtFontScaleTwoEnglish() {
         renderSettings(fontScale = 2f, widthDp = 320, heightDp = 780, locale = Locale.ENGLISH)
-        compose.onNodeWithText("Settings").assertIsDisplayed()
-        compose.onNodeWithText("Back to chat").assertIsDisplayed()
-        compose.onNodeWithText("Save").assertIsDisplayed()
-        compose.onNodeWithText("Save search").assertIsDisplayed()
-        compose.onNodeWithText("Context").assertIsDisplayed()
-        compose.onNodeWithText("Decode threads").assertIsDisplayed()
+        assertDisplayedWithoutOverflow("Settings")
+        assertDisplayedWithoutOverflow("Back to chat")
+        assertDisplayedWithoutOverflow("Save")
+        assertDisplayedWithoutOverflow("Save search")
+        assertDisplayedWithoutOverflow("Context")
+        assertDisplayedWithoutOverflow("Decode threads")
+        assertDisplayedWithoutOverflow("Model")
     }
 
     @Test fun settingsScreenReadableAtFontScaleTwoPolish() {
@@ -55,24 +61,51 @@ class ComposeTextReadableTest {
             heightDp = 900,
             locale = Locale.forLanguageTag("pl"),
         )
-        compose.onNodeWithText("Ustawienia").assertIsDisplayed()
-        compose.onNodeWithText("Wróć do czatu").assertIsDisplayed()
-        compose.onNodeWithText("Zapisz").assertIsDisplayed()
-        compose.onNodeWithText("Zapisz wyszukiwanie").assertIsDisplayed()
-        compose.onNodeWithText("Kontekst").assertIsDisplayed()
-        compose.onNodeWithText("Wątki dekodowania").assertIsDisplayed()
+        assertDisplayedWithoutOverflow("Ustawienia")
+        assertDisplayedWithoutOverflow("Wróć do czatu")
+        assertDisplayedWithoutOverflow("Zapisz")
+        assertDisplayedWithoutOverflow("Zapisz wyszukiwanie")
+        assertDisplayedWithoutOverflow("Kontekst")
+        assertDisplayedWithoutOverflow("Wątki dekodowania")
+        assertDisplayedWithoutOverflow("Model")
     }
 
     @Test fun settingsScreenReadableAtSmallFont() {
         renderSettings(fontScale = 0.85f, widthDp = 411, heightDp = 800, locale = Locale.ENGLISH)
-        compose.onNodeWithText("Settings").assertIsDisplayed()
-        compose.onNodeWithText("Response tokens").assertIsDisplayed()
+        assertDisplayedWithoutOverflow("Settings")
+        assertDisplayedWithoutOverflow("Response tokens")
     }
 
     @Test fun settingsScreenReadableAtFontScaleOnePointThree() {
         renderSettings(fontScale = 1.3f, widthDp = 360, heightDp = 800, locale = Locale.ENGLISH)
-        compose.onNodeWithText("Settings").assertIsDisplayed()
-        compose.onNodeWithText("Save search").assertIsDisplayed()
+        assertDisplayedWithoutOverflow("Settings")
+        assertDisplayedWithoutOverflow("Save search")
+    }
+
+    private fun assertDisplayedWithoutOverflow(text: String) {
+        val interaction = compose.onNodeWithText(text)
+        interaction.assertIsDisplayed()
+        // Production clipping is asserted via StillwaterReadable.textFullyVisible on MainActivity.
+        // Here we fetch TextLayoutResult (so assertIsDisplayed is not the only check) and
+        // require the laid-out paragraph to fit the semantics node bounds.
+        val layouts = mutableListOf<TextLayoutResult>()
+        val node = interaction.fetchSemanticsNode()
+        val fetched = node.config.getOrNull(SemanticsActions.GetTextLayoutResult)
+            ?.action
+            ?.invoke(layouts)
+            ?: false
+        assertTrue("no TextLayoutResult for: $text", fetched && layouts.isNotEmpty())
+        val layout = layouts[0]
+        val nodeH = node.boundsInRoot.height
+        val nodeW = node.boundsInRoot.width
+        assertTrue(
+            "Compose text clipped vertically: $text layoutH=${layout.size.height} nodeH=$nodeH",
+            layout.size.height <= nodeH + 3f,
+        )
+        assertTrue(
+            "Compose text clipped horizontally: $text layoutW=${layout.size.width} nodeW=$nodeW lines=${layout.lineCount}",
+            layout.lineCount > 1 || layout.size.width <= nodeW + 3f,
+        )
     }
 
     private fun renderSettings(fontScale: Float, widthDp: Int, heightDp: Int, locale: Locale) {

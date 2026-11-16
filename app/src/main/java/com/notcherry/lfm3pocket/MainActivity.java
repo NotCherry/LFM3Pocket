@@ -622,7 +622,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             modePill.setText(searchEnabled
                     ? getString(R.string.mode_web_search)
                     : getString(R.string.mode_local));
-            StillwaterReadable.prepareWrappingLabel(modePill);
         }
         searchButton.setEnabled(!busy);
         modelButton.setEnabled(!busy);
