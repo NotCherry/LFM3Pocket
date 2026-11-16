@@ -235,16 +235,7 @@ public final class ChatSession {
         Turn turn=new Turn(++epoch,model.getAsLong(),useSearch,question,turnMedia,activeImagePath);active=turn;
         pending.setLength(0);partial.setLength(0);scheduled=false;
         final boolean includeVoice=voiceRecording;
-        String mediaRef=activeImagePath;
-        try {
-            persistence.begin(new StartedTurn(turn.persistenceId,question,mediaRef,System.currentTimeMillis()));
-        } catch(Exception e) {
-            messages.remove(messages.size()-1);
-            active=null;epoch=Math.max(0,epoch-1);
-            status="Could not save this message: "+(e.getMessage()==null?e.toString():e.getMessage());
-            emit();
-            return false;
-        }
+        // Persist on the worker before inference (Room forbids main-thread writes).
         status=includeVoice?"Transcribing speech locally…"
                 :useSearch?"Searching web, then generating locally…":"Generating locally · offline…";emit();
         worker.execute(() -> generate(turn,question,includeVoice,useSearch,endpoint,maxTokens,history));
@@ -298,6 +289,24 @@ public final class ChatSession {
     }
     private void generateTurn(Turn turn,String question,boolean voiceRecording,boolean useSearch,
                               String endpoint,int maxTokens,List<Message> history) {
+        if(!current(turn)) {
+            persistTerminal(turn,question,"",null,null,TerminalState.CANCELLED);
+            return;
+        }
+        try {
+            persistence.begin(new StartedTurn(turn.persistenceId,question,turn.imagePath,System.currentTimeMillis()));
+        } catch(Exception e) {
+            String saveFailure=e.getMessage()==null?e.toString():e.getMessage();
+            ui.post(() -> {
+                synchronized(ChatSession.this) {
+                    if(!current(turn)) return;
+                    active=null;
+                    status="Could not save this message: "+saveFailure;
+                    emit();
+                }
+            },0);
+            return;
+        }
         if(!current(turn)) {
             persistTerminal(turn,question,"",null,null,TerminalState.CANCELLED);
             return;

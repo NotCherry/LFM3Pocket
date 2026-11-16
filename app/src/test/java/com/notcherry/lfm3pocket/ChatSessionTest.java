@@ -178,6 +178,35 @@ public class ChatSessionTest {
 
     @Test public void userTurnIsPersistedBeforeInferenceStarts(){
         Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();
+        List<String> order=new ArrayList<>();
+        List<ChatSession.StartedTurn> began=new ArrayList<>();
+        List<ChatSession.CompletedTurn> saved=new ArrayList<>();
+        ChatSession.Persistence persistence=new ChatSession.Persistence() {
+            @Override public void begin(ChatSession.StartedTurn turn){
+                began.add(turn);order.add("begin");
+            }
+            @Override public void save(ChatSession.CompletedTurn turn){saved.add(turn);order.add("save");}
+        };
+        Engine recording=new Engine() {
+            @Override public String generateWithMedia(long h,String p,String[] media,int max,TokenSink sink){
+                order.add("generate");
+                return super.generateWithMedia(h,p,media,max,sink);
+            }
+        };
+        ChatSession session=new ChatSession(recording,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                persistence,(text,status,running)->{});
+        assertTrue(session.submit("Save me first","","",false,"",32));
+        assertTrue("Begin must not run on the submit/UI thread",began.isEmpty());
+        assertEquals(0,recording.calls);
+        worker.drain();ui.drain();
+        assertEquals(1,began.size());
+        assertEquals("Save me first",began.get(0).userText);
+        assertEquals(Arrays.asList("begin","generate","save"),order);
+        assertEquals(ChatSession.TerminalState.COMPLETED,saved.get(0).status);
+    }
+
+    @Test public void missingPhotoFailsAfterBeginWithoutNativeInference(){
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();
         List<ChatSession.StartedTurn> began=new ArrayList<>();
         List<ChatSession.CompletedTurn> saved=new ArrayList<>();
         ChatSession.Persistence persistence=new ChatSession.Persistence() {
@@ -187,12 +216,9 @@ public class ChatSessionTest {
         ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
                 persistence,(text,status,running)->{});
         assertTrue(session.submit("Save me first","/missing/photo.img","photo",false,"",32));
-        assertEquals("User turn must hit storage before the worker runs",1,began.size());
-        assertEquals("Save me first",began.get(0).userText);
-        assertEquals("/missing/photo.img",began.get(0).mediaRef);
-        assertEquals(0,engine.calls);
-        assertTrue(saved.isEmpty());
         worker.drain();ui.drain();
+        assertEquals(1,began.size());
+        assertEquals("/missing/photo.img",began.get(0).mediaRef);
         assertEquals("Unsafe/missing images must not reach native inference",0,engine.calls);
         assertEquals(1,saved.size());
         assertEquals(ChatSession.TerminalState.FAILED,saved.get(0).status);
@@ -218,9 +244,10 @@ public class ChatSessionTest {
         assertEquals("turn-1",snapshot.turns.get(1).turnId);
         assertTrue(session.snapshot().status.contains("interrupted") || session.snapshot().status.contains("Retry"));
         assertTrue(session.retryInterrupted("turn-1",64));
+        assertTrue(began.isEmpty());
+        worker.drain();ui.drain();
         assertEquals(1,began.size());
         assertEquals("What color is the sky?",began.get(0).userText);
-        worker.drain();ui.drain();
         assertEquals(1,engine.calls);
         assertTrue(engine.mediaByCall.get(0).isEmpty());
         assertFalse(session.snapshot().turns.get(session.snapshot().turns.size()-1).interrupted);
