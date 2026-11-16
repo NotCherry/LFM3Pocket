@@ -103,14 +103,27 @@ Complete checklist from `app/src/main/res/values/ids.xml`:
 | `chat_photo` | Photo picker |
 | `image_attachment` | Attachment row |
 | `image_preview` | Attachment preview |
+| `image_size_caption` | Attachment size caption (prepared or original) |
 | `image_remove` | Remove attachment |
 | `web_search` | Web search control |
 | `search_endpoint` | SearXNG endpoint field |
 | `search_enabled` | Search opt-in |
+| `settings_images` | Settings → Images group |
+| `settings_image_prepare` | Prepare-photos switch |
+| `settings_image_max_size` | Max-size preset row |
+| `settings_image_max_384` | Max side 384 |
+| `settings_image_max_512` | Max side 512 |
+| `settings_image_max_768` | Max side 768 |
+| `settings_image_max_1024` | Max side 1024 |
+| `settings_image_max_original` | Max side Original |
+| `settings_image_crop` | Square-crop switch |
+| `settings_image_quality` | JPEG quality field |
 
 **Compose `testTag` resource-id style** (package-qualified): same names as above via `"{package}:id/{name}"`. Host/history: `history_open` (and other host tags used by E2E) remain stable under U09/U12.
 
 **Additive IDs (U11/U13):** `tool_risk`, `tool_result`, `settings_open`, `settings_back`, `chat_overflow`, `settings_save`, `search_save` — keep discovering the Stage 1 chat IDs above; do not replace them.
+
+**Additive IDs (#169):** `image_size_caption`, `settings_images`, `settings_image_prepare`, `settings_image_max_size`, `settings_image_max_384`, `settings_image_max_512`, `settings_image_max_768`, `settings_image_max_1024`, `settings_image_max_original`, `settings_image_crop`, `settings_image_quality`.
 
 **Do not** rename or remove IDs to “look cleaner.”
 

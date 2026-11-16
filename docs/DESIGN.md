@@ -163,7 +163,7 @@ Atlas prefers **borders over shadows**.
 
 ### 6.6 Media chip
 
-- Small preview thumbnail + remove control (`image_preview`, `image_remove`, etc.).
+- Small preview thumbnail + remove control (`image_preview`, `image_remove`, `image_size_caption`).
 - Border `border`; no floating sticker overlay on the transcript hero.
 - Caption distinguishes a still prepared for the projector from one kept at its original size (see §12).
 
@@ -171,7 +171,7 @@ Atlas prefers **borders over shadows**.
 
 - Group on `surface` with optional section `headline`.
 - Row: `label` + control (stepper, switch, field) aligned; `mono` for numeric/endpoint values where appropriate.
-- Keep IDs: `settings_context`, `settings_threads`, `settings_tokens`, `search_*`, `import_*`.
+- Keep IDs: `settings_context`, `settings_threads`, `settings_tokens`, `search_*`, `import_*`, `settings_images`, `settings_image_prepare`, `settings_image_max_size`, `settings_image_max_384`, `settings_image_max_512`, `settings_image_max_768`, `settings_image_max_1024`, `settings_image_max_original`, `settings_image_crop`, `settings_image_quality`.
 - **Images** group holds the vision-preparation controls (see §12). Keep that group on the Settings host, not in the first chat viewport. Persist it with the other private settings.
 
 ### 6.8 History list + reader (U12)
@@ -264,6 +264,7 @@ Gallery picks, camera captures, and share-sheet images pass through one local pr
 | --- | --- |
 | Entry | The still is brought into private app storage. The gallery item, camera roll, and the sharing app's file are not modified. |
 | Preparation | On by default. Longest-side cap, default 512 (the projector's nominal vision size); presets 384, 512, 768, 1024, and Original. Aspect ratio kept. Optional square crop stays off, because this projector is a native-resolution encoder. A prepared copy bakes orientation into a private JPEG, and that copy is what the projector sees. |
+| Pass-through | Preparation off, or Original with no crop and an upright photo, sends the private working copy unchanged. Orientation is not applied, and the source container is kept. HEIC and WebP on that path are not readable by the Android vision decoder; a prepared JPEG is. See ADR-0001. |
 | Retention | Prepared copies are temporary private cache and are removed by the existing history media cleanup. |
 | Settings → Images | On/off, cap, square crop, and JPEG quality (40–95, default 85) persist in private preferences, with the other settings. |
 | Share sheet | The app is a share target for images. A shared image opens chat and takes the same preparation path. It does not approve tools. Preparation and inference stay on the device. |

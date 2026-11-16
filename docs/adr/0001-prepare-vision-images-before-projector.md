@@ -10,7 +10,7 @@ Accepted
 
 ## Context
 
-Hanami runs the LFM3 vision projector on the phone. Gallery and camera photos were reaching that encoder at the size the camera captured. A multi-megapixel still is far larger than the projector's nominal vision size (512 on the longest side), and encoder time dominated time-to-first-token on device.
+Hanami runs the LFM3 vision projector on the phone. Gallery and camera photos were reaching that encoder at the size the camera captured. A multi-megapixel still is far larger than the projector's nominal vision size (512 on the longest side). Encoder time is expected to dominate time-to-first-token on those photos. That has not been measured; the ARM64 follow-up in Consequences is what would confirm it. The only published vision timing is an emulator run on a tiny fixture.
 
 The LFM3 projector is a native-resolution encoder with a dynamic pixel budget, not a fixed tile grid. Cropping every photo to a square is not required for the encoder to accept it.
 
@@ -33,6 +33,7 @@ A shared image opens chat as an attachment the user can ask about. It does not a
 ## Consequences
 
 - Time-to-first-token on large phone photos is expected to drop, because the encoder no longer ingests multi-megapixel input by default. The before/after was not measured when this shipped. Follow-up: on an ARM64 device with a real Omni projector, compare Original against the default cap on the same still and record first-token time. Published emulator vision timing used a tiny fixture and is not that comparison.
+- Pass-through skips orientation and keeps the source container. With preparation off, a phone JPEG can reach the projector sideways, because neither this stage nor the vision decoder applies EXIF orientation. The same is true of an upright Original that is not cropped: the private working copy is handed over unchanged. The Android vision decoder reads the stills in its built-in loader (JPEG, PNG, GIF, BMP, and a few legacy formats). It does not read HEIC. WebP is decoded only by the optional video path, and that path is compiled out on Android. The in-app preview can still accept HEIC and WebP, because Android decodes them before this stage. Those files reach the projector only when a prepared JPEG is written. Original with no crop, and preparation off, are the paths that leave HEIC, WebP, and unapplied orientation in place.
 - Fine detail can be lost, especially small text in a photograph. The user can choose Original, raise the cap, or turn preparation off.
 - Prepared copies use extra private cache until cleanup runs.
 - Reading orientation adds a dependency on AndroidX ExifInterface. Orientation is applied in the prepared copy; the user's file is not rewritten.
