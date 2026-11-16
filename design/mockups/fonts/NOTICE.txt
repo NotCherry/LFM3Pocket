@@ -1,0 +1,7 @@
+Fonts in this folder are redistributed under the SIL Open Font License 1.1.
+
+- Inter — https://github.com/rsms/inter
+- Noto Serif Display and Noto Sans Display — https://github.com/notofonts/latin-greek-cyrillic
+- JetBrains Mono — https://github.com/JetBrains/JetBrainsMono
+
+These files are only here so the static mockups look the same when opened from disk.

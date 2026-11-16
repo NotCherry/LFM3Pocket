@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Keel — LFM3 Pocket</title>
+  <link rel="stylesheet" href="fonts.css">
+  <link rel="stylesheet" href="base.css">
+  <link rel="stylesheet" href="keel.css">
+</head>
+<body>
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <symbol id="back" viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="10.5" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6.8 11.2a5.2 5.2 0 0 0 10.4 0M12 16.4V20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="cam" viewBox="0 0 24 24"><path d="M3.8 8.2h3.1L8.4 6h7.2l1.5 2.2h3.1V18H3.8V8.2Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12.6" r="2.7" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
+  <symbol id="img" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8.7" cy="9.6" r="1.3" fill="currentColor"/><path d="m6.2 16.2 3.6-3.2 2.3 1.9 2.2-1.7 3.5 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="speak" viewBox="0 0 24 24"><path d="M4.5 9.5h2.8l3.4-3v11l-3.4-3H4.5v-5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14.2 9.2a3.6 3.6 0 0 1 0 5.6M16.4 7a6.2 6.2 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.6v2M12 18.4v2M3.6 12h2M18.4 12h2M5.8 5.8l1.4 1.4M16.8 16.8l1.4 1.4M18.2 5.8l-1.4 1.4M7.2 16.8l-1.4 1.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="wifi" viewBox="0 0 16 12"><path fill="currentColor" d="M8 9.15a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4zM4.15 7.35a5.3 5.3 0 0 1 7.7 0l-1 .95a3.95 3.95 0 0 0-5.7 0l-1-.95zM1.7 5a8.6 8.6 0 0 1 12.6 0l-1 .95a7.2 7.2 0 0 0-10.6 0L1.7 5z"/></symbol>
+  <symbol id="sig" viewBox="0 0 16 12"><rect x="0" y="7.2" width="2.5" height="4.8" rx=".4" fill="currentColor"/><rect x="4.2" y="4.8" width="2.5" height="7.2" rx=".4" fill="currentColor"/><rect x="8.4" y="2.4" width="2.5" height="9.6" rx=".4" fill="currentColor"/><rect x="12.6" y="0" width="2.5" height="12" rx=".4" fill="currentColor" opacity=".35"/></symbol>
+</svg>
+
+<header class="studio">
+  <a class="back" href="index.html">All directions</a>
+  <h1>KEEL</h1>
+  <p class="deck">A pocket instrument for a local model. Context, threads, and tokens are readouts, not form fields. Chat stays prose; the metadata is mono. Tool consent — flashlight, timers — is a deliberate permission, not a debug card.</p>
+</header>
+
+<main class="board">
+  <section class="cell" data-screen="home">
+    <div class="phone"><div class="screen home">
+      <div class="statusbar" aria-hidden="true"><span>19:42</span><span class="sys"><svg class="icon sm"><use href="#sig"/></svg><svg class="icon sm"><use href="#wifi"/></svg><span class="batt"><i></i></span></span></div>
+      <p class="brand">LFM3 POCKET</p>
+      <p class="ready">Ready<small>ON DEVICE · OFFLINE</small></p>
+      <dl class="readout">
+        <div><dt>Model</dt><dd>Omni-2B Q4_K_M</dd></div>
+        <div><dt>Projector</dt><dd>Paired</dd></div>
+        <div><dt>Context</dt><dd>4096</dd></div>
+        <div><dt>Threads</dt><dd>4 / 8</dd></div>
+        <div><dt>Tokens</dt><dd>512</dd></div>
+        <div><dt>Search</dt><dd>Off</dd></div>
+      </dl>
+      <button class="primary" type="button">Open chat</button>
+      <ul class="jumps">
+        <li>History <span>01</span></li>
+        <li>Settings <span>02</span></li>
+        <li>About offline mode <span>03</span></li>
+      </ul>
+      <p class="foot">NO TELEMETRY · WEIGHTS STAY ON DEVICE</p>
+      <div class="gesture" aria-hidden="true"><i></i></div>
+    </div></div>
+    <p class="cap">Home</p>
+  </section>
+
+  <section class="cell" data-screen="chat">
+    <div class="phone"><div class="screen">
+      <div class="statusbar" aria-hidden="true"><span>19:42</span><span class="sys"><svg class="icon sm"><use href="#sig"/></svg><svg class="icon sm"><use href="#wifi"/></svg><span class="batt"><i></i></span></span></div>
+      <header class="topbar">
+        <button class="iconbtn" aria-label="Back"><svg class="icon"><use href="#back"/></svg></button>
+        <div class="titles"><p class="k">Web search + local model</p><h2>Starter, nine days away</h2></div>
+        <button class="iconbtn" aria-label="Settings"><svg class="icon"><use href="#gear"/></svg></button>
+      </header>
+      <div class="thread">
+        <article class="turn">
+          <div class="roleline"><span>You</span><span>19:41</span></div>
+          <p class="body">How do I keep a sourdough starter alive for nine days if there’s no fridge when I land?</p>
+        </article>
+        <article class="turn">
+          <div class="roleline"><span>LFM3</span><span>ctx 4096</span></div>
+          <button class="reason" type="button"><b>REASONING ▸</b><span>Stiff starter, a cold pack, two feeds on return. No live weather.</span></button>
+          <div class="md">
+            <p><strong>Keep it stiff, cool, and unfed until you’re back.</strong></p>
+            <p>A pourable starter peaks and falls within a day. Before you leave:</p>
+            <ol>
+              <li>Feed <strong>1:2:2</strong> so the paste is thick, not runny.</li>
+              <li>Let it rise about halfway, then seal the jar.</li>
+              <li>Pack it on a cold pack. Under 15°C if you can.</li>
+            </ol>
+          </div>
+          <ol class="sources">
+            <li><em>01</em><a href="#a">King Arthur Baking — storing starter</a></li>
+            <li><em>02</em><a href="#b">The Fresh Loaf — traveling with a starter</a></li>
+          </ol>
+        </article>
+      </div>
+      <div class="composer">
+        <p class="live">SEARX.EXAMPLE.ORG · ANSWER ON DEVICE</p>
+        <div class="fieldrow">
+          <div class="field">Write a message…</div>
+          <button class="send" type="button">Send</button>
+        </div>
+        <div class="tools">
+          <button class="tool" type="button"><svg class="icon sm"><use href="#img"/></svg>Photo</button>
+          <button class="tool" type="button"><svg class="icon sm"><use href="#cam"/></svg>Cam</button>
+          <button class="tool" type="button"><svg class="icon sm"><use href="#mic"/></svg>Voice</button>
+          <button class="tool" type="button"><svg class="icon sm"><use href="#speak"/></svg>Speak</button>
+          <span class="grow"></span>
+          <button class="clear" type="button">CLEAR</button>
+        </div>
+      </div>
+      <div class="gesture" aria-hidden="true"><i></i></div>
+    </div></div>
+    <p class="cap">Chat</p>
+  </section>
+
+  <section class="cell" data-screen="empty">
+    <div class="phone"><div class="screen">
+      <div class="statusbar" aria-hidden="true"><span>19:42</span><span class="sys"><svg class="icon sm"><use href="#sig"/></svg><svg class="icon sm"><use href="#wifi"/></svg><span class="batt"><i></i></span></span></div>
+      <header class="topbar">
+        <button class="iconbtn" aria-label="Back"><svg class="icon"><use href="#back"/></svg></button>
+        <div class="titles"><p class="k">Mode · Local / offline</p><h2>New conversation</h2></div>
+        <button class="iconbtn" aria-label="Settings"><svg class="icon"><use href="#gear"/></svg></button>
+      </header>
+      <div class="thread">
+        <div class="empty-copy">
+          <p class="k">EMPTY</p>
+          <h2>No conversation yet.</h2>
+          <p>LFM3-Omni-2B is loaded. Text, photos, and voice stay on this phone.</p>
+        </div>
+        <div class="prompts">
+          <button type="button">What colors and shapes are in the image?<small>Photo · on device</small></button>
+          <button type="button">Napisz po polsku jedno zdanie o lokalnym przetwarzaniu.<small>Text · local</small></button>
+          <button type="button">Set a timer for forty five seconds<small>Consent required</small></button>
+        </div>
+      </div>
+      <div class="composer">
+        <p class="live">MODE · LOCAL / OFFLINE</p>
+        <div class="fieldrow"><div class="field">Write a message…</div><button class="send" type="button">Send</button></div>
+        <div class="tools">
+          <button class="tool" type="button"><svg class="icon sm"><use href="#img"/></svg>Photo</button>
+          <button class="tool" type="button"><svg class="icon sm"><use href="#cam"/></svg>Cam</button>
+          <button class="tool" type="button"><svg class="icon sm"><use href="#mic"/></svg>Voice</button>
+          <button class="tool" type="button"><svg class="icon sm"><use href="#speak"/></svg>Speak</button>
+          <span class="grow"></span>
+          <button class="clear" type="button" disabled>CLEAR</button>
+        </div>
+      </div>
+      <div class="gesture" aria-hidden="true"><i></i></div>
+    </div></div>
+    <p class="cap">Empty</p>
+  </section>
+
+  <section class="cell" data-screen="generating">
+    <div class="phone"><div class="screen">
+      <div class="statusbar" aria-hidden="true"><span>19:42</span><span class="sys"><svg class="icon sm"><use href="#sig"/></svg><svg class="icon sm"><use href="#wifi"/></svg><span class="batt"><i></i></span></span></div>
+      <header class="topbar">
+        <button class="iconbtn" aria-label="Back"><svg class="icon"><use href="#back"/></svg></button>
+        <div class="titles"><p class="k">Local / offline · 4 threads</p><h2>Starter, nine days away</h2></div>
+        <button class="iconbtn" aria-label="Settings"><svg class="icon"><use href="#gear"/></svg></button>
+      </header>
+      <div class="thread">
+        <article class="turn">
+          <div class="roleline"><span>You</span><span>19:41</span></div>
+          <p class="body">How do I keep a sourdough starter alive for nine days if there’s no fridge when I land?</p>
+        </article>
+        <article class="turn">
+          <div class="roleline"><span>LFM3</span><span>decoding</span></div>
+          <div class="md">
+            <p><strong>Keep it stiff, cool, and unfed until you’re back.</strong></p>
+            <p>A pourable starter peaks and collapses<span class="cursor">▌</span></p>
+          </div>
+        </article>
+      </div>
+      <div class="composer">
+        <p class="live on">LOCAL / OFFLINE · PREPARING RESPONSE…</p>
+        <div class="fieldrow"><div class="field">Write a message…</div><button class="stop" type="button">Stop</button></div>
+        <div class="tools">
+          <button class="tool" type="button" disabled><svg class="icon sm"><use href="#img"/></svg>Photo</button>
+          <button class="tool" type="button" disabled><svg class="icon sm"><use href="#cam"/></svg>Cam</button>
+          <button class="tool" type="button" disabled><svg class="icon sm"><use href="#mic"/></svg>Voice</button>
+          <button class="tool" type="button" disabled><svg class="icon sm"><use href="#speak"/></svg>Speak</button>
+          <span class="grow"></span>
+          <button class="clear" type="button">CLEAR</button>
+        </div>
+      </div>
+      <div class="gesture" aria-hidden="true"><i></i></div>
+    </div></div>
+    <p class="cap">Generating</p>
+  </section>
+
+  <section class="cell" data-screen="settings">
+    <div class="phone"><div class="screen">
+      <div class="statusbar" aria-hidden="true"><span>19:42</span><span class="sys"><svg class="icon sm"><use href="#sig"/></svg><svg class="icon sm"><use href="#wifi"/></svg><span class="batt"><i></i></span></span></div>
+      <header class="topbar">
+        <button class="iconbtn" aria-label="Back to chat"><svg class="icon"><use href="#back"/></svg></button>
+        <div class="titles"><p class="k">Back to chat</p><h2 class="screen-title" style="margin:0">SETTINGS</h2></div>
+      </header>
+      <div class="sheet">
+        <section class="block" style="margin-top:0;border:0;padding-top:0">
+          <h3>MODEL</h3>
+          <p class="file">LFM3-Omni-2B-Q4_K_M.gguf</p>
+          <p class="file">mmproj-LFM3-Omni-2B-Q4_K_M.gguf</p>
+          <p class="ok">LOADED · PROJECTOR PAIRED</p>
+          <div class="textacts">
+            <button type="button">Import model</button>
+            <button type="button">Import projector</button>
+            <button type="button">Unload</button>
+          </div>
+        </section>
+        <section class="block">
+          <h3>INFERENCE</h3>
+          <div class="stat"><div><span class="name">Context</span><small class="hint">512–8192 · step 256</small></div><div class="val"><button type="button" aria-label="Decrease">–</button><b>4096</b><button type="button" aria-label="Increase">+</button></div></div>
+          <div class="stat"><div><span class="name">Decode threads</span><small class="hint">1–8, capped to CPUs</small></div><div class="val"><button type="button" aria-label="Decrease">–</button><b>4</b><button type="button" aria-label="Increase">+</button></div></div>
+          <div class="stat"><div><span class="name">Response tokens</span><small class="hint">1–2048, below context</small></div><div class="val"><button type="button" aria-label="Decrease">–</button><b>512</b><button type="button" aria-label="Increase">+</button></div></div>
+          <p class="note">Next reply uses these. Projector encoder threads stay fixed at load.</p>
+        </section>
+        <section class="block">
+          <h3>SEARXNG</h3>
+          <p class="endpoint">https://searx.example.org/search</p>
+          <div class="row"><span>Web search</span><span class="sw">OFF</span></div>
+          <p class="note">Only questions sent while search is on leave the phone.</p>
+        </section>
+        <div class="savebar">
+          <button class="primary" type="button">Save</button>
+          <button class="ghost" type="button">Save search</button>
+        </div>
+      </div>
+      <div class="gesture" aria-hidden="true"><i></i></div>
+    </div></div>
+    <p class="cap">Settings</p>
+  </section>
+
+  <section class="cell" data-screen="history">
+    <div class="phone"><div class="screen">
+      <div class="statusbar" aria-hidden="true"><span>19:42</span><span class="sys"><svg class="icon sm"><use href="#sig"/></svg><svg class="icon sm"><use href="#wifi"/></svg><span class="batt"><i></i></span></span></div>
+      <header class="topbar">
+        <button class="iconbtn" aria-label="Home"><svg class="icon"><use href="#back"/></svg></button>
+        <div class="titles"><p class="k">On this device · not backed up</p><h2 class="screen-title" style="margin:0">HISTORY</h2></div>
+        <button class="newchat" type="button">New</button>
+      </header>
+      <div class="sheet">
+        <article class="hitem"><time>19:42</time><strong>Starter, nine days away</strong><button class="del" type="button">DEL</button><p>Keep it stiff, cool, and unfed until you’re back.</p></article>
+        <article class="hitem"><time>18:05</time><strong>Colors and shapes</strong><button class="del" type="button">DEL</button><p>A blue square on the left and a yellow circle on the right, on a red background.</p></article>
+        <article class="hitem"><time>16:18</time><strong>Local processing, in Polish</strong><button class="del" type="button">DEL</button><p>Lokalne przetwarzanie to proces obróbki danych w bezpośrednim otoczeniu użytkownika.</p></article>
+        <article class="hitem"><time>NOV 15</time><strong>A forty-five second timer</strong><button class="del" type="button">DEL</button><p>Set a timer for forty five seconds. A 45 second timer was created.</p></article>
+        <p class="retention">Conversation text stays on this phone. Audio and image attachments are temporary and removed after processing.</p>
+      </div>
+      <div class="gesture" aria-hidden="true"><i></i></div>
+    </div></div>
+    <p class="cap">History</p>
+  </section>
+
+  <section class="cell" data-screen="action">
+    <div class="phone"><div class="screen dim">
+      <div class="statusbar" aria-hidden="true"><span>19:42</span><span class="sys"><svg class="icon sm"><use href="#sig"/></svg><svg class="icon sm"><use href="#wifi"/></svg><span class="batt"><i></i></span></span></div>
+      <header class="topbar">
+        <button class="iconbtn" aria-label="Back"><svg class="icon"><use href="#back"/></svg></button>
+        <div class="titles"><p class="k">Local / offline</p><h2>Flashlight</h2></div>
+        <button class="iconbtn" aria-label="Settings"><svg class="icon"><use href="#gear"/></svg></button>
+      </header>
+      <div class="thread">
+        <article class="turn">
+          <div class="roleline"><span>You</span><span>19:42</span></div>
+          <p class="body">Turn the flashlight on.</p>
+        </article>
+      </div>
+      <div class="composer">
+        <p class="live">WAITING FOR YOU</p>
+        <div class="fieldrow"><div class="field">Write a message…</div><button class="send" type="button" disabled>Send</button></div>
+      </div>
+      <div class="gesture" aria-hidden="true"><i></i></div>
+      <aside class="sheet-card">
+        <p class="k">Android action · waiting</p>
+        <h2>toggle_flashlight</h2>
+        <pre>{ "on": true }</pre>
+        <p class="risk">RISK · SAFE</p>
+        <p>Nothing happens until you approve. Reject leaves the light as it is.</p>
+        <div class="actions">
+          <button class="no" type="button">Reject</button>
+          <button class="yes" type="button">Approve</button>
+        </div>
+      </aside>
+    </div></div>
+    <p class="cap">Action</p>
+  </section>
+</main>
+<script src="shot.js"></script>
+</body>
+</html>
