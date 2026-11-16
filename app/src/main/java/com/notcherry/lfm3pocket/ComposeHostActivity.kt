@@ -8,14 +8,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -26,6 +28,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.style.TextDecoration
@@ -166,6 +169,7 @@ private fun PocketNavigation(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StillwaterHome(
     onOpenChat: () -> Unit,
@@ -211,14 +215,18 @@ private fun StillwaterHome(
             Spacer(Modifier.weight(1f))
             Button(
                 onClick = onOpenChat,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp)
+                    .testTag("${context.packageName}:id/open_chat"),
                 shape = MaterialTheme.shapes.extraSmall,
                 colors = StillwaterControls.buttonColors(),
             ) {
-                Text("Open chat", style = type.body.copy(color = atlas.candleInk))
+                Text(stringResource(R.string.open_chat), style = type.body.copy(color = atlas.candleInk))
             }
             Spacer(Modifier.height(16.dp))
-            androidx.compose.foundation.layout.Row(
+            // Flow so Polish "O trybie offline" does not collide with History/Settings at large fonts.
+            FlowRow(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -227,13 +235,17 @@ private fun StillwaterHome(
                     modifier = Modifier.testTag("${context.packageName}:id/history_open"),
                     colors = StillwaterControls.textButtonColors(),
                 ) {
-                    Text("History", textDecoration = TextDecoration.Underline)
+                    Text(stringResource(R.string.history), textDecoration = TextDecoration.Underline)
                 }
-                TextButton(onClick = onOpenSettings, colors = StillwaterControls.textButtonColors()) {
-                    Text("Settings", textDecoration = TextDecoration.Underline)
+                TextButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.testTag("${context.packageName}:id/home_settings"),
+                    colors = StillwaterControls.textButtonColors(),
+                ) {
+                    Text(stringResource(R.string.settings_title), textDecoration = TextDecoration.Underline)
                 }
                 TextButton(onClick = onAbout, colors = StillwaterControls.textButtonColors()) {
-                    Text("About offline mode", textDecoration = TextDecoration.Underline)
+                    Text(stringResource(R.string.about_offline_mode), textDecoration = TextDecoration.Underline)
                 }
             }
             Text(

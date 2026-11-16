@@ -55,27 +55,34 @@ final class RuntimeNotifications {
                                                 String conversationId, String title, int code) {
         switch (action) {
             case STOP:
-                return new Notification.Action.Builder(null, "Stop",
+                return new Notification.Action.Builder(null,
+                        context.getString(R.string.notification_action_stop),
                         service(context, ModelRuntimeService.ACTION_STOP, null, code)).build();
             case UNLOAD:
-                return new Notification.Action.Builder(null, "Unload",
+                return new Notification.Action.Builder(null,
+                        context.getString(R.string.notification_action_unload),
                         service(context, ModelRuntimeService.ACTION_UNLOAD, null, code)).build();
             case OPEN:
-                return new Notification.Action.Builder(null, "Open",
+                return new Notification.Action.Builder(null,
+                        context.getString(R.string.notification_action_open),
                         openChat(context, conversationId, title)).build();
             case ASK:
                 return askAction(context, code);
             case REVIEW:
-                return new Notification.Action.Builder(null, "Review",
+                return new Notification.Action.Builder(null,
+                        context.getString(R.string.notification_action_review),
                         review(context, proposalId, code)).build();
             case APPROVE:
-                return new Notification.Action.Builder(null, "Approve",
+                return new Notification.Action.Builder(null,
+                        context.getString(R.string.notification_action_approve),
                         service(context, ModelRuntimeService.ACTION_APPROVE, proposalId, code)).build();
             case REJECT:
-                return new Notification.Action.Builder(null, "Reject",
+                return new Notification.Action.Builder(null,
+                        context.getString(R.string.notification_action_reject),
                         service(context, ModelRuntimeService.ACTION_REJECT, proposalId, code)).build();
             default:
-                return new Notification.Action.Builder(null, "Open",
+                return new Notification.Action.Builder(null,
+                        context.getString(R.string.notification_action_open),
                         openChat(context, conversationId, title)).build();
         }
     }
@@ -100,13 +107,13 @@ final class RuntimeNotifications {
 
     private static Notification.Action askAction(Context context, int code) {
         RemoteInput input = new RemoteInput.Builder(REMOTE_ASK_KEY)
-                .setLabel("Ask Hanami")
+                .setLabel(context.getString(R.string.notification_ask_label))
                 .build();
         Intent intent = new Intent(context, ModelRuntimeService.class)
                 .setAction(ModelRuntimeService.ACTION_ASK);
         PendingIntent pending = PendingIntent.getService(context, code, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
-        return new Notification.Action.Builder(null, "Ask", pending)
+        return new Notification.Action.Builder(null, context.getString(R.string.notification_action_ask), pending)
                 .addRemoteInput(input)
                 .build();
     }

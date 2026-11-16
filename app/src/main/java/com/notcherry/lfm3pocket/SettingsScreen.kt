@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
@@ -22,6 +23,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
@@ -78,9 +80,9 @@ fun SettingsScreen(
             modifier = Modifier.testTag(tag("settings_back")),
             colors = StillwaterControls.textButtonColors(),
         ) {
-            Text("Back to chat")
+            Text(stringResource(R.string.back_to_chat))
         }
-        Text("Settings", style = type.headline, color = atlas.ink)
+        Text(stringResource(R.string.settings_title), style = type.headline, color = atlas.ink)
         Spacer(Modifier.height(8.dp))
         Column(
             Modifier
@@ -95,14 +97,29 @@ fun SettingsScreen(
         ) {
             Text("Model", style = type.title, color = atlas.ink)
             Text(modelSummary, style = type.bodySmall, color = atlas.inkMuted)
-            Text("Inference", style = type.title, color = atlas.ink)
-            StepperField("Context", "512–8192, step 256", contextTokens, onContextChange, 256, 512, 8192, fieldColors, Modifier.fillMaxWidth().testTag(tag("settings_context")))
-            StepperField("Decode threads", "1–8, capped to CPUs", threads, onThreadsChange, 1, 1, 8, fieldColors, Modifier.fillMaxWidth().testTag(tag("settings_threads")))
-            StepperField("Response tokens", "1–2048, below context", maxTokens, onTokensChange, 1, 1, 2048, fieldColors, Modifier.fillMaxWidth().testTag(tag("settings_tokens")))
+            Text(stringResource(R.string.inference_heading), style = type.title, color = atlas.ink)
+            StepperField(
+                stringResource(R.string.context_label),
+                stringResource(R.string.context_hint),
+                contextTokens, onContextChange, 256, 512, 8192, fieldColors,
+                Modifier.fillMaxWidth().testTag(tag("settings_context")),
+            )
+            StepperField(
+                stringResource(R.string.decode_threads_label),
+                stringResource(R.string.decode_threads_hint),
+                threads, onThreadsChange, 1, 1, 8, fieldColors,
+                Modifier.fillMaxWidth().testTag(tag("settings_threads")),
+            )
+            StepperField(
+                stringResource(R.string.response_tokens_label),
+                stringResource(R.string.response_tokens_hint),
+                maxTokens, onTokensChange, 1, 1, 2048, fieldColors,
+                Modifier.fillMaxWidth().testTag(tag("settings_tokens")),
+            )
             if (!error.isNullOrBlank()) {
                 Text(error, color = atlas.danger, style = type.bodySmall)
             }
-            Text("SearXNG", style = type.title, color = atlas.ink)
+            Text(stringResource(R.string.searxng_heading), style = type.title, color = atlas.ink)
             OutlinedTextField(
                 value = searchEndpoint,
                 onValueChange = onEndpointChange,
@@ -117,7 +134,7 @@ fun SettingsScreen(
                 modifier = Modifier.testTag(tag("search_enabled")),
             )
             Text(
-                if (searchEnabled) "Web search: on" else "Web search: off",
+                if (searchEnabled) stringResource(R.string.web_search_on) else stringResource(R.string.web_search_off),
                 style = type.label,
                 color = atlas.inkMuted,
                 modifier = Modifier.testTag(tag("web_search")),
@@ -127,19 +144,25 @@ fun SettingsScreen(
         Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = onSaveInference,
-                modifier = Modifier.fillMaxWidth().testTag(tag("settings_save")),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp)
+                    .testTag(tag("settings_save")),
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
                 colors = StillwaterControls.buttonColors(),
             ) {
-                Text("Save")
+                Text(stringResource(R.string.save))
             }
             Button(
                 onClick = onSaveSearch,
-                modifier = Modifier.fillMaxWidth().testTag(tag("search_save")),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 44.dp)
+                    .testTag(tag("search_save")),
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
                 colors = StillwaterControls.buttonColors(),
             ) {
-                Text("Save search")
+                Text(stringResource(R.string.save_search))
             }
         }
     }

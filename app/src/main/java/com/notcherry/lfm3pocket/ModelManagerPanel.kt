@@ -6,7 +6,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.AbstractComposeView
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.notcherry.lfm3pocket.ui.theme.PocketTheme
 import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
@@ -34,11 +34,15 @@ class ModelManagerPanel(
     @Composable override fun Content() {
         PocketTheme {
             val state = selection
+            val resources = LocalContext.current.resources
             val ink = MaterialTheme.colorScheme.onSurface
             val muted = MaterialTheme.colorScheme.onSurfaceVariant
+            val modelName = state.model.ifEmpty { resources.getString(R.string.model_none_selected) }
+            val projectorName = state.projector.ifEmpty { resources.getString(R.string.projector_none) }
             Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Text("Model: ${state.model.ifEmpty { "None selected" }}", maxLines = 1, overflow = TextOverflow.Ellipsis, color = ink)
-                Text("Projector: ${state.projector.ifEmpty { "None — text only" }}", maxLines = 1, overflow = TextOverflow.Ellipsis, color = muted)
+                // Wrap long GGUF names instead of ellipsizing chrome labels.
+                Text(resources.getString(R.string.model_label, modelName), color = ink)
+                Text(resources.getString(R.string.projector_label, projectorName), color = muted)
                 Text(settingsSummary, style = MaterialTheme.typography.bodySmall, color = muted)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
@@ -47,7 +51,13 @@ class ModelManagerPanel(
                         contentPadding = PaddingValues(horizontal = 8.dp),
                         colors = StillwaterControls.outlinedColors(),
                     ) {
-                        Text(if (state.failed) "Retry load" else if (state.loaded) "Reload model" else "Load model")
+                        Text(
+                            when {
+                                state.failed -> resources.getString(R.string.retry_load)
+                                state.loaded -> resources.getString(R.string.reload_model)
+                                else -> resources.getString(R.string.load_model)
+                            },
+                        )
                     }
                     OutlinedButton(
                         onClick = { unload.run() },
@@ -55,14 +65,14 @@ class ModelManagerPanel(
                         contentPadding = PaddingValues(horizontal = 8.dp),
                         colors = StillwaterControls.outlinedColors(),
                     ) {
-                        Text("Unload model")
+                        Text(resources.getString(R.string.unload_model))
                     }
                     TextButton(
                         onClick = { settings.run() },
                         enabled = !state.busy,
                         contentPadding = PaddingValues(horizontal = 8.dp),
                         colors = StillwaterControls.textButtonColors(),
-                    ) { Text("Settings") }
+                    ) { Text(resources.getString(R.string.settings_title)) }
                 }
             }
         }
