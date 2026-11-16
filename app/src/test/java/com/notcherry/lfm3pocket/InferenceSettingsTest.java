@@ -6,7 +6,10 @@ import static org.junit.Assert.*;
 public class InferenceSettingsTest {
     @Test public void safeDefaultsAndSupportedCustomLimitsAreAvailable(){
         assertEquals(4096,InferenceSettings.DEFAULT.contextTokens);
-        assertEquals(4,InferenceSettings.DEFAULT.threads);assertEquals(512,InferenceSettings.DEFAULT.maxTokens);
+        assertTrue(InferenceSettings.DEFAULT.threads >= 1);
+        assertTrue(InferenceSettings.DEFAULT.threads <= 8);
+        assertEquals(InferenceSettings.DEFAULT.threads, CpuTopology.recommendedDecodeThreads());
+        assertEquals(512,InferenceSettings.DEFAULT.maxTokens);
         assertEquals("Context 2048 • Threads 2 • Max 128",new InferenceSettings(2048,2,128).summary());
         new InferenceSettings(8192,8,2048);new InferenceSettings(512,1,1);
     }

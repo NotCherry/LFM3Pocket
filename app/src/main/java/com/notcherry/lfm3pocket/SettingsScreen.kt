@@ -97,10 +97,17 @@ fun SettingsScreen(
             Text(modelSummary, style = type.bodySmall, color = atlas.inkMuted)
             Text("Inference", style = type.title, color = atlas.ink)
             StepperField("Context", "512–8192, step 256", contextTokens, onContextChange, 256, 512, 8192, fieldColors, Modifier.fillMaxWidth().testTag(tag("settings_context")))
-            StepperField("Decode threads", "1–8, capped to CPUs", threads, onThreadsChange, 1, 1, 8, fieldColors, Modifier.fillMaxWidth().testTag(tag("settings_threads")))
+            StepperField("Decode threads", "1–8, default from big/mid CPU cores", threads, onThreadsChange, 1, 1, 8, fieldColors, Modifier.fillMaxWidth().testTag(tag("settings_threads")))
             StepperField("Response tokens", "1–2048, below context", maxTokens, onTokensChange, 1, 1, 2048, fieldColors, Modifier.fillMaxWidth().testTag(tag("settings_tokens")))
+            Text("Benchmark", style = type.title, color = atlas.ink)
+            Text(
+                "Prompt-processing (pp) and decode (tg) tok/s on the loaded model. Results wrap and can be copied from the Settings host.",
+                style = type.bodySmall,
+                color = atlas.inkMuted,
+                modifier = Modifier.fillMaxWidth(),
+            )
             if (!error.isNullOrBlank()) {
-                Text(error, color = atlas.danger, style = type.bodySmall)
+                Text(error, color = atlas.danger, style = type.bodySmall, modifier = Modifier.fillMaxWidth())
             }
             Text("SearXNG", style = type.title, color = atlas.ink)
             OutlinedTextField(

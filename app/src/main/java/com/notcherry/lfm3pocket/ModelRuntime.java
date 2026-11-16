@@ -41,8 +41,21 @@ public final class ModelRuntime {
     private final RuntimePreferences preferences;
     private final RuntimePolicy policy = new RuntimePolicy();
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final ExecutorService worker = Executors.newSingleThreadExecutor();
-    private final ExecutorService audioWorker = Executors.newSingleThreadExecutor();
+    /** Foreground-priority infer thread (avoid default background nice on some devices). */
+    private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(() -> {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DEFAULT);
+            r.run();
+        }, "hanami-infer");
+        return t;
+    });
+    private final ExecutorService audioWorker = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(() -> {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DEFAULT);
+            r.run();
+        }, "hanami-audio");
+        return t;
+    });
     private final InferenceEngine engine;
     private final PlaybackController playback;
     private final AndroidPlaybackFocus playbackFocus;
