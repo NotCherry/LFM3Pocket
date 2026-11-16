@@ -94,9 +94,7 @@ llama_context_params make_ctx_params(ModelHandle * state, int context_tokens, in
     const int32_t batch = choose_batch_size(context_tokens);
     ctx_params.n_batch = batch;
     ctx_params.n_ubatch = batch;
-    // Flash Attention AUTO is llama.cpp default and enables when safe. PocketPal
-    // leaves FA off on Android CPU; AUTO is a net win for CPU decode on LFM3.
-    ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
+    // flash_attn_type stays at llama.cpp default (AUTO); do not set it redundantly.
     const unsigned cpu = std::thread::hardware_concurrency();
     ctx_params.n_threads = static_cast<int32_t>(
             std::min(static_cast<unsigned>(threads), std::max(1u, cpu)));
@@ -135,12 +133,19 @@ size_t common_prefix_len(const std::vector<llama_token> & a, const std::vector<l
     return i;
 }
 
+// Returns false on decode error or cancel. On cancel, sets error empty and
+// cancelled stays true — caller must release_session() so cached_tokens cannot
+// claim a partially evaluated prompt.
 bool eval_tokens(ModelHandle * state, const llama_token * tokens, int count, int start_pos,
                  bool mrope, std::string & error) {
     int position = start_pos;
     int remaining = count;
     const int chunk = static_cast<int>(choose_batch_size(state->ctx_tokens));
-    while (remaining > 0 && !state->cancelled.load()) {
+    while (remaining > 0) {
+        if (state->cancelled.load()) {
+            error.clear();
+            return false;
+        }
         int n = std::min(chunk, remaining);
         setup_batch(state->batch, tokens + (position - start_pos), n, position, mrope);
         if (llama_process(state->ctx, LLAMA_PROCESS_TYPE_DECODE, state->batch) != 0) {
@@ -150,7 +155,27 @@ bool eval_tokens(ModelHandle * state, const llama_token * tokens, int count, int
         position += n;
         remaining -= n;
     }
-    return !state->cancelled.load();
+    return true;
+}
+
+// Drop positions [shared, ∞). LFM2/LFM3 are hybrid — partial seq_rm may fail.
+// On failure, clear all memory and return false so the caller re-prefills from 0.
+bool trim_cached_prefix(ModelHandle * state, size_t shared) {
+    llama_memory_t mem = llama_get_memory(state->ctx);
+    if (!mem) {
+        state->cached_tokens.clear();
+        return false;
+    }
+    if (shared >= state->cached_tokens.size()) {
+        return true;
+    }
+    if (llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(shared), -1)) {
+        state->cached_tokens.resize(shared);
+        return true;
+    }
+    llama_memory_clear(mem, true);
+    state->cached_tokens.clear();
+    return false;
 }
 
 // Convert complete UTF-8 codepoints into JNI UTF-16; carry incomplete bytes
@@ -276,6 +301,14 @@ Java_com_notcherry_lfm3pocket_NativeBridge_resetModelStop(JNIEnv *, jclass, jlon
     if (auto state = find_model(handle)) state->cancelled.store(false);
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_notcherry_lfm3pocket_NativeBridge_releaseSession(JNIEnv *, jclass, jlong handle) {
+    if (auto state = find_model(handle)) {
+        std::lock_guard<std::mutex> lock(state->decode_mutex);
+        state->release_session();
+    }
+}
+
 // Legacy process-wide methods retained for the original smoke-test API only.
 // Production adapters exclusively call the model-scoped methods above.
 extern "C" JNIEXPORT void JNICALL
@@ -320,7 +353,9 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     if (!state) return make_string(env, "Model handle is retired or invalid");
     std::unique_lock<std::mutex> decode_lock(state->decode_mutex, std::try_to_lock);
     if (!decode_lock.owns_lock()) return make_string(env, "Model is already generating");
-    state->cancelled.store(false);
+    // Do not clear cancelled here — ChatSession/ModelRuntime call resetStop first.
+    // Clearing would drop a Stop that raced ahead of this entry.
+    if (state->cancelled.load()) return nullptr;
     llama_model * model = state->model;
     const bool mrope = state->multimodal && mtmd_decode_use_mrope(state->multimodal);
     const llama_vocab * vocab = llama_model_get_vocab(model);
@@ -350,6 +385,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
 
     std::string error;
     std::string pending;
+    bool prompt_ready = false;
     if (!callback) {
         error = "Cannot locate Java token callback";
     }
@@ -437,6 +473,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         }
         // Do not reuse media KV for later text turns.
         state->cached_tokens.clear();
+        prompt_ready = error.empty() && state->ctx != nullptr;
     } else if (error.empty()) {
         if (!ensure_text_session(state.get(), context_tokens, threads, error)) {
             // error set
@@ -448,26 +485,30 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
                 shared -= 1;
             }
             if (shared < state->cached_tokens.size()) {
-                llama_memory_t mem = llama_get_memory(state->ctx);
-                if (mem) {
-                    llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(shared), -1);
+                // Hybrid LFM memory may reject partial seq_rm — then full re-prefill.
+                if (!trim_cached_prefix(state.get(), shared)) {
+                    shared = 0;
                 }
-                state->cached_tokens.resize(shared);
             }
             position = static_cast<int>(shared);
             if (position < converted) {
                 if (!eval_tokens(state.get(), tokens.data() + position, converted - position,
                                  position, mrope, error)) {
-                    // error set or cancelled
+                    // Cancel or decode error: drop partial session so the next turn
+                    // cannot reuse a half-evaluated prompt (blocking review #1).
+                    state->release_session();
                 } else {
                     position = converted;
+                    prompt_ready = true;
                 }
+            } else {
+                prompt_ready = state->ctx != nullptr;
             }
         }
     }
 
     llama_sampler * sampler = nullptr;
-    if (error.empty()) {
+    if (error.empty() && prompt_ready && state->ctx && !state->cancelled.load()) {
         sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
         llama_sampler_chain_add(sampler, llama_sampler_init_top_k(50));
         llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.1f));
@@ -475,12 +516,11 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     }
 
     std::vector<llama_token> generated;
-    for (int i = 0; error.empty() && !state->cancelled.load() &&
+    for (int i = 0; error.empty() && sampler && !state->cancelled.load() &&
                     i < max_tokens && position + i < context_tokens; ++i) {
         const llama_token next = llama_sampler_sample(sampler, state->ctx, -1);
         if (llama_vocab_is_eog(vocab, next)) break;
         llama_sampler_accept(sampler, next);
-        generated.push_back(next);
 
         char piece[512];
         const int n = llama_token_to_piece(vocab, next, piece, sizeof(piece), 0, true);
@@ -493,22 +533,32 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
             break;
         }
 
-        if (i + 1 == max_tokens || position + i + 1 >= context_tokens) break;
-        setup_batch(state->batch, &next, 1, position + i, mrope);
+        // Always write the accepted token into KV before stopping on max_tokens
+        // so cached_tokens cannot outrun the memory (blocking review #2).
+        if (position + static_cast<int>(generated.size()) + 1 >= context_tokens) {
+            break; // no room to store this token
+        }
+        setup_batch(state->batch, &next, 1, position + static_cast<int>(generated.size()), mrope);
         if (llama_process(state->ctx, LLAMA_PROCESS_TYPE_DECODE, state->batch) != 0) {
             error = "Model failed while decoding response";
             break;
         }
+        generated.push_back(next);
+        if (static_cast<int>(generated.size()) >= max_tokens) break;
     }
-    if (!pending.empty() && error.empty()) deliver(env, sink, callback, u"\uFFFD");
+    if (!pending.empty() && error.empty() && !state->cancelled.load())
+        deliver(env, sink, callback, u"\uFFFD");
 
     if (sampler) llama_sampler_free(sampler);
 
-    if (error.empty() && !has_media && state->ctx && !state->media_dirty) {
-        // Keep prompt + generated tokens so the next turn reuses the shared prefix.
+    if (state->cancelled.load() || !error.empty()) {
+        // Cancel / error mid-turn leaves memory inconsistent with any cache claim.
+        state->release_session();
+    } else if (!has_media && state->ctx && !state->media_dirty) {
+        // Keep prompt + generated tokens that are actually in KV.
         state->cached_tokens = tokens;
         state->cached_tokens.insert(state->cached_tokens.end(), generated.begin(), generated.end());
-    } else if (has_media || state->media_dirty) {
+    } else {
         state->release_session();
     }
 
@@ -528,9 +578,10 @@ Java_com_notcherry_lfm3pocket_NativeBridge_runBenchmarkUtf8(
     if (!state) return make_string(env, "Model handle is retired or invalid");
     std::unique_lock<std::mutex> decode_lock(state->decode_mutex, std::try_to_lock);
     if (!decode_lock.owns_lock()) return make_string(env, "Model is already generating");
-    state->cancelled.store(false);
+    if (state->cancelled.load()) return make_string(env, "Benchmark cancelled");
+    // Free the chat session first so peak RAM is one context, not two.
+    state->release_session();
 
-    // Dedicated ephemeral context so the chat KV cache is not disturbed.
     llama_context_params ctx_params = make_ctx_params(state.get(), context_tokens, threads);
     llama_context * ctx = llama_init_from_model(state->model, ctx_params);
     if (!ctx) return make_string(env, "Unable to allocate benchmark context; insufficient RAM?");
@@ -669,7 +720,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateSpeechUtf8(
     if (!state) return make_string(env, "Model handle is retired or invalid");
     std::unique_lock<std::mutex> decode_lock(state->decode_mutex, std::try_to_lock);
     if (!decode_lock.owns_lock()) return make_string(env, "Model is already generating");
-    state->cancelled.store(false);
+    if (state->cancelled.load()) return nullptr;
     if (!state->multimodal) return make_string(env, "Speech generation requires a multimodal projector");
     const mtmd_gen_audio_info audio_info = mtmd_gen_audio_get_info(state->multimodal);
     if (audio_info.type == MTMD_GEN_AUDIO_TYPE_NONE)

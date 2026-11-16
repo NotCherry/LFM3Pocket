@@ -38,3 +38,5 @@ Owner report: the same LFM3 Q4_K_M GGUF ran at ~10+ tok/s decode in PocketPal AI
 ## Reproducibility
 
 Still one `arm64-v8a` ABI, `GGML_NATIVE=OFF`, pinned NDK/CMake/llama.cpp commit. i8mm is intentionally omitted from the single binary so Snapdragon 720G-class SoCs (dotprod yes, i8mm no) keep working without a PocketPal-style multi-`.so` ladder.
+
+Decision record: [`docs/adr/0001-arm64-dotprod-and-kv-residency.md`](adr/0001-arm64-dotprod-and-kv-residency.md).

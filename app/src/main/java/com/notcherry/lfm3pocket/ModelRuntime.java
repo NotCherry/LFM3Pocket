@@ -201,8 +201,13 @@ public final class ModelRuntime {
         try {
             GgufSelection.validate(new File(path),
                     projector == null || projector.isEmpty() ? null : new File(projector));
-            next = engine.loadModel(path, projector == null || projector.isEmpty() ? null : projector);
-            if (next == 0L) error = "Native engine could not load model (check RAM and GGUF compatibility)";
+            if (engine instanceof NativeInferenceEngine
+                    && !NativeInferenceEngine.supportsPhoneNativeKernels()) {
+                error = NativeInferenceEngine.unsupportedCpuMessage();
+            } else {
+                next = engine.loadModel(path, projector == null || projector.isEmpty() ? null : projector);
+                if (next == 0L) error = "Native engine could not load model (check RAM and GGUF compatibility)";
+            }
         } catch (Throwable thrown) {
             error = thrown.toString();
         }
@@ -320,6 +325,19 @@ public final class ModelRuntime {
         main.post(() -> {
             boolean complete = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE;
             boolean critical = level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL;
+            // Always drop the text KV/hybrid session under pressure (ADR 0001).
+            // Weights may still unload via policy below.
+            long current = handle;
+            if (current != 0L && (complete || critical
+                    || level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW)) {
+                worker.execute(() -> {
+                    if (engine instanceof NativeInferenceEngine) {
+                        ((NativeInferenceEngine) engine).releaseSession(current);
+                    } else {
+                        NativeBridge.releaseSession(current);
+                    }
+                });
+            }
             if (!complete && !critical) {
                 app.diagnostics().record(LocalDiagnostics.Kind.MEMORY, 0L, "trim=" + level);
                 return;

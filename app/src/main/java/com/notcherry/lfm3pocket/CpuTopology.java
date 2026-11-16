@@ -5,63 +5,87 @@ import java.io.File;
 import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Detects decode-thread defaults from CPU frequency clusters (big / mid cores).
- * ChatterUI defaults to {@code availableProcessors()}; PocketPal uses 80% of cores
- * when cores &gt; 4. Prefer big+mid clusters so little cores are not oversubscribed.
+ *
+ * <p>Two-cluster phones (e.g. RMX2170 2×A76 + 6×A55) must not count the little
+ * cluster. A second cluster is included only when there are three or more
+ * distinct max-frequency clusters (big + mid + little). Homogeneous SoCs and
+ * missing sysfs fall back to PocketPal's 80%-of-cores rule.
  */
 public final class CpuTopology {
-    /** Soft cap kept for Settings UI and JNI validation. */
     public static final int MAX_THREADS = 8;
     public static final int MIN_THREADS = 1;
 
     private CpuTopology() {}
 
-    /** Logical CPU count from the runtime (fallback when sysfs is unavailable). */
     public static int logicalProcessors() {
-        int n = Runtime.getRuntime().availableProcessors();
-        return Math.max(1, n);
+        return Math.max(1, Runtime.getRuntime().availableProcessors());
+    }
+
+    /** Recommended decode threads from live sysfs (or PocketPal fallback). */
+    public static int recommendedDecodeThreads() {
+        return recommendedDecodeThreads(readMaxFrequencies(), logicalProcessors());
     }
 
     /**
-     * Recommended decode threads: count of cores in the highest and (when present)
-     * second-highest max-frequency clusters, capped to {@link #MAX_THREADS}.
-     * Falls back to PocketPal's 80%-of-cores rule when frequency data is missing.
+     * Pure policy for unit tests. {@code freqs} is one max-frequency (kHz) per
+     * logical CPU; empty means sysfs unavailable.
      */
-    public static int recommendedDecodeThreads() {
-        List<Integer> freqs = readMaxFrequencies();
-        int logical = logicalProcessors();
+    public static int recommendedDecodeThreads(List<Integer> freqs, int logicalProcessors) {
+        int logical = Math.max(1, logicalProcessors);
         int recommended;
-        if (freqs.size() >= 2) {
-            int max = Collections.max(freqs);
-            int second = 0;
-            for (int f : freqs) {
-                if (f < max && f > second) second = f;
-            }
-            int bigMid = 0;
-            for (int f : freqs) {
-                if (f == max || (second > 0 && f == second)) bigMid++;
-            }
-            // If everything shares one frequency, treat as homogeneous.
-            if (second == 0) bigMid = freqs.size();
-            recommended = Math.max(1, bigMid);
+        if (freqs == null || freqs.size() < 2) {
+            recommended = pocketPalThreads(logical);
         } else {
-            // PocketPal deviceCapabilities.getRecommendedThreadCount
-            recommended = logical <= 4 ? logical : Math.max(1, (int) Math.floor(logical * 0.8));
+            recommended = threadsFromFrequencyClusters(freqs);
+            if (recommended < 1) recommended = pocketPalThreads(logical);
         }
-        return clampThreads(recommended);
+        return clampThreads(recommended, logical);
+    }
+
+    /**
+     * Count cores in the highest cluster; include the second-highest only when
+     * there are ≥3 distinct frequency clusters (big+mid+little).
+     */
+    static int threadsFromFrequencyClusters(List<Integer> freqs) {
+        Map<Integer, Integer> counts = new LinkedHashMap<>();
+        List<Integer> sortedUnique = new ArrayList<>();
+        for (int f : freqs) {
+            if (!counts.containsKey(f)) sortedUnique.add(f);
+            counts.put(f, counts.getOrDefault(f, 0) + 1);
+        }
+        if (sortedUnique.isEmpty()) return 0;
+        Collections.sort(sortedUnique);
+        int highest = sortedUnique.get(sortedUnique.size() - 1);
+        int threads = counts.get(highest);
+        if (sortedUnique.size() >= 3) {
+            int mid = sortedUnique.get(sortedUnique.size() - 2);
+            threads += counts.get(mid);
+        }
+        return threads;
+    }
+
+    /** PocketPal deviceCapabilities.getRecommendedThreadCount */
+    static int pocketPalThreads(int logical) {
+        return logical <= 4 ? logical : Math.max(1, (int) Math.floor(logical * 0.8));
     }
 
     public static int clampThreads(int threads) {
-        int logical = logicalProcessors();
+        return clampThreads(threads, logicalProcessors());
+    }
+
+    public static int clampThreads(int threads, int logicalProcessors) {
+        int logical = Math.max(1, logicalProcessors);
         int capped = Math.min(threads, Math.min(MAX_THREADS, logical));
         return Math.max(MIN_THREADS, capped);
     }
 
-    /** Space-separated feature tokens from {@code /proc/cpuinfo} (PocketPal/llama.rn). */
     public static String cpuFeatures() {
         StringBuilder features = new StringBuilder();
         try (BufferedReader br = new BufferedReader(new FileReader("/proc/cpuinfo"))) {

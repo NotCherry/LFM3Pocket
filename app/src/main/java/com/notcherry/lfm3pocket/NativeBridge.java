@@ -19,6 +19,8 @@ public final class NativeBridge {
 
     public static native long loadModel(String privatePath, String privateMmprojPath);
     public static native void unloadModel(long handle);
+    /** Drop the persistent text KV/hybrid session; weights stay loaded. */
+    public static native void releaseSession(long handle);
     /** Compile-time + runtime build summary for Settings / diagnostics copy. */
     public static native String nativeBuildInfo();
     /**
@@ -30,24 +32,30 @@ public final class NativeBridge {
 
     public static String generate(long handle, String prompt, String mediaPath,
                                   int maxTokens, TokenSink sink) {
-        return generateWithMedia(handle,prompt,mediaPath==null?new String[0]:new String[]{mediaPath},maxTokens,sink);
+        return generateWithMedia(handle, prompt, mediaPath == null ? new String[0] : new String[]{mediaPath},
+                maxTokens, sink);
     }
+
+    /** Legacy overload — prefer {@link #generateWithMediaAndSettings}. */
     public static String generateWithMedia(long handle, String prompt, String[] mediaPaths,
                                            int maxTokens, TokenSink sink) {
+        return generateWithMediaAndSettings(handle, prompt, mediaPaths, InferenceSettings.DEFAULT, sink);
+    }
+
+    public static String generateWithSettings(long handle, String prompt, String mediaPath,
+                                              InferenceSettings settings, TokenSink sink) {
+        return generateWithMediaAndSettings(handle, prompt,
+                mediaPath == null ? new String[0] : new String[]{mediaPath}, settings, sink);
+    }
+
+    public static String generateWithMediaAndSettings(long handle, String prompt, String[] mediaPaths,
+                                                      InferenceSettings settings, TokenSink sink) {
         if (prompt == null || sink == null) return "Missing prompt or callback";
-        return generateUtf8(handle, PromptEncoding.encode(prompt), mediaPaths, maxTokens,
-                InferenceSettings.DEFAULT.contextTokens, InferenceSettings.DEFAULT.threads, sink);
+        InferenceSettings limits = settings == null ? InferenceSettings.DEFAULT : settings;
+        return generateUtf8(handle, PromptEncoding.encode(prompt), mediaPaths, limits.maxTokens,
+                limits.contextTokens, limits.threads, sink);
     }
-    public static String generateWithSettings(long handle,String prompt,String mediaPath,
-                                              InferenceSettings settings,TokenSink sink) {
-        return generateWithMediaAndSettings(handle,prompt,mediaPath==null?new String[0]:new String[]{mediaPath},settings,sink);
-    }
-    public static String generateWithMediaAndSettings(long handle,String prompt,String[] mediaPaths,
-                                                      InferenceSettings settings,TokenSink sink) {
-        if(prompt==null || sink==null) return "Missing prompt or callback";
-        return generateUtf8(handle,PromptEncoding.encode(prompt),mediaPaths,settings.maxTokens,
-                settings.contextTokens,settings.threads,sink);
-    }
+
     public static String generateSpeech(long handle, String prompt, SpeechOptions options, AudioSink sink) {
         return generateSpeech(handle, prompt, options, InferenceSettings.DEFAULT, sink);
     }

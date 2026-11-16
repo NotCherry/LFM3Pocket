@@ -2,9 +2,11 @@ package com.notcherry.lfm3pocket;
 
 /** Validated resource limits shared by settings, the session and native inference. */
 public final class InferenceSettings {
-    /** Defaults: 4096 context, topology-based threads (was fixed 4), 512 max tokens. */
-    public static final InferenceSettings DEFAULT = new InferenceSettings(
-            4096, CpuTopology.recommendedDecodeThreads(), 512);
+    /**
+     * Compile-time safe defaults. First-run DataStore init overlays topology-based
+     * threads via {@link InferenceSettingsStore}; do not read sysfs here.
+     */
+    public static final InferenceSettings DEFAULT = new InferenceSettings(4096, 4, 512);
 
     public final int contextTokens, threads, maxTokens;
 
