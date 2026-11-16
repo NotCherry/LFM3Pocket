@@ -280,7 +280,7 @@ Stillwater chrome must stay readable when the user enlarges text or display size
 - [ ] UT row(s) noted in PR; matrix updated when evidence lands.
 - [ ] Screenshots (if any) filed under device evidence for U16 — they do not flip AT rows.
 - [ ] Font-scale / narrow-width / PL chrome still readable (section 11).
-- [ ] Turn persistence, interrupted Retry, and the Settings crash log follow section 13. Neither is uploaded by the app.
+- [ ] Turn persistence, interrupted Retry, and the Settings crash log follow section 13. Stored turns and the crash log stay on the device; web search remains the existing opt-in network path.
 
 ---
 
@@ -303,17 +303,19 @@ A submitted turn moves **persisted → generating → completed**, or to another
 
 Leaving the chat does not mark a turn interrupted. The foreground service keeps generation going, and a local notification can say the reply is ready when it finishes with no screen visible. Interrupted means the process died while the assistant row was still generating.
 
-**Retry** resends the saved question and the private photo copy when that file is still there. It starts a new turn. The interrupted answer stays in the thread. The history reader shows the non-completed status; Retry stays on the live chat turn.
+**Retry** resends the saved question and the private photo copy when that file is still there. It starts a new turn and always runs offline, including when the original turn had web search on. It does not reattach a voice recording. A voice-only turn stores “Listen to this recording and answer.”, and Retry sends that sentence with no audio and without a saved speech transcript. The interrupted answer stays in the thread. The history reader shows the non-completed status; Retry stays on the live chat turn.
+
+The pass that marks generating rows interrupted runs after process start, and again when the open chat is restored. It marks every generating assistant row. A turn written before that pass finishes can be marked interrupted as well.
 
 Photos still use the existing prepare/downscale path. A bounded decode checks the attached file before native vision and does not write a second inference image.
 
 ### 13.2 Crash log
 
-Settings includes a crash log: view, share, or clear. It holds the last uncaught exception and, on Android 11 and newer, recent platform process-exit reasons. It is capped, app-private, and separate from conversation history. The app does not upload it. Share hands the text to the system share sheet; the text leaves the phone only if the user picks a target.
+Settings includes a crash log: view, share, or clear. It holds the last uncaught exception and, on Android 11 and newer, recent platform process-exit reasons. A trace excerpt is included from Android 12. Each startup appends that recent exit list again, and the file is capped, so repeated launches can crowd out an older exception. The log is app-private and separate from conversation history. The app does not upload it. Share hands the text to the system share sheet; the text leaves the phone only if the user picks a target.
 
 ### 13.3 Privacy
 
-Conversation text, speech transcripts, tool outcomes, private photo copies, timing breadcrumbs, and the crash log stay in app-private storage. Nothing in this lifecycle is sent by the app. An explicit crash-log share is the only export, and it is user-chosen. Deleting a conversation deletes its private photo copies; deleting all history deletes them all.
+Conversation text, speech transcripts, tool outcomes, private photo copies, timing breadcrumbs, and the crash log stay in app-private storage. When web search is turned on, the question is sent to the chosen endpoint before local inference; a voice-only turn sends the speech transcript once recognition has produced one. The crash log leaves the phone only through an explicit, user-chosen share. Deleting a conversation deletes its private photo copies; deleting all history deletes them all.
 
 ## 14. References
 

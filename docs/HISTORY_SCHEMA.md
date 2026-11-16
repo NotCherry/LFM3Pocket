@@ -1,6 +1,6 @@
 # Private conversation history schema
 
-H01 defines the Room database contract for the later persistence and history UI work. It stores conversation and message text, optional speech transcripts, and structured tool outcomes in the app's private database directory. The schema does not store media paths, model prompts, or derived AI memory.
+H01 defines the Room database contract for the later persistence and history UI work. It stores conversation and message text, optional speech transcripts, structured tool outcomes, and an optional private photo path (`mediaRef`) in the app's private database directory. The schema does not store model prompts or derived AI memory.
 
 The HistoryDatabase is version 5 and exports its schema under app/schemas. Version 1 is a development schema baseline created before tool outcomes were added; it is not a schema shipped to existing users. Migration 1→2 adds tool outcomes with a foreign key to their parent message and a unique request ID. Migration 2→3 adds turn IDs and terminal status for idempotent completed-turn persistence. Migration 3→4 adds an optional speech-transcript status to distinguish a missing transcript from an unavailable local ASR result. Migration 4→5 adds an optional `mediaRef` for durable photo attachment paths so a user turn can be persisted before inference and recovered after process death. Turn status also uses `GENERATING` / `INTERRUPTED` for in-flight recovery. Older rows keep a null status and their original transcript text.
 
