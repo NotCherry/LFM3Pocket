@@ -50,6 +50,9 @@ public final class RuntimePreferences {
     /** Opt-in {@code 127.0.0.1} prompt listener. Off by default; cannot approve tools. */
     public boolean loopbackEnabled() { return prefs.getBoolean("loopback_api", false); }
 
+    /** Opt-in network tools such as Open-Meteo weather. Off by default. */
+    public boolean networkToolsEnabled() { return prefs.getBoolean("network_tools", false); }
+
     public void setKeepLoaded(boolean value) { prefs.edit().putBoolean("keep_loaded", value).apply(); }
 
     public void setIdleMinutes(int value) {
@@ -60,4 +63,6 @@ public final class RuntimePreferences {
     public void setLockPreview(boolean value) { prefs.edit().putBoolean("lock_screen_preview", value).apply(); }
 
     public void setLoopbackEnabled(boolean value) { prefs.edit().putBoolean("loopback_api", value).apply(); }
+
+    public void setNetworkToolsEnabled(boolean value) { prefs.edit().putBoolean("network_tools", value).apply(); }
 }

@@ -3,4 +3,15 @@
     <string name="app_name">Hanami</string>
     <string name="notification_channel_model_runtime">Hanami model</string>
     <string name="notification_channel_model_runtime_desc">Shown while Hanami keeps a Liquid AI LFM3 model loaded on this phone.</string>
+    <string name="import_model">Import model</string>
+    <string name="import_projector">Import projector</string>
+    <string name="open_model_from_storage">Open model from storage</string>
+    <string name="open_projector_from_storage">Open projector from storage</string>
+    <string name="network_tools_label">Allow network tools (weather)</string>
+    <string name="network_tools_help">Off by default. When on, the weather tool may call Open-Meteo. Treat tool output as untrusted.</string>
+    <string name="default_assistant_button">Set as default assistant</string>
+    <string name="default_assistant_help">Opens the system picker so long-press power or Home assist can open Hanami into a fresh chat. Voice is not enabled yet.</string>
+    <string name="importing_model">Importing model into private storage…</string>
+    <string name="opening_external_model">Opening model from storage…</string>
+    <string name="loading_model">Loading model…</string>
 </resources>

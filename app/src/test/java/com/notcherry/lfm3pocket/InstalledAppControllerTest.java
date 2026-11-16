@@ -58,7 +58,10 @@ public final class InstalledAppControllerTest {
         AndroidActionExecutor unused = (name, arguments) ->
                 new AndroidActionExecutor.ActionResult(true, "WRONG_HANDLER", name);
         AndroidToolsExecutor dispatcher = new AndroidToolsExecutor(unused, unused, unused,
-                new AlarmActionExecutor(new AlarmController((hour, minute, label) -> { })), apps, unused, unused);
+                new AlarmActionExecutor(new AlarmController(new AlarmController.Launcher() {
+                    @Override public void open(int hour, int minute, String label, java.util.List<Integer> days) {}
+                    @Override public void showAlarms() {}
+                })), apps, unused, unused);
         Map<String, String> args = new LinkedHashMap<>();
         args.put("package", "com.example.notes");
 

@@ -21,8 +21,11 @@ public final class TimerController {
         }
         try {
             launcher.open(seconds, label);
-            return result(true, "TIMER_REQUEST_OPENED", "Timer request sent to the Android clock for "
-                    + seconds + " seconds. Check the clock app to verify it started; this app cannot verify timer creation.");
+            StringBuilder message = new StringBuilder("About to open the Android clock to start a timer for ")
+                    .append(seconds).append(" seconds");
+            if (label != null && !label.isEmpty()) message.append(" labelled \"").append(label).append('"');
+            message.append(". Check the clock app to verify it started; this app cannot verify timer creation.");
+            return result(true, "TIMER_REQUEST_OPENED", message.toString());
         } catch (NoClockAppException e) {
             return result(false, "CLOCK_APP_UNAVAILABLE", "No clock app can handle this timer request.");
         } catch (SecurityException e) {

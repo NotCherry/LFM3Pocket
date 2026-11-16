@@ -41,12 +41,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     public static final String EXTRA_HISTORY_TITLE="history_title";
     public static final String EXTRA_OPEN_SETTINGS = "open_settings";
     public static final String EXTRA_DRAFT_TEXT = "draft_text";
+    public static final String EXTRA_FRESH_CHAT = "fresh_chat";
     private static final int PICK_MODEL = 42;
     private static final int PICK_MMPROJ = 43;
     private static final int PICK_PHOTO = 44;
     private static final int TAKE_PHOTO = 45;
     private static final int REQUEST_AUDIO = 46;
     private static final int REQUEST_CAMERA = 47;
+    private static final int OPEN_MODEL_URI = 48;
+    private static final int OPEN_MMPROJ_URI = 49;
 
 
     private ExecutorService worker;
@@ -73,6 +76,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private Button idle60Button;
     private CheckBox lockPreviewBox;
     private CheckBox loopbackBox;
+    private CheckBox networkToolsBox;
+    private Button openModelUriButton, openProjectorUriButton, defaultAssistantButton;
     private boolean foreground;
     private boolean microphoneRequested;
     private boolean cameraRequested;
@@ -187,13 +192,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         chatPanel.setIdleMode(searchEnabled);
         syncInlineSettingsFields();
         syncBackgroundControls();
-        if (runtime.handle() != 0L && previous.equals(runtime.loadedPath())) {
+        if (runtime.handle() != 0L && (previous.equals(runtime.loadedPath()) || isContentUri(previous))) {
             if (!runtime.isGenerating()) status.setText(mmprojPath == null || mmprojPath.isEmpty()
-                    ? "Text model ready \u0007 offline" : "Model and projector loaded • offline");
-        } else if (!previous.isEmpty() && new File(previous).isFile()) {
-            loadModelInBackground(previous, mmprojPath);
+                    ? "Text model ready · offline" : "Model and projector loaded · offline");
+        } else if (!previous.isEmpty() && (isContentUri(previous) || new File(previous).isFile())) {
+            loadSelectedModel(previous, mmprojPath);
         } else if (runtime.handle() == 0L) {
             status.setText("No model loaded. Select an LFM3 GGUF file.");
+        }
+        if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_FRESH_CHAT, false)) {
+            startFreshChat();
+            getIntent().removeExtra(EXTRA_FRESH_CHAT);
         }
         if (pendingSwitchId != null) confirmSwitchConversation();
     }
@@ -352,17 +361,30 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         configuration.setPadding(0, 0, 0, dp(16));
         LinearLayout modelControls = new LinearLayout(this);
         modelControls.setOrientation(LinearLayout.HORIZONTAL);
-        modelButton = button("Import model");
+        modelButton = button(getString(R.string.import_model));
         modelButton.setId(R.id.import_model);
         StillwaterUi.quiet(modelButton);
         modelButton.setTextColor(accent);
-        mmprojButton = button("Import projector");
+        mmprojButton = button(getString(R.string.import_projector));
         mmprojButton.setId(R.id.import_projector);
         StillwaterUi.quiet(mmprojButton);
         mmprojButton.setTextColor(accent);
         modelControls.addView(modelButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         modelControls.addView(mmprojButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         configuration.addView(modelControls);
+        LinearLayout openControls = new LinearLayout(this);
+        openControls.setOrientation(LinearLayout.HORIZONTAL);
+        openModelUriButton = button(getString(R.string.open_model_from_storage));
+        openModelUriButton.setId(R.id.open_model_uri);
+        StillwaterUi.quiet(openModelUriButton);
+        openModelUriButton.setTextColor(accent);
+        openProjectorUriButton = button(getString(R.string.open_projector_from_storage));
+        openProjectorUriButton.setId(R.id.open_projector_uri);
+        StillwaterUi.quiet(openProjectorUriButton);
+        openProjectorUriButton.setTextColor(accent);
+        openControls.addView(openModelUriButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        openControls.addView(openProjectorUriButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        configuration.addView(openControls);
         // Model manager stays near the top so Unload/Load remain on-screen for Stage 1.
         modelManager = new ModelManagerPanel(this,
                 this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings);
@@ -446,6 +468,28 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         loopbackBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
         configuration.addView(loopbackBox);
 
+        TextView toolsHeading = label("TOOLS", 11, inkMuted);
+        toolsHeading.setTypeface(StillwaterUi.sansMedium(this));
+        toolsHeading.setLetterSpacing(0.12f);
+        toolsHeading.setPadding(0, dp(16), 0, dp(4));
+        configuration.addView(toolsHeading);
+        networkToolsBox = new CheckBox(this);
+        networkToolsBox.setId(R.id.settings_network_tools);
+        networkToolsBox.setText(R.string.network_tools_label);
+        StillwaterUi.styleCheck(networkToolsBox);
+        networkToolsBox.setOnCheckedChangeListener((button, checked) -> {
+            if (bindingBackground) return;
+            new RuntimePreferences(this).setNetworkToolsEnabled(checked);
+        });
+        configuration.addView(networkToolsBox);
+        configuration.addView(label(getString(R.string.network_tools_help), 12, inkMuted));
+        defaultAssistantButton = button(getString(R.string.default_assistant_button));
+        defaultAssistantButton.setId(R.id.settings_default_assistant);
+        StillwaterUi.quiet(defaultAssistantButton);
+        defaultAssistantButton.setOnClickListener(v -> openDefaultAssistantPicker());
+        configuration.addView(defaultAssistantButton, new LinearLayout.LayoutParams(-1, dp(48)));
+        configuration.addView(label(getString(R.string.default_assistant_help), 12, inkMuted));
+
         ScrollView configurationScroll = new ScrollView(this);
         configurationScroll.setId(R.id.model_configuration_scroll);
         configurationScroll.setBackgroundColor(surface);
@@ -514,6 +558,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
         modelButton.setOnClickListener(v -> pickModel());
         mmprojButton.setOnClickListener(v -> pickMmproj());
+        openModelUriButton.setOnClickListener(v -> pickExternalModel(OPEN_MODEL_URI));
+        openProjectorUriButton.setOnClickListener(v -> pickExternalModel(OPEN_MMPROJ_URI));
         searchButton.setOnClickListener(v -> showSearchSettings());
         photoButton.setOnClickListener(v -> pickPhoto());
         cameraButton.setOnClickListener(v -> takePhoto());
@@ -541,6 +587,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         searchButton.setEnabled(!busy);
         modelButton.setEnabled(!busy);
         mmprojButton.setEnabled(!busy);
+        if (openModelUriButton != null) openModelUriButton.setEnabled(!busy);
+        if (openProjectorUriButton != null) openProjectorUriButton.setEnabled(!busy);
         photoButton.setEnabled(!busy);
         cameraButton.setEnabled(!busy);
         RecordingController.State capture = recordingController.state();
@@ -572,8 +620,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void reloadSelectedModel() {
         if (busy) return;
         String model = pocketPreferences().getString("model", "");
-        if (!model.isEmpty()) loadModelInBackground(model,
-                pocketPreferences().getString("mmproj", ""));
+        if (!model.isEmpty()) loadSelectedModel(model, pocketPreferences().getString("mmproj", ""));
     }
 
     private void unloadSelectedModel() {
@@ -655,6 +702,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (searchEndpointField != null) {
             searchEndpointField.setText(searchEndpoint);
             searchEnabledBox.setChecked(searchEnabled);
+        }
+        if (networkToolsBox != null) {
+            bindingBackground = true;
+            networkToolsBox.setChecked(new RuntimePreferences(this).networkToolsEnabled());
+            bindingBackground = false;
         }
     }
 
@@ -903,6 +955,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         startActivityForResult(pick, requestCode);
     }
 
+    private void pickExternalModel(int requestCode) {
+        if (busy) return;
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.setType("*/*");
+        pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(pick, requestCode);
+    }
+
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
         if (code == PICK_PHOTO && result == RESULT_OK && data != null && data.getData() != null) {
@@ -919,11 +980,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             status.setText("Camera closed without taking a photo.");
             return;
         }
+        if ((code == OPEN_MODEL_URI || code == OPEN_MMPROJ_URI)
+                && result == RESULT_OK && data != null && data.getData() != null) {
+            openExternalDocument(data.getData(), code == OPEN_MMPROJ_URI);
+            return;
+        }
         if ((code != PICK_MODEL && code != PICK_MMPROJ) || result != RESULT_OK || data == null || data.getData() == null) return;
         final Uri uri = data.getData();
         busy = true;
         updateControls();
-        status.setText(code == PICK_MODEL ? "Importing model into private storage..." : "Importing projector into private storage...");
+        status.setText(code == PICK_MODEL ? getString(R.string.importing_model) : "Importing projector into private storage...");
         AtomicBoolean cancellation = new AtomicBoolean();
         importCancellation = cancellation;
         updateControls();
@@ -977,21 +1043,159 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         });
     }
 
+    private void openExternalDocument(Uri uri, boolean projector) {
+        busy = true;
+        updateControls();
+        status.setText(getString(R.string.opening_external_model));
+        worker.execute(() -> {
+            ExternalModelStore store = ((Lfm3PocketApplication) getApplication()).externalModels();
+            try {
+                String previousModel = pocketPreferences().getString("model", "");
+                String previousProjector = pocketPreferences().getString("mmproj", "");
+                if (projector && previousModel.isEmpty()) {
+                    throw new IOException("Open or import a model before its multimodal projector");
+                }
+                String displayName = "GGUF";
+                try (Cursor cursor = getContentResolver().query(uri,
+                        new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+                    if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) {
+                        displayName = cursor.getString(0);
+                    }
+                }
+                store.remember(uri, displayName, projector);
+                ExternalModelStore.Opened opened = store.open(uri);
+                String modelPath;
+                String projectorPath;
+                if (projector) {
+                    modelPath = resolveLoadPath(previousModel, store);
+                    projectorPath = opened.path;
+                } else {
+                    modelPath = opened.path;
+                    projectorPath = "";
+                }
+                GgufSelection.validate(new File(modelPath),
+                        projectorPath.isEmpty() ? null : new File(projectorPath));
+                if (runtime.loadBlocking(modelPath, projectorPath, statusText -> runOnUiThread(() -> {
+                    if (!destroyed) status.setText(statusText);
+                }))) {
+                    pocketPreferences().edit()
+                            .putString("model", projector ? previousModel : uri.toString())
+                            .putString("mmproj", projector ? uri.toString() : "")
+                            .putString(projector ? "projector_name" : "model_name", displayName)
+                            .apply();
+                    if (!projector) pocketPreferences().edit().remove("projector_name").apply();
+                }
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    if (!destroyed) status.setText("Could not open storage model: " + e.getMessage());
+                });
+            } finally {
+                runOnUiThread(() -> {
+                    if (!destroyed) { busy = false; updateControls(); }
+                });
+            }
+        });
+    }
+
+    private String resolveLoadPath(String stored, ExternalModelStore store) throws IOException {
+        if (isContentUri(stored)) {
+            return store.open(Uri.parse(stored)).path;
+        }
+        if (stored == null || stored.isEmpty() || !new File(stored).isFile()) {
+            throw new IOException("Selected model is missing");
+        }
+        return stored;
+    }
+
     private void deleteImportedModel(String path) {
+        if (path == null || isContentUri(path)) return;
         File file = new File(path);
         if (new File(getFilesDir(), "models").equals(file.getParentFile())) file.delete();
+    }
+
+    private void loadSelectedModel(String model, String projector) {
+        if (isContentUri(model) || isContentUri(projector)) {
+            busy = true;
+            updateControls();
+            status.setText(getString(R.string.opening_external_model));
+            worker.execute(() -> {
+                try {
+                    ExternalModelStore store = ((Lfm3PocketApplication) getApplication()).externalModels();
+                    String modelPath = resolveLoadPath(model, store);
+                    String projectorPath = projector == null || projector.isEmpty()
+                            ? "" : resolveLoadPath(projector, store);
+                    boolean ok = runtime.loadBlocking(modelPath, projectorPath, statusText -> runOnUiThread(() -> {
+                        if (!destroyed) status.setText(statusText);
+                    }));
+                    if (!ok && !destroyed) {
+                        runOnUiThread(() -> status.setText("Could not load the selected storage model."));
+                    }
+                } catch (Exception e) {
+                    runOnUiThread(() -> {
+                        if (!destroyed) status.setText("Could not open storage model: " + e.getMessage());
+                    });
+                } finally {
+                    runOnUiThread(() -> {
+                        if (!destroyed) { busy = false; updateControls(); }
+                    });
+                }
+            });
+            return;
+        }
+        loadModelInBackground(model, projector);
     }
 
     private void loadModelInBackground(String path, String projector) {
         busy = true;
         updateControls();
-        status.setText("Loading model from private storage...");
+        status.setText(getString(R.string.loading_model));
         runtime.load(path, projector, statusText -> {
             if (destroyed) return;
             busy = false;
             status.setText(statusText);
             updateControls();
         });
+    }
+
+    private static boolean isContentUri(String value) {
+        return value != null && value.startsWith("content:");
+    }
+
+    private void startFreshChat() {
+        HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
+        HistoryMediaCleanup.deleteAttachment(this, pendingAudioPath);
+        pendingImagePath = "";
+        pendingAudioPath = "";
+        lastAssistantReply = "";
+        if (playbackActive()) playbackController.stop();
+        if (chatPanel != null) chatPanel.clearImageAttachment();
+        String id = java.util.UUID.randomUUID().toString();
+        historyConversationId = id;
+        historyTitle = "New conversation";
+        if (brandTitle != null) brandTitle.setText(historyTitle);
+        runtime.setConversation(id, historyTitle);
+        runtime.clearConversation();
+        setSettingsOpen(false);
+        status.setText("Fresh chat from the system assistant.");
+    }
+
+    private void openDefaultAssistantPicker() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                android.app.role.RoleManager roles = getSystemService(android.app.role.RoleManager.class);
+                if (roles != null && roles.isRoleAvailable(android.app.role.RoleManager.ROLE_ASSISTANT)) {
+                    startActivity(roles.createRequestRoleIntent(android.app.role.RoleManager.ROLE_ASSISTANT));
+                    return;
+                }
+            }
+            startActivity(new Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS));
+        } catch (Exception e) {
+            try {
+                startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));
+            } catch (Exception nested) {
+                status.setText("Could not open the default-assistant settings.");
+            }
+        }
     }
 
     private void stopActiveWork() {
@@ -1049,6 +1253,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         keepLoadedBox.setChecked(prefs.keepLoaded());
         lockPreviewBox.setChecked(prefs.lockPreview());
         if (loopbackBox != null) loopbackBox.setChecked(prefs.loopbackEnabled());
+        if (networkToolsBox != null) networkToolsBox.setChecked(prefs.networkToolsEnabled());
         paintIdle(prefs.idleMinutes());
         bindingBackground = false;
     }
@@ -1162,6 +1367,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         adoptConversation(intent);
         if (pendingSwitchId != null) confirmSwitchConversation();
         if (intent != null && intent.getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) setSettingsOpen(true);
+        if (intent != null && intent.getBooleanExtra(EXTRA_FRESH_CHAT, false)) {
+            startFreshChat();
+            intent.removeExtra(EXTRA_FRESH_CHAT);
+        }
         applyDraft(intent);
     }
 

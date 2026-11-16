@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.os.SystemClock;
 
 import java.io.File;
+import java.util.List;
 
 /**
  * Per-process dependency factory. Instrumentation can install a test subclass
@@ -14,6 +15,7 @@ import java.io.File;
 public class Lfm3PocketApplication extends Application {
     private final LocalDiagnostics diagnostics = new LocalDiagnostics(SystemClock::elapsedRealtime);
     private ModelRuntime modelRuntime;
+    private ExternalModelStore externalModels;
     private int startedActivities;
 
     @Override public void onCreate() {
@@ -41,6 +43,11 @@ public class Lfm3PocketApplication extends Application {
 
     public final LocalDiagnostics diagnostics() {
         return diagnostics;
+    }
+
+    public final synchronized ExternalModelStore externalModels() {
+        if (externalModels == null) externalModels = new ExternalModelStore(this);
+        return externalModels;
     }
 
     @Override public void onTrimMemory(int level) {
@@ -71,23 +78,50 @@ public class Lfm3PocketApplication extends Application {
                     !(request instanceof ToolRegistry.VolumeRequest) &&
                     !(request instanceof ToolRegistry.TimerRequest) &&
                     !(request instanceof ToolRegistry.AlarmRequest) &&
+                    !(request instanceof ToolRegistry.ShowAlarmsRequest) &&
                     !(request instanceof ToolRegistry.ApplicationRequest) &&
                     !(request instanceof ToolRegistry.SettingsRequest) &&
-                    !(request instanceof ToolRegistry.TextRequest)) {
+                    !(request instanceof ToolRegistry.TextRequest) &&
+                    !(request instanceof ToolRegistry.CurrentTimeRequest) &&
+                    !(request instanceof ToolRegistry.CalculatorRequest) &&
+                    !(request instanceof ToolRegistry.UnitConvertRequest) &&
+                    !(request instanceof ToolRegistry.WeatherRequest)) {
                 return new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
                         "This Android tool is not enabled yet");
             }
             java.util.Map<String, String> arguments = new java.util.LinkedHashMap<>();
             for (java.util.Map.Entry<String, Object> entry : request.arguments.entrySet()) {
-                arguments.put(entry.getKey(), String.valueOf(entry.getValue()));
+                Object value = entry.getValue();
+                if (value instanceof List) {
+                    arguments.put(entry.getKey(), joinDays((List<?>) value));
+                } else {
+                    arguments.put(entry.getKey(), String.valueOf(value));
+                }
             }
             return actionExecutor().execute(request.tool.wireName, arguments);
         };
     }
 
+    private static String joinDays(List<?> values) {
+        StringBuilder out = new StringBuilder();
+        for (Object value : values) {
+            if (out.length() > 0) out.append(',');
+            out.append(value);
+        }
+        return out.toString();
+    }
+
     protected java.util.function.Predicate<ToolRegistry.Request> createToolPermissionCheck() {
-        return request -> request.tool != ToolRegistry.Tool.FLASHLIGHT ||
-                checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        return request -> {
+            if (request.tool == ToolRegistry.Tool.FLASHLIGHT) {
+                return checkSelfPermission(android.Manifest.permission.CAMERA)
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            }
+            if (request.tool == ToolRegistry.Tool.WEATHER) {
+                return new RuntimePreferences(this).networkToolsEnabled();
+            }
+            return true;
+        };
     }
 
     protected java.util.function.LongSupplier createToolClock() {
@@ -157,6 +191,9 @@ public class Lfm3PocketApplication extends Application {
         AndroidTextActions textActions = new AndroidTextActions(this);
         AndroidActionExecutor text = new ClipboardShareActionExecutor(
                 new TextActionController(textActions, textActions));
-        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text);
+        AndroidActionExecutor builtins = new BuiltinToolsExecutor(
+                () -> new RuntimePreferences(this).networkToolsEnabled(),
+                OpenMeteoWeather.httpTransport());
+        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text, builtins);
     }
 }
