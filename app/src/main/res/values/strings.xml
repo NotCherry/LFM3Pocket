@@ -14,4 +14,18 @@
     <string name="importing_model">Importing model into private storage…</string>
     <string name="opening_external_model">Opening model from storage…</string>
     <string name="loading_model">Loading model…</string>
+    <string name="settings_images_heading">Images</string>
+    <string name="settings_image_prepare">Prepare photos for the vision model</string>
+    <string name="settings_image_prepare_help">On by default. Downscales large camera and gallery photos before they reach the projector so replies start sooner on the phone. The original file is never modified.</string>
+    <string name="settings_image_max_size">Max image size</string>
+    <string name="settings_image_max_help">Longest side in pixels. 512 matches the LFM3 projector\'s nominal vision size and is the recommended default.</string>
+    <string name="settings_image_crop">Crop to square</string>
+    <string name="settings_image_crop_help">Optional. Off by default so wide photos keep their aspect ratio for LFM3\'s native-resolution encoder.</string>
+    <string name="settings_image_quality">JPEG quality</string>
+    <string name="settings_image_quality_help">Used when a prepared copy is written. 40–95.</string>
+    <string name="image_attached">Image attached</string>
+    <string name="image_remove">Remove image</string>
+    <string name="importing_photo">Importing photo…</string>
+    <string name="preparing_photo">Preparing photo for vision…</string>
+    <string name="photo_attached_status">Photo attached. Add a question and press Send.</string>
 </resources>

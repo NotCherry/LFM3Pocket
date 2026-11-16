@@ -93,12 +93,22 @@ class ComposeHostActivity : ComponentActivity() {
                     ?: intent.getStringExtra("prompt")
             else -> null
         }?.trim().orEmpty()
-        if (draft.isEmpty()) return false
-        startActivity(
-            Intent(this, MainActivity::class.java)
-                .putExtra(MainActivity.EXTRA_DRAFT_TEXT, draft)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-        )
+        val sharedImage = when {
+            Intent.ACTION_SEND == intent.action && intent.type?.startsWith("image/") == true ->
+                intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+            else -> null
+        }
+        if (draft.isEmpty() && sharedImage == null) return false
+        val chat = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        if (draft.isNotEmpty()) chat.putExtra(MainActivity.EXTRA_DRAFT_TEXT, draft)
+        if (sharedImage != null) {
+            chat.data = sharedImage
+            chat.clipData = android.content.ClipData.newUri(contentResolver, "shared-image", sharedImage)
+            chat.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            chat.putExtra(MainActivity.EXTRA_SHARED_IMAGE, sharedImage.toString())
+        }
+        startActivity(chat)
         finish()
         return true
     }
