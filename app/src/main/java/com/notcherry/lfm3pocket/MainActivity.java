@@ -753,9 +753,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 if (destroyed) return;
                 inferenceSettings = next;
                 inferenceEngine.configure(next);
-                persistImageSettings(nextImages);
+                // Quiet image persist so it cannot race and overwrite the inference summary
+                // that InferenceSettingsE2eTest matches exactly on chat_status.
+                persistImageSettings(nextImages, false);
                 updateControls();
-                // Keep the inference summary exact for Stage 1 Automator contracts.
                 status.setText(next.summary());
             }, failure -> {
                 if (destroyed) return;
@@ -817,7 +818,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         imagePrepareBox.setOnCheckedChangeListener((button, checked) -> {
             if (bindingImageSettings) return;
             persistImageSettings(new ImageSettings(checked, imageSettings.maxSide,
-                    imageSettings.cropToSquare, readImageQualityField()));
+                    imageSettings.cropToSquare, readImageQualityField()), true);
         });
         section.addView(imagePrepareBox);
         section.addView(label(getString(R.string.settings_image_prepare_help), 12, inkMuted));
@@ -854,7 +855,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         imageCropBox.setOnCheckedChangeListener((button, checked) -> {
             if (bindingImageSettings) return;
             persistImageSettings(new ImageSettings(imageSettings.enabled, imageSettings.maxSide,
-                    checked, readImageQualityField()));
+                    checked, readImageQualityField()), true);
         });
         section.addView(imageCropBox);
         section.addView(label(getString(R.string.settings_image_crop_help), 12, inkMuted));
@@ -867,7 +868,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             try {
                 int quality = Integer.parseInt(imageQualityField.getText().toString().trim());
                 persistImageSettings(new ImageSettings(imageSettings.enabled, imageSettings.maxSide,
-                        imageSettings.cropToSquare, quality));
+                        imageSettings.cropToSquare, quality), true);
             } catch (RuntimeException invalid) {
                 syncImageSettingsFields();
                 if (status != null) status.setText(invalid.getMessage());
@@ -884,7 +885,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         button.setOnClickListener(v -> {
             if (bindingImageSettings) return;
             persistImageSettings(new ImageSettings(imageSettings.enabled, side,
-                    imageSettings.cropToSquare, readImageQualityField()));
+                    imageSettings.cropToSquare, readImageQualityField()), true);
         });
         return button;
     }
@@ -923,7 +924,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         button.setAlpha(selected ? 1f : 0.75f);
     }
 
-    private void persistImageSettings(ImageSettings next) {
+    private void persistImageSettings(ImageSettings next, boolean announce) {
         if (imageSettingsStore == null) return;
         try {
             ImageSettings validated = new ImageSettings(next.enabled, next.maxSide,
@@ -933,7 +934,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 imageSettings = validated;
                 imageSettingsLoaded = true;
                 syncImageSettingsFields();
-                if (status != null) status.setText(validated.summary());
+                if (announce && status != null) status.setText(validated.summary());
             }, failure -> {
                 if (destroyed) return;
                 if (status != null) status.setText("Image settings were not saved: " + failure);
