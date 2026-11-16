@@ -1,0 +1,70 @@
+name: Pick CI runner
+
+# Called by build-apk.yml and release.yml. This job stays on GitHub-hosted
+# ubuntu-latest so an offline CHERRY-TREE cannot block the decision.
+on:
+  workflow_call:
+    secrets:
+      RUNNER_STATUS_TOKEN:
+        required: false
+        description: Fine-grained PAT with Administration Read, used to list self-hosted runners.
+    outputs:
+      runs-on:
+        description: 'JSON runs-on value: ["self-hosted","cherry-tree"] or "ubuntu-latest".'
+        value: ${{ jobs.pick.outputs.runs-on }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  pick:
+    name: Choose online runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      runs-on: ${{ steps.choose.outputs.runs-on || '"ubuntu-latest"' }}
+    steps:
+      - name: Checkout runner selection script
+        uses: actions/checkout@v4
+
+      - name: Select self-hosted or GitHub-hosted
+        id: choose
+        env:
+          RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          # Empty on push and workflow_dispatch. Set on pull_request.
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set +e
+          python3 .github/scripts/pick-runner.py > "$RUNNER_TEMP/runs-on.txt"
+          status=$?
+          set -euo pipefail
+          result="$(tail -n 1 "$RUNNER_TEMP/runs-on.txt" | tr -d '\r\n' || true)"
+          # Keep these two strings identical to pick-runner.py.
+          case "$result" in
+            '"ubuntu-latest"'|'["self-hosted","cherry-tree"]')
+              ;;
+            *)
+              echo "Unexpected selector (exit ${status}); using ubuntu-latest."
+              result='"ubuntu-latest"'
+              ;;
+          esac
+          # The script is checked out from the triggering ref. A fork can edit
+          # it, so the workflow forces ubuntu-latest again here.
+          head_lc=$(printf '%s' "$HEAD_REPO" | tr '[:upper:]' '[:lower:]')
+          repo_lc=$(printf '%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$head_lc" != "$repo_lc" ]; then
+            echo "Fork pull request (${HEAD_REPO:-unknown}); forcing ubuntu-latest."
+            result='"ubuntu-latest"'
+          elif [ -n "$head_lc" ] && [ "$head_lc" != "$repo_lc" ]; then
+            echo "Head repository ${HEAD_REPO} is not ${REPOSITORY}; forcing ubuntu-latest."
+            result='"ubuntu-latest"'
+          fi
+          echo "runs-on=${result}" >> "$GITHUB_OUTPUT"
+          echo "Selected runs-on: ${result}"
+          exit 0

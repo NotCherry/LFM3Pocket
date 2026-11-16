@@ -10,14 +10,30 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
+  pick-runner:
+    uses: ./.github/workflows/pick-runner.yml
+    secrets:
+      RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+
   unit:
     name: JVM unit contracts
-    runs-on: ubuntu-latest
+    needs: pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     timeout-minutes: 30
     steps:
       - name: Checkout application
         uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prove runner selection stays off fork pull requests
+        run: python3 .github/scripts/pick-runner.py --self-test
       - name: Fetch llama.cpp (LFM3-capable)
         run: |
           mkdir -p third_party
@@ -27,15 +43,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Verify runner Android SDK
-        run: |
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
-          test -n "$SDKMANAGER"
-          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
-      - name: Install unit-test Android SDK packages
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -69,11 +81,16 @@ jobs:
 
   emulator-e2e:
     name: Android emulator JNI + UI E2E
-    runs-on: ubuntu-latest
+    needs: pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     timeout-minutes: 90
     steps:
       - name: Checkout application
         uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Fetch llama.cpp (LFM3-capable)
         run: |
           mkdir -p third_party
@@ -84,17 +101,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Verify runner Android SDK
-        run: |
-          echo "Android SDK: $ANDROID_HOME"
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
-          test -n "$SDKMANAGER"
-          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
-          "$SDKMANAGER" --version
-      - name: Install emulator-build SDK packages
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools emulator platforms;android-35 build-tools;35.0.0 ndk;27.2.12479018 cmake;3.22.1'
+          log-accepted-android-sdk-licenses: false
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -117,7 +128,15 @@ jobs:
         run: gradle :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
       - name: Enable KVM access for Android emulator
         run: |
-          test -e /dev/kvm
+          set -euo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "ERROR: /dev/kvm is not present. The emulator job needs Linux KVM." >&2
+            exit 1
+          fi
+          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo "/dev/kvm is already accessible to the runner user."
+            exit 0
+          fi
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
@@ -148,11 +167,16 @@ jobs:
 
   apk:
     name: Build ARM64 debug APK
-    runs-on: ubuntu-latest
+    needs: pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     timeout-minutes: 50
     steps:
       - name: Checkout application
         uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Fetch llama.cpp (LFM3-capable)
         run: |
           mkdir -p third_party
@@ -163,15 +187,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Verify runner Android SDK
-        run: |
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
-          test -n "$SDKMANAGER"
-          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
-      - name: Install phone-build SDK packages
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0 ndk;27.2.12479018 cmake;3.22.1'
+          log-accepted-android-sdk-licenses: false
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
