@@ -120,7 +120,8 @@ class HistoryActivity : ComponentActivity() {
     private fun deleteConversation(id: String) {
         worker.execute {
             dao.deleteConversation(id)
-            val mediaClean = HistoryMediaCleanup.deleteTemporaryAttachments(this)
+            val durableClean = HistoryMediaStore.deleteConversation(this, id)
+            val mediaClean = HistoryMediaCleanup.deleteTemporaryAttachments(this) && durableClean
             main.post {
                 if (selected?.conversation?.id == id) selected = null
                 refreshConversations(if (mediaClean) null else
@@ -132,7 +133,8 @@ class HistoryActivity : ComponentActivity() {
     private fun deleteAllConversations() {
         worker.execute {
             dao.deleteAllConversations()
-            val mediaClean = HistoryMediaCleanup.deleteTemporaryAttachments(this)
+            val durableClean = HistoryMediaStore.deleteAll(this)
+            val mediaClean = HistoryMediaCleanup.deleteTemporaryAttachments(this) && durableClean
             main.post {
                 selected = null
                 refreshConversations(if (mediaClean) null else

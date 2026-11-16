@@ -283,6 +283,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         historyConversationId = id;
         historyTitle = title == null || title.isBlank() ? "New conversation" : title;
         runtime.setConversation(historyConversationId, historyTitle);
+        runtime.restoreOpenConversation();
     }
 
     private void confirmSwitchConversation() {
@@ -583,6 +584,47 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         StillwaterReadable.prepareWrappingLabel(defaultAssistantHelp);
         configuration.addView(defaultAssistantHelp);
 
+        TextView crashHeading = label(getString(R.string.settings_crash_log_heading), 11, inkMuted);
+        crashHeading.setTypeface(StillwaterUi.sansMedium(this));
+        crashHeading.setLetterSpacing(0.12f);
+        crashHeading.setPadding(0, dp(16), 0, dp(4));
+        configuration.addView(crashHeading);
+        configuration.addView(label(getString(R.string.settings_crash_log_body), 14, inkMuted));
+        TextView crashLogText = label(getString(R.string.settings_crash_log_empty), 13, ink);
+        crashLogText.setId(R.id.settings_crash_log_text);
+        crashLogText.setPadding(0, dp(8), 0, dp(8));
+        configuration.addView(crashLogText);
+        Button viewCrashLog = button(getString(R.string.settings_crash_log_view));
+        viewCrashLog.setId(R.id.settings_crash_log_view);
+        StillwaterUi.quiet(viewCrashLog);
+        viewCrashLog.setOnClickListener(v -> {
+            String body = CrashLog.read(this);
+            crashLogText.setText(body.isEmpty() ? getString(R.string.settings_crash_log_empty) : body);
+        });
+        configuration.addView(viewCrashLog, new LinearLayout.LayoutParams(-1, dp(44)));
+        Button exportCrashLog = button(getString(R.string.settings_crash_log_export));
+        exportCrashLog.setId(R.id.settings_crash_log_export);
+        StillwaterUi.quiet(exportCrashLog);
+        exportCrashLog.setOnClickListener(v -> {
+            String body = CrashLog.read(this);
+            if (body.isEmpty()) body = getString(R.string.settings_crash_log_empty);
+            android.content.Intent share = new android.content.Intent(android.content.Intent.ACTION_SEND);
+            share.setType("text/plain");
+            share.putExtra(android.content.Intent.EXTRA_SUBJECT, "Hanami crash log");
+            share.putExtra(android.content.Intent.EXTRA_TEXT, body);
+            startActivity(android.content.Intent.createChooser(share, getString(R.string.settings_crash_log_export)));
+            status.setText(getString(R.string.settings_crash_log_exported));
+        });
+        configuration.addView(exportCrashLog, new LinearLayout.LayoutParams(-1, dp(44)));
+        Button clearCrashLog = button(getString(R.string.settings_crash_log_clear));
+        clearCrashLog.setId(R.id.settings_crash_log_clear);
+        StillwaterUi.quiet(clearCrashLog);
+        clearCrashLog.setOnClickListener(v -> {
+            CrashLog.clear(this);
+            crashLogText.setText(getString(R.string.settings_crash_log_empty));
+        });
+        configuration.addView(clearCrashLog, new LinearLayout.LayoutParams(-1, dp(44)));
+
         ScrollView configurationScroll = new ScrollView(this);
         configurationScroll.setId(R.id.model_configuration_scroll);
         configurationScroll.setBackgroundColor(surface);
@@ -625,6 +667,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             chatPanel.clearImageAttachment();
             runtime.clearConversation();
             lastAssistantReply = "";
+        }, turnId -> {
+            if (busy || modelHandle() == 0L || !settingsLoaded) return;
+            runtime.noteSubmission("retry", inferenceSettings.maxTokens);
+            if (runtime.retryInterrupted(turnId)) {
+                session = runtime.session();
+                pendingImagePath = "";
+                pendingAudioPath = "";
+                chatPanel.clearImageAttachment();
+                busy = true;
+                updateControls();
+            }
         });
         chatRoot.addView(chatPanel, new LinearLayout.LayoutParams(-1, 0, 1f));
 

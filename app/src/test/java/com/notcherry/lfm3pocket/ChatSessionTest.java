@@ -175,17 +175,70 @@ public class ChatSessionTest {
                 "Generating locally · offline…",status[0]);
         ui.drain();assertEquals("Response complete · local model · offline",status[0]);
     }
-    @Test public void temporaryMediaIsRemovedAfterInferenceFinishes(){
+
+    @Test public void userTurnIsPersistedBeforeInferenceStarts(){
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();
+        List<ChatSession.StartedTurn> began=new ArrayList<>();
+        List<ChatSession.CompletedTurn> saved=new ArrayList<>();
+        ChatSession.Persistence persistence=new ChatSession.Persistence() {
+            @Override public void begin(ChatSession.StartedTurn turn){began.add(turn);}
+            @Override public void save(ChatSession.CompletedTurn turn){saved.add(turn);}
+        };
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                persistence,(text,status,running)->{});
+        assertTrue(session.submit("Save me first","/missing/photo.img","photo",false,"",32));
+        assertEquals("User turn must hit storage before the worker runs",1,began.size());
+        assertEquals("Save me first",began.get(0).userText);
+        assertEquals("/missing/photo.img",began.get(0).mediaRef);
+        assertEquals(0,engine.calls);
+        assertTrue(saved.isEmpty());
+        worker.drain();ui.drain();
+        assertEquals("Unsafe/missing images must not reach native inference",0,engine.calls);
+        assertEquals(1,saved.size());
+        assertEquals(ChatSession.TerminalState.FAILED,saved.get(0).status);
+        assertTrue(session.snapshot().turns.get(1).text.contains("not a readable image")
+                || session.snapshot().turns.get(1).text.contains("Could not"));
+    }
+
+    @Test public void restoreAfterProcessDeathMarksInterruptedReplyForRetry() {
+        Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();
+        List<ChatSession.StartedTurn> began=new ArrayList<>();
+        ChatSession.Persistence persistence=new ChatSession.Persistence() {
+            @Override public void begin(ChatSession.StartedTurn turn){began.add(turn);}
+            @Override public void save(ChatSession.CompletedTurn turn){}
+        };
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                persistence,(text,status,running)->{});
+        session.restore(Arrays.asList(
+                new ChatSession.RestoredMessage("user","What color is the sky?",null,"COMPLETED",null),
+                new ChatSession.RestoredMessage("assistant","Interrupted — tap Retry to send again.","turn-1","INTERRUPTED",null)));
+        ChatSnapshot snapshot=session.snapshot();
+        assertEquals(2,snapshot.turns.size());
+        assertTrue(snapshot.turns.get(1).interrupted);
+        assertEquals("turn-1",snapshot.turns.get(1).turnId);
+        assertTrue(session.snapshot().status.contains("interrupted") || session.snapshot().status.contains("Retry"));
+        assertTrue(session.retryInterrupted("turn-1",64));
+        assertEquals(1,began.size());
+        assertEquals("What color is the sky?",began.get(0).userText);
+        worker.drain();ui.drain();
+        assertEquals(1,engine.calls);
+        assertTrue(engine.mediaByCall.get(0).isEmpty());
+        assertFalse(session.snapshot().turns.get(session.snapshot().turns.size()-1).interrupted);
+    }
+    @Test public void temporaryMediaIsRemovedAfterInferenceFinishes() throws Exception {
         Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();List<String> deleted=new ArrayList<>();
+        java.io.File photo=java.io.File.createTempFile("photo-1",".img");
+        photo.deleteOnExit();
+        java.nio.file.Files.write(photo.toPath(),new byte[]{1,2,3,4});
         ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
                 turn->{},deleted::add,(text,message,running)->{});
-        assertTrue(session.submit("Describe this","/private/cache/photo-1.img","photo",false,"",32));
+        assertTrue(session.submit("Describe this",photo.getAbsolutePath(),"photo",false,"",32));
         assertTrue(deleted.isEmpty());
         worker.drain();
         assertTrue("The current conversation retains its image for follow-up",deleted.isEmpty());
         assertEquals(1,engine.calls);
         session.clear();
-        assertEquals(Collections.singletonList("/private/cache/photo-1.img"),deleted);
+        assertEquals(Collections.singletonList(photo.getAbsolutePath()),deleted);
     }
 
     @Test public void recordedVoiceStoresASRSeparatelyFromAssistantReply(){
@@ -226,33 +279,38 @@ public class ChatSessionTest {
         assertTrue(status[0].contains("Response complete"));
     }
 
-    @Test public void combinedVoiceAndImageTurnKeepsImageForFollowUpAndCleansAudio(){
+    @Test public void combinedVoiceAndImageTurnKeepsImageForFollowUpAndCleansAudio() throws Exception {
         Queue worker=new Queue(),ui=new Queue();Engine engine=new Engine();List<String> deleted=new ArrayList<>();
+        java.io.File image=java.io.File.createTempFile("image",".jpg");
+        java.io.File voice=java.io.File.createTempFile("question",".wav");
+        image.deleteOnExit();voice.deleteOnExit();
+        java.nio.file.Files.write(image.toPath(),new byte[]{1,2,3,4});
+        java.nio.file.Files.write(voice.toPath(),new byte[]{1,2,3,4});
         ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
                 turn->{},deleted::add,(text,status,running)->{});
         List<ChatSession.Attachment> attachments=Arrays.asList(
-                new ChatSession.Attachment("/private/image.jpg",ChatSession.AttachmentKind.PHOTO),
-                new ChatSession.Attachment("/private/question.wav",ChatSession.AttachmentKind.VOICE_RECORDING));
+                new ChatSession.Attachment(image.getAbsolutePath(),ChatSession.AttachmentKind.PHOTO),
+                new ChatSession.Attachment(voice.getAbsolutePath(),ChatSession.AttachmentKind.VOICE_RECORDING));
 
         assertTrue(session.submit("What is in the picture?",attachments,false,"",64));
         worker.drain();ui.drain();
 
-        assertEquals(Collections.singletonList("/private/question.wav"),engine.mediaByCall.get(0));
+        assertEquals(Collections.singletonList(voice.getAbsolutePath()),engine.mediaByCall.get(0));
         assertEquals("Successful ASR must not re-attach the WAV to the assistant turn",
-                Collections.singletonList("/private/image.jpg"),engine.mediaByCall.get(1));
+                Collections.singletonList(image.getAbsolutePath()),engine.mediaByCall.get(1));
         assertEquals(1,occurrences(engine.prompts.get(1),"<__media__>"));
-        assertEquals(Collections.singletonList("/private/question.wav"),deleted);
+        assertEquals(Collections.singletonList(voice.getAbsolutePath()),deleted);
 
         assertTrue(session.submit("What color was it?",Collections.emptyList(),false,"",64));
         worker.drain();ui.drain();
-        assertEquals(Collections.singletonList("/private/image.jpg"),engine.mediaByCall.get(2));
+        assertEquals(Collections.singletonList(image.getAbsolutePath()),engine.mediaByCall.get(2));
         assertEquals(1,occurrences(engine.prompts.get(2),"<__media__>"));
         assertTrue(engine.prompts.get(2).contains("What is in the picture?"));
         assertTrue(engine.prompts.get(2).contains("What color was it?"));
         assertEquals("Follow-up must keep the image but not reuse the spoken audio",1,deleted.size());
 
         session.clear();
-        assertEquals(Arrays.asList("/private/question.wav","/private/image.jpg"),deleted);
+        assertEquals(Arrays.asList(voice.getAbsolutePath(),image.getAbsolutePath()),deleted);
     }
 
     @Test public void successfulAsrAnswersFromTranscriptWithoutReattachingAudio(){

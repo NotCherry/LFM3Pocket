@@ -279,6 +279,31 @@ public final class ModelRuntime {
     public void clearConversation() {
         if (session != null) session.clear();
         lastAssistant = "";
+        lastTranscript = "";
+        lastStatus = "";
+        lastSnapshot = null;
+        lastGenerating = false;
+    }
+
+    /** Retry the most recent interrupted assistant turn in the live session. */
+    public boolean retryInterrupted(String turnId) {
+        ensureSession();
+        if (handle == 0L || session == null) return false;
+        int tokens = pendingMax <= 0 ? 512 : pendingMax;
+        noteSubmission("retry", tokens);
+        return session.retryInterrupted(turnId, tokens);
+    }
+
+    /** Force a Room rehydrate after conversation id changes on a cold process. */
+    public void restoreOpenConversation() {
+        ensureSession();
+        hydrateSessionIfNeeded();
+        if (session != null) {
+            lastSnapshot = session.snapshot();
+            lastTranscript = FlatTranscript.format(lastSnapshot);
+            lastStatus = lastSnapshot == null ? "" : lastSnapshot.status;
+            lastGenerating = session.isGenerating();
+        }
     }
 
     public void speak(String replyText) {
@@ -534,8 +559,20 @@ public final class ModelRuntime {
         if (session != null) return;
         if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
         final int born = sessionEpoch;
+        ChatSession.Persistence persistence = new ChatSession.Persistence() {
+            @Override public void begin(ChatSession.StartedTurn turn) throws Exception {
+                beginTurn(turn);
+            }
+            @Override public void updatePartial(String turnId, String assistantText, long atMs) {
+                if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
+                history.updateTurnPartial(turnId, assistantText == null ? "" : assistantText, atMs);
+            }
+            @Override public void save(ChatSession.CompletedTurn turn) throws Exception {
+                saveTurn(turn);
+            }
+        };
         session = new ChatSession(engine, worker, (task, delay) -> main.postDelayed(task, delay),
-                this::handle, WebSearch::search, this::saveTurn,
+                this::handle, WebSearch::search, persistence,
                 path -> HistoryMediaCleanup.deleteAttachment(app, path),
                 (text, status, running) -> {
                     if (born != sessionEpoch) return;
@@ -544,6 +581,55 @@ public final class ModelRuntime {
                     if (born != sessionEpoch) return;
                     onSnapshot(snapshot);
                 });
+        hydrateSessionIfNeeded();
+    }
+
+    /** Reload Room rows into an empty live session after process death. */
+    private void hydrateSessionIfNeeded() {
+        if (session == null || history == null) return;
+        if (session.isGenerating()) return;
+        ChatSnapshot existing = session.snapshot();
+        if (existing != null && !existing.turns.isEmpty()) return;
+        if (conversationId == null || conversationId.isBlank()) return;
+        java.util.List<HistoryRepository.StoredMessage> rows = history.messages(conversationId);
+        if (rows.isEmpty()) return;
+        java.util.ArrayList<ChatSession.RestoredMessage> restored = new java.util.ArrayList<>();
+        for (HistoryRepository.StoredMessage row : rows) {
+            restored.add(new ChatSession.RestoredMessage(
+                    row.getRole(), row.getText(), row.getTurnId(), row.getTurnStatus(), row.getMediaRef()));
+        }
+        session.restore(restored);
+    }
+
+    private void beginTurn(ChatSession.StartedTurn turn) throws Exception {
+        if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
+        String title = historyTitle;
+        if ("New conversation".equals(title)) {
+            title = titleFor(turn.userText);
+            historyTitle = title;
+            preferences.raw().edit().putString("history_title", title).apply();
+            String shown = title;
+            main.post(() -> { if (ui != null && ui.isUsable()) ui.onHistoryTitle(shown); });
+        }
+        String id = conversationId == null || conversationId.isBlank()
+                ? java.util.UUID.randomUUID().toString() : conversationId;
+        conversationId = id;
+        preferences.raw().edit()
+                .putString("history_conversation_id", conversationId)
+                .putString("history_title", historyTitle)
+                .commit();
+        String mediaRef = turn.mediaRef;
+        if (mediaRef != null && !mediaRef.isBlank()) {
+            mediaRef = HistoryMediaStore.persistPhoto(app, mediaRef, conversationId, turn.id);
+            // Keep the live session pointing at the durable copy for follow-ups / retry.
+            if (session != null && !mediaRef.isEmpty()) {
+                // ChatSession already captured the cache path in the in-memory user row;
+                // durable path is what Room stores for restore after death.
+            }
+        }
+        history.beginTurn(new HistoryRepository.TurnStart(
+                turn.id, id, historyTitle, turn.userText, turn.startedAt,
+                mediaRef == null || mediaRef.isBlank() ? null : mediaRef));
     }
 
     private void saveTurn(ChatSession.CompletedTurn turn) {
@@ -566,10 +652,12 @@ public final class ModelRuntime {
         String id = conversationId == null || conversationId.isBlank()
                 ? java.util.UUID.randomUUID().toString() : conversationId;
         conversationId = id;
+        if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
+        String mediaRef = turn.mediaRef == null || turn.mediaRef.isBlank() ? null : turn.mediaRef;
         history.completeTurn(new HistoryRepository.Turn(turn.id, id, historyTitle, turn.userText,
-                turn.assistantText, turn.speechTranscript,
+                turn.assistantText == null ? "" : turn.assistantText, turn.speechTranscript,
                 HistoryRepository.Status.valueOf(turn.status.name()), turn.completedAt, null,
-                turn.speechTranscriptStatus));
+                turn.speechTranscriptStatus, mediaRef));
     }
 
     private void onChat(String transcript, String status, boolean running) {
@@ -584,7 +672,12 @@ public final class ModelRuntime {
                 if (!unloading) apply(policy.refreshRate(SystemClock.elapsedRealtime()));
             }, 1100L);
         }
-        if (stopped) apply(policy.onGenerationFinished(SystemClock.elapsedRealtime()));
+        if (stopped) {
+            apply(policy.onGenerationFinished(SystemClock.elapsedRealtime()));
+            if (app.startedActivityCount() == 0) {
+                RuntimeNotifications.notifyReplyReady(app, conversationId, historyTitle, lastStatus);
+            }
+        }
         if (ui != null && ui.isUsable()) ui.onChat(lastTranscript, lastStatus, running);
     }
 

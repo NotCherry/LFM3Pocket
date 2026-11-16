@@ -96,4 +96,14 @@
     <string name="approve_exact_action">Approve only the exact action and arguments shown below.</string>
     <string name="reject">Reject</string>
     <string name="approve">Approve</string>
+    <string name="notification_reply_ready_title">Reply ready</string>
+    <string name="notification_reply_ready_text">Hanami finished a reply.</string>
+    <string name="settings_crash_log_heading">CRASH LOG</string>
+    <string name="settings_crash_log_body">Local only. Last uncaught exception and recent Android exit reasons stay on this phone.</string>
+    <string name="settings_crash_log_view">View crash log</string>
+    <string name="settings_crash_log_export">Export crash log</string>
+    <string name="settings_crash_log_clear">Clear crash log</string>
+    <string name="settings_crash_log_empty">No crash evidence recorded yet.</string>
+    <string name="settings_crash_log_exported">Crash log ready to share from this phone.</string>
+    <string name="chat_interrupted_retry">Interrupted — Retry</string>
 </resources>
