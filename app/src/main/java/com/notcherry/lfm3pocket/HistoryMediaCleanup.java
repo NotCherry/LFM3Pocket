@@ -47,7 +47,10 @@ public final class HistoryMediaCleanup {
     }
 
     private static boolean isPhoto(File file) {
-        return file.isFile() && (file.getName().startsWith("photo-") || file.getName().startsWith("camera-"));
+        if (!file.isFile()) return false;
+        String name = file.getName();
+        return name.startsWith("photo-") || name.startsWith("camera-")
+                || name.endsWith("-vision.jpg") || name.endsWith("-vision.jpg.partial");
     }
 
     private static boolean delete(File file) { return !file.exists() || file.delete(); }

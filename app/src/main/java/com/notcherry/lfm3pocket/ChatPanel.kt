@@ -73,7 +73,7 @@ class ChatPanel(
         val approve: Runnable?,
         val reject: Runnable?,
     )
-    private data class Attachment(val path: String, val onRemove: Runnable)
+    private data class Attachment(val path: String, val caption: String, val onRemove: Runnable)
 
     private var snapshot by mutableStateOf(ChatSnapshot(emptyList(), "", false))
     private var liveStatus by mutableStateOf("")
@@ -146,7 +146,11 @@ class ChatPanel(
     }
 
     fun showImageAttachment(path: String, onRemove: Runnable) {
-        attachment = Attachment(path, onRemove)
+        showImageAttachment(path, "", onRemove)
+    }
+
+    fun showImageAttachment(path: String, caption: String, onRemove: Runnable) {
+        attachment = Attachment(path, caption.orEmpty(), onRemove)
     }
 
     fun clearImageAttachment() {
@@ -274,7 +278,12 @@ class ChatPanel(
                             .padding(10.dp)
                             .testTag(tag("image_attachment")),
                     ) {
-                        Text("Image attached", style = type.label, color = atlas.inkMuted)
+                        Text(
+                            "Image attached",
+                            style = type.label,
+                            color = atlas.inkMuted,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                         previewBitmap?.let { bitmap ->
                             Image(
                                 bitmap.asImageBitmap(),
@@ -290,8 +299,21 @@ class ChatPanel(
                             "Loading image preview…",
                             style = type.bodySmall,
                             color = atlas.inkMuted,
-                            modifier = Modifier.padding(top = 6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp),
                         )
+                        if (image.caption.isNotBlank()) {
+                            Text(
+                                image.caption,
+                                style = type.bodySmall,
+                                color = atlas.inkMuted,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp)
+                                    .testTag(tag("image_size_caption")),
+                            )
+                        }
                         TextButton(
                             onClick = { image.onRemove.run() },
                             modifier = Modifier.testTag(tag("image_remove")),

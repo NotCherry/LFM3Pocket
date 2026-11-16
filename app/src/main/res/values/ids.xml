@@ -37,6 +37,7 @@
     <item name="chat_photo" type="id"/>
     <item name="image_attachment" type="id"/>
     <item name="image_preview" type="id"/>
+    <item name="image_size_caption" type="id"/>
     <item name="image_remove" type="id"/>
     <item name="web_search" type="id"/>
     <item name="search_endpoint" type="id"/>
@@ -52,4 +53,14 @@
     <item name="settings_default_assistant" type="id"/>
     <item name="open_model_uri" type="id"/>
     <item name="open_projector_uri" type="id"/>
+    <item name="settings_images" type="id"/>
+    <item name="settings_image_prepare" type="id"/>
+    <item name="settings_image_max_size" type="id"/>
+    <item name="settings_image_max_384" type="id"/>
+    <item name="settings_image_max_512" type="id"/>
+    <item name="settings_image_max_768" type="id"/>
+    <item name="settings_image_max_1024" type="id"/>
+    <item name="settings_image_max_original" type="id"/>
+    <item name="settings_image_crop" type="id"/>
+    <item name="settings_image_quality" type="id"/>
 </resources>
