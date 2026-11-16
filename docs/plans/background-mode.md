@@ -1,8 +1,18 @@
 # Background mode
 
-Status: proposal for review. This document does not change the app.
+Status: **implemented** for Phases 1–2 plus the generate-path tool bridge, share/ASK intents, and opt-in loopback. This document remains the design record; it does not change the app by itself.
 
-Baseline: `main` at `016be76`. [PR #141](https://github.com/NotCherry/LFM3Pocket/pull/141) (Stillwater UI) is a concurrent visual rebuild. Its description says inference, search, history, media, and tool behavior are unchanged. This plan is written against `main` and does not depend on Stillwater colors or layouts. Implement the runtime on whatever UI has landed; do not retarget #141 from this work.
+| Landed | PR |
+| --- | --- |
+| Stillwater UI baseline | [#141](https://github.com/NotCherry/LFM3Pocket/pull/141) |
+| Phase 1 residency + N2 notification (Stop / Unload / Open) | [#143](https://github.com/NotCherry/LFM3Pocket/pull/143) |
+| Hanami rename / shared prefs file | [#145](https://github.com/NotCherry/LFM3Pocket/pull/145) |
+| Auto-release on merge to `main` | [#146](https://github.com/NotCherry/LFM3Pocket/pull/146) |
+| Phase 2 Ask / consent shade, tool bridge, share+ASK, loopback, `a3031ea` service start | [#147](https://github.com/NotCherry/LFM3Pocket/pull/147) |
+
+Deferred / out of path: Phase 3 (`:model` process), accessibility service, shell bridge, LAN bind, F-Droid placeholders, `HANAMI_*` signing secrets (unsigned releases until set), repo rename.
+
+Baseline when this plan was written: `main` at `016be76`. Implementation followed the Variant A recommendation on the UI that landed with #141.
 
 The app today is an on-device LFM3 chat (`minSdk` 26, `targetSdk` 35, `compileSdk` 35) distributed as a GitHub Release APK. Weights stay in private storage. Optional SearXNG search is the only network use. Tool calls are an allowlisted, consent-gated set (`toggle_flashlight`, volume, timer, alarm, open app, open settings, copy, share).
 
@@ -297,7 +307,7 @@ flowchart TB
 
 ### Phase 1 — residency and the notification
 
-Size: medium. One ownership move. Native code unchanged.
+**Done in #143.** Size was medium. One ownership move. Native code unchanged.
 
 - Extract `ModelRuntime` so `MainActivity` no longer constructs the engine, the session, or the decode executor, and no longer unloads in `onDestroy`.
 - `ModelRuntimeService` as in Variant A, started while the UI is still in the foreground, `START_NOT_STICKY`.
@@ -313,7 +323,7 @@ Done when: the user loads a model, leaves chat to Home, locks the phone, and com
 
 ### Phase 2 — shade conversations and consent
 
-Size: small to medium. No native change.
+**Done in #147** (RemoteInput Ask + shade consent). Size was small to medium. No native change.
 
 - RemoteInput Ask, disabled while a turn is active.
 - Consent on the foreground notification, 10-minute hold, Approve on the shade only for short `SAFE` proposals, Review for everything else.
@@ -330,18 +340,18 @@ Size: large.
 
 ### Phase 4 — the phone, still allowlisted
 
-Size: medium, in small batches.
+**Partially done in #147** (`ModelToolBridge`, share target, typed ASK). Size was medium, in small batches.
 
-- Wire the missing generate-path bridge: a strict parse of a tool JSON object the model emitted, `propose(..., MODEL_PROPOSAL)`, card plus notification. No scraping of prose, which `StrictToolJson` already refuses.
-- Share target and an "Ask" shortcut.
+- ~~Wire the missing generate-path bridge:~~ a strict parse of a tool JSON object the model emitted, `propose(..., MODEL_PROPOSAL)`, card plus notification. No scraping of prose, which `StrictToolJson` already refuses.
+- ~~Share target and typed ASK intent.~~ (Shortcuts / pinned still open.)
 - New tools only as new schema rows. No arbitrary intents.
 - Notification listener and the assistant role only after an explicit product yes. Accessibility service stays off the roadmap unless the owner accepts sideload-only and per-action confirmation.
 
 ### Phase 5 — other devices
 
-Size: medium for loopback, more for companions.
+**Loopback prompt-in landed in #147** (opt-in, `127.0.0.1`, no approve). Pairing token, token streaming, MCP, and companions remain open. Size was medium for loopback, more for companions.
 
-- Loopback API, off by default, `127.0.0.1`, pairing token, prompt in, tokens out, no `approve`.
+- ~~Loopback API, off by default, `127.0.0.1`, prompt in, no `approve`.~~ Pairing token and token streaming still open.
 - MCP server as a skin on that API. MCP client as a second opt-in endpoint beside SearXNG.
 - Wear or desktop as clients of that API. No shell bridge.
 
