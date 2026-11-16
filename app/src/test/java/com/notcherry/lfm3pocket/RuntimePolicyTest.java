@@ -18,8 +18,9 @@ public final class RuntimePolicyTest {
         assertEquals("Model loaded", effects.notice.title);
         assertTrue(effects.notice.text.startsWith("Model loaded · using memory"));
         assertTrue(effects.notice.text.contains("lfm.gguf"));
-        assertEquals(RuntimeNotice.Action.UNLOAD, effects.notice.actions[0]);
-        assertEquals(RuntimeNotice.Action.OPEN, effects.notice.actions[1]);
+        assertEquals(RuntimeNotice.Action.ASK, effects.notice.actions[0]);
+        assertEquals(RuntimeNotice.Action.UNLOAD, effects.notice.actions[1]);
+        assertEquals(RuntimeNotice.Action.OPEN, effects.notice.actions[2]);
         assertFalse(effects.notice.publicLockScreen);
     }
 

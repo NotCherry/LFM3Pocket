@@ -3,7 +3,7 @@ package com.notcherry.lfm3pocket;
 /** What the ongoing model notification should show. Plain data so tests need no Android. */
 public final class RuntimeNotice {
     public enum Kind { HIDDEN, LOADING, GENERATING, SPEAKING, RESIDENT, APPROVAL }
-    public enum Action { STOP, UNLOAD, OPEN, REVIEW, APPROVE, REJECT }
+    public enum Action { STOP, UNLOAD, OPEN, ASK, REVIEW, APPROVE, REJECT }
 
     public final Kind kind;
     public final String title;

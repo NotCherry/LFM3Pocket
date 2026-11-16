@@ -47,6 +47,9 @@ public final class RuntimePreferences {
 
     public boolean lockPreview() { return prefs.getBoolean("lock_screen_preview", false); }
 
+    /** Opt-in {@code 127.0.0.1} prompt listener. Off by default; cannot approve tools. */
+    public boolean loopbackEnabled() { return prefs.getBoolean("loopback_api", false); }
+
     public void setKeepLoaded(boolean value) { prefs.edit().putBoolean("keep_loaded", value).apply(); }
 
     public void setIdleMinutes(int value) {
@@ -55,4 +58,6 @@ public final class RuntimePreferences {
     }
 
     public void setLockPreview(boolean value) { prefs.edit().putBoolean("lock_screen_preview", value).apply(); }
+
+    public void setLoopbackEnabled(boolean value) { prefs.edit().putBoolean("loopback_api", value).apply(); }
 }

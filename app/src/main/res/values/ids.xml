@@ -47,4 +47,5 @@
     <item name="settings_idle_15" type="id"/>
     <item name="settings_idle_60" type="id"/>
     <item name="settings_lock_preview" type="id"/>
+    <item name="settings_loopback" type="id"/>
 </resources>

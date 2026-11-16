@@ -2,6 +2,7 @@ package com.notcherry.lfm3pocket;
 
 import android.app.Notification;
 import android.app.PendingIntent;
+import android.app.RemoteInput;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
@@ -14,6 +15,7 @@ import android.os.Build;
 final class RuntimeNotifications {
     static final String CHANNEL_ID = HanamiNotifications.MODEL_RUNTIME_CHANNEL_ID;
     static final int NOTIFICATION_ID = 1001;
+    static final String REMOTE_ASK_KEY = "hanami_remote_ask";
     private static final int CANDLE = 0xFFE6C27A;
 
     private RuntimeNotifications() {}
@@ -61,6 +63,8 @@ final class RuntimeNotifications {
             case OPEN:
                 return new Notification.Action.Builder(null, "Open",
                         openChat(context, conversationId, title)).build();
+            case ASK:
+                return askAction(context, code);
             case REVIEW:
                 return new Notification.Action.Builder(null, "Review",
                         review(context, proposalId, code)).build();
@@ -92,6 +96,19 @@ final class RuntimeNotifications {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         return PendingIntent.getActivity(context, code, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private static Notification.Action askAction(Context context, int code) {
+        RemoteInput input = new RemoteInput.Builder(REMOTE_ASK_KEY)
+                .setLabel("Ask Hanami")
+                .build();
+        Intent intent = new Intent(context, ModelRuntimeService.class)
+                .setAction(ModelRuntimeService.ACTION_ASK);
+        PendingIntent pending = PendingIntent.getService(context, code, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+        return new Notification.Action.Builder(null, "Ask", pending)
+                .addRemoteInput(input)
+                .build();
     }
 
     private static PendingIntent service(Context context, String action, String proposalId, int code) {
