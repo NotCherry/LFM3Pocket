@@ -130,4 +130,33 @@ final class RuntimeNotifications {
         int nl = text.indexOf('\n');
         return nl < 0 ? text : text.substring(0, nl);
     }
+
+    /** One-shot alert when a reply finishes while no activity is visible. */
+    static void notifyReplyReady(Context context, String conversationId, String title, String status) {
+        ensureChannel(context);
+        String body = status == null || status.isBlank()
+                ? context.getString(R.string.notification_reply_ready_text)
+                : status;
+        Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+                ? new Notification.Builder(context, CHANNEL_ID)
+                : new Notification.Builder(context);
+        builder.setSmallIcon(R.drawable.ic_stat_runtime)
+                .setContentTitle(context.getString(R.string.notification_reply_ready_title))
+                .setContentText(firstLine(body))
+                .setStyle(new Notification.BigTextStyle().bigText(body))
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setColor(CANDLE)
+                .setCategory(Notification.CATEGORY_STATUS)
+                .setContentIntent(openChat(context, conversationId, title));
+        NotificationManagerCompat.notify(context, NOTIFICATION_ID + 1, builder.build());
+    }
+
+    private static final class NotificationManagerCompat {
+        static void notify(Context context, int id, Notification notification) {
+            android.app.NotificationManager manager =
+                    context.getSystemService(android.app.NotificationManager.class);
+            if (manager != null) manager.notify(id, notification);
+        }
+    }
 }

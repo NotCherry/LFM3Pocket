@@ -66,6 +66,7 @@ class ChatPanel(
     private val send: Consumer<String>,
     private val stop: Runnable,
     private val clear: Runnable,
+    private val retryInterrupted: Consumer<String> = Consumer { },
 ) : LinearLayout(context) {
     private data class Controls(val send: Boolean = false, val stop: Boolean = false, val clear: Boolean = true)
     private data class ToolCardState(
@@ -273,6 +274,7 @@ class ChatPanel(
                         .fillMaxWidth()
                         .padding(horizontal = space.space1),
                     onSuggest = { input = it },
+                    onRetryInterrupted = { turnId -> retryInterrupted.accept(turnId) },
                 )
                 attachment?.let { image ->
                     Column(

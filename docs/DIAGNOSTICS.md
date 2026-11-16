@@ -19,9 +19,19 @@ File: `files/diagnostics.ndjson` (newline-delimited JSON). Pull with:
 adb shell run-as com.notcherry.lfm3pocket cat files/diagnostics.ndjson
 ```
 
+## Crash log (local only)
+
+Hanami also keeps `files/crash-log.txt`:
+
+- Last uncaught Java exception (thread name + stack)
+- On Android 11+, recent `ApplicationExitInfo` reasons (including native abort / low memory / ANR)
+
+Open **Settings → Crash log** to view, share as text, or clear. Nothing is uploaded.
+
 ## Privacy contract
 
 - `LocalDiagnostics.uploadsTelemetry()` is always `false`.
+- Crash log export is an on-device share sheet / text copy only.
 - No sockets, HTTP clients, or analytics SDKs are used by this recorder.
 - Operators must redact paths/logs before sharing ARM64 evidence.
 
