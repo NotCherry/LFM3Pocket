@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Stillwater is dark in day and night. Light text is explicit on every
+      framework role so a light-theme default or force-dark inversion cannot
+      paint black text on the charcoal field.
+    -->
+    <style name="Theme.Stillwater.Base" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:isLightTheme">false</item>
+        <item name="android:windowBackground">@color/still_surface</item>
+        <item name="android:colorBackground">@color/still_surface</item>
+        <item name="android:colorBackgroundFloating">@color/still_overlay</item>
+        <item name="android:colorForeground">@color/still_ink</item>
+        <item name="android:colorForegroundInverse">@color/still_candle_ink</item>
+
+        <item name="android:textColor">@color/still_text</item>
+        <item name="android:textColorPrimary">@color/still_text</item>
+        <item name="android:textColorSecondary">@color/still_text_secondary</item>
+        <item name="android:textColorTertiary">@color/still_text_secondary</item>
+        <item name="android:textColorHint">@color/still_muted</item>
+        <item name="android:textColorHighlight">@color/still_highlight</item>
+        <item name="android:textColorLink">@color/still_candle</item>
+        <item name="android:editTextColor">@color/still_text</item>
+        <item name="android:textColorPrimaryInverse">@color/still_candle_ink</item>
+        <item name="android:textColorSecondaryInverse">@color/still_candle_ink</item>
+        <item name="android:textColorTertiaryInverse">@color/still_candle_ink</item>
+        <item name="android:textColorHintInverse">@color/still_candle_ink</item>
+        <item name="android:textCursorDrawable">@drawable/still_cursor</item>
+
+        <item name="android:colorAccent">@color/still_candle</item>
+        <item name="android:colorControlNormal">@color/still_soft</item>
+        <item name="android:colorControlActivated">@color/still_candle</item>
+        <item name="android:colorControlHighlight">@color/still_highlight</item>
+        <item name="android:colorButtonNormal">@color/still_raised</item>
+        <item name="android:colorPrimary">@color/still_candle</item>
+        <item name="android:colorPrimaryDark">@color/still_surface</item>
+
+        <item name="android:statusBarColor">@color/still_surface</item>
+        <item name="android:navigationBarColor">@color/still_surface</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+
+        <item name="android:alertDialogTheme">@style/Theme.Stillwater.Dialog</item>
+        <item name="android:dialogTheme">@style/Theme.Stillwater.Dialog</item>
+        <item name="android:popupMenuStyle">@style/Widget.Stillwater.PopupMenu</item>
+        <item name="android:listPopupWindowStyle">@style/Widget.Stillwater.ListPopupWindow</item>
+        <item name="android:dropDownListViewStyle">@style/Widget.Stillwater.DropDown</item>
+        <item name="android:spinnerItemStyle">@style/Widget.Stillwater.SpinnerItem</item>
+        <item name="android:spinnerDropDownItemStyle">@style/Widget.Stillwater.SpinnerItem</item>
+        <item name="android:textAppearanceLargePopupMenu">@style/TextAppearance.Stillwater.Menu</item>
+        <item name="android:textAppearanceSmallPopupMenu">@style/TextAppearance.Stillwater.Menu</item>
+        <item name="android:textAppearanceListItem">@style/TextAppearance.Stillwater.Menu</item>
+        <item name="android:textAppearanceListItemSmall">@style/TextAppearance.Stillwater.Menu</item>
+        <item name="android:buttonStyle">@style/Widget.Stillwater.Button</item>
+        <item name="android:editTextStyle">@style/Widget.Stillwater.EditText</item>
+        <item name="android:checkboxStyle">@style/Widget.Stillwater.CheckBox</item>
+    </style>
+
+    <style name="Theme.Stillwater" parent="Theme.Stillwater.Base" />
+
+    <style name="Theme.Stillwater.Dialog" parent="@android:style/Theme.Material.Dialog.Alert">
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:isLightTheme">false</item>
+        <item name="android:windowBackground">@color/still_overlay</item>
+        <item name="android:colorBackground">@color/still_overlay</item>
+        <item name="android:colorBackgroundFloating">@color/still_overlay</item>
+        <item name="android:textColor">@color/still_text</item>
+        <item name="android:textColorPrimary">@color/still_text</item>
+        <item name="android:textColorSecondary">@color/still_text_secondary</item>
+        <item name="android:textColorHint">@color/still_muted</item>
+        <item name="android:textColorLink">@color/still_candle</item>
+        <item name="android:editTextColor">@color/still_text</item>
+        <item name="android:colorAccent">@color/still_candle</item>
+        <item name="android:colorControlNormal">@color/still_soft</item>
+        <item name="android:colorControlActivated">@color/still_candle</item>
+        <item name="android:buttonStyle">@style/Widget.Stillwater.Button</item>
+        <item name="android:textAppearanceLargePopupMenu">@style/TextAppearance.Stillwater.Menu</item>
+        <item name="android:textAppearanceSmallPopupMenu">@style/TextAppearance.Stillwater.Menu</item>
+    </style>
+
+    <style name="TextAppearance.Stillwater.Menu" parent="@android:style/TextAppearance.Material.Menu">
+        <item name="android:textColor">@color/still_text</item>
+    </style>
+
+    <style name="Widget.Stillwater.Button" parent="@android:style/Widget.Material.Button">
+        <item name="android:textColor">@color/still_text</item>
+        <item name="android:backgroundTint">@color/still_raised</item>
+    </style>
+
+    <style name="Widget.Stillwater.EditText" parent="@android:style/Widget.Material.EditText">
+        <item name="android:textColor">@color/still_text</item>
+        <item name="android:textColorHint">@color/still_muted</item>
+        <item name="android:textCursorDrawable">@drawable/still_cursor</item>
+        <item name="android:backgroundTint">@color/still_soft</item>
+    </style>
+
+    <style name="Widget.Stillwater.CheckBox" parent="@android:style/Widget.Material.CompoundButton.CheckBox">
+        <item name="android:textColor">@color/still_text</item>
+        <item name="android:buttonTint">@color/still_control</item>
+    </style>
+
+    <style name="Widget.Stillwater.PopupMenu" parent="@android:style/Widget.Material.PopupMenu">
+        <item name="android:popupBackground">@color/still_overlay</item>
+    </style>
+
+    <style name="Widget.Stillwater.ListPopupWindow" parent="@android:style/Widget.Material.ListPopupWindow">
+        <item name="android:popupBackground">@color/still_overlay</item>
+    </style>
+
+    <style name="Widget.Stillwater.DropDown" parent="@android:style/Widget.Material.ListView.DropDown">
+        <item name="android:background">@color/still_overlay</item>
+    </style>
+
+    <style name="Widget.Stillwater.SpinnerItem" parent="@android:style/Widget.Material.DropDownItem.Spinner">
+        <item name="android:textColor">@color/still_text</item>
+        <item name="android:textAppearance">@style/TextAppearance.Stillwater.Menu</item>
+    </style>
+</resources>

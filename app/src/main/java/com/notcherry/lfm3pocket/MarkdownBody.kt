@@ -33,6 +33,7 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier) {
     val blocks = remember(markdown) { MarkdownParser.parse(markdown) }
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBg = MaterialTheme.colorScheme.surfaceVariant
+    val bodyColor = MaterialTheme.colorScheme.onSurface
     Column(modifier.fillMaxWidth()) {
         blocks.forEachIndexed { index, block ->
             val top = if (index == 0) 0.dp else 8.dp
@@ -46,6 +47,7 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier) {
                     Text(
                         text = annotatedInlines(block.inlines, linkColor),
                         style = style,
+                        color = bodyColor,
                         modifier = Modifier.padding(top = top),
                     )
                 }
@@ -53,6 +55,7 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier) {
                     Text(
                         text = annotatedInlines(block.inlines, linkColor),
                         style = MaterialTheme.typography.bodyLarge,
+                        color = bodyColor,
                         modifier = Modifier.padding(top = top),
                     )
                 }
@@ -65,6 +68,7 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier) {
                                     append(annotatedInlines(item, linkColor))
                                 },
                                 style = MaterialTheme.typography.bodyLarge,
+                                color = bodyColor,
                             )
                         }
                     }
@@ -78,6 +82,7 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier) {
                                     append(annotatedInlines(item, linkColor))
                                 },
                                 style = MaterialTheme.typography.bodyLarge,
+                                color = bodyColor,
                             )
                         }
                     }
@@ -86,6 +91,7 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier) {
                     SelectionContainer {
                         Text(
                             text = block.code,
+                            color = bodyColor,
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 13.sp,

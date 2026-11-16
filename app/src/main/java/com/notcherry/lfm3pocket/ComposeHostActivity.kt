@@ -4,9 +4,6 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,40 +13,41 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.notcherry.lfm3pocket.ui.theme.PocketTheme
+import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
-import kotlinx.coroutines.delay
 
 /**
- * Incremental Compose shell. Native inference, SAF import, media and chat remain
- * in the existing Java MainActivity until covered by later feature tests.
+ * Home shell. Native inference, import, media and chat stay in [MainActivity].
  */
 class ComposeHostActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.statusBarColor = 0xFF0E0E0C.toInt()
+        window.navigationBarColor = 0xFF0E0E0C.toInt()
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
         setContent {
             PocketTheme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -86,7 +84,7 @@ private fun PocketNavigation(
     val controller = rememberNavController()
     NavHost(navController = controller, startDestination = "home") {
         composable("home") {
-            AtlasHome(
+            StillwaterHome(
                 onOpenChat = onOpenChat,
                 onOpenHistory = onOpenHistory,
                 onOpenSettings = onOpenSettings,
@@ -100,18 +98,22 @@ private fun PocketNavigation(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(atlas.surface)
+                    .statusBarsPadding()
                     .padding(24.dp),
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text("Local inference", style = type.headline, color = atlas.ink)
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(12.dp))
                 Text(
-                    "The existing chat runs models locally. Optional SearXNG web search " +
-                        "is off unless you explicitly enable it in Settings.",
+                    "The chat runs models on this phone. Optional SearXNG web search " +
+                        "stays off unless you turn it on in Settings.",
                     style = type.body,
                     color = atlas.inkMuted,
                 )
-                TextButton(onClick = { controller.popBackStack() }) {
+                TextButton(
+                    onClick = { controller.popBackStack() },
+                    colors = StillwaterControls.textButtonColors(),
+                ) {
                     Text("Back to home")
                 }
             }
@@ -120,7 +122,7 @@ private fun PocketNavigation(
 }
 
 @Composable
-private fun AtlasHome(
+private fun StillwaterHome(
     onOpenChat: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -128,61 +130,74 @@ private fun AtlasHome(
 ) {
     val atlas = MaterialTheme.atlasColors
     val type = MaterialTheme.atlasTypography
-    var showCtas by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        delay(40)
-        showCtas = true
-    }
+    val context = LocalContext.current
+    val modelName = context.getSharedPreferences("MainActivity", android.content.Context.MODE_PRIVATE)
+        .getString("model_name", "")
+        .orEmpty()
+    val modelLine = if (modelName.isBlank()) "No model loaded" else "$modelName · on device"
     Box(
         Modifier
             .fillMaxSize()
             .background(
-                Brush.verticalGradient(
-                    listOf(atlas.surface, atlas.surfaceRaised, atlas.surface),
+                Brush.radialGradient(
+                    listOf(Color(0xFF1C1A16), atlas.surface),
+                    radius = 1400f,
                 ),
             )
+            .statusBarsPadding()
             .semantics { testTagsAsResourceId = true }
-            .padding(24.dp),
+            .padding(horizontal = 26.dp, vertical = 18.dp),
     ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .align(Alignment.Center),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text("LFM3", style = type.display, color = atlas.ink)
-            Spacer(Modifier.height(8.dp))
+        Column(Modifier.fillMaxSize()) {
             Text(
-                "Offline-first pocket assistant. Your model stays on this device.",
-                style = type.body,
-                color = atlas.inkMuted,
+                "ON DEVICE",
+                style = type.label,
+                color = atlas.accent,
             )
-            Spacer(Modifier.height(28.dp))
-            AnimatedVisibility(
-                visible = showCtas,
-                enter = fadeIn() + slideInVertically { it / 4 },
+            Spacer(Modifier.height(36.dp))
+            Text("Pocket", style = type.italic, color = Color(0xFFC9C2B4))
+            Text("LFM3", style = type.display, color = atlas.ink)
+            Spacer(Modifier.height(22.dp))
+            Text(
+                "Offline-first assistant. Your model stays on this phone.",
+                style = type.body,
+                color = Color(0xFFC9C2B4),
+                modifier = Modifier.fillMaxWidth(0.86f),
+            )
+            Spacer(Modifier.weight(1f))
+            Button(
+                onClick = onOpenChat,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = MaterialTheme.shapes.extraSmall,
+                colors = StillwaterControls.buttonColors(),
             ) {
-                Column(Modifier.fillMaxWidth()) {
-                    Button(
-                        onClick = onOpenChat,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Open chat")
-                    }
-                    TextButton(
-                        onClick = onOpenHistory,
-                        modifier = Modifier.testTag("${LocalContext.current.packageName}:id/history_open"),
-                    ) {
-                        Text("History")
-                    }
-                    TextButton(onClick = onOpenSettings) {
-                        Text("Settings")
-                    }
-                    TextButton(onClick = onAbout) {
-                        Text("About offline mode")
-                    }
+                Text("Open chat", style = type.body.copy(color = atlas.candleInk))
+            }
+            Spacer(Modifier.height(16.dp))
+            androidx.compose.foundation.layout.Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                TextButton(
+                    onClick = onOpenHistory,
+                    modifier = Modifier.testTag("${context.packageName}:id/history_open"),
+                    colors = StillwaterControls.textButtonColors(),
+                ) {
+                    Text("History", textDecoration = TextDecoration.Underline)
+                }
+                TextButton(onClick = onOpenSettings, colors = StillwaterControls.textButtonColors()) {
+                    Text("Settings", textDecoration = TextDecoration.Underline)
+                }
+                TextButton(onClick = onAbout, colors = StillwaterControls.textButtonColors()) {
+                    Text("About offline mode", textDecoration = TextDecoration.Underline)
                 }
             }
+            Text(
+                modelLine,
+                style = type.bodySmall,
+                color = atlas.inkMuted,
+                modifier = Modifier.padding(top = 18.dp, bottom = 8.dp),
+            )
         }
     }
 }

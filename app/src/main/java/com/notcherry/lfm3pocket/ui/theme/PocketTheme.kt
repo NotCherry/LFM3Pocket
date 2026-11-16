@@ -8,10 +8,8 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 
 /**
- * Atlas Material3 theme for all Compose entry points.
- *
- * Dark-only for this epic. Prefer [atlasColors] / [atlasTypography] for tokens
- * beyond the Material3 ColorScheme mapping in DESIGN.md §2.
+ * Stillwater theme for every Compose entry point.
+ * Prefer [atlasColors] / [atlasTypography] for tokens beyond the Material3 mapping.
  */
 @Composable
 fun PocketTheme(content: @Composable () -> Unit) {
@@ -19,7 +17,7 @@ fun PocketTheme(content: @Composable () -> Unit) {
     val roles = AtlasTypeRoles()
     val scheme = darkColorScheme(
         primary = atlas.accent,
-        onPrimary = atlas.surface,
+        onPrimary = atlas.candleInk,
         primaryContainer = atlas.accentMuted,
         onPrimaryContainer = atlas.ink,
         secondary = atlas.accentMuted,
@@ -32,6 +30,13 @@ fun PocketTheme(content: @Composable () -> Unit) {
         onSurface = atlas.ink,
         surfaceVariant = atlas.surfaceRaised,
         onSurfaceVariant = atlas.inkMuted,
+        surfaceContainerLowest = atlas.surface,
+        surfaceContainerLow = atlas.surface,
+        surfaceContainer = atlas.surfaceRaised,
+        surfaceContainerHigh = atlas.surfaceOverlay,
+        surfaceContainerHighest = atlas.surfaceOverlay,
+        surfaceBright = atlas.surfaceRaised,
+        surfaceDim = atlas.surface,
         outline = atlas.border,
         outlineVariant = atlas.borderStrong,
         error = atlas.danger,

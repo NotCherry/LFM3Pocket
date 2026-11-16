@@ -19,7 +19,8 @@
         android:allowBackup="false"
         android:label="${appLabel}"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:theme="@style/Theme.Stillwater"
+        android:forceDarkAllowed="false"
         android:usesCleartextTraffic="false">
         <activity
             android:name=".ComposeHostActivity"

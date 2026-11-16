@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="still_surface">#0E0E0C</color>
+    <color name="still_raised">#161614</color>
+    <color name="still_overlay">#1C1C18</color>
+    <color name="still_ink">#F3EFE6</color>
+    <color name="still_soft">#C9C2B4</color>
+    <color name="still_muted">#8F897C</color>
+    <!-- Light enough for WCAG AA on still_surface (about 7:1). Never use a near-black gray. -->
+    <color name="still_disabled">#A39E92</color>
+    <color name="still_candle">#E6C27A</color>
+    <color name="still_candle_ink">#1C1508</color>
+    <color name="still_danger">#E08A78</color>
+    <color name="still_highlight">#66E6C27A</color>
+</resources>

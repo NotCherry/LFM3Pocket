@@ -5,7 +5,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,9 +13,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,6 +56,7 @@ fun ChatTurnList(
     userMessageTag: String? = null,
     assistantMessageTag: String? = null,
     autoScroll: Boolean = true,
+    onSuggest: (String) -> Unit = {},
 ) {
     val scroll = rememberScrollState()
     LaunchedEffect(turns.size, turns.lastOrNull()?.text, turns.lastOrNull()?.streaming) {
@@ -65,12 +68,7 @@ fun ChatTurnList(
             .verticalScroll(scroll),
     ) {
         if (turns.isEmpty()) {
-            Text(
-                text = "No conversation yet.",
-                style = MaterialTheme.atlasTypography.body,
-                color = MaterialTheme.atlasColors.inkMuted,
-                modifier = Modifier.padding(16.dp),
-            )
+            EmptyConversation(onSuggest)
         } else {
             turns.forEachIndexed { index, turn ->
                 ChatTurn(
@@ -115,8 +113,17 @@ fun ChatTurn(
                 Text(
                     text = turn.text,
                     style = type.body,
-                    color = atlas.ink,
+                    color = ColorSoft,
                     modifier = Modifier
+                        .drawBehind {
+                            drawLine(
+                                color = atlas.accent,
+                                start = Offset(0f, 0f),
+                                end = Offset(0f, size.height),
+                                strokeWidth = 2f,
+                            )
+                        }
+                        .padding(start = 12.dp)
                         .then(if (bodyTag != null) Modifier.testTag(bodyTag) else Modifier)
                         // History E2E uses By.desc(user text) for voice/transcript exposure.
                         .semantics { contentDescription = turn.text },
@@ -162,10 +169,18 @@ fun ReasoningRail(reasoning: String, modifier: Modifier = Modifier) {
     val atlas = MaterialTheme.atlasColors
     val type = MaterialTheme.atlasTypography
     var expanded by remember { mutableStateOf(false) }
+    val preview = reasoning.lineSequence().firstOrNull().orEmpty().take(96)
     Column(
         modifier
-            .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
-            .padding(8.dp),
+            .drawBehind {
+                drawLine(
+                    color = atlas.accent.copy(alpha = 0.55f),
+                    start = Offset(0f, 0f),
+                    end = Offset(0f, size.height),
+                    strokeWidth = 2f,
+                )
+            }
+            .padding(start = 10.dp),
     ) {
         Row(
             Modifier
@@ -174,9 +189,17 @@ fun ReasoningRail(reasoning: String, modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = if (expanded) "▾ Reasoning" else "▸ Reasoning",
+                text = "Reasoning",
+                style = type.label,
+                color = atlas.ink,
+            )
+        }
+        if (!expanded && preview.isNotBlank()) {
+            Text(
+                text = preview,
                 style = type.bodySmall,
                 color = atlas.inkMuted,
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
         AnimatedVisibility(
@@ -192,6 +215,44 @@ fun ReasoningRail(reasoning: String, modifier: Modifier = Modifier) {
                     .padding(top = 6.dp)
                     .fillMaxWidth(),
             )
+        }
+    }
+}
+
+private val ColorSoft = androidx.compose.ui.graphics.Color(0xFFC9C2B4)
+
+@Composable
+private fun EmptyConversation(onSuggest: (String) -> Unit) {
+    val atlas = MaterialTheme.atlasColors
+    val type = MaterialTheme.atlasTypography
+    Column(Modifier.padding(horizontal = 4.dp, vertical = 12.dp)) {
+        Text(
+            text = "No conversation yet.",
+            style = type.headline,
+            color = atlas.ink,
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "Text, photos, and voice stay on this phone until you opt into search.",
+            style = type.body,
+            color = ColorSoft,
+        )
+        Spacer(Modifier.height(20.dp))
+        listOf(
+            "What colors and shapes are in the image?" to "Photo · on device",
+            "Napisz po polsku jedno zdanie o lokalnym przetwarzaniu." to "Text · local",
+            "Set a timer for forty five seconds" to "Needs your approval",
+        ).forEach { (prompt, hint) ->
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { onSuggest(prompt) }
+                    .padding(vertical = 12.dp),
+            ) {
+                Text(prompt, style = type.body, color = atlas.ink)
+                Text(hint, style = type.bodySmall, color = atlas.inkMuted, modifier = Modifier.padding(top = 3.dp))
+                HorizontalDivider(color = atlas.border, thickness = 1.dp)
+            }
         }
     }
 }

@@ -22,6 +22,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.notcherry.lfm3pocket.ui.theme.PocketTheme
+import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 import java.text.DateFormat
@@ -167,22 +168,25 @@ private fun HistoryScreen(
             .semantics { testTagsAsResourceId = true },
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            TextButton(onClick = onBack, modifier = Modifier.testTag(tag("history_back"))) {
+            TextButton(
+                onClick = onBack,
+                modifier = Modifier.testTag(tag("history_back")),
+                colors = StillwaterControls.textButtonColors(),
+            ) {
                 Text(if (selected == null) "Home" else "Back")
             }
-            Button(onClick = onNewChat, modifier = Modifier.testTag(tag("history_new_chat"))) {
+            Button(
+                onClick = onNewChat,
+                modifier = Modifier.testTag(tag("history_new_chat")),
+                shape = MaterialTheme.shapes.extraSmall,
+                colors = StillwaterControls.buttonColors(),
+            ) {
                 Text("New chat")
             }
         }
-        Text(
-            "History stays on this device and is excluded from Android backup. Conversation text and any saved speech transcript are retained; audio and image attachments are temporary and removed after processing.",
-            style = type.bodySmall,
-            color = atlas.inkMuted,
-            modifier = Modifier.padding(vertical = 8.dp).testTag(tag("history_retention_notice")),
-        )
         if (selected == null) {
             Text(
-                "Saved conversations",
+                "History",
                 style = type.headline,
                 color = atlas.ink,
                 modifier = Modifier.testTag(tag("history_list_title")),
@@ -202,6 +206,7 @@ private fun HistoryScreen(
                         TextButton(
                             onClick = { confirmDeleteAll = true },
                             modifier = Modifier.testTag(tag("history_delete_all")),
+                            colors = StillwaterControls.dangerTextColors(),
                         ) {
                             Text("Delete all history")
                         }
@@ -210,9 +215,7 @@ private fun HistoryScreen(
                         Column(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                                .border(1.dp, atlas.border)
-                                .padding(10.dp),
+                                .padding(vertical = 4.dp),
                         ) {
                             Row(
                                 Modifier.fillMaxWidth(),
@@ -248,14 +251,22 @@ private fun HistoryScreen(
                                 TextButton(
                                     onClick = { deleteTarget = row.id to row.title },
                                     modifier = Modifier.testTag(tag("history_delete_${row.id}")),
+                                    colors = StillwaterControls.dangerTextColors(),
                                 ) {
                                     Text("Delete")
                                 }
                             }
+                            HorizontalDivider(color = atlas.border)
                         }
                     }
                 }
             }
+            Text(
+                "Saved on this phone. Excluded from Android backup. Audio and photos are temporary and removed after processing.",
+                style = type.bodySmall,
+                color = atlas.inkMuted,
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp).testTag(tag("history_retention_notice")),
+            )
         } else {
             Text(
                 selected.conversation.title,
@@ -376,8 +387,11 @@ private fun HistoryScreen(
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
             modifier = Modifier.semantics { testTagsAsResourceId = true },
-            title = { Text("Delete conversation?") },
-            text = { Text("Delete ‘${target.second}’ and all of its saved messages and action results?") },
+            containerColor = atlas.surfaceOverlay,
+            titleContentColor = atlas.ink,
+            textContentColor = atlas.inkMuted,
+            title = { Text("Delete conversation?", color = atlas.ink) },
+            text = { Text("Delete ‘${target.second}’ and all of its saved messages and action results?", color = atlas.inkMuted) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -385,12 +399,14 @@ private fun HistoryScreen(
                         deleteTarget = null
                     },
                     modifier = Modifier.testTag(tag("history_confirm_delete")),
+                    colors = StillwaterControls.dangerTextColors(),
                 ) { Text("Delete") }
             },
             dismissButton = {
                 TextButton(
                     onClick = { deleteTarget = null },
                     modifier = Modifier.testTag(tag("history_cancel_delete")),
+                    colors = StillwaterControls.textButtonColors(),
                 ) { Text("Cancel") }
             },
         )
@@ -399,8 +415,11 @@ private fun HistoryScreen(
         AlertDialog(
             onDismissRequest = { confirmDeleteAll = false },
             modifier = Modifier.semantics { testTagsAsResourceId = true },
-            title = { Text("Delete all history?") },
-            text = { Text("This permanently deletes every saved conversation on this device.") },
+            containerColor = atlas.surfaceOverlay,
+            titleContentColor = atlas.ink,
+            textContentColor = atlas.inkMuted,
+            title = { Text("Delete all history?", color = atlas.ink) },
+            text = { Text("This permanently deletes every saved conversation on this device.", color = atlas.inkMuted) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -408,12 +427,14 @@ private fun HistoryScreen(
                         confirmDeleteAll = false
                     },
                     modifier = Modifier.testTag(tag("history_confirm_delete_all")),
+                    colors = StillwaterControls.dangerTextColors(),
                 ) { Text("Delete all") }
             },
             dismissButton = {
                 TextButton(
                     onClick = { confirmDeleteAll = false },
                     modifier = Modifier.testTag(tag("history_cancel_delete_all")),
+                    colors = StillwaterControls.textButtonColors(),
                 ) { Text("Cancel") }
             },
         )

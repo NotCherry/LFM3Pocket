@@ -4,11 +4,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -23,6 +25,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
+import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 
@@ -70,7 +73,11 @@ fun SettingsScreen(
             .semantics { testTagsAsResourceId = true }
             .padding(16.dp),
     ) {
-        TextButton(onClick = onBack, modifier = Modifier.testTag(tag("settings_back"))) {
+        TextButton(
+            onClick = onBack,
+            modifier = Modifier.testTag(tag("settings_back")),
+            colors = StillwaterControls.textButtonColors(),
+        ) {
             Text("Back to chat")
         }
         Text("Settings", style = type.headline, color = atlas.ink)
@@ -89,30 +96,9 @@ fun SettingsScreen(
             Text("Model", style = type.title, color = atlas.ink)
             Text(modelSummary, style = type.bodySmall, color = atlas.inkMuted)
             Text("Inference", style = type.title, color = atlas.ink)
-            OutlinedTextField(
-                value = contextTokens,
-                onValueChange = onContextChange,
-                label = { Text("Context tokens") },
-                singleLine = true,
-                colors = fieldColors,
-                modifier = Modifier.fillMaxWidth().testTag(tag("settings_context")),
-            )
-            OutlinedTextField(
-                value = threads,
-                onValueChange = onThreadsChange,
-                label = { Text("Decode threads") },
-                singleLine = true,
-                colors = fieldColors,
-                modifier = Modifier.fillMaxWidth().testTag(tag("settings_threads")),
-            )
-            OutlinedTextField(
-                value = maxTokens,
-                onValueChange = onTokensChange,
-                label = { Text("Max response tokens") },
-                singleLine = true,
-                colors = fieldColors,
-                modifier = Modifier.fillMaxWidth().testTag(tag("settings_tokens")),
-            )
+            StepperField("Context", "512–8192, step 256", contextTokens, onContextChange, 256, 512, 8192, fieldColors, Modifier.fillMaxWidth().testTag(tag("settings_context")))
+            StepperField("Decode threads", "1–8, capped to CPUs", threads, onThreadsChange, 1, 1, 8, fieldColors, Modifier.fillMaxWidth().testTag(tag("settings_threads")))
+            StepperField("Response tokens", "1–2048, below context", maxTokens, onTokensChange, 1, 1, 2048, fieldColors, Modifier.fillMaxWidth().testTag(tag("settings_tokens")))
             if (!error.isNullOrBlank()) {
                 Text(error, color = atlas.danger, style = type.bodySmall)
             }
@@ -142,15 +128,60 @@ fun SettingsScreen(
             Button(
                 onClick = onSaveInference,
                 modifier = Modifier.fillMaxWidth().testTag(tag("settings_save")),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+                colors = StillwaterControls.buttonColors(),
             ) {
                 Text("Save")
             }
             Button(
                 onClick = onSaveSearch,
                 modifier = Modifier.fillMaxWidth().testTag(tag("search_save")),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+                colors = StillwaterControls.buttonColors(),
             ) {
                 Text("Save search")
             }
         }
     }
+}
+
+@Composable
+private fun StepperField(
+    title: String,
+    hint: String,
+    value: String,
+    onChange: (String) -> Unit,
+    step: Int,
+    min: Int,
+    max: Int,
+    colors: androidx.compose.material3.TextFieldColors,
+    modifier: Modifier = Modifier,
+) {
+    val atlas = MaterialTheme.atlasColors
+    val type = MaterialTheme.atlasTypography
+    Text(title, style = type.body, color = atlas.ink)
+    Text(hint, style = type.bodySmall, color = atlas.inkMuted)
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        TextButton(
+            onClick = { onChange(nudge(value, -step, min, max)) },
+            colors = StillwaterControls.textButtonColors(),
+        ) { Text("–") }
+        OutlinedTextField(
+            value = value,
+            onValueChange = onChange,
+            singleLine = true,
+            shape = RoundedCornerShape(0.dp),
+            colors = colors,
+            modifier = modifier.weight(1f),
+        )
+        TextButton(
+            onClick = { onChange(nudge(value, step, min, max)) },
+            colors = StillwaterControls.textButtonColors(),
+        ) { Text("+") }
+    }
+}
+
+private fun nudge(value: String, delta: Int, min: Int, max: Int): String {
+    val current = value.toIntOrNull() ?: min
+    return (current + delta).coerceIn(min, max).toString()
 }
