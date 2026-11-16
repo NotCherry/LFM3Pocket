@@ -24,7 +24,8 @@ public final class ToolCoordinator {
     public static Risk risk(ToolRegistry.Request request){
         if(request==null)return Risk.CONFIRM;
         switch(request.tool){
-            case FLASHLIGHT:case TIMER:case APPLICATION:case SETTINGS:return Risk.SAFE;
+            case FLASHLIGHT:case TIMER:case SHOW_ALARMS:case APPLICATION:case SETTINGS:
+            case CURRENT_TIME:case CALCULATOR:case UNIT_CONVERT:case WEATHER:return Risk.SAFE;
             case VOLUME:return request instanceof ToolRegistry.VolumeRequest && ((ToolRegistry.VolumeRequest)request).stream.equals("music")?Risk.SAFE:Risk.CONFIRM;
             default:return Risk.CONFIRM;
         }
@@ -65,9 +66,12 @@ public final class ToolCoordinator {
     }
     private static Outcome denied(String code,String message){return new Outcome(code,null,new AndroidActionExecutor.ActionResult(false,code,message));}
     private static Outcome permissionDenied(ToolRegistry.Request request) {
-        String message = request != null && request.tool == ToolRegistry.Tool.FLASHLIGHT
-                ? "Grant Camera permission in Android app settings to control the flashlight."
-                : "Required permission or policy is unavailable.";
+        String message = "Required permission or policy is unavailable.";
+        if (request != null && request.tool == ToolRegistry.Tool.FLASHLIGHT) {
+            message = "Grant Camera permission in Android app settings to control the flashlight.";
+        } else if (request != null && request.tool == ToolRegistry.Tool.WEATHER) {
+            message = "Enable network tools in Settings before fetching weather.";
+        }
         return denied("PERMISSION_DENIED",message);
     }
     private void remember(String id,Outcome outcome){completed.put(id,outcome);while(completed.size()>64)completed.remove(completed.keySet().iterator().next());}
@@ -75,8 +79,12 @@ public final class ToolCoordinator {
     public static String title(ToolRegistry.Request request){
         switch(request.tool){
             case FLASHLIGHT:return "Flashlight";case VOLUME:return "Audio volume";case TIMER:return "Timer request";
-            case ALARM:return "Alarm request";case APPLICATION:return "Open app";case SETTINGS:return "Open settings";
-            case COPY:return "Copy text";case SHARE:return "Share text";default:return "Android action";
+            case ALARM:return "Alarm request";case SHOW_ALARMS:return "Show alarms";
+            case APPLICATION:return "Open app";case SETTINGS:return "Open settings";
+            case COPY:return "Copy text";case SHARE:return "Share text";
+            case CURRENT_TIME:return "Current time";case CALCULATOR:return "Calculator";
+            case UNIT_CONVERT:return "Unit conversion";case WEATHER:return "Weather";
+            default:return "Android action";
         }
     }
     public static String describe(ToolRegistry.Request request){

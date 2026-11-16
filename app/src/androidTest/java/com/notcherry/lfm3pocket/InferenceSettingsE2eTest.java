@@ -66,7 +66,9 @@ public final class InferenceSettingsE2eTest {
         assertNotNull(device.wait(Until.findObject(By.res(pkg,"model_configuration_scroll")),WAIT));
     }
     private void saveInference(UiDevice device,String pkg) throws Exception {
-        scrollTo(pkg,"settings_save");
+        // Sticky Save sits outside model_configuration_scroll. scrollIntoView for that
+        // id walks the whole form looking for a child that is not there and can exceed
+        // the host timeout once Settings grows (network tools / assistant / SAF open).
         UiObject2 save=device.wait(Until.findObject(By.res(pkg,"settings_save").enabled(true)),WAIT);
         assertNotNull("settings_save",save);save.click();
     }

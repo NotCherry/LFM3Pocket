@@ -30,9 +30,14 @@ public class ToolCoordinatorTest {
         assertEquals(ToolCoordinator.Risk.CONFIRM,ToolCoordinator.risk(null));
         assertEquals(ToolCoordinator.Risk.SAFE,ToolCoordinator.risk(request("toggle_flashlight","{\"on\":true}")));
         assertEquals(ToolCoordinator.Risk.SAFE,ToolCoordinator.risk(request("set_timer","{\"seconds\":60}")));
+        assertEquals(ToolCoordinator.Risk.SAFE,ToolCoordinator.risk(request("show_alarms","{}")));
         assertEquals(ToolCoordinator.Risk.SAFE,ToolCoordinator.risk(request("open_application","{\"package\":\"com.android.settings\"}")));
         assertEquals(ToolCoordinator.Risk.SAFE,ToolCoordinator.risk(request("open_settings","{\"page\":\"wifi\"}")));
         assertEquals(ToolCoordinator.Risk.SAFE,ToolCoordinator.risk(request("set_volume","{\"stream\":\"music\",\"percent\":50}")));
+        assertEquals(ToolCoordinator.Risk.SAFE,ToolCoordinator.risk(request("current_time","{}")));
+        assertEquals(ToolCoordinator.Risk.SAFE,ToolCoordinator.risk(request("calculator","{\"expression\":\"1+1\"}")));
+        assertEquals(ToolCoordinator.Risk.SAFE,ToolCoordinator.risk(request("unit_convert","{\"value\":1,\"from\":\"m\",\"to\":\"cm\"}")));
+        assertEquals(ToolCoordinator.Risk.SAFE,ToolCoordinator.risk(request("weather","{\"location\":\"Paris\"}")));
         assertEquals(ToolCoordinator.Risk.CONFIRM,ToolCoordinator.risk(request("copy_text","{\"text\":\"Hi\"}")));
         assertEquals(ToolCoordinator.Risk.CONFIRM,ToolCoordinator.risk(request("set_alarm","{\"hour\":7,\"minute\":0}")));
         assertEquals(ToolCoordinator.Risk.CONFIRM,ToolCoordinator.risk(request("set_volume","{\"stream\":\"ring\",\"percent\":50}")));

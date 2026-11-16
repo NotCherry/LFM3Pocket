@@ -11,15 +11,26 @@ public class ToolRegistryTest {
             "{\"tool\":\"set_volume\",\"arguments\":{\"stream\":\"music\",\"percent\":45}}",
             "{\"tool\":\"set_timer\",\"arguments\":{\"seconds\":60,\"label\":\"Tea\"}}",
             "{\"tool\":\"set_alarm\",\"arguments\":{\"hour\":7,\"minute\":30}}",
+            "{\"tool\":\"show_alarms\",\"arguments\":{}}",
             "{\"tool\":\"open_application\",\"arguments\":{\"package\":\"com.example.app\"}}",
             "{\"tool\":\"open_settings\",\"arguments\":{\"page\":\"wifi\"}}",
             "{\"tool\":\"copy_text\",\"arguments\":{\"text\":\"Zażółć 🐈\\nLocal\"}}",
-            "{\"tool\":\"share_text\",\"arguments\":{\"text\":\"Hello\"}}"};
+            "{\"tool\":\"share_text\",\"arguments\":{\"text\":\"Hello\"}}",
+            "{\"tool\":\"current_time\",\"arguments\":{}}",
+            "{\"tool\":\"calculator\",\"arguments\":{\"expression\":\"(2+3)*4\"}}",
+            "{\"tool\":\"unit_convert\",\"arguments\":{\"value\":1,\"from\":\"km\",\"to\":\"m\"}}",
+            "{\"tool\":\"weather\",\"arguments\":{\"location\":\"Warsaw\"}}"};
         Set<ToolRegistry.Tool> tools=new HashSet<>();
         for(String call:calls){ToolRegistry.Parsed p=registry.parse(call);assertTrue(p.status,p.isValid());tools.add(p.request.tool);}
-        assertEquals(8,tools.size());
+        assertEquals(13,tools.size());
         assertEquals(60,((ToolRegistry.TimerRequest)registry.parse(calls[2]).request).seconds);
         assertEquals("",registry.parse(calls[3]).request.arguments.get("label"));
+        ToolRegistry.AlarmRequest alarm=(ToolRegistry.AlarmRequest)registry.parse(
+                "{\"tool\":\"set_alarm\",\"arguments\":{\"hour\":7,\"minute\":0,\"days\":[2,3,4,5,6]}}").request;
+        assertEquals(Arrays.asList(2,3,4,5,6),alarm.days);
+        assertFalse(registry.parse("{\"tool\":\"set_alarm\",\"arguments\":{\"hour\":7,\"minute\":0,\"days\":[0]}}").isValid());
+        assertFalse(registry.parse("{\"tool\":\"weather\",\"arguments\":{}}").isValid());
+        assertFalse(registry.parse("{\"tool\":\"unit_convert\",\"arguments\":{\"value\":1,\"from\":\"km\",\"to\":\"celsius\"}}").isValid());
     }
     @Test public void unknownToolsAndMalformedJsonReturnNoExecutableRequest(){
         String[] bad={"",null,"rm -rf /","```json {} ```","[]","{}",
