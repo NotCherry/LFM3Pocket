@@ -537,8 +537,15 @@ public final class ModelRuntime {
         if (!serviceStartRequested) {
             serviceStartRequested = true;
             Intent intent = new Intent(app, ModelRuntimeService.class);
-            if (Build.VERSION.SDK_INT >= 26) app.startForegroundService(intent);
-            else app.startService(intent);
+            // startForegroundService arms a few-second deadline. The main thread is often
+            // still drawing the first frame, so that deadline fires before onCreate runs.
+            // startService does not arm it; onCreate still promotes immediately.
+            try {
+                app.startService(intent);
+            } catch (IllegalStateException background) {
+                if (Build.VERSION.SDK_INT >= 26) app.startForegroundService(intent);
+                else throw background;
+            }
         }
     }
 

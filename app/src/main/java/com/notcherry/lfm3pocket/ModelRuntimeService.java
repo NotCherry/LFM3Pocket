@@ -19,6 +19,14 @@ public final class ModelRuntimeService extends Service {
 
     @Override public IBinder onBind(Intent intent) { return null; }
 
+    @Override public void onCreate() {
+        super.onCreate();
+        // Satisfy a foreground start before any other work.
+        RuntimeNotice starting = RuntimeNotice.of(RuntimeNotice.Kind.LOADING, "Model runtime",
+                "Starting…", false, 0, 0, "", false, RuntimeNotice.Action.OPEN);
+        promote(RuntimeNotifications.build(this, starting, "", ""), false);
+    }
+
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         ModelRuntime runtime = ((Lfm3PocketApplication) getApplication()).modelRuntime();
         RuntimeNotice notice = runtime.currentNotice();
