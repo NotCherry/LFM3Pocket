@@ -1,6 +1,6 @@
 # Local diagnostics (R02)
 
-LFM3 Pocket records **on-device-only** timing breadcrumbs in app-private storage. Nothing is uploaded.
+Hanami records **on-device-only** timing breadcrumbs in app-private storage. Nothing is uploaded.
 
 ## What is recorded
 

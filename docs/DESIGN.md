@@ -1,4 +1,4 @@
-# LFM3 Pocket — Atlas design system
+# Hanami — Atlas design system
 
 Authoritative visual and interaction guide for the **Atlas** UI epic (tracker [#135](https://github.com/NotCherry/LFM3Pocket/issues/135) / U00). Implementers of `PocketTheme` (#120 / U03) and screen issues (#126–#131) must follow this document.
 
@@ -10,7 +10,7 @@ The chosen product direction is **Stillwater**: warm-charcoal field, chalk ink, 
 
 | Rule | Requirement |
 | --- | --- |
-| Brand first | On Home and chat chrome, **LFM3** (or product wordmark) is a hero-level signal, not only nav text. |
+| Brand first | On Home and chat chrome, **Hanami** is the hero wordmark. Liquid AI LFM3 names the models the app runs, not the product. |
 | One composition | First viewport reads as one composition, not a dashboard of cards. |
 | Hero budget (Home) | Brand + one headline + one short supporting sentence + one CTA group. No stats strips, schedule chips, or promo clusters. |
 | Chat hero | Conversation owns the primary viewport. Model / search / settings are **out** of the first chat viewport (see U10). |
@@ -132,7 +132,7 @@ Atlas prefers **borders over shadows**.
 ### 6.2 Chat turn (`ChatTurnList` / U08)
 
 - Open text block on `surface` — **not** a Material message bubble card.
-- Optional quiet role marker (`YOU` / `LFM3`) in `label` + `inkMuted`.
+- Optional quiet role marker (`YOU` / `Hanami`) in `label` + `inkMuted`. The flat automator transcript still greps `LFM3` (see `UI_E2E_CONTRACT.md`).
 - Body via `MarkdownBody` (`ink`).
 - Sources: steel-accent text links or compact link row under the answer — not chips stuck on a hero.
 - Media: preview chip / thumbnail row under the turn or above composer (see 6.6) — not only `[photo attached]` plain text when a bitmap is available.

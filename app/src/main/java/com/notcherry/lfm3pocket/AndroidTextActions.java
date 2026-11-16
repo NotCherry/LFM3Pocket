@@ -27,7 +27,7 @@ final class AndroidTextActions implements TextActionController.Clipboard, TextAc
         if (context == null) throw new IllegalStateException("Android context is unavailable");
         ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
         if (clipboard == null) throw new IllegalStateException("Android clipboard is unavailable");
-        clipboard.setPrimaryClip(ClipData.newPlainText("LFM3 Pocket", text));
+        clipboard.setPrimaryClip(ClipData.newPlainText("Hanami", text));
     }
 
     @Override public void open(String text) {

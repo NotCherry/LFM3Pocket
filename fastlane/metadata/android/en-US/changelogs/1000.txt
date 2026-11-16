@@ -1,0 +1,1 @@
+Hanami is the new name of this app. It still runs Liquid AI LFM3 models on device. Installs of the previous package are not upgraded in place.

@@ -18,6 +18,7 @@ public class Lfm3PocketApplication extends Application {
 
     @Override public void onCreate() {
         super.onCreate();
+        HanamiNotifications.ensureChannels(this);
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
             @Override public void onActivityStarted(Activity activity) { startedActivities++; }
             @Override public void onActivityStopped(Activity activity) {

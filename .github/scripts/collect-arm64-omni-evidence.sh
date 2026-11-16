@@ -11,7 +11,7 @@ Usage: collect-arm64-omni-evidence.sh --model MODEL.gguf --projector MMPROJ.gguf
        collect-arm64-omni-evidence.sh --self-test
 
 Requires adb, sha256sum, a *physical* ARM64 Android device and installed
-com.notcherry.lfm3pocket (or --package APP_ID). Does not install files, upload data, screenshot,
+dev.notcherry.hanami (or --package APP_ID). Does not install files, upload data, screenshot,
 record audio, or mark hardware validation PASS.
 HELP
 }
@@ -38,7 +38,7 @@ projector=''
 apk=''
 output=''
 serial=''
-package='com.notcherry.lfm3pocket'
+package='dev.notcherry.hanami'
 phase='baseline'
 capture_logcat=0
 while (($#)); do

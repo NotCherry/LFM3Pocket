@@ -100,10 +100,16 @@ private fun PocketNavigation(
                     .padding(24.dp),
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text("Local inference", style = type.headline, color = atlas.ink)
+                Text("Hanami", style = type.headline, color = atlas.ink)
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "The chat runs models on this phone. Optional SearXNG web search " +
+                    "Hanami runs Liquid AI LFM3 models on this phone. LFM3 is the model family, not the name of this app.",
+                    style = type.body,
+                    color = atlas.ink,
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Inference stays on the device through llama.cpp. Optional SearXNG web search " +
                         "stays off unless you turn it on in Settings.",
                     style = type.body,
                     color = atlas.inkMuted,
@@ -153,11 +159,10 @@ private fun StillwaterHome(
                 color = atlas.accent,
             )
             Spacer(Modifier.height(36.dp))
-            Text("Pocket", style = type.italic, color = Color(0xFFC9C2B4))
-            Text("LFM3", style = type.display, color = atlas.ink)
+            Text("Hanami", style = type.display, color = atlas.ink)
             Spacer(Modifier.height(22.dp))
             Text(
-                "Offline-first assistant. Your model stays on this phone.",
+                "Liquid AI LFM3 models, on this phone.",
                 style = type.body,
                 color = Color(0xFFC9C2B4),
                 modifier = Modifier.fillMaxWidth(0.86f),

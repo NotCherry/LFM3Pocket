@@ -56,7 +56,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private ToolCoordinator toolCoordinator;
     private HistoryRepository historyRepository;
     private String historyConversationId="default";
-    private String historyTitle="LFM3 Pocket";
+    private String historyTitle="Hanami";
     private InferenceEngine inferenceEngine;
     private boolean busy = false;
     private boolean generating = false;

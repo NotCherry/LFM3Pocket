@@ -19,7 +19,7 @@ Lines (or concatenated blocks) must remain greppable by existing E2E:
 | Marker | Meaning |
 | --- | --- |
 | `YOU` | User turn text |
-| `LFM3` | Assistant answer body (cleaned — no raw thinking tags) |
+| `LFM3` | Assistant answer body (cleaned — no raw thinking tags). This greppable marker stays `LFM3` so existing automators keep working. The visible role label is **Hanami**. |
 | `▌` | Streaming cursor while generating |
 
 Empty conversation placeholder (historical):

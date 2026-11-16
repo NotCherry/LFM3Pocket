@@ -99,7 +99,7 @@ fun ChatTurn(
     val atlas = MaterialTheme.atlasColors
     val type = MaterialTheme.atlasTypography
     val isUser = turn.role == "user"
-    val roleLabel = if (isUser) "YOU" else "LFM3"
+    val roleLabel = if (isUser) "YOU" else "Hanami"
     val bodyTag = when {
         isUser && userMessageTag != null -> "$packageName:id/$userMessageTag"
         !isUser && assistantMessageTag != null -> "$packageName:id/$assistantMessageTag"

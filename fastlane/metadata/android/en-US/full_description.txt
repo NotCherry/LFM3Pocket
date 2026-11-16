@@ -1,0 +1,7 @@
+Hanami is an offline-first chat app for Android. It runs Liquid AI LFM3 models on the phone through llama.cpp. LFM3 is the model family. Hanami is the app.
+
+Model weights are not included. Import a quantized LFM3 GGUF from your files. For LFM3-Omni, import the matching language model and projector, then attach a photo or record a question. Weights stay in private app storage.
+
+Text inference stays on the device. Optional web search sends a question only when you turn search on, and only to a SearXNG server you configure. There is no telemetry.
+
+Hanami was renamed from LFM3 Pocket so the app name is not the model name. The install id is dev.notcherry.hanami. An older install under com.notcherry.lfm3pocket stays installed beside it until you remove it.
