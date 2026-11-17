@@ -1,13 +1,12 @@
 package com.notcherry.lfm3pocket;
 
 import android.os.Handler;
-import android.os.Looper;
-import android.os.SystemClock;
 
 import java.util.Locale;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.LongSupplier;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Spoken replies for voice actions: prefer Omni {@code generateSpeech}, otherwise labelled system TTS.
@@ -26,25 +25,51 @@ public final class VoiceSpokenOutput {
         void policySpeechStarted();
     }
 
+    private static final class QueuedSpeak {
+        final String text;
+        final Locale locale;
+        final Runnable onComplete;
+
+        QueuedSpeak(String text, Locale locale, Runnable onComplete) {
+            this.text = text;
+            this.locale = locale;
+            this.onComplete = onComplete;
+        }
+    }
+
     private final Host host;
-    private final LabeledSystemTts systemTts;
+    private LabeledSystemTts systemTts;
     private final AtomicBoolean busy = new AtomicBoolean();
+    private final AtomicLong speechGeneration = new AtomicLong();
+    private final ConcurrentLinkedQueue<QueuedSpeak> speakQueue = new ConcurrentLinkedQueue<>();
     private volatile Runnable pendingComplete;
+    private volatile long pendingCompleteGeneration;
+    private volatile long activeUtteranceGeneration;
     private volatile String lastPath = "omni";
 
     public VoiceSpokenOutput(Host host) {
         this.host = host;
-        this.systemTts = new LabeledSystemTts(host.app());
     }
 
     public String lastSpokenPath() { return lastPath; }
 
     public boolean isBusy() { return busy.get(); }
 
-    public void stop() {
-        host.playback().stop();
-        systemTts.stopSpeaking();
+    long currentSpeechGeneration() { return speechGeneration.get(); }
+
+    /** Drop deferred {@code onComplete} hooks without tearing down in-flight PCM/TTS. */
+    void invalidateDeferredCompletions() {
+        speechGeneration.incrementAndGet();
         pendingComplete = null;
+    }
+
+    public void stop() {
+        speechGeneration.incrementAndGet();
+        speakQueue.clear();
+        pendingComplete = null;
+        host.playback().stop();
+        LabeledSystemTts tts = systemTts;
+        if (tts != null) tts.stopSpeaking();
         busy.set(false);
         host.onSpeechUi(false, "");
     }
@@ -52,13 +77,11 @@ public final class VoiceSpokenOutput {
   /** Called when Omni PCM playback reaches idle — runs any deferred {@code onComplete}. */
     void onPlaybackIdle() {
         Runnable done = pendingComplete;
+        long gen = pendingCompleteGeneration;
         pendingComplete = null;
         busy.set(false);
-        if (done != null) {
-            Handler main = host.main();
-            if (main != null) main.post(done);
-            else done.run();
-        }
+        if (done != null && gen == speechGeneration.get()) done.run();
+        drainQueue();
     }
 
     public void speakExact(String exactText, Locale locale, Runnable onComplete) {
@@ -67,9 +90,14 @@ public final class VoiceSpokenOutput {
             return;
         }
         if (!busy.compareAndSet(false, true)) {
-            if (onComplete != null) onComplete.run();
+            speakQueue.offer(new QueuedSpeak(exactText, locale, onComplete));
             return;
         }
+        beginSpeak(exactText, locale, onComplete);
+    }
+
+    private void beginSpeak(String exactText, Locale locale, Runnable onComplete) {
+        activeUtteranceGeneration = speechGeneration.get();
         String language = locale == null ? "en" : locale.getLanguage();
         String voice = "female";
         String spoken = SpeechPrompt.spokenText(exactText);
@@ -105,17 +133,32 @@ public final class VoiceSpokenOutput {
         }
         byte[] audio = pcm.toByteArray();
         String fail = error;
-        host.main().post(() -> finishOmni(fail, audio, format, spoken, language, onComplete));
+        postToMain(() -> finishOmni(fail, audio, format, spoken, language, onComplete));
+    }
+
+    private void postToMain(Runnable runnable) {
+        Handler main = host.main();
+        if (main != null) main.post(runnable);
+        else runnable.run();
     }
 
     private void finishOmni(String fail, byte[] audio, int[] format, String spoken, String language,
                             Runnable onComplete) {
+        if (activeUtteranceGeneration != speechGeneration.get()) {
+            utteranceFailedCleanup();
+            return;
+        }
         if (fail == null && audio.length > 0) {
             lastPath = "omni";
             if (host.playback().play(audio, format[0], format[1], format[2])) {
                 host.onPlaybackPolicy(true);
                 host.onSpeechUi(false, "Playing reply");
-                pendingComplete = onComplete;
+                if (onComplete != null) {
+                    pendingComplete = onComplete;
+                    pendingCompleteGeneration = activeUtteranceGeneration;
+                } else {
+                    pendingComplete = null;
+                }
                 return;
             }
             fail = "Could not start Omni speech playback";
@@ -124,23 +167,58 @@ public final class VoiceSpokenOutput {
     }
 
     private void fallbackSystem(String spoken, String language, String omniFailure, Runnable onComplete) {
+        if (activeUtteranceGeneration != speechGeneration.get()) {
+            utteranceFailedCleanup();
+            return;
+        }
         lastPath = "system_tts";
+        LabeledSystemTts tts = tts();
+        if (tts == null) {
+            finishUtterance(onComplete);
+            return;
+        }
         String status = omniFailure == null
                 ? "System voice (labelled TTS)"
                 : "Omni speech unavailable — System voice (labelled TTS): " + omniFailure;
-        systemTts.speak(spoken, language, new LabeledSystemTts.Callback() {
+        tts.speak(spoken, language, new LabeledSystemTts.Callback() {
             @Override public void onStarted() { host.onSpeechUi(true, status); }
             @Override public void onFinished(String path) {
-                busy.set(false);
                 host.onSpeechUi(false, path);
-                if (onComplete != null) onComplete.run();
+                finishUtterance(onComplete);
             }
             @Override public void onError(String message) {
-                busy.set(false);
                 host.onSpeechUi(false, message);
-                if (onComplete != null) onComplete.run();
+                finishUtterance(onComplete);
             }
         });
+    }
+
+    private LabeledSystemTts tts() {
+        if (systemTts == null && host.app() != null) systemTts = new LabeledSystemTts(host.app());
+        return systemTts;
+    }
+
+    private void finishUtterance(Runnable onComplete) {
+        busy.set(false);
+        if (onComplete != null && activeUtteranceGeneration == speechGeneration.get()) onComplete.run();
+        drainQueue();
+    }
+
+    private void utteranceFailedCleanup() {
+        pendingComplete = null;
+        busy.set(false);
+        drainQueue();
+    }
+
+    private void drainQueue() {
+        if (busy.get()) return;
+        QueuedSpeak next;
+        while ((next = speakQueue.poll()) != null) {
+            if (busy.compareAndSet(false, true)) {
+                beginSpeak(next.text, next.locale, next.onComplete);
+                return;
+            }
+        }
     }
 
     public static String confirmSpokenPrompt(String describe, Locale locale) {

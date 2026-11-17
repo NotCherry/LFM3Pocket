@@ -19,8 +19,17 @@ public final class RuntimePolicyTest {
         assertFalse(done.notice.microphoneCapture);
     }
 
+    @Test public void residentHidesTalkWithoutAudioIn() {
+        policy.onLoaded("text.gguf", 1_000L);
+        RuntimePolicy.Effects effects = policy.onVoiceTalkAvailable(false);
+        assertEquals(2, effects.notice.actions.length);
+        assertEquals(RuntimeNotice.Action.ASK, effects.notice.actions[0]);
+        assertEquals(RuntimeNotice.Action.UNLOAD, effects.notice.actions[1]);
+    }
+
     @Test public void residentNoticeOffersUnloadAndOpen() {
-        RuntimePolicy.Effects effects = policy.onLoaded("lfm.gguf", 1_000L);
+        policy.onLoaded("lfm.gguf", 1_000L);
+        RuntimePolicy.Effects effects = policy.onVoiceTalkAvailable(true);
         assertTrue(effects.wantService);
         assertFalse(effects.wantWake);
         assertFalse(effects.unloadModel);

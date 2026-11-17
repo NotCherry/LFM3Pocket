@@ -261,8 +261,10 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                     : "Model and projector loaded • offline")
                 : "Model error: " + failure;
         main.post(() -> {
-            if (loaded != 0L) apply(policy.onLoaded(name, SystemClock.elapsedRealtime()));
-            else apply(policy.onLoadFailed());
+            if (loaded != 0L) {
+                apply(policy.onLoaded(name, SystemClock.elapsedRealtime()));
+                apply(policy.onVoiceTalkAvailable(voiceActions.isEnabled()));
+            } else apply(policy.onLoadFailed());
             if (callback != null) callback.finished(status);
         });
         return loaded != 0L;
@@ -515,6 +517,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         if (current != 0L) engine.unloadModel(current);
         playback.stop();
         policy.reset();
+        apply(policy.onVoiceTalkAvailable(false));
         apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
         if (service != null) service.stopNow();

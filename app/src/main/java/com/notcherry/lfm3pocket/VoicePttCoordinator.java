@@ -25,7 +25,7 @@ public final class VoicePttCoordinator implements View.OnTouchListener {
         if (!runtime.voice().isEnabled() || !useAccessibilityToggle(view)) return false;
         if (runtime.voice().isListening()) {
             runtime.voice().pttReleased();
-        } else if (!runtime.voice().pttPressed() && requestMicPermission != null) {
+        } else if (!runtime.voice().beginAccessibilityTalk() && requestMicPermission != null) {
             requestMicPermission.run();
             return false;
         }

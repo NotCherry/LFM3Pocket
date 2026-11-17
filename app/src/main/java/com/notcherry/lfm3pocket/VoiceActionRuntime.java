@@ -95,12 +95,22 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
             spoken.speakExact(disabledReason(), callbacks.userLocale(), null);
             return;
         }
+        rejectPendingConfirm();
         mode = Mode.COMMAND;
         listen.startTimed(VoiceListenLimits.TALK_TIMEOUT_MS);
     }
 
+    /** TalkBack toggle: same 8 s cap as shade Talk. */
+    public boolean beginAccessibilityTalk() {
+        if (!isEnabled() || callbacks.modelHandle() == 0L || callbacks.isGenerating()) return false;
+        rejectPendingConfirm();
+        mode = Mode.COMMAND;
+        return listen.startTimed(VoiceListenLimits.TALK_TIMEOUT_MS);
+    }
+
     public boolean pttPressed() {
         if (!isEnabled() || callbacks.modelHandle() == 0L || callbacks.isGenerating()) return false;
+        rejectPendingConfirm();
         mode = Mode.COMMAND;
         return listen.startPtt();
     }
@@ -124,8 +134,10 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
     private void rejectPendingConfirm() {
         String id = pendingConfirmId;
         if (id == null) return;
+        spoken.invalidateDeferredCompletions();
         pendingConfirmId = null;
         pendingConfirmDescribe = null;
+        mode = Mode.IDLE;
         callbacks.resolveConsent(id, false);
         callbacks.clearConsent();
     }
@@ -178,8 +190,11 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
         mode = Mode.CONFIRM;
         callbacks.showConsent(proposal.id, pendingConfirmDescribe, proposal.risk == ToolCoordinator.Risk.SAFE);
         String prompt = VoiceSpokenOutput.confirmSpokenPrompt(pendingConfirmDescribe, callbacks.userLocale());
+        final long armGeneration = spoken.currentSpeechGeneration();
+        final String confirmId = proposal.id;
         spoken.speakExact(prompt, callbacks.userLocale(), () -> {
-            mode = Mode.CONFIRM;
+            if (spoken.currentSpeechGeneration() != armGeneration) return;
+            if (!confirmId.equals(pendingConfirmId) || mode != Mode.CONFIRM) return;
             listen.cancel("arming confirm");
             listen.startTimed(VoiceListenLimits.MAX_CONFIRM_SECONDS * 1000);
         });
@@ -193,6 +208,7 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
             return;
         }
         try {
+            spoken.invalidateDeferredCompletions();
             maybeTrim(wav);
             StringBuilder recognized = new StringBuilder();
             callbacks.engine().resetStop();

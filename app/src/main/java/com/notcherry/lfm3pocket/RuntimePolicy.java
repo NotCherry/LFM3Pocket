@@ -49,6 +49,7 @@ public final class RuntimePolicy {
     private String consentText = "";
     private String proposalId = "";
     private long idleDeadlineMs = -1L;
+    private boolean voiceTalkAvailable;
 
     public boolean refuseNewTurns() { return refuseNewTurns; }
     public boolean modelLoaded() { return modelLoaded; }
@@ -77,6 +78,12 @@ public final class RuntimePolicy {
         consentText = "";
         proposalId = "";
         idleDeadlineMs = -1L;
+        voiceTalkAvailable = false;
+    }
+
+    public Effects onVoiceTalkAvailable(boolean available) {
+        voiceTalkAvailable = available;
+        return view(false, false);
     }
 
     public Effects onSettings(boolean keep, int idle, boolean preview, long nowMs) {
@@ -288,6 +295,7 @@ public final class RuntimePolicy {
         idleDeadlineMs = -1L;
         trimStrikesWhileGenerating = 0;
         consent = false;
+        voiceTalkAvailable = false;
         return new Effects(RuntimeNotice.hidden(), false, false, cancel, true);
     }
 
@@ -356,9 +364,13 @@ public final class RuntimePolicy {
         if (!modelName.isEmpty()) body = body + "\n" + modelName;
         if (idleMinutes > 0) body = body + "\nUnloads after " + idleMinutes + " idle minutes";
         if (!warning.isEmpty()) body = body + "\n" + warning;
+        if (voiceTalkAvailable) {
+            return RuntimeNotice.of(RuntimeNotice.Kind.RESIDENT, "Model loaded", body, false,
+                    0, 0, "", false, RuntimeNotice.Action.TALK, RuntimeNotice.Action.ASK,
+                    RuntimeNotice.Action.UNLOAD);
+        }
         return RuntimeNotice.of(RuntimeNotice.Kind.RESIDENT, "Model loaded", body, false,
-                0, 0, "", false, RuntimeNotice.Action.TALK, RuntimeNotice.Action.ASK,
-                RuntimeNotice.Action.UNLOAD);
+                0, 0, "", false, RuntimeNotice.Action.ASK, RuntimeNotice.Action.UNLOAD);
     }
 
     private String warning() {
