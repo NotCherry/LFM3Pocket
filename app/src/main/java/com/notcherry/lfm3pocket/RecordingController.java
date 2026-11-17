@@ -48,7 +48,8 @@ public final class RecordingController implements AutoCloseable {
     }
     public synchronized void cancel(){
         if(!active || closed)return;
-        discard=true;stopping=true;publish(epoch,State.STOPPING,"Cancelling voice recording...",null);
+        discard=true;stopping=true;
+        finish(epoch,State.IDLE,"Recording cancelled",null);
     }
     @Override public synchronized void close(){closed=true;discard=true;stopping=true;state=State.CLOSED;}
     private synchronized void publish(long turn,State next,String message,File file){

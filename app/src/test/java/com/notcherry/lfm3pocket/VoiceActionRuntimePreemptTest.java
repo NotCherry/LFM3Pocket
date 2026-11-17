@@ -34,7 +34,6 @@ public final class VoiceActionRuntimePreemptTest {
                 workerTasks::offer, Runnable::run, factory);
         setPendingConfirm(runtime, "proposal-1");
         assertTrue(runtime.listenSessionForTests().startTimed(3_000));
-        drain(workerTasks);
         assertEquals(VoiceListenSession.State.LISTENING, runtime.listenSessionForTests().state());
         assertTrue(runtime.pttPressed());
         drain(workerTasks);
@@ -64,7 +63,6 @@ public final class VoiceActionRuntimePreemptTest {
                     @Override public void changed(VoiceListenSession.State state, String message) { }
                     @Override public void wavReady(File wav) { }
                 }, VoiceListenLimits.MAX_ACTION_SAMPLES);
-        LinkedBlockingQueue<Runnable> workerTasks = new LinkedBlockingQueue<>();
         assertTrue(session.startTimed(2_000));
         drain(cancelWorker);
         assertEquals(VoiceListenSession.State.LISTENING, session.state());
