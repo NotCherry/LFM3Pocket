@@ -80,6 +80,23 @@ public final class ChatNewChatE2eTest {
         }
     }
 
+    @Test public void homeNewChatWithLoadedModelDoesNotReload() {
+        int loadsBefore = app.scriptedEngine().loadInvocationCount();
+        try (ActivityScenario<MainActivity> first = ActivityScenario.launch(MainActivity.class)) {
+            awaitEnabled("chat_send");
+        }
+        int loadsAfterWarm = app.scriptedEngine().loadInvocationCount();
+        assertTrue("Initial chat launch must load the model once", loadsAfterWarm > loadsBefore);
+
+        try (ActivityScenario<ComposeHostActivity> home =
+                     ActivityScenario.launch(ComposeHostActivity.class)) {
+            click("home_new_chat");
+            awaitEnabled("chat_send");
+            assertEquals("Home New chat must not reload an in-memory model",
+                    loadsAfterWarm, app.scriptedEngine().loadInvocationCount());
+        }
+    }
+
     @Test public void homeNewChatShortcutStartsEmptyWithoutTouchingResumePath() {
         try (ActivityScenario<ComposeHostActivity> home =
                      ActivityScenario.launch(ComposeHostActivity.class)) {
@@ -127,7 +144,11 @@ public final class ChatNewChatE2eTest {
             keep.click();
             assertTrue("Keeping the reply must leave generation in flight", runtimeGenerating());
 
-            click("chat_new_chat");
+            context.startActivity(new android.content.Intent(context, ComposeHostActivity.class)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+            homeNew = device.wait(Until.findObject(By.res(pkg, "home_new_chat")), TIMEOUT);
+            assertNotNull(homeNew);
+            homeNew.click();
             awaitDialogButton(true).click();
             UiObject2 empty = device.wait(Until.findObject(
                     By.res(pkg, "chat_transcript").textContains("No conversation yet")), TIMEOUT);

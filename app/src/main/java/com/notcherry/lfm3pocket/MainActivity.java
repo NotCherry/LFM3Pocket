@@ -240,8 +240,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         syncInlineSettingsFields();
         syncBackgroundControls();
         final boolean launchNewChat = shouldDeferNewChat(getIntent());
-        if (!launchNewChat && runtime.handle() != 0L && (previous.equals(runtime.loadedPath()) || isContentUri(previous))) {
-            if (!runtime.isGenerating()) status.setText(mmprojPath == null || mmprojPath.isEmpty()
+        final boolean modelInMemory = runtime.handle() != 0L
+                && (previous.equals(runtime.loadedPath()) || isContentUri(previous));
+        if (modelInMemory) {
+            if (!launchNewChat && !runtime.isGenerating()) status.setText(mmprojPath == null || mmprojPath.isEmpty()
                     ? "Text model ready · offline" : "Model and projector loaded · offline");
         } else if (!previous.isEmpty() && (isContentUri(previous) || new File(previous).isFile())) {
             loadSelectedModel(previous, mmprojPath);
@@ -389,7 +391,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             android.view.ContextThemeWrapper menuContext =
                     new android.view.ContextThemeWrapper(this, R.style.Theme_Stillwater);
             android.widget.PopupMenu menu = new android.widget.PopupMenu(menuContext, v);
-            menu.getMenu().add(0, 1, 0, "Settings");
+            menu.getMenu().add(0, 1, 0, getString(R.string.settings_title));
             menu.getMenu().add(0, 2, 1, "Web search");
             menu.setOnMenuItemClickListener(item -> {
                 if (item.getItemId() == 1) setSettingsOpen(true);
