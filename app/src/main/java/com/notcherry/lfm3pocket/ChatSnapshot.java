@@ -32,25 +32,14 @@ public final class ChatSnapshot {
         public final String reasoning;
         public final List<Source> sources;
         public final boolean streaming;
-        /** True when this assistant reply was cut off by process death. */
-        public final boolean interrupted;
-        /** Persistence id for interrupted retries; null otherwise. */
-        public final String turnId;
 
         public Turn(String role, String text, String reasoning, List<Source> sources, boolean streaming) {
-            this(role, text, reasoning, sources, streaming, false, null);
-        }
-
-        public Turn(String role, String text, String reasoning, List<Source> sources, boolean streaming,
-                    boolean interrupted, String turnId) {
             this.role = Objects.requireNonNull(role, "role");
             this.text = text == null ? "" : text;
             this.reasoning = reasoning == null || reasoning.isEmpty() ? null : reasoning;
             List<Source> copy = sources == null ? Collections.emptyList() : new ArrayList<>(sources);
             this.sources = Collections.unmodifiableList(copy);
             this.streaming = streaming;
-            this.interrupted = interrupted;
-            this.turnId = turnId == null || turnId.isEmpty() ? null : turnId;
         }
     }
 

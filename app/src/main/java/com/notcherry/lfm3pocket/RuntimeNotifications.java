@@ -55,34 +55,27 @@ final class RuntimeNotifications {
                                                 String conversationId, String title, int code) {
         switch (action) {
             case STOP:
-                return new Notification.Action.Builder(null,
-                        context.getString(R.string.notification_action_stop),
+                return new Notification.Action.Builder(null, "Stop",
                         service(context, ModelRuntimeService.ACTION_STOP, null, code)).build();
             case UNLOAD:
-                return new Notification.Action.Builder(null,
-                        context.getString(R.string.notification_action_unload),
+                return new Notification.Action.Builder(null, "Unload",
                         service(context, ModelRuntimeService.ACTION_UNLOAD, null, code)).build();
             case OPEN:
-                return new Notification.Action.Builder(null,
-                        context.getString(R.string.notification_action_open),
+                return new Notification.Action.Builder(null, "Open",
                         openChat(context, conversationId, title)).build();
             case ASK:
                 return askAction(context, code);
             case REVIEW:
-                return new Notification.Action.Builder(null,
-                        context.getString(R.string.notification_action_review),
+                return new Notification.Action.Builder(null, "Review",
                         review(context, proposalId, code)).build();
             case APPROVE:
-                return new Notification.Action.Builder(null,
-                        context.getString(R.string.notification_action_approve),
+                return new Notification.Action.Builder(null, "Approve",
                         service(context, ModelRuntimeService.ACTION_APPROVE, proposalId, code)).build();
             case REJECT:
-                return new Notification.Action.Builder(null,
-                        context.getString(R.string.notification_action_reject),
+                return new Notification.Action.Builder(null, "Reject",
                         service(context, ModelRuntimeService.ACTION_REJECT, proposalId, code)).build();
             default:
-                return new Notification.Action.Builder(null,
-                        context.getString(R.string.notification_action_open),
+                return new Notification.Action.Builder(null, "Open",
                         openChat(context, conversationId, title)).build();
         }
     }
@@ -107,13 +100,13 @@ final class RuntimeNotifications {
 
     private static Notification.Action askAction(Context context, int code) {
         RemoteInput input = new RemoteInput.Builder(REMOTE_ASK_KEY)
-                .setLabel(context.getString(R.string.notification_ask_label))
+                .setLabel("Ask Hanami")
                 .build();
         Intent intent = new Intent(context, ModelRuntimeService.class)
                 .setAction(ModelRuntimeService.ACTION_ASK);
         PendingIntent pending = PendingIntent.getService(context, code, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
-        return new Notification.Action.Builder(null, context.getString(R.string.notification_action_ask), pending)
+        return new Notification.Action.Builder(null, "Ask", pending)
                 .addRemoteInput(input)
                 .build();
     }
@@ -129,34 +122,5 @@ final class RuntimeNotifications {
         if (text == null || text.isEmpty()) return "";
         int nl = text.indexOf('\n');
         return nl < 0 ? text : text.substring(0, nl);
-    }
-
-    /** One-shot alert when a reply finishes while no activity is visible. */
-    static void notifyReplyReady(Context context, String conversationId, String title, String status) {
-        ensureChannel(context);
-        String body = status == null || status.isBlank()
-                ? context.getString(R.string.notification_reply_ready_text)
-                : status;
-        Notification.Builder builder = Build.VERSION.SDK_INT >= 26
-                ? new Notification.Builder(context, CHANNEL_ID)
-                : new Notification.Builder(context);
-        builder.setSmallIcon(R.drawable.ic_stat_runtime)
-                .setContentTitle(context.getString(R.string.notification_reply_ready_title))
-                .setContentText(firstLine(body))
-                .setStyle(new Notification.BigTextStyle().bigText(body))
-                .setAutoCancel(true)
-                .setOnlyAlertOnce(true)
-                .setColor(CANDLE)
-                .setCategory(Notification.CATEGORY_STATUS)
-                .setContentIntent(openChat(context, conversationId, title));
-        NotificationManagerCompat.notify(context, NOTIFICATION_ID + 1, builder.build());
-    }
-
-    private static final class NotificationManagerCompat {
-        static void notify(Context context, int id, Notification notification) {
-            android.app.NotificationManager manager =
-                    context.getSystemService(android.app.NotificationManager.class);
-            if (manager != null) manager.notify(id, notification);
-        }
     }
 }

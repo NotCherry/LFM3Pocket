@@ -24,7 +24,6 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.SeekBar;
 import android.widget.TextView;
 
 import java.io.File;
@@ -43,8 +42,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     public static final String EXTRA_OPEN_SETTINGS = "open_settings";
     public static final String EXTRA_DRAFT_TEXT = "draft_text";
     public static final String EXTRA_FRESH_CHAT = "fresh_chat";
-    /** Home and other in-app shortcuts that must share {@link #requestNewChat(boolean)}. */
-    public static final String EXTRA_REQUEST_NEW_CHAT = "request_new_chat";
     public static final String EXTRA_SHARED_IMAGE = "shared_image_uri";
     private static final int PICK_MODEL = 42;
     private static final int PICK_MMPROJ = 43;
@@ -81,21 +78,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private CheckBox lockPreviewBox;
     private CheckBox loopbackBox;
     private CheckBox networkToolsBox;
-    private CheckBox tinyVocaTtsBox;
-    private TextView tinyVocaStatus;
-    private Button tinyVocaDownloadButton;
-    private Button tinyVocaRemoveButton;
-    private Button interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton;
-    private SeekBar interfaceSizeSlider;
-    private TextView interfaceSizeValue;
-    private boolean bindingInterfaceSize;
-    private boolean interfaceSliderTracking;
-    private float pendingInterfaceSliderScale = InterfaceSize.DEFAULT;
-    private float attachedInterfaceScale = InterfaceSize.DEFAULT;
-    private final Runnable applyInterfaceSlider = () -> {
-        if (destroyed || bindingInterfaceSize || interfaceSliderTracking) return;
-        applyInterfaceSize(pendingInterfaceSliderScale);
-    };
     private Button openModelUriButton, openProjectorUriButton, defaultAssistantButton;
     private boolean foreground;
     private boolean microphoneRequested;
@@ -179,16 +161,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         @Override public boolean isUsable() { return !destroyed && chatPanel != null; }
     };
 
-    @Override protected void attachBaseContext(Context newBase) {
-        attachedInterfaceScale = InterfaceSize.read(newBase);
-        super.attachBaseContext(InterfaceSize.wrap(newBase));
-    }
-
-    @Override protected void onResume() {
-        super.onResume();
-        InterfaceSize.recreateIfChanged(this, attachedInterfaceScale);
-    }
-
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         runtime = ((Lfm3PocketApplication) getApplication()).modelRuntime();
@@ -212,7 +184,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 });
         settingsStore=new InferenceSettingsStore(this);
         imageSettingsStore=new ImageSettingsStore(this);
-        buildUi(state);
+        buildUi();
         session = runtime.session();
         runtime.attach(viewer);
         updateControls();
@@ -243,19 +215,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         chatPanel.setIdleMode(searchEnabled);
         syncInlineSettingsFields();
         syncBackgroundControls();
-        final boolean launchNewChat = shouldDeferNewChat(getIntent());
-        final boolean modelInMemory = runtime.handle() != 0L
-                && (previous.equals(runtime.loadedPath()) || isContentUri(previous));
-        if (modelInMemory) {
-            if (!launchNewChat && !runtime.isGenerating()) status.setText(mmprojPath == null || mmprojPath.isEmpty()
+        if (runtime.handle() != 0L && (previous.equals(runtime.loadedPath()) || isContentUri(previous))) {
+            if (!runtime.isGenerating()) status.setText(mmprojPath == null || mmprojPath.isEmpty()
                     ? "Text model ready · offline" : "Model and projector loaded · offline");
         } else if (!previous.isEmpty() && (isContentUri(previous) || new File(previous).isFile())) {
             loadSelectedModel(previous, mmprojPath);
         } else if (runtime.handle() == 0L) {
             status.setText("No model loaded. Select an LFM3 GGUF file.");
         }
-        if (launchNewChat) {
-            mainHandler.post(() -> handlePendingNewChatRequests(getIntent()));
+        if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_FRESH_CHAT, false)) {
+            startFreshChat();
+            getIntent().removeExtra(EXTRA_FRESH_CHAT);
         }
         if (pendingSwitchId != null) confirmSwitchConversation();
     }
@@ -289,9 +259,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             lastAssistantReply = "";
         }
         historyConversationId = id;
-        historyTitle = title == null || title.isBlank() ? getString(R.string.new_conversation_title) : title;
+        historyTitle = title == null || title.isBlank() ? "New conversation" : title;
         runtime.setConversation(historyConversationId, historyTitle);
-        runtime.restoreOpenConversation();
     }
 
     private void confirmSwitchConversation() {
@@ -300,18 +269,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         pendingSwitchId = null;
         pendingSwitchTitle = null;
         new AlertDialog.Builder(this)
-                .setTitle(R.string.reply_still_running_title)
-                .setMessage(R.string.reply_still_running_message)
-                .setPositiveButton(R.string.stop_and_start_new, (dialog, which) -> {
+                .setTitle("Reply still running")
+                .setMessage("Stop the current reply and start a new conversation?")
+                .setPositiveButton("Stop and start new", (dialog, which) -> {
                     runtime.stopTurn();
                     runtime.clearConversation();
                     lastAssistantReply = "";
                     historyConversationId = id;
-                    historyTitle = title == null || title.isBlank() ? getString(R.string.new_conversation_title) : title;
+                    historyTitle = title == null || title.isBlank() ? "New conversation" : title;
                     runtime.setConversation(historyConversationId, historyTitle);
                     if (brandTitle != null) brandTitle.setText(historyTitle);
                 })
-                .setNegativeButton(R.string.keep_this_reply, (dialog, which) -> {
+                .setNegativeButton("Keep this reply", (dialog, which) -> {
                     historyConversationId = runtime.conversationId();
                     historyTitle = runtime.historyTitle();
                 })
@@ -341,7 +310,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         return b;
     }
 
-    private void buildUi(Bundle state) {
+    private void buildUi() {
         int surface = StillwaterUi.SURFACE;
         int ink = StillwaterUi.INK;
         int inkMuted = StillwaterUi.MUTED;
@@ -352,41 +321,27 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(surface);
-        root.setPadding(dp(12), dp(6), dp(12), dp(6));
+        root.setPadding(dp(16), dp(8), dp(16), dp(8));
 
         LinearLayout topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
-        brandTitle = label(historyTitle, 17, ink);
+        brandTitle = label(historyTitle, 20, ink);
         brandTitle.setTypeface(StillwaterUi.serif(this));
-        StillwaterReadable.prepareWrappingLabel(brandTitle);
         titles.addView(brandTitle);
-        modePill = label(searchEnabled ? getString(R.string.mode_web_search) : getString(R.string.mode_local), 11, inkMuted);
+        modePill = label(searchEnabled ? "Web search + local model" : "Mode · Local / offline", 12, inkMuted);
         modePill.setTypeface(StillwaterUi.sans(this));
-        StillwaterReadable.prepareWrappingLabel(modePill);
         titles.addView(modePill);
         topBar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
-        Button newChat = button(getString(R.string.new_chat));
-        newChat.setId(R.id.chat_new_chat);
-        StillwaterUi.quiet(newChat);
-        newChat.setTextColor(accent);
-        newChat.setOnClickListener(v -> requestNewChat(false));
-        newChat.setMinimumWidth(InterfaceSize.minTouchPx(this));
-        newChat.setMinimumHeight(InterfaceSize.minTouchPx(this));
-        StillwaterReadable.prepareWrappingControl(newChat, dp(44));
-        topBar.addView(newChat, new LinearLayout.LayoutParams(-2, -2));
         settingsOpenButton = button("");
         settingsOpenButton.setId(R.id.settings_open);
-        settingsOpenButton.setContentDescription(getString(R.string.settings_title));
+        settingsOpenButton.setContentDescription("Settings");
         settingsOpenButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_still_gear, 0, 0, 0);
         StillwaterUi.quiet(settingsOpenButton);
         settingsOpenButton.setOnClickListener(v -> setSettingsOpen(true));
-        LinearLayout.LayoutParams settingsIconParams = new LinearLayout.LayoutParams(dp(36), dp(36));
-        settingsOpenButton.setMinimumWidth(InterfaceSize.minTouchPx(this));
-        settingsOpenButton.setMinimumHeight(InterfaceSize.minTouchPx(this));
-        topBar.addView(settingsOpenButton, settingsIconParams);
+        topBar.addView(settingsOpenButton, new LinearLayout.LayoutParams(dp(40), dp(40)));
         Button overflow = button("⋮");
         overflow.setId(R.id.chat_overflow);
         StillwaterUi.quiet(overflow);
@@ -395,7 +350,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             android.view.ContextThemeWrapper menuContext =
                     new android.view.ContextThemeWrapper(this, R.style.Theme_Stillwater);
             android.widget.PopupMenu menu = new android.widget.PopupMenu(menuContext, v);
-            menu.getMenu().add(0, 1, 0, getString(R.string.settings_title));
+            menu.getMenu().add(0, 1, 0, "Settings");
             menu.getMenu().add(0, 2, 1, "Web search");
             menu.setOnMenuItemClickListener(item -> {
                 if (item.getItemId() == 1) setSettingsOpen(true);
@@ -404,38 +359,35 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             });
             menu.show();
         });
-        overflow.setMinimumWidth(InterfaceSize.minTouchPx(this));
-        overflow.setMinimumHeight(InterfaceSize.minTouchPx(this));
-        topBar.addView(overflow, new LinearLayout.LayoutParams(dp(36), dp(36)));
+        topBar.addView(overflow, new LinearLayout.LayoutParams(dp(40), dp(40)));
         topBarView = topBar;
         root.addView(topBar);
 
-        status = label(getString(R.string.starting), 12, inkMuted);
+        status = label("Starting...", 13, inkMuted);
         status.setId(R.id.chat_status);
-        status.setPadding(0, dp(4), 0, dp(4));
-        StillwaterReadable.prepareWrappingLabel(status);
+        status.setPadding(0, dp(6), 0, dp(6));
         root.addView(status);
 
         // --- Settings host (hidden by default) ---
         LinearLayout settingsRoot = new LinearLayout(this);
         settingsRoot.setOrientation(LinearLayout.VERTICAL);
         settingsRoot.setBackgroundColor(surface);
-        Button settingsBack = button(getString(R.string.back_to_chat));
+        Button settingsBack = button("Back to chat");
         settingsBack.setId(R.id.settings_back);
         StillwaterUi.quiet(settingsBack);
         settingsBack.setTextColor(accent);
         settingsBack.setOnClickListener(v -> setSettingsOpen(false));
-        StillwaterReadable.prepareWrappingControl(settingsBack, dp(44));
-        settingsRoot.addView(settingsBack, new LinearLayout.LayoutParams(-2, -2));
-        TextView settingsHeading = label(getString(R.string.settings_title), 28, ink);
+        settingsRoot.addView(settingsBack, new LinearLayout.LayoutParams(-2, dp(44)));
+        TextView settingsHeading = label("Settings", 34, ink);
         settingsHeading.setTypeface(StillwaterUi.serif(this));
-        settingsHeading.setPadding(0, dp(2), 0, dp(6));
-        StillwaterReadable.prepareWrappingLabel(settingsHeading);
+        settingsHeading.setPadding(0, dp(4), 0, dp(8));
         settingsRoot.addView(settingsHeading);
 
         LinearLayout configuration = new LinearLayout(this);
         configuration.setOrientation(LinearLayout.VERTICAL);
         configuration.setPadding(0, 0, 0, dp(16));
+        LinearLayout modelControls = new LinearLayout(this);
+        modelControls.setOrientation(LinearLayout.HORIZONTAL);
         modelButton = button(getString(R.string.import_model));
         modelButton.setId(R.id.import_model);
         StillwaterUi.quiet(modelButton);
@@ -444,7 +396,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         mmprojButton.setId(R.id.import_projector);
         StillwaterUi.quiet(mmprojButton);
         mmprojButton.setTextColor(accent);
-        StillwaterReadable.addFlexibleButtonRow(configuration, this, 48, modelButton, mmprojButton);
+        modelControls.addView(modelButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        modelControls.addView(mmprojButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        configuration.addView(modelControls);
+        LinearLayout openControls = new LinearLayout(this);
+        openControls.setOrientation(LinearLayout.HORIZONTAL);
         openModelUriButton = button(getString(R.string.open_model_from_storage));
         openModelUriButton.setId(R.id.open_model_uri);
         StillwaterUi.quiet(openModelUriButton);
@@ -453,31 +409,27 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         openProjectorUriButton.setId(R.id.open_projector_uri);
         StillwaterUi.quiet(openProjectorUriButton);
         openProjectorUriButton.setTextColor(accent);
-        StillwaterReadable.addFlexibleButtonRow(configuration, this, 48,
-                openModelUriButton, openProjectorUriButton);
+        openControls.addView(openModelUriButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        openControls.addView(openProjectorUriButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        configuration.addView(openControls);
         // Model manager stays near the top so Unload/Load remain on-screen for Stage 1.
         modelManager = new ModelManagerPanel(this,
                 this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings);
-        configuration.addView(modelManager, new LinearLayout.LayoutParams(-1, -2));
+        configuration.addView(modelManager);
 
-        addAppearanceSettingsSection(configuration, ink, inkMuted);
-
-        TextView inferenceHeading = label(getString(R.string.inference_heading), 11, inkMuted);
+        TextView inferenceHeading = label("INFERENCE", 11, inkMuted);
         inferenceHeading.setTypeface(StillwaterUi.sansMedium(this));
         inferenceHeading.setLetterSpacing(0.12f);
         inferenceHeading.setPadding(0, dp(16), 0, dp(4));
         configuration.addView(inferenceHeading);
-        settingsContextField = settingInput(configuration, getString(R.string.context_label),
-                getString(R.string.context_hint),
+        settingsContextField = settingInput(configuration, "Context", "512–8192, step 256",
                 inferenceSettings.contextTokens, R.id.settings_context, 256, 512, 8192);
-        settingsThreadsField = settingInput(configuration, getString(R.string.decode_threads_label),
-                getString(R.string.decode_threads_hint),
+        settingsThreadsField = settingInput(configuration, "Decode threads",
+                "1–8, default from big/mid CPU cores",
                 inferenceSettings.threads, R.id.settings_threads, 1, 1, 8);
-        settingsTokensField = settingInput(configuration, getString(R.string.response_tokens_label),
-                getString(R.string.response_tokens_hint),
+        settingsTokensField = settingInput(configuration, "Response tokens", "1–2048, below context",
                 inferenceSettings.maxTokens, R.id.settings_tokens, 1, 1, 2048);
         settingsInlineError = label("", 13, StillwaterUi.DANGER);
-        StillwaterReadable.prepareWrappingLabel(settingsInlineError);
         configuration.addView(settingsInlineError);
 
         TextView benchHeading = label("BENCHMARK", 11, inkMuted);
@@ -513,7 +465,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         settingsBuildInfo.setPadding(0, dp(4), 0, dp(8));
         configuration.addView(settingsBuildInfo);
 
-        TextView searchHeading = label(getString(R.string.searxng_heading), 11, inkMuted);
+        TextView searchHeading = label("SEARXNG", 11, inkMuted);
         searchHeading.setTypeface(StillwaterUi.sansMedium(this));
         searchHeading.setLetterSpacing(0.12f);
         searchHeading.setPadding(0, dp(16), 0, dp(4));
@@ -532,50 +484,54 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         configuration.addView(searchEndpointField);
         searchEnabledBox = new CheckBox(this);
         searchEnabledBox.setId(R.id.search_enabled);
-        searchEnabledBox.setText(R.string.use_web_search);
+        searchEnabledBox.setText("Use web search for new questions");
         StillwaterUi.styleCheck(searchEnabledBox);
         searchEnabledBox.setChecked(searchEnabled);
         configuration.addView(searchEnabledBox);
-        searchButton = button(getString(R.string.web_search_off));
+        searchButton = button("Web search: off");
         searchButton.setId(R.id.web_search);
         StillwaterUi.quiet(searchButton);
         searchButton.setOnClickListener(v -> showSearchSettings());
-        StillwaterReadable.addFlexibleFullWidth(configuration, searchButton, 44);
+        configuration.addView(searchButton, new LinearLayout.LayoutParams(-1, dp(44)));
 
         addImagesSettingsSection(configuration, ink, inkMuted);
 
-        TextView backgroundHeading = label(getString(R.string.background_heading), 11, inkMuted);
+        TextView backgroundHeading = label("BACKGROUND", 11, inkMuted);
         backgroundHeading.setTypeface(StillwaterUi.sansMedium(this));
         backgroundHeading.setLetterSpacing(0.12f);
         backgroundHeading.setPadding(0, dp(16), 0, dp(4));
         configuration.addView(backgroundHeading);
         keepLoadedBox = new CheckBox(this);
         keepLoadedBox.setId(R.id.settings_keep_loaded);
-        keepLoadedBox.setText(R.string.keep_model_loaded);
+        keepLoadedBox.setText("Keep the model loaded when I leave");
         StillwaterUi.styleCheck(keepLoadedBox);
         keepLoadedBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
         configuration.addView(keepLoadedBox);
-        configuration.addView(label(getString(R.string.unload_after_idle), 16, ink));
-        idleOffButton = idleChoice(getString(R.string.idle_off), 0, R.id.settings_idle_off);
-        idle15Button = idleChoice(getString(R.string.idle_15), 15, R.id.settings_idle_15);
-        idle60Button = idleChoice(getString(R.string.idle_60), 60, R.id.settings_idle_60);
-        LinearLayout idleRow = StillwaterReadable.addFlexibleButtonRow(configuration, this, 44,
-                idleOffButton, idle15Button, idle60Button);
+        configuration.addView(label("Unload after idle", 16, ink));
+        LinearLayout idleRow = new LinearLayout(this);
         idleRow.setId(R.id.settings_idle_unload);
+        idleRow.setOrientation(LinearLayout.HORIZONTAL);
+        idleOffButton = idleChoice("Off", 0, R.id.settings_idle_off);
+        idle15Button = idleChoice("15 min", 15, R.id.settings_idle_15);
+        idle60Button = idleChoice("60 min", 60, R.id.settings_idle_60);
+        idleRow.addView(idleOffButton, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        idleRow.addView(idle15Button, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        idleRow.addView(idle60Button, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        configuration.addView(idleRow);
         lockPreviewBox = new CheckBox(this);
         lockPreviewBox.setId(R.id.settings_lock_preview);
-        lockPreviewBox.setText(R.string.lock_screen_preview);
+        lockPreviewBox.setText("Show the reply on the lock screen");
         StillwaterUi.styleCheck(lockPreviewBox);
         lockPreviewBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
         configuration.addView(lockPreviewBox);
         loopbackBox = new CheckBox(this);
         loopbackBox.setId(R.id.settings_loopback);
-        loopbackBox.setText(R.string.loopback_prompts);
+        loopbackBox.setText("Allow prompts from 127.0.0.1 (cannot approve tools)");
         StillwaterUi.styleCheck(loopbackBox);
         loopbackBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
         configuration.addView(loopbackBox);
 
-        TextView toolsHeading = label(getString(R.string.tools_heading), 11, inkMuted);
+        TextView toolsHeading = label("TOOLS", 11, inkMuted);
         toolsHeading.setTypeface(StillwaterUi.sansMedium(this));
         toolsHeading.setLetterSpacing(0.12f);
         toolsHeading.setPadding(0, dp(16), 0, dp(4));
@@ -589,93 +545,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             new RuntimePreferences(this).setNetworkToolsEnabled(checked);
         });
         configuration.addView(networkToolsBox);
-        TextView networkToolsHelp = label(getString(R.string.network_tools_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(networkToolsHelp);
-        configuration.addView(networkToolsHelp);
-
-        TextView speechHeading = label(getString(R.string.speech_heading), 11, inkMuted);
-        speechHeading.setTypeface(StillwaterUi.sansMedium(this));
-        speechHeading.setLetterSpacing(0.12f);
-        speechHeading.setPadding(0, dp(16), 0, dp(4));
-        configuration.addView(speechHeading);
-        tinyVocaTtsBox = new CheckBox(this);
-        tinyVocaTtsBox.setId(R.id.settings_tiny_voca_tts);
-        tinyVocaTtsBox.setText(R.string.tiny_voca_tts_label);
-        StillwaterUi.styleCheck(tinyVocaTtsBox);
-        tinyVocaTtsBox.setOnCheckedChangeListener((button, checked) -> {
-            if (bindingBackground) return;
-            new RuntimePreferences(this).setTinyVocaEnglishTtsEnabled(checked);
-        });
-        configuration.addView(tinyVocaTtsBox);
-        TextView tinyVocaHelp = label(getString(R.string.tiny_voca_tts_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(tinyVocaHelp);
-        configuration.addView(tinyVocaHelp);
-        tinyVocaStatus = label(getString(R.string.tiny_voca_status_missing), 13, ink);
-        tinyVocaStatus.setId(R.id.settings_tiny_voca_status);
-        configuration.addView(tinyVocaStatus);
-        tinyVocaDownloadButton = button(getString(R.string.tiny_voca_download));
-        tinyVocaDownloadButton.setId(R.id.settings_tiny_voca_download);
-        StillwaterUi.quiet(tinyVocaDownloadButton);
-        tinyVocaDownloadButton.setOnClickListener(v -> downloadTinyVocaPack());
-        configuration.addView(tinyVocaDownloadButton, new LinearLayout.LayoutParams(-1, dp(44)));
-        tinyVocaRemoveButton = button(getString(R.string.tiny_voca_remove));
-        tinyVocaRemoveButton.setId(R.id.settings_tiny_voca_remove);
-        StillwaterUi.quiet(tinyVocaRemoveButton);
-        tinyVocaRemoveButton.setOnClickListener(v -> {
-            new TinyVocaPackStore(this).clear();
-            paintTinyVocaPackStatus();
-        });
-        configuration.addView(tinyVocaRemoveButton, new LinearLayout.LayoutParams(-1, dp(44)));
-
+        configuration.addView(label(getString(R.string.network_tools_help), 12, inkMuted));
         defaultAssistantButton = button(getString(R.string.default_assistant_button));
         defaultAssistantButton.setId(R.id.settings_default_assistant);
         StillwaterUi.quiet(defaultAssistantButton);
         defaultAssistantButton.setOnClickListener(v -> openDefaultAssistantPicker());
-        StillwaterReadable.addFlexibleFullWidth(configuration, defaultAssistantButton, 48);
-        TextView defaultAssistantHelp = label(getString(R.string.default_assistant_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(defaultAssistantHelp);
-        configuration.addView(defaultAssistantHelp);
-
-        TextView crashHeading = label(getString(R.string.settings_crash_log_heading), 11, inkMuted);
-        crashHeading.setTypeface(StillwaterUi.sansMedium(this));
-        crashHeading.setLetterSpacing(0.12f);
-        crashHeading.setPadding(0, dp(16), 0, dp(4));
-        configuration.addView(crashHeading);
-        configuration.addView(label(getString(R.string.settings_crash_log_body), 14, inkMuted));
-        TextView crashLogText = label(getString(R.string.settings_crash_log_empty), 13, ink);
-        crashLogText.setId(R.id.settings_crash_log_text);
-        crashLogText.setPadding(0, dp(8), 0, dp(8));
-        configuration.addView(crashLogText);
-        Button viewCrashLog = button(getString(R.string.settings_crash_log_view));
-        viewCrashLog.setId(R.id.settings_crash_log_view);
-        StillwaterUi.quiet(viewCrashLog);
-        viewCrashLog.setOnClickListener(v -> {
-            String body = CrashLog.read(this);
-            crashLogText.setText(body.isEmpty() ? getString(R.string.settings_crash_log_empty) : body);
-        });
-        configuration.addView(viewCrashLog, new LinearLayout.LayoutParams(-1, dp(44)));
-        Button exportCrashLog = button(getString(R.string.settings_crash_log_export));
-        exportCrashLog.setId(R.id.settings_crash_log_export);
-        StillwaterUi.quiet(exportCrashLog);
-        exportCrashLog.setOnClickListener(v -> {
-            String body = CrashLog.read(this);
-            if (body.isEmpty()) body = getString(R.string.settings_crash_log_empty);
-            android.content.Intent share = new android.content.Intent(android.content.Intent.ACTION_SEND);
-            share.setType("text/plain");
-            share.putExtra(android.content.Intent.EXTRA_SUBJECT, "Hanami crash log");
-            share.putExtra(android.content.Intent.EXTRA_TEXT, body);
-            startActivity(android.content.Intent.createChooser(share, getString(R.string.settings_crash_log_export)));
-            status.setText(getString(R.string.settings_crash_log_exported));
-        });
-        configuration.addView(exportCrashLog, new LinearLayout.LayoutParams(-1, dp(44)));
-        Button clearCrashLog = button(getString(R.string.settings_crash_log_clear));
-        clearCrashLog.setId(R.id.settings_crash_log_clear);
-        StillwaterUi.quiet(clearCrashLog);
-        clearCrashLog.setOnClickListener(v -> {
-            CrashLog.clear(this);
-            crashLogText.setText(getString(R.string.settings_crash_log_empty));
-        });
-        configuration.addView(clearCrashLog, new LinearLayout.LayoutParams(-1, dp(44)));
+        configuration.addView(defaultAssistantButton, new LinearLayout.LayoutParams(-1, dp(48)));
+        configuration.addView(label(getString(R.string.default_assistant_help), 12, inkMuted));
 
         ScrollView configurationScroll = new ScrollView(this);
         configurationScroll.setId(R.id.model_configuration_scroll);
@@ -689,17 +565,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         settingsActions.setOrientation(LinearLayout.VERTICAL);
         settingsActions.setBackgroundColor(surface);
         settingsActions.setPadding(0, dp(6), 0, dp(6));
-        Button saveInference = button(getString(R.string.save));
+        Button saveInference = button("Save");
         saveInference.setId(R.id.settings_save);
         StillwaterUi.primary(saveInference);
         saveInference.setOnClickListener(v -> saveInlineInferenceSettings());
-        StillwaterReadable.addFlexibleFullWidth(settingsActions, saveInference, 52);
-        Button saveSearch = button(getString(R.string.save_search));
+        settingsActions.addView(saveInference, new LinearLayout.LayoutParams(-1, dp(52)));
+        Button saveSearch = button("Save search");
         saveSearch.setId(R.id.search_save);
         StillwaterUi.quiet(saveSearch);
         saveSearch.setOnClickListener(v -> saveInlineSearchSettings());
-        StillwaterReadable.prepareWrappingControl(saveSearch, dp(44));
-        settingsActions.addView(saveSearch, new LinearLayout.LayoutParams(-2, -2));
+        settingsActions.addView(saveSearch, new LinearLayout.LayoutParams(-2, dp(44)));
         settingsRoot.addView(settingsActions, new LinearLayout.LayoutParams(-1, -2));
 
         settingsHost = settingsRoot;
@@ -719,43 +594,26 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             chatPanel.clearImageAttachment();
             runtime.clearConversation();
             lastAssistantReply = "";
-        }, turnId -> {
-            if (busy || modelHandle() == 0L || !settingsLoaded) return;
-            runtime.noteSubmission("retry", inferenceSettings.maxTokens);
-            if (runtime.retryInterrupted(turnId)) {
-                session = runtime.session();
-                pendingImagePath = "";
-                pendingAudioPath = "";
-                chatPanel.clearImageAttachment();
-                busy = true;
-                updateControls();
-            }
         });
         chatRoot.addView(chatPanel, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        LinearLayout mediaHost = new LinearLayout(this);
-        mediaHost.setOrientation(LinearLayout.VERTICAL);
-        mediaHost.setBackgroundColor(surface);
-        mediaHost.setPadding(0, dp(2), 0, dp(2));
-        photoButton = mediaButton(getString(R.string.photo), R.drawable.ic_still_photo);
+        LinearLayout mediaControls = new LinearLayout(this);
+        mediaControls.setOrientation(LinearLayout.HORIZONTAL);
+        mediaControls.setBackgroundColor(surface);
+        mediaControls.setPadding(0, dp(2), 0, dp(2));
+        photoButton = mediaButton("Photo", R.drawable.ic_still_photo);
         photoButton.setId(R.id.chat_photo);
-        cameraButton = mediaButton(getString(R.string.camera), R.drawable.ic_still_camera);
+        cameraButton = mediaButton("Camera", R.drawable.ic_still_camera);
         cameraButton.setId(R.id.chat_camera);
-        recordButton = mediaButton(getString(R.string.voice_input), R.drawable.ic_still_mic);
+        recordButton = mediaButton("Voice input", R.drawable.ic_still_mic);
         recordButton.setId(R.id.voice_record);
-        speakButton = mediaButton(getString(R.string.speak_reply), R.drawable.ic_still_speak);
+        speakButton = mediaButton("Speak reply", R.drawable.ic_still_speak);
         speakButton.setId(R.id.voice_speak);
-        // Two rows of two when stacked (narrow / large fonts); one weighted row otherwise.
-        if (StillwaterReadable.shouldStack(this)) {
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, this, 46, photoButton, cameraButton);
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, this, 46,
-                    new float[]{1f, 1.2f}, recordButton, speakButton);
-        } else {
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, this, 46,
-                    new float[]{1f, 1f, 1.2f, 1.2f},
-                    photoButton, cameraButton, recordButton, speakButton);
-        }
-        chatRoot.addView(mediaHost);
+        mediaControls.addView(photoButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        mediaControls.addView(cameraButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        mediaControls.addView(recordButton, new LinearLayout.LayoutParams(0, dp(46), 1.2f));
+        mediaControls.addView(speakButton, new LinearLayout.LayoutParams(0, dp(46), 1.2f));
+        chatRoot.addView(mediaControls);
         chatShell = chatRoot;
         root.addView(chatShell, new LinearLayout.LayoutParams(-1, 0, 1f));
 
@@ -770,9 +628,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         cameraButton.setOnClickListener(v -> takePhoto());
         recordButton.setOnClickListener(v -> toggleRecording());
         speakButton.setOnClickListener(v -> toggleSpokenReply());
-        // Keep Settings open across interface-size recreate via EXTRA_OPEN_SETTINGS only.
-        // Do not persist settings_open in savedInstanceState — InferenceSettingsE2eTest and
-        // other recreate paths expect to return to chat after scenario.recreate().
+
         if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) {
             setSettingsOpen(true);
         }
@@ -781,11 +637,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private void setSettingsOpen(boolean open) {
         settingsOpen = open;
-        if (!open && getIntent() != null) {
-            // Interface-size recreate sets EXTRA_OPEN_SETTINGS; clear it when the user leaves
-            // Settings so a later scenario.recreate() returns to chat.
-            getIntent().removeExtra(EXTRA_OPEN_SETTINGS);
-        }
         if (settingsHost != null) settingsHost.setVisibility(open ? View.VISIBLE : View.GONE);
         if (chatShell != null) chatShell.setVisibility(open ? View.GONE : View.VISIBLE);
         if (settingsOpenButton != null) settingsOpenButton.setVisibility(open ? View.GONE : View.VISIBLE);
@@ -794,12 +645,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void updateControls() {
-        searchButton.setText(searchEnabled ? getString(R.string.web_search_on) : getString(R.string.web_search_off));
-        if (modePill != null) {
-            modePill.setText(searchEnabled
-                    ? getString(R.string.mode_web_search)
-                    : getString(R.string.mode_local));
-        }
+        searchButton.setText(searchEnabled ? "Web search: on" : "Web search: off");
+        if (modePill != null) modePill.setText(searchEnabled ? "Web search + local model" : "Mode · Local / offline");
         searchButton.setEnabled(!busy);
         modelButton.setEnabled(!busy);
         mmprojButton.setEnabled(!busy);
@@ -808,13 +655,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         photoButton.setEnabled(!busy);
         cameraButton.setEnabled(!busy);
         RecordingController.State capture = recordingController.state();
-        recordButton.setText(capture == RecordingController.State.STOPPING ? getString(R.string.finishing)
-                : recordingActive() ? getString(R.string.stop_recording) : getString(R.string.voice_input));
+        recordButton.setText(capture == RecordingController.State.STOPPING ? "Finishing..."
+                : recordingActive() ? "Stop recording" : "Voice input");
         recordButton.setEnabled(capture != RecordingController.State.STOPPING && (!busy || recordingActive()));
         PlaybackController.State playback = playbackController.state();
         speakButton.setText(playback == PlaybackController.State.STOPPING
-                ? getString(R.string.stopping_speech)
-                : (playbackActive() || speaking) ? getString(R.string.stop_speech) : getString(R.string.speak_reply));
+                ? "Stopping speech..."
+                : (playbackActive() || speaking) ? "Stop speech" : "Speak reply");
         speakButton.setEnabled((!busy || playbackActive() || speaking) && (playbackActive() || speaking
                 || (modelHandle() != 0L && settingsLoaded && !lastAssistantReply.isBlank())));
         chatPanel.updateControls(!busy && modelHandle() != 0L && settingsLoaded,
@@ -854,11 +701,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private Button mediaButton(String title, int icon) {
         Button button = button(title);
-        StillwaterReadable.setTextSizeSp(button, 12);
+        button.setTextSize(12);
         button.setCompoundDrawablesWithIntrinsicBounds(icon, 0, 0, 0);
         button.setCompoundDrawablePadding(dp(4));
         StillwaterUi.quiet(button);
-        StillwaterReadable.prepareWrappingControl(button, dp(46));
         return button;
     }
 
@@ -867,11 +713,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         TextView name = label(title, 15, StillwaterUi.INK);
         name.setTypeface(StillwaterUi.sansMedium(this));
         name.setPadding(0, dp(10), 0, 0);
-        StillwaterReadable.prepareWrappingLabel(name);
         form.addView(name);
         TextView hintView = label(hint, 12, StillwaterUi.MUTED);
         hintView.setTypeface(StillwaterUi.sans(this));
-        StillwaterReadable.prepareWrappingLabel(hintView);
         form.addView(hintView);
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -879,13 +723,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         Button minus = button("–");
         StillwaterUi.quiet(minus);
         minus.setTextColor(StillwaterUi.SOFT);
-        StillwaterReadable.prepareWrappingControl(minus, dp(40));
         EditText field = new EditText(this);
         field.setId(id);
         field.setSingleLine(true);
         field.setInputType(InputType.TYPE_CLASS_NUMBER);
         field.setText(Integer.toString(value));
-        StillwaterReadable.setTextSizeSp(field, 18);
+        field.setTextSize(18);
         field.setGravity(Gravity.CENTER);
         field.setBackgroundColor(Color.TRANSPARENT);
         field.setTypeface(StillwaterUi.sansMedium(this));
@@ -893,12 +736,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         Button plus = button("+");
         StillwaterUi.quiet(plus);
         plus.setTextColor(StillwaterUi.SOFT);
-        StillwaterReadable.prepareWrappingControl(plus, dp(40));
         minus.setOnClickListener(v -> nudge(field, -step, min, max));
         plus.setOnClickListener(v -> nudge(field, step, min, max));
-        row.addView(minus, new LinearLayout.LayoutParams(dp(40), LinearLayout.LayoutParams.WRAP_CONTENT));
+        row.addView(minus, new LinearLayout.LayoutParams(dp(40), dp(40)));
         row.addView(field, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        row.addView(plus, new LinearLayout.LayoutParams(dp(40), LinearLayout.LayoutParams.WRAP_CONTENT));
+        row.addView(plus, new LinearLayout.LayoutParams(dp(40), dp(40)));
         form.addView(row);
         return field;
     }
@@ -927,9 +769,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (networkToolsBox != null) {
             bindingBackground = true;
             networkToolsBox.setChecked(new RuntimePreferences(this).networkToolsEnabled());
-            RuntimePreferences prefs = new RuntimePreferences(this);
-            if (tinyVocaTtsBox != null) tinyVocaTtsBox.setChecked(prefs.tinyVocaEnglishTtsEnabled());
-            paintTinyVocaPackStatus();
             bindingBackground = false;
         }
     }
@@ -1059,117 +898,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (searchEndpointField != null) searchEndpointField.requestFocus();
     }
 
-    private void addAppearanceSettingsSection(LinearLayout configuration, int ink, int inkMuted) {
-        LinearLayout section = new LinearLayout(this);
-        section.setId(R.id.settings_appearance);
-        section.setOrientation(LinearLayout.VERTICAL);
-        TextView heading = label(getString(R.string.appearance_heading), 11, inkMuted);
-        heading.setTypeface(StillwaterUi.sansMedium(this));
-        heading.setLetterSpacing(0.12f);
-        heading.setPadding(0, dp(16), 0, dp(4));
-        section.addView(heading);
-        TextView title = label(getString(R.string.interface_size_label), 14, ink);
-        StillwaterReadable.prepareWrappingLabel(title);
-        section.addView(title);
-        TextView help = label(getString(R.string.interface_size_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(help);
-        section.addView(help);
-
-        interfaceCompactButton = interfacePreset(getString(R.string.interface_size_compact),
-                InterfaceSize.COMPACT, R.id.settings_interface_compact);
-        interfaceDefaultButton = interfacePreset(getString(R.string.interface_size_default),
-                InterfaceSize.DEFAULT, R.id.settings_interface_default);
-        interfaceLargeButton = interfacePreset(getString(R.string.interface_size_large),
-                InterfaceSize.LARGE, R.id.settings_interface_large);
-        LinearLayout presets = StillwaterReadable.addFlexibleButtonRow(section, this, 44,
-                interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton);
-        presets.setId(R.id.settings_interface_size);
-
-        interfaceSizeValue = label("", 12, inkMuted);
-        interfaceSizeValue.setId(R.id.settings_interface_value);
-        StillwaterReadable.prepareWrappingLabel(interfaceSizeValue);
-        interfaceSizeValue.setPadding(0, dp(8), 0, dp(2));
-        section.addView(interfaceSizeValue);
-
-        interfaceSizeSlider = new SeekBar(this);
-        interfaceSizeSlider.setId(R.id.settings_interface_slider);
-        interfaceSizeSlider.setMax(50); // 80..130 in 1% steps
-        interfaceSizeSlider.setMinimumHeight(InterfaceSize.minTouchPx(this));
-        interfaceSizeSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                float scale = InterfaceSize.fromPercent(80 + progress);
-                interfaceSizeValue.setText(getString(R.string.interface_size_percent, InterfaceSize.percent(scale)));
-                if (!fromUser || bindingInterfaceSize) return;
-                highlightInterfaceSize(scale);
-                // TalkBack / D-pad change progress without start/stop tracking. Debounce those
-                // writes so finger drags still apply only on stop.
-                if (!interfaceSliderTracking) {
-                    pendingInterfaceSliderScale = scale;
-                    mainHandler.removeCallbacks(applyInterfaceSlider);
-                    mainHandler.postDelayed(applyInterfaceSlider, 350);
-                }
-            }
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {
-                interfaceSliderTracking = true;
-                mainHandler.removeCallbacks(applyInterfaceSlider);
-            }
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {
-                interfaceSliderTracking = false;
-                if (bindingInterfaceSize) return;
-                applyInterfaceSize(InterfaceSize.fromPercent(80 + seekBar.getProgress()));
-            }
-        });
-        section.addView(interfaceSizeSlider, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        configuration.addView(section);
-        syncInterfaceSizeControls();
-    }
-
-    private Button interfacePreset(String title, float scale, int id) {
-        Button button = button(title);
-        button.setId(id);
-        StillwaterUi.quiet(button);
-        button.setOnClickListener(v -> {
-            if (bindingInterfaceSize) return;
-            applyInterfaceSize(scale);
-        });
-        return button;
-    }
-
-    private void applyInterfaceSize(float scale) {
-        float next = InterfaceSize.clamp(scale);
-        if (Math.abs(next - InterfaceSize.read(this)) < 0.001f) {
-            syncInterfaceSizeControls();
-            return;
-        }
-        InterfaceSize.write(this, next);
-        if (getIntent() != null) getIntent().putExtra(EXTRA_OPEN_SETTINGS, true);
-        settingsOpen = true;
-        recreate();
-    }
-
-    private void syncInterfaceSizeControls() {
-        if (interfaceSizeSlider == null) return;
-        bindingInterfaceSize = true;
-        float scale = InterfaceSize.read(this);
-        interfaceSizeSlider.setProgress(InterfaceSize.percent(scale) - 80);
-        interfaceSizeValue.setText(getString(R.string.interface_size_percent, InterfaceSize.percent(scale)));
-        highlightInterfaceSize(scale);
-        bindingInterfaceSize = false;
-    }
-
-    private void highlightInterfaceSize(float scale) {
-        styleInterfacePreset(interfaceCompactButton, InterfaceSize.isCompact(scale));
-        styleInterfacePreset(interfaceDefaultButton, InterfaceSize.isDefault(scale));
-        styleInterfacePreset(interfaceLargeButton, InterfaceSize.isLarge(scale));
-    }
-
-    private void styleInterfacePreset(Button button, boolean selected) {
-        if (button == null) return;
-        if (selected) StillwaterUi.primary(button);
-        else StillwaterUi.quiet(button);
-    }
-
     private void addImagesSettingsSection(LinearLayout configuration, int ink, int inkMuted) {
         LinearLayout section = new LinearLayout(this);
         section.setId(R.id.settings_images);
@@ -1197,17 +925,25 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         section.addView(maxTitle);
         section.addView(label(getString(R.string.settings_image_max_help), 12, inkMuted));
 
+        LinearLayout maxRow1 = new LinearLayout(this);
+        maxRow1.setId(R.id.settings_image_max_size);
+        maxRow1.setOrientation(LinearLayout.HORIZONTAL);
         imageMax384Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_384, R.id.settings_image_max_384);
         imageMax512Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_512, R.id.settings_image_max_512);
         imageMax768Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_768, R.id.settings_image_max_768);
-        LinearLayout maxRow1 = StillwaterReadable.addFlexibleButtonRow(section, this, 44,
-                imageMax384Button, imageMax512Button, imageMax768Button);
-        maxRow1.setId(R.id.settings_image_max_size);
+        maxRow1.addView(imageMax384Button, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        maxRow1.addView(imageMax512Button, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        maxRow1.addView(imageMax768Button, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        section.addView(maxRow1);
 
+        LinearLayout maxRow2 = new LinearLayout(this);
+        maxRow2.setOrientation(LinearLayout.HORIZONTAL);
         imageMax1024Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_1024, R.id.settings_image_max_1024);
         imageMaxOriginalButton = imageMaxChoice(ImageSettings.MaxSide.ORIGINAL, R.id.settings_image_max_original);
-        StillwaterReadable.addFlexibleButtonRow(section, this, 44,
-                imageMax1024Button, imageMaxOriginalButton);
+        maxRow2.addView(imageMax1024Button, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        maxRow2.addView(imageMaxOriginalButton, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        maxRow2.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
+        section.addView(maxRow2);
 
         imageCropBox = new CheckBox(this);
         imageCropBox.setId(R.id.settings_image_crop);
@@ -1743,41 +1479,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         return value != null && value.startsWith("content:");
     }
 
-    private static boolean shouldDeferNewChat(Intent intent) {
-        return intent != null && (intent.getBooleanExtra(EXTRA_REQUEST_NEW_CHAT, false)
-                || intent.getBooleanExtra(EXTRA_FRESH_CHAT, false));
-    }
-
-    private void handlePendingNewChatRequests(Intent intent) {
-        if (intent == null) return;
-        if (intent.getBooleanExtra(EXTRA_REQUEST_NEW_CHAT, false)) {
-            requestNewChat(false);
-            intent.removeExtra(EXTRA_REQUEST_NEW_CHAT);
-            return;
-        }
-        if (intent.getBooleanExtra(EXTRA_FRESH_CHAT, false)) {
-            requestNewChat(true);
-            intent.removeExtra(EXTRA_FRESH_CHAT);
-        }
-    }
-
-    private void requestNewChat(boolean fromSystemAssist) {
-        if (runtime.isGenerating()) {
-            new AlertDialog.Builder(this)
-                    .setTitle(R.string.reply_still_running_title)
-                    .setMessage(R.string.reply_still_running_message)
-                    .setPositiveButton(R.string.stop_and_start_new, (dialog, which) -> {
-                        runtime.stopTurn();
-                        startFreshChat(fromSystemAssist);
-                    })
-                    .setNegativeButton(R.string.keep_this_reply, null)
-                    .show();
-            return;
-        }
-        startFreshChat(fromSystemAssist);
-    }
-
-    private void startFreshChat(boolean fromSystemAssist) {
+    private void startFreshChat() {
         HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
         HistoryMediaCleanup.deleteAttachment(this, pendingAudioPath);
         pendingImagePath = "";
@@ -1787,15 +1489,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (chatPanel != null) chatPanel.clearImageAttachment();
         String id = java.util.UUID.randomUUID().toString();
         historyConversationId = id;
-        historyTitle = getString(R.string.new_conversation_title);
+        historyTitle = "New conversation";
         if (brandTitle != null) brandTitle.setText(historyTitle);
         runtime.setConversation(id, historyTitle);
         runtime.clearConversation();
         setSettingsOpen(false);
-        status.setText(fromSystemAssist
-                ? getString(R.string.fresh_chat_from_assist)
-                : getString(R.string.new_chat_ready));
-        updateControls();
+        status.setText("Fresh chat from the system assistant.");
     }
 
     private void openDefaultAssistantPicker() {
@@ -1873,48 +1572,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         lockPreviewBox.setChecked(prefs.lockPreview());
         if (loopbackBox != null) loopbackBox.setChecked(prefs.loopbackEnabled());
         if (networkToolsBox != null) networkToolsBox.setChecked(prefs.networkToolsEnabled());
-        if (tinyVocaTtsBox != null) tinyVocaTtsBox.setChecked(prefs.tinyVocaEnglishTtsEnabled());
-        paintTinyVocaPackStatus();
         paintIdle(prefs.idleMinutes());
         bindingBackground = false;
-    }
-
-    private void paintTinyVocaPackStatus() {
-        if (tinyVocaStatus == null) return;
-        boolean ready = new TinyVocaPackStore(this).isReady();
-        tinyVocaStatus.setText(ready ? getString(R.string.tiny_voca_status_ready)
-                : getString(R.string.tiny_voca_status_missing));
-        if (tinyVocaDownloadButton != null) tinyVocaDownloadButton.setEnabled(!ready);
-        if (tinyVocaRemoveButton != null) tinyVocaRemoveButton.setEnabled(ready);
-    }
-
-    private void downloadTinyVocaPack() {
-        if (tinyVocaDownloadButton != null) tinyVocaDownloadButton.setEnabled(false);
-        new Thread(() -> new TinyVocaPackDownloader(new TinyVocaPackStore(this)).download(
-                new TinyVocaPackDownloader.Progress() {
-                    @Override public void onFile(String path, long written, long total) {
-                        runOnUiThread(() -> {
-                            if (tinyVocaStatus != null) {
-                                tinyVocaStatus.setText(getString(R.string.tiny_voca_downloading, path));
-                            }
-                        });
-                    }
-                    @Override public void onDone() {
-                        TinyVocaPackStore pack = new TinyVocaPackStore(MainActivity.this);
-                        new Thread(() -> TinyVocaPhonemizerBridge.ensureLoaded(pack.phonemizerDir()),
-                                "tiny-voca-phonemizer-warmup").start();
-                        runOnUiThread(() -> {
-                            paintTinyVocaPackStatus();
-                            if (status != null) status.setText(getString(R.string.tiny_voca_status_ready));
-                        });
-                    }
-                    @Override public void onError(String message) {
-                        runOnUiThread(() -> {
-                            paintTinyVocaPackStatus();
-                            if (status != null) status.setText(message);
-                        });
-                    }
-                }), "tiny-voca-download").start();
     }
 
     private boolean bindingBackground;
@@ -2036,7 +1695,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         adoptConversation(intent);
         if (pendingSwitchId != null) confirmSwitchConversation();
         if (intent != null && intent.getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) setSettingsOpen(true);
-        handlePendingNewChatRequests(intent);
+        if (intent != null && intent.getBooleanExtra(EXTRA_FRESH_CHAT, false)) {
+            startFreshChat();
+            intent.removeExtra(EXTRA_FRESH_CHAT);
+        }
         applyDraft(intent);
     }
 

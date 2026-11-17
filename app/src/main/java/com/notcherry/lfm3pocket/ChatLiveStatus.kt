@@ -50,15 +50,8 @@ internal fun ChatLiveStatus(mode: String, status: String, packageName: String) {
                 color = atlas.accent,
                 strokeWidth = 2.dp,
             )
-            Text(
-                announcedStatus,
-                style = MaterialTheme.typography.bodyMedium,
-                color = atlas.ink,
-                modifier = Modifier
-                    .padding(start = 8.dp)
-                    .weight(1f, fill = false)
-                    .testTag(tag("chat_live_status")),
-            )
+            Text(announcedStatus, style = MaterialTheme.typography.bodyMedium, color = atlas.ink,
+                modifier = Modifier.padding(start = 8.dp).testTag(tag("chat_live_status")))
         }
     }
 }

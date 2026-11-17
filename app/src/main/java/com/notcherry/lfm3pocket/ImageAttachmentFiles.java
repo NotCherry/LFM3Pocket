@@ -58,41 +58,4 @@ final class ImageAttachmentFiles {
         preview.inSampleSize = sampleSize;
         return BitmapFactory.decodeFile(file.getAbsolutePath(), preview);
     }
-
-    /**
-     * Crash-safety probe: decode a tightly bounded bitmap before native mtmd sees the file.
-     * Returns a user-facing error string, or null when the probe succeeds.
-     * Does not write a downscaled inference copy (separate default-downscale work owns that).
-     */
-    static String boundedDecodeError(File file) {
-        if (file == null || !file.isFile()) return "Selected file is not a readable image.";
-        BitmapFactory.Options bounds = new BitmapFactory.Options();
-        bounds.inJustDecodeBounds = true;
-        try {
-            BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
-        } catch (Throwable error) {
-            return "Could not read this image safely on this phone.";
-        }
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0)
-            return "Selected file is not a readable image.";
-        int sampleSize = 1;
-        while (bounds.outWidth / sampleSize > MAX_PREVIEW_DIMENSION
-                || bounds.outHeight / sampleSize > MAX_PREVIEW_DIMENSION) {
-            sampleSize *= 2;
-        }
-        BitmapFactory.Options probe = new BitmapFactory.Options();
-        probe.inSampleSize = sampleSize;
-        Bitmap bitmap = null;
-        try {
-            bitmap = BitmapFactory.decodeFile(file.getAbsolutePath(), probe);
-            if (bitmap == null) return "Could not decode this image for on-device vision.";
-            return null;
-        } catch (OutOfMemoryError error) {
-            return "This image is too large to decode safely on this phone. Try a smaller photo.";
-        } catch (Throwable error) {
-            return "Could not decode this image for on-device vision.";
-        } finally {
-            if (bitmap != null) bitmap.recycle();
-        }
-    }
 }

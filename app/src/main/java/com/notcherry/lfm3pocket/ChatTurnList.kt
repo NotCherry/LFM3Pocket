@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.rememberScrollState
@@ -39,7 +39,6 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
@@ -58,7 +57,6 @@ fun ChatTurnList(
     assistantMessageTag: String? = null,
     autoScroll: Boolean = true,
     onSuggest: (String) -> Unit = {},
-    onRetryInterrupted: (String) -> Unit = {},
 ) {
     val scroll = rememberScrollState()
     LaunchedEffect(turns.size, turns.lastOrNull()?.text, turns.lastOrNull()?.streaming) {
@@ -78,13 +76,12 @@ fun ChatTurnList(
                     packageName = packageName,
                     userMessageTag = userMessageTag,
                     assistantMessageTag = assistantMessageTag,
-                    onRetryInterrupted = onRetryInterrupted,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                 )
                 if (index < turns.lastIndex) {
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(4.dp))
                 }
             }
         }
@@ -98,7 +95,6 @@ fun ChatTurn(
     modifier: Modifier = Modifier,
     userMessageTag: String? = null,
     assistantMessageTag: String? = null,
-    onRetryInterrupted: (String) -> Unit = {},
 ) {
     val atlas = MaterialTheme.atlasColors
     val type = MaterialTheme.atlasTypography
@@ -111,7 +107,7 @@ fun ChatTurn(
     }
     Column(modifier) {
         Text(roleLabel, style = type.label, color = atlas.inkMuted)
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
         if (isUser) {
             SelectionContainer {
                 Text(
@@ -140,7 +136,7 @@ fun ChatTurn(
                         reasoning = turn.reasoning!!,
                         modifier = Modifier
                             .padding(end = 10.dp)
-                            .widthIn(min = 96.dp, max = 168.dp),
+                            .width(120.dp),
                     )
                 }
                 Column(Modifier.weight(1f)) {
@@ -161,19 +157,6 @@ fun ChatTurn(
                     if (!turn.streaming && turn.sources.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         SourceLinks(turn.sources)
-                    }
-                    if (turn.interrupted && !turn.turnId.isNullOrBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        val retryLabel = stringResource(R.string.chat_interrupted_retry)
-                        Text(
-                            text = retryLabel,
-                            style = type.label,
-                            color = atlas.accent,
-                            modifier = Modifier
-                                .clickable { onRetryInterrupted(turn.turnId!!) }
-                                .testTag("$packageName:id/chat_retry_interrupted")
-                                .semantics { contentDescription = retryLabel },
-                        )
                     }
                 }
             }

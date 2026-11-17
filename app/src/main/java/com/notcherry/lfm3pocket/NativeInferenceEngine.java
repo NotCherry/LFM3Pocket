@@ -41,18 +41,9 @@ public final class NativeInferenceEngine implements InferenceEngine {
     @Override public String generateWithMedia(long handle, String prompt, String[] mediaPaths,
                                               int maxTokens, TokenSink sink) {
         InferenceSettings current = settings;
-        try {
-            return NativeBridge.generateWithMediaAndSettings(handle, prompt, mediaPaths,
-                    new InferenceSettings(current.contextTokens, current.threads,
-                            Math.min(maxTokens, current.maxTokens)), sink::onToken);
-        } catch (OutOfMemoryError error) {
-            return "Could not process this image on this phone (out of memory). Try a smaller photo.";
-        } catch (Throwable error) {
-            String message = error.getMessage();
-            return message == null || message.isBlank()
-                    ? "Image or media processing failed."
-                    : "Image or media processing failed: " + message;
-        }
+        return NativeBridge.generateWithMediaAndSettings(handle, prompt, mediaPaths,
+                new InferenceSettings(current.contextTokens, current.threads,
+                        Math.min(maxTokens, current.maxTokens)), sink::onToken);
     }
 
     @Override public String generateSpeech(long handle, String prompt, SpeechOptions options, AudioSink sink) {

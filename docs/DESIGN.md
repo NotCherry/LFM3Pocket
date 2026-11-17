@@ -68,48 +68,42 @@ Prefer a purposeful pairing already shippable on Android without new font APK bl
 
 | Role | Spec | Use |
 | --- | --- | --- |
-| `display` | Serif, regular, ~56–64sp, tight tracking | Home brand / hero product name |
-| `headline` | Serif, regular, ~24–28sp | Screen titles (Settings, History) |
-| `title` | Serif, regular, ~16–18sp | Section titles, turn role labels if shown |
-| `body` | Sans, regular, **~14sp**, line height ~1.4 | Assistant and user message bodies (compact default) |
-| `bodySmall` | Sans, regular, ~12sp | Captions, timestamps, rail collapsed hint |
-| `label` | Sans, semi-bold, ~10–12sp, slight letter-spacing | Pills, buttons, settings row labels |
-| `mono` | Monospace (e.g. `FontFamily.Monospace`), ~12sp | Tool names, JSON args, paths, fenced code, risk codes |
+| `display` | Serif, regular, ~56–72sp, tight tracking | Home brand / hero product name |
+| `headline` | Sans, semi-bold, ~22–28sp | Screen titles (Settings, History) |
+| `title` | Sans, medium, ~18–20sp | Section titles, turn role labels if shown |
+| `body` | Sans, regular, ~16sp, line height ~1.35–1.45 | Assistant and user message bodies |
+| `bodySmall` | Sans, regular, ~13–14sp | Captions, timestamps, rail collapsed hint |
+| `label` | Sans, medium, ~12–13sp, slight letter-spacing | Pills, buttons, settings row labels |
+| `mono` | Monospace (e.g. `FontFamily.Monospace`), ~13–14sp | Tool names, JSON args, paths, fenced code, risk codes |
 
 **Rules**
 - User vs assistant: same `body` size; distinguish by subtle role label or left gutter — **not** by large colored bubbles.
 - Markdown headings map into `title` / `headline` scale; do not introduce a third decorative display face in chat.
 - Avoid default “AI purple” or Inter-as-brand; system sans is acceptable if roles above are consistent.
-- Defaults are intentionally dense (chat-assistant density). Users can raise or lower size via **Settings → Appearance → Interface size**.
 
 ---
 
 ## 4. Spacing and layout scale
 
-Base unit **4dp**. Prefer this compact scale (`AtlasSpacing`):
+Base unit **4dp**. Prefer this scale:
 
 | Token | dp |
 | --- | --- |
-| `space1` | 4 |
 | `space2` | 8 |
-| `space3` | 10 |
-| `space4` | 12 |
-| `space5` | 16 |
-| `space6` | 20 |
-| `space8` | 28 |
-| `space10` | 36 |
+| `space3` | 12 |
+| `space4` | 16 |
+| `space5` | 20 |
+| `space6` | 24 |
+| `space8` | 32 |
+| `space10` | 40 |
 | `space12` | 48 |
 
 **Layout**
-- Screen horizontal padding: ~12dp phone (`AtlasSpacing.screen`); keep content readable, not edge-glued.
-- Turn vertical padding: ~7dp; tighter than the first Atlas pass.
-- Composer inner padding: ~8dp; smaller top bar / chrome icons (~36dp visual) with a **48dp** touch floor.
+- Screen horizontal padding: `space4` (16) phone; keep content readable, not edge-glued.
+- Turn vertical gap: `space4`–`space5`.
+- Composer inner padding: `space3`–`space4`.
 - Reasoning rail width (expanded): ~36–42% of chat width on phone landscape / large; on narrow portrait, rail becomes a top-of-turn collapsible strip still **leading** (start side) aligned.
 - Corner radius: **0–2dp** for inputs, buttons, and tool panels. Avoid pill chrome except tiny status dots.
-
-### 4.1 Interface size (Appearance)
-
-Persisted multiplier **80%–130%** (`InterfaceSize`, SharedPreferences key `interface_scale`). Presets: **Compact** 85%, **Default** 100%, **Large** 115%. Applied app-wide by scaling `densityDpi` in `attachBaseContext` so typography **and** spacing move together **on top of** the system font scale. Compose keeps `minimumInteractiveComponentSize` at a system **48dp** finger target so compact visuals do not shrink touch targets.
 
 ---
 
@@ -178,8 +172,7 @@ Atlas prefers **borders over shadows**.
 - Group on `surface` with optional section `headline`.
 - Row: `label` + control (stepper, switch, field) aligned; `mono` for numeric/endpoint values where appropriate.
 - Keep IDs: `settings_context`, `settings_threads`, `settings_tokens`, `search_*`, `import_*`, `settings_images`, `settings_image_prepare`, `settings_image_max_size`, `settings_image_max_384`, `settings_image_max_512`, `settings_image_max_768`, `settings_image_max_1024`, `settings_image_max_original`, `settings_image_crop`, `settings_image_quality`.
-- **Images** group holds the vision-preparation controls (see §13). Keep that group on the Settings host, not in the first chat viewport. Persist it with the other private settings.
-- **Speech (optional tiny-voca):** Section `SPEECH` / `MOWA` with English-only checkbox (`settings_tiny_voca_tts`), download/remove pack actions (`settings_tiny_voca_download`, `settings_tiny_voca_remove`), and status line (`settings_tiny_voca_status`). Help text must state English-only and fallback to system TTS (ADR 0010).
+- **Images** group holds the vision-preparation controls (see §12). Keep that group on the Settings host, not in the first chat viewport. Persist it with the other private settings.
 
 ### 6.8 History list + reader (U12)
 
@@ -253,53 +246,32 @@ Do **not**:
 
 ---
 
-## 11. Accessibility, font scale, and i18n
-
-Stillwater chrome must stay readable when the user enlarges text or display size, and when copy is longer (Polish). Prefer wrapping and flexible heights over shrinking text.
-
-| Rule | Detail |
-| --- | --- |
-| Text size unit | Use **sp** for readable copy (View `setTextSize` / Compose `.sp`). Never size body or labels in **dp**. |
-| Control height | Prefer `WRAP_CONTENT` with a **`minHeight`** floor. Do not hard-code fixed `dp` heights on buttons that can wrap. |
-| Side-by-side rows | Keep import / open / idle / media rows **horizontal** on typical phone widths (~360–411dp) at default font. Stack to a column when `fontScale ≥ 1.3` or width &lt; **320dp** (`StillwaterReadable`). |
-| Truncation | Do not ellipsize chrome labels (buttons, section titles). Dynamic previews (history snippets, long paths) may use bounded `maxLines` + ellipsis. |
-| Locales | Ship **English** (`values/`) and **Polish** (`values-pl/`) for user-visible chrome. Polish strings are often longer — layouts must wrap, not clip. Brand `app_name` stays `translatable="false"`. |
-| Interface size | Compact / Default / Large (or 80–130% slider) must not reintroduce clipping. Keep wrapping + `minHeight` (`StillwaterReadable`). |
-| New Activity | Every Activity **must** call `InterfaceSize.wrap` from `attachBaseContext` and `InterfaceSize.recreateIfChanged` from `onResume` with the scale captured at attach (see [`docs/adr/0002-interface-size-density.md`](adr/0002-interface-size-density.md)). |
-| Touch targets | Visual chrome may be denser; interactive hit areas stay ≥ **48dp** (Compose `minimumInteractiveComponentSize`, View `InterfaceSize.minTouchPx` using system density). |
-| Tests | Emulator coverage: fontScale `0.85`–`2.0`, EN/PL, density variants, **and each interface-size preset** (`TextReadableAtScaleE2eTest`, `ComposeTextReadableTest`). Assert text is fully visible after layout, not only `assertIsDisplayed`. |
-
----
-
-## 12. Implementation checklist (for PR authors)
+## 11. Implementation checklist (for PR authors)
 
 - [ ] Colors come from Atlas tokens / `PocketTheme`, not one-off hex in composables (except this doc’s source of truth).
 - [ ] New interactive chrome either reuses a recipe above or extends DESIGN.md in the same PR.
 - [ ] E2E IDs preserved; flat transcript contract intact.
 - [ ] UT row(s) noted in PR; matrix updated when evidence lands.
 - [ ] Screenshots (if any) filed under device evidence for U16 — they do not flip AT rows.
-- [ ] Font-scale / narrow-width / PL chrome still readable (section 11).
 
 ---
 
-## 13. Vision image input
+## 12. Vision image input
 
-Gallery picks, camera captures, and share-sheet images pass through one local preparation stage before the vision projector. The decision is [ADR-0005](adr/0005-prepare-vision-images-before-projector.md).
+Gallery picks, camera captures, and share-sheet images pass through one local preparation stage before the vision projector. The decision is [ADR-0002](adr/0002-prepare-vision-images-before-projector.md).
 
 | Point | Behavior |
 | --- | --- |
 | Entry | The still is brought into private app storage. The gallery item, camera roll, and the sharing app's file are not modified. |
 | Preparation | On by default. Longest-side cap, default 512 (the projector's nominal vision size); presets 384, 512, 768, 1024, and Original. Aspect ratio kept. Optional square crop stays off, because this projector is a native-resolution encoder. A prepared copy bakes orientation into a private JPEG, and that copy is what the projector sees. |
-| Pass-through | Preparation off, or Original with no crop and an upright photo, sends the private working copy unchanged. Orientation is not applied, and the source container is kept. HEIC and WebP on that path are not readable by the Android vision decoder; a prepared JPEG is. See ADR-0005. |
+| Pass-through | Preparation off, or Original with no crop and an upright photo, sends the private working copy unchanged. Orientation is not applied, and the source container is kept. HEIC and WebP on that path are not readable by the Android vision decoder; a prepared JPEG is. See ADR-0002. |
 | Retention | Prepared copies are temporary private cache and are removed by the existing history media cleanup. |
 | Settings → Images | On/off, cap, square crop, and JPEG quality (40–95, default 85) persist in private preferences, with the other settings. |
 | Share sheet | The app is a share target for images. A shared image opens chat and takes the same preparation path. It does not approve tools. Preparation and inference stay on the device. |
 
 The attachment chip (6.6) is the only chat-surface hint that a still was prepared or kept original.
 
----
-
-## 14. References
+## 13. References
 
 | Doc / issue | Role |
 | --- | --- |
@@ -309,4 +281,4 @@ The attachment chip (6.6) is the only chat-surface hint that a still was prepare
 | [`UI_ACCEPTANCE_MATRIX.md`](UI_ACCEPTANCE_MATRIX.md) | UT-01..UT-08 |
 | [`UI_E2E_CONTRACT.md`](UI_E2E_CONTRACT.md) | Flat transcript + ID contract |
 | [`ACCEPTANCE_MATRIX.md`](ACCEPTANCE_MATRIX.md) | Stage 1 AT-01..AT-09 (unchanged authority for product capability) |
-| [`adr/`](adr/README.md) | Architecture decision records. [ADR-0005](adr/0005-prepare-vision-images-before-projector.md) is vision image preparation. |
+| [`adr/`](adr/README.md) | Architecture decision records. [ADR-0002](adr/0002-prepare-vision-images-before-projector.md) is vision image preparation. |
