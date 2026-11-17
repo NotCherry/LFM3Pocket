@@ -253,6 +253,11 @@ bool generate_ngram_mod(
 
     bool has_eos = false;
     generated.clear();
+    std::vector<llama_token> session_trace;
+    if (prompt_tokens.size() > 1) {
+        session_trace.assign(prompt_tokens.begin(), prompt_tokens.end() - 1);
+    }
+    bool prompt_tail_in_session = prompt_tokens.size() <= 1;
     llama_memory_t mem = llama_get_memory(ctx);
 
     auto trim_kv_tail = [&](int from_pos) {
@@ -261,24 +266,10 @@ bool generate_ngram_mod(
 
     auto finish_session = [&]() {
         if (!session_tokens) return;
+        *session_tokens = session_trace;
         const size_t kv = kv_token_count(ctx, seq_id);
-        // KV holds prompt[0..P-2] after tail trim, then id_last + generation through speculation.
-        // Token id list for reuse is prompt[P-1] re-established on the first spec batch, then outputs.
-        session_tokens->clear();
-        if (prompt_tokens.size() > 1) {
-            session_tokens->insert(session_tokens->end(), prompt_tokens.begin(),
-                                   prompt_tokens.end() - 1);
-        }
-        session_tokens->insert(session_tokens->end(), generated.begin(), generated.end());
         if (session_tokens->size() != kv) {
-            // Full prompt + generated (when the tail token remains in KV as a single slot).
-            std::vector<llama_token> full = prompt_tokens;
-            full.insert(full.end(), generated.begin(), generated.end());
-            if (full.size() == kv) {
-                *session_tokens = std::move(full);
-            } else {
-                error = "KV cache does not match session token list after prompt lookup";
-            }
+            error = "KV cache does not match session token list after prompt lookup";
         }
     };
 
@@ -374,9 +365,14 @@ bool generate_ngram_mod(
                 n_past = batch_id_last_pos + i;
                 break;
             }
+            if (!prompt_tail_in_session) {
+                session_trace.push_back(prompt_tokens.back());
+                prompt_tail_in_session = true;
+            }
             prompt_tgt.push_back(id_last);
             id_last = t;
             generated.push_back(t);
+            session_trace.push_back(t);
             n_output += 1;
 
             if (delivery && delivery->env) {
