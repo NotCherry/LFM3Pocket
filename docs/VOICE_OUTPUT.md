@@ -1,6 +1,8 @@
 # Local speech generation
 
-Spoken responses use the loaded LFM3-Omni GGUF and matching multimodal projector through llama.cpp `mtmd` audio generation (`mtmd_helper_gen_audio_*`). There is no cloud TTS and no Android `TextToSpeech` fallback.
+By default, spoken responses use the loaded LFM3-Omni GGUF and matching multimodal projector through llama.cpp `mtmd` audio generation (`mtmd_helper_gen_audio_*`). There is no cloud TTS.
+
+When **Settings → Speech → Use tiny-voca for English replies** is on, Hanami may speak English via the optional on-device [tiny-voca](https://github.com/n4ze3m/tiny-voca) ONNX pack (see `docs/adr/0010-tiny-voca-english-tts.md`). Polish and other languages, or a missing pack, use Android **TextToSpeech** instead of Omni for that Speak action. The global toggle is off by default.
 
 The app builds an LFM chat prompt (`SpeechPrompt.tts`) that asks the model to perform TTS with a language and voice. JNI streams PCM16 little-endian mono frames through `InferenceEngine.AudioSink` after announcing sample rate (typically 24 kHz for LFM3). Cancellation uses the same model-scoped stop flag as text generation. Models or projectors without `gen_audio` fail with a clear `"Speech generation is not available on this model"` status. The compact Stories15M smoke fixture has no speech generator.
 

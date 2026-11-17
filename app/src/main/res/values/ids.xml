@@ -59,6 +59,10 @@
     <item name="settings_crash_log_text" type="id"/>
     <item name="chat_retry_interrupted" type="id"/>
     <item name="settings_network_tools" type="id"/>
+    <item name="settings_tiny_voca_tts" type="id"/>
+    <item name="settings_tiny_voca_download" type="id"/>
+    <item name="settings_tiny_voca_remove" type="id"/>
+    <item name="settings_tiny_voca_status" type="id"/>
     <item name="settings_default_assistant" type="id"/>
     <item name="open_model_uri" type="id"/>
     <item name="open_projector_uri" type="id"/>

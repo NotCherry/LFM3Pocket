@@ -84,6 +84,9 @@ public final class ModelRuntime {
     private final AtomicInteger pendingTokens = new AtomicInteger();
     private final AtomicBoolean tokenFlushPosted = new AtomicBoolean();
     private final LoopbackAgentApi loopback;
+    private final SpeechReplyRouter speechRouter;
+    private final TinyVocaPackStore tinyVocaPack;
+    private final AndroidSystemSpeechSynthesizer systemSpeech;
     private final Runnable idleTick = new Runnable() {
         @Override public void run() {
             apply(policy.onClock(SystemClock.elapsedRealtime()));
@@ -99,6 +102,9 @@ public final class ModelRuntime {
         this.playback = new PlaybackController(app.newPlaybackTrackFactory(), playbackFocus::request,
                 playbackFocus::abandon, audioWorker, main::post, (state, message) -> onPlayback(state, message));
         this.loopback = new LoopbackAgentApi(this::submitFromLoopback, message -> {});
+        this.tinyVocaPack = new TinyVocaPackStore(app);
+        this.speechRouter = new SpeechReplyRouter(preferences, tinyVocaPack);
+        this.systemSpeech = new AndroidSystemSpeechSynthesizer(app);
         apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
         syncLoopback();
@@ -354,6 +360,16 @@ public final class ModelRuntime {
         }
         speechCancel = false;
         apply(policy.onSpeechStarted());
+        SpeechReplyBackend backend = speechRouter.select(reply);
+        if (backend == SpeechReplyBackend.SYSTEM_TTS) {
+            worker.execute(() -> generateSystemSpeech(reply));
+            return;
+        }
+        if (backend == SpeechReplyBackend.TINY_VOCA) {
+            if (ui != null && ui.isUsable()) ui.onSpeech(true, "Speaking with English tiny-voca…");
+            worker.execute(() -> generateTinyVocaSpeech(reply));
+            return;
+        }
         if (ui != null && ui.isUsable()) ui.onSpeech(true, "Generating spoken response locally…");
         int frames = SpeechOptions.framesForText(reply);
         worker.execute(() -> generateSpeech(reply, frames));
@@ -508,6 +524,71 @@ public final class ModelRuntime {
                             outcome.proposal.risk == ToolCoordinator.Risk.SAFE);
                 }
             });
+        });
+    }
+
+    private void generateSystemSpeech(String reply) {
+        if (speechCancel) {
+            main.post(() -> {
+                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response cancelled.");
+            });
+            return;
+        }
+        main.post(() -> {
+            if (ui != null && ui.isUsable()) ui.onSpeech(true, "Speaking with system voice…");
+        });
+        systemSpeech.speak(reply, new AndroidSystemSpeechSynthesizer.Callback() {
+            @Override public void onDone() {
+                main.post(() -> {
+                    apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                    if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response finished.");
+                });
+            }
+            @Override public void onError(String message) {
+                main.post(() -> {
+                    apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                    if (ui != null && ui.isUsable()) ui.onSpeech(false, message);
+                });
+            }
+        });
+    }
+
+    private void generateTinyVocaSpeech(String reply) {
+        String failure = null;
+        byte[] audio = new byte[0];
+        int sampleRate = 24000;
+        try (TinyVocaOnnxRuntime synth = TinyVocaOnnxRuntime.open(app)) {
+            sampleRate = synth.sampleRateHz();
+            audio = synth.synthesizePcm16(reply, "F2");
+        } catch (Throwable thrown) {
+            failure = thrown.getMessage() == null ? thrown.toString() : thrown.getMessage();
+        }
+        boolean cancelled = speechCancel;
+        byte[] pcm = audio;
+        int rate = sampleRate;
+        String error = failure;
+        main.post(() -> {
+            if (cancelled) {
+                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response cancelled.");
+                return;
+            }
+            if (error != null || pcm.length == 0) {
+                if (ui != null && ui.isUsable()) {
+                    ui.onSpeech(true, error == null
+                            ? "tiny-voca produced no audio; using system voice…"
+                            : "tiny-voca failed; using system voice…");
+                }
+                worker.execute(() -> generateSystemSpeech(reply));
+                return;
+            }
+            if (!playback.play(pcm, rate, 1, 16)) {
+                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                if (ui != null && ui.isUsable()) ui.onSpeech(false, "Could not start spoken playback.");
+                return;
+            }
+            if (ui != null && ui.isUsable()) ui.onSpeech(false, "Playing tiny-voca speech…");
         });
     }
 
