@@ -28,6 +28,7 @@ Owner report: the same LFM3 Q4_K_M GGUF ran at ~10+ tok/s decode in PocketPal AI
 | Topology thread default | Avoid little-core oversubscription on 2-cluster SoCs; use big+mid only when a mid cluster exists (≥3). Device-dependent. |
 | `n_batch` ≤1024 | Faster prompt processing; little effect on single-token decode. |
 | Infer thread priority | Avoids occasional background nice; small/situational. |
+| `ngram-mod` prompt lookup (ADR 0011) | Batches verified draft tokens; gain when chat repeats prompt/history n-grams. No second GGUF. Phone params: `n_match=16`, `n_max=12`. Settings speed test prints **sequential** and **ngram-mod** tg tok/s. |
 
 ## Before / after tok/s
 
@@ -39,4 +40,5 @@ Owner report: the same LFM3 Q4_K_M GGUF ran at ~10+ tok/s decode in PocketPal AI
 
 Still one `arm64-v8a` ABI, `GGML_NATIVE=OFF`, pinned NDK/CMake/llama.cpp commit. i8mm is intentionally omitted from the single binary so Snapdragon 720G-class SoCs (dotprod yes, i8mm no) keep working without a PocketPal-style multi-`.so` ladder.
 
-Decision record: [`docs/adr/0001-arm64-dotprod-and-kv-residency.md`](adr/0001-arm64-dotprod-and-kv-residency.md).
+Decision records: [`docs/adr/0001-arm64-dotprod-and-kv-residency.md`](adr/0001-arm64-dotprod-and-kv-residency.md),
+[`docs/adr/0011-ngram-mod-prompt-lookup.md`](adr/0011-ngram-mod-prompt-lookup.md).

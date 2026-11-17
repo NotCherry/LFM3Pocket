@@ -53,7 +53,7 @@ public final class NativeBridge {
         if (prompt == null || sink == null) return "Missing prompt or callback";
         InferenceSettings limits = settings == null ? InferenceSettings.DEFAULT : settings;
         return generateUtf8(handle, PromptEncoding.encode(prompt), mediaPaths, limits.maxTokens,
-                limits.contextTokens, limits.threads, sink);
+                limits.contextTokens, limits.threads, limits.promptLookup, sink);
     }
 
     public static String generateSpeech(long handle, String prompt, SpeechOptions options, AudioSink sink) {
@@ -81,7 +81,8 @@ public final class NativeBridge {
     }
 
     private static native String generateUtf8(long handle, byte[] prompt, String[] mediaPaths,
-                                               int maxTokens, int contextTokens, int threads, TokenSink sink);
+                                               int maxTokens, int contextTokens, int threads,
+                                               boolean promptLookup, TokenSink sink);
     private static native String generateSpeechUtf8(long handle, byte[] prompt, String language, String voice,
                                                     int maxFrames, int contextTokens, int threads, AudioSink sink);
     public static native void requestStop(long handle);

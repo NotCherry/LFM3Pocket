@@ -19,6 +19,7 @@ class InferenceSettingsStore(context: Context) {
     private val contextKey=intPreferencesKey("context")
     private val threadsKey=intPreferencesKey("threads")
     private val maxKey=intPreferencesKey("max_tokens")
+    private val promptLookupKey=booleanPreferencesKey("prompt_lookup")
     private val threadsInitializedKey=booleanPreferencesKey("threads_initialized")
     fun load(success: Consumer<InferenceSettings>,failure: Consumer<String>) {
         scope.launch {
@@ -35,6 +36,7 @@ class InferenceSettingsStore(context: Context) {
                         p[contextKey]?:InferenceSettings.DEFAULT.contextTokens,
                         threads,
                         p[maxKey]?:InferenceSettings.DEFAULT.maxTokens,
+                        p[promptLookupKey]?:InferenceSettings.DEFAULT.promptLookup,
                     )
                 } catch(e: IllegalArgumentException) { InferenceSettings.DEFAULT }
                 if (p[threadsInitializedKey] != true) {
@@ -59,6 +61,7 @@ class InferenceSettingsStore(context: Context) {
                     p[contextKey]=settings.contextTokens
                     p[threadsKey]=settings.threads
                     p[maxKey]=settings.maxTokens
+                    p[promptLookupKey]=settings.promptLookup
                     p[threadsInitializedKey]=true
                 }
                 success.run()

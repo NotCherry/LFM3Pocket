@@ -18,6 +18,7 @@
     <item name="settings_context" type="id"/>
     <item name="settings_threads" type="id"/>
     <item name="settings_tokens" type="id"/>
+    <item name="settings_prompt_lookup" type="id"/>
     <item name="settings_bench_run" type="id"/>
     <item name="settings_bench_result" type="id"/>
     <item name="settings_bench_copy" type="id"/>

@@ -2,6 +2,7 @@
 #include "llama.h"
 #include "mtmd.h"
 #include "mtmd-helper.h"
+#include "speculative_decode.h"
 
 #include <algorithm>
 #include <atomic>
@@ -336,14 +337,15 @@ Java_com_notcherry_lfm3pocket_NativeBridge_nativeBuildInfo(JNIEnv * env, jclass)
 #endif
     std::string info = std::string("Hanami native | ") + arch +
             " | -O3 | GGML_NATIVE=OFF | GGML_OPENMP=OFF | GGML_CPU_KLEIDIAI=OFF"
-            " | flash_attn=auto | n_batch<=1024 | KV reuse=on";
+            " | flash_attn=auto | n_batch<=1024 | KV reuse=on"
+            " | ngram-mod prompt lookup (llama.cpp v0.8.0)";
     return make_string(env, info);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         JNIEnv * env, jclass, jlong handle, jbyteArray prompt, jobjectArray media_paths,
-        jint max_tokens, jint context_tokens, jint threads, jobject sink) {
+        jint max_tokens, jint context_tokens, jint threads, jboolean prompt_lookup, jobject sink) {
     if (!handle) return make_string(env, "Model has not been loaded");
     if (!prompt || !sink) return make_string(env, "Missing prompt or callback");
     if (context_tokens < 512 || context_tokens > 8192 || context_tokens % 256 != 0 ||
@@ -507,49 +509,59 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         }
     }
 
-    llama_sampler * sampler = nullptr;
-    if (error.empty() && prompt_ready && state->ctx && !state->cancelled.load()) {
-        sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    std::vector<llama_token> generated;
+    const bool use_ngram = prompt_lookup && prompt_ready && state->ctx && !has_media && error.empty();
+    if (use_ngram) {
+        std::vector<llama_token> prompt_in_kv = tokens;
+        hanami::TokenDelivery delivery;
+        delivery.env = env;
+        delivery.sink = sink;
+        delivery.on_token = callback;
+        delivery.pending = &pending;
+        delivery.error = &error;
+        hanami::SpecDecodeStats stats;
+        if (!hanami::generate_ngram_mod(state->ctx, vocab, mrope, prompt_in_kv, max_tokens,
+                context_tokens, &state->cancelled, &delivery, generated, &stats, error)) {
+            if (state->cancelled.load()) error.clear();
+        }
+    } else if (error.empty() && prompt_ready && state->ctx && !state->cancelled.load()) {
+        llama_sampler * sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
         llama_sampler_chain_add(sampler, llama_sampler_init_top_k(50));
         llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.1f));
         llama_sampler_chain_add(sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
-    }
 
-    std::vector<llama_token> generated;
-    for (int i = 0; error.empty() && sampler && !state->cancelled.load() &&
-                    i < max_tokens && position + i < context_tokens; ++i) {
-        const llama_token next = llama_sampler_sample(sampler, state->ctx, -1);
-        if (llama_vocab_is_eog(vocab, next)) break;
-        llama_sampler_accept(sampler, next);
+        for (int i = 0; sampler && !state->cancelled.load() &&
+                        i < max_tokens && position + i < context_tokens; ++i) {
+            const llama_token next = llama_sampler_sample(sampler, state->ctx, -1);
+            if (llama_vocab_is_eog(vocab, next)) break;
+            llama_sampler_accept(sampler, next);
 
-        char piece[512];
-        const int n = llama_token_to_piece(vocab, next, piece, sizeof(piece), 0, true);
-        if (n < 0) { error = "Token decoding failed"; break; }
-        pending.append(piece, static_cast<size_t>(n));
-        deliver(env, sink, callback, decode_utf8_prefix(pending));
-        if (env->ExceptionCheck()) {
-            env->ExceptionClear();
-            error = "Java callback failed";
-            break;
-        }
+            char piece[512];
+            const int n = llama_token_to_piece(vocab, next, piece, sizeof(piece), 0, true);
+            if (n < 0) { error = "Token decoding failed"; break; }
+            pending.append(piece, static_cast<size_t>(n));
+            deliver(env, sink, callback, decode_utf8_prefix(pending));
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                error = "Java callback failed";
+                break;
+            }
 
-        // Always write the accepted token into KV before stopping on max_tokens
-        // so cached_tokens cannot outrun the memory (blocking review #2).
-        if (position + static_cast<int>(generated.size()) + 1 >= context_tokens) {
-            break; // no room to store this token
+            if (position + static_cast<int>(generated.size()) + 1 >= context_tokens) {
+                break;
+            }
+            setup_batch(state->batch, &next, 1, position + static_cast<int>(generated.size()), mrope);
+            if (llama_process(state->ctx, LLAMA_PROCESS_TYPE_DECODE, state->batch) != 0) {
+                error = "Model failed while decoding response";
+                break;
+            }
+            generated.push_back(next);
+            if (static_cast<int>(generated.size()) >= max_tokens) break;
         }
-        setup_batch(state->batch, &next, 1, position + static_cast<int>(generated.size()), mrope);
-        if (llama_process(state->ctx, LLAMA_PROCESS_TYPE_DECODE, state->batch) != 0) {
-            error = "Model failed while decoding response";
-            break;
-        }
-        generated.push_back(next);
-        if (static_cast<int>(generated.size()) >= max_tokens) break;
+        if (sampler) llama_sampler_free(sampler);
     }
     if (!pending.empty() && error.empty() && !state->cancelled.load())
         deliver(env, sink, callback, u"\uFFFD");
-
-    if (sampler) llama_sampler_free(sampler);
 
     if (state->cancelled.load() || !error.empty()) {
         // Cancel / error mid-turn leaves memory inconsistent with any cache claim.
@@ -621,46 +633,77 @@ Java_com_notcherry_lfm3pocket_NativeBridge_runBenchmarkUtf8(
     const double pp_ms = std::chrono::duration<double, std::milli>(pp_end - pp_start).count();
     const double pp_tps = pp_ms > 0.0 ? (pp_tokens * 1000.0 / pp_ms) : 0.0;
 
-    llama_sampler * sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
-    llama_sampler_chain_add(sampler, llama_sampler_init_top_k(50));
-    llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.1f));
-    llama_sampler_chain_add(sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
-
-    int decoded = 0;
-    int position = pp_tokens;
-    const auto tg_start = clock::now();
+    std::vector<llama_token> generated;
     std::string error;
-    for (int i = 0; i < tg_tokens && position + i < context_tokens && !state->cancelled.load(); ++i) {
-        const llama_token next = llama_sampler_sample(sampler, ctx, -1);
-        if (llama_vocab_is_eog(vocab, next)) break;
-        llama_sampler_accept(sampler, next);
-        ++decoded;
-        if (i + 1 == tg_tokens || position + i + 1 >= context_tokens) break;
-        setup_batch(batch, &next, 1, position + i, false);
-        if (llama_process(ctx, LLAMA_PROCESS_TYPE_DECODE, batch) != 0) {
-            error = "Decode failed";
-            break;
+    const auto tg_start = clock::now();
+  if (!hanami::generate_sequential(ctx, batch, vocab, false, pp_tokens, tg_tokens, context_tokens,
+                                     &state->cancelled, generated, error)) {
+        if (state->cancelled.load()) {
+            llama_batch_ext_free(batch);
+            llama_free(ctx);
+            return make_string(env, "Benchmark cancelled");
         }
     }
     const auto tg_end = clock::now();
+    const int decoded = static_cast<int>(generated.size());
     const double tg_ms = std::chrono::duration<double, std::milli>(tg_end - tg_start).count();
     const double tg_tps = (tg_ms > 0.0 && decoded > 0) ? (decoded * 1000.0 / tg_ms) : 0.0;
 
-    llama_sampler_free(sampler);
+    // ngram-mod on a fresh context (KV matches pp prefix only).
+    llama_free(ctx);
+    ctx = llama_init_from_model(state->model, ctx_params);
+    if (!ctx) {
+        llama_batch_ext_free(batch);
+        return make_string(env, "Unable to re-allocate benchmark context");
+    }
+    llama_batch_ext_free(batch);
+    batch = llama_batch_ext_init(ctx);
+    if (!batch) {
+        llama_free(ctx);
+        return make_string(env, "Cannot allocate benchmark batch");
+    }
+    if (!eval_chunked(tokens.data(), pp_tokens, 0)) {
+        llama_batch_ext_free(batch);
+        llama_free(ctx);
+        return make_string(env, state->cancelled.load() ? "Benchmark cancelled" : "Prompt processing failed");
+    }
+
+    std::vector<llama_token> spec_generated;
+    hanami::SpecDecodeStats spec_stats;
+    const auto tg_spec_start = clock::now();
+    if (!hanami::generate_ngram_mod(ctx, vocab, false, tokens, tg_tokens, context_tokens,
+                                    &state->cancelled, nullptr, spec_generated, &spec_stats, error)) {
+        if (state->cancelled.load()) {
+            llama_batch_ext_free(batch);
+            llama_free(ctx);
+            return make_string(env, "Benchmark cancelled");
+        }
+    }
+    const auto tg_spec_end = clock::now();
+    const int spec_decoded = static_cast<int>(spec_generated.size());
+    const double tg_spec_ms = std::chrono::duration<double, std::milli>(tg_spec_end - tg_spec_start).count();
+    const double tg_spec_tps = (tg_spec_ms > 0.0 && spec_decoded > 0) ? (spec_decoded * 1000.0 / tg_spec_ms) : 0.0;
+    const double accept_pct = spec_stats.n_drafted > 0
+            ? (100.0 * spec_stats.n_accept / spec_stats.n_drafted) : 0.0;
+
     llama_batch_ext_free(batch);
     llama_free(ctx);
 
     if (!error.empty()) return make_string(env, error);
     if (state->cancelled.load()) return make_string(env, "Benchmark cancelled");
 
-    char line[512];
+    char line[768];
     std::snprintf(line, sizeof(line),
             "Hanami llama-bench\n"
             "pp %d tokens: %.2f tok/s (%.0f ms)\n"
-            "tg %d tokens: %.2f tok/s (%.0f ms)\n"
+            "tg %d tokens (sequential): %.2f tok/s (%.0f ms)\n"
+            "tg %d tokens (ngram-mod): %.2f tok/s (%.0f ms)\n"
+            "ngram accept: %.1f%% (%d/%d drafted)\n"
             "context=%d threads=%d n_batch=%d\n"
-            "build: see NativeBridge.nativeBuildInfo()",
+            "build: see NativeBridge.nativeBuildInfo()\n"
+            "note: x86_64 emulator is not arm64 DOTPROD; use a phone for representative tg.",
             pp_tokens, pp_tps, pp_ms, decoded, tg_tps, tg_ms,
+            spec_decoded, tg_spec_tps, tg_spec_ms, accept_pct, spec_stats.n_accept, spec_stats.n_drafted,
             context_tokens, threads, choose_batch_size(context_tokens));
     return make_string(env, line);
 }
