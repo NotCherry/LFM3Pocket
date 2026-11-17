@@ -87,6 +87,12 @@
     <string name="notification_action_unload">Rozładuj</string>
     <string name="notification_action_open">Otwórz</string>
     <string name="notification_action_ask">Pytaj</string>
+    <string name="notification_action_talk">Mów</string>
+    <string name="voice_listening">Nasłuchiwanie…</string>
+    <string name="voice_thinking">Myślę…</string>
+    <string name="voice_no_audio_model">Ten model nie słyszy audio — załaduj LFM3-Omni z pasującym projektorem mmproj.</string>
+    <string name="voice_system_tts_fallback">Głos systemowy (oznaczony TTS)</string>
+    <string name="voice_mic_required">Do funkcji Mów potrzebne jest uprawnienie mikrofonu.</string>
     <string name="notification_action_review">Przejrzyj</string>
     <string name="notification_action_approve">Zatwierdź</string>
     <string name="notification_action_reject">Odrzuć</string>

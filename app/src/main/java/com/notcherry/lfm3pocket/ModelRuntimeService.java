@@ -14,6 +14,7 @@ public final class ModelRuntimeService extends Service {
     static final String ACTION_APPROVE = "com.notcherry.lfm3pocket.action.APPROVE_TOOL";
     static final String ACTION_REJECT = "com.notcherry.lfm3pocket.action.REJECT_TOOL";
     static final String ACTION_ASK = "com.notcherry.lfm3pocket.action.ASK_FROM_NOTIFICATION";
+    static final String ACTION_TALK = "com.notcherry.lfm3pocket.action.VOICE_TALK";
     static final String EXTRA_PROPOSAL_ID = "proposal_id";
 
     private boolean promoted;
@@ -25,7 +26,7 @@ public final class ModelRuntimeService extends Service {
         // Satisfy a foreground start before any other work.
         RuntimeNotice starting = RuntimeNotice.of(RuntimeNotice.Kind.LOADING, "Model runtime",
                 "Starting…", false, 0, 0, "", false, RuntimeNotice.Action.OPEN);
-        promote(RuntimeNotifications.build(this, starting, "", ""), false);
+        promote(RuntimeNotifications.build(this, starting, "", ""), starting);
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
@@ -35,8 +36,7 @@ public final class ModelRuntimeService extends Service {
             notice = RuntimeNotice.of(RuntimeNotice.Kind.LOADING, "Model runtime", "Starting…",
                     false, 0, 0, "", false, RuntimeNotice.Action.OPEN);
         }
-        promote(RuntimeNotifications.build(this, notice, runtime.conversationId(), runtime.historyTitle()),
-                notice.mediaPlayback);
+        promote(RuntimeNotifications.build(this, notice, runtime.conversationId(), runtime.historyTitle()), notice);
         runtime.serviceReady(this);
         if (intent != null && intent.getAction() != null) {
             String ask = null;
@@ -66,8 +66,8 @@ public final class ModelRuntimeService extends Service {
         super.onDestroy();
     }
 
-    void render(Notification notification, boolean mediaPlayback) {
-        promote(notification, mediaPlayback);
+    void render(Notification notification, RuntimeNotice notice) {
+        promote(notification, notice == null ? RuntimeNotice.hidden() : notice);
     }
 
     void stopNow() {
@@ -78,10 +78,11 @@ public final class ModelRuntimeService extends Service {
         stopSelf();
     }
 
-    private void promote(Notification notification, boolean mediaPlayback) {
+    private void promote(Notification notification, RuntimeNotice notice) {
         if (Build.VERSION.SDK_INT >= 34) {
             int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
-            if (mediaPlayback) type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK;
+            if (notice.mediaPlayback) type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK;
+            if (notice.microphoneCapture) type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
             startForeground(RuntimeNotifications.NOTIFICATION_ID, notification, type);
         } else {
             startForeground(RuntimeNotifications.NOTIFICATION_ID, notification);

@@ -71,6 +71,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private volatile AtomicBoolean importCancellation;
     private final ExecutorService audioWorker = Executors.newSingleThreadExecutor();
     private RecordingController recordingController;
+    private VoicePttCoordinator voicePtt;
     private PlaybackController playbackController;
     private CheckBox keepLoadedBox;
     private Button idleOffButton;
@@ -716,7 +717,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         searchButton.setOnClickListener(v -> showSearchSettings());
         photoButton.setOnClickListener(v -> pickPhoto());
         cameraButton.setOnClickListener(v -> takePhoto());
-        recordButton.setOnClickListener(v -> toggleRecording());
+        recordButton.setOnClickListener(v -> {
+            if (runtime.voice().isEnabled()) return;
+            toggleRecording();
+        });
+        voicePtt = new VoicePttCoordinator(runtime, () -> {
+            if (!((Lfm3PocketApplication) getApplication()).hasMicrophonePermission()) {
+                microphoneRequested = true;
+                requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQUEST_AUDIO);
+            }
+        });
+        recordButton.setOnTouchListener((v, event) -> runtime.voice().isEnabled() && voicePtt.onTouch(v, event));
         speakButton.setOnClickListener(v -> toggleSpokenReply());
         // Keep Settings open across interface-size recreate via EXTRA_OPEN_SETTINGS only.
         // Do not persist settings_open in savedInstanceState — InferenceSettingsE2eTest and

@@ -160,6 +160,10 @@ Atlas prefers **borders over shadows**.
 - Actions: **Approve** / **Reject** as clear buttons; keep stable IDs `tool_approve`, `tool_reject`, `tool_details`, `tool_status` (add `tool_risk`, `tool_result` per U11).
 - This is one of the few justified “card-like” containers because it wraps a consent interaction.
 
+### Voice actions (V1)
+
+Hands-free voice rides the same **ModelRuntime** residency and **ToolCoordinator** consent as shade Approve/Reject. Push-to-talk and notification **Talk** feed 16 kHz WAV into one Omni `generateWithMedia` pass (`VoiceActionRuntime`); tool JSON still arrives only via `MODEL_PROPOSAL`. Spoken confirm uses exact describe read-back plus a closed tak/nie lexicon—never free-form model judgment. Mic FGS type is asserted only during listen windows. Details: [ADR 0006](adr/0006-voice-actions-loop.md).
+
 ### 6.5 Composer (U11)
 
 - Anchored bottom bar on `surfaceRaised` with top `border`.

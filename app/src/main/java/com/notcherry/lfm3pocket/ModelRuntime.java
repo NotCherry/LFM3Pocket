@@ -84,6 +84,7 @@ public final class ModelRuntime {
     private final AtomicInteger pendingTokens = new AtomicInteger();
     private final AtomicBoolean tokenFlushPosted = new AtomicBoolean();
     private final LoopbackAgentApi loopback;
+    private final VoiceActionRuntime voiceActions;
     private final Runnable idleTick = new Runnable() {
         @Override public void run() {
             apply(policy.onClock(SystemClock.elapsedRealtime()));
@@ -99,6 +100,51 @@ public final class ModelRuntime {
         this.playback = new PlaybackController(app.newPlaybackTrackFactory(), playbackFocus::request,
                 playbackFocus::abandon, audioWorker, main::post, (state, message) -> onPlayback(state, message));
         this.loopback = new LoopbackAgentApi(this::submitFromLoopback, message -> {});
+        this.voiceActions = new VoiceActionRuntime(new VoiceActionRuntime.Callbacks() {
+            @Override public long modelHandle() { return handle; }
+            @Override public InferenceEngine engine() { return engine; }
+            @Override public PlaybackController playback() { return playback; }
+            @Override public ExecutorService worker() { return worker; }
+            @Override public Handler main() { return main; }
+            @Override public Context app() { return app; }
+            @Override public android.content.SharedPreferences modelPrefs() { return preferences.raw(); }
+            @Override public ToolCoordinator toolCoordinator() { return app.toolCoordinator(); }
+            @Override public boolean isGenerating() { return isGenerating(); }
+            @Override public void showConsent(String id, String text, boolean safe) {
+                ModelRuntime.this.showConsent(id, text, safe);
+            }
+            @Override public void clearConsent() {
+                clearConsent();
+            }
+            @Override public void resolveConsent(String proposalId, boolean approve) {
+                ModelRuntime.this.resolveConsent(proposalId, approve);
+            }
+            @Override public void stopTurn() { ModelRuntime.this.stopTurn(); }
+            @Override public java.util.Locale userLocale() {
+                return app.getResources().getConfiguration().getLocales().get(0);
+            }
+            @Override public java.util.function.Consumer<String> onVoiceStatus() {
+                return status -> { /* Shade strings are carried in RuntimePolicy notices */ };
+            }
+            @Override public void policyListenStarted() {
+                apply(policy.onListenStarted("Listening…"));
+            }
+            @Override public void policyListenFinished() {
+                apply(policy.onListenFinished(SystemClock.elapsedRealtime()));
+            }
+            @Override public void policyVoiceThinking() {
+                apply(policy.onGenerationStarted("Voice command", 512, SystemClock.elapsedRealtime()));
+            }
+            @Override public void policySpeechStarted() { apply(policy.onSpeechStarted()); }
+            @Override public void policyPlaybackStarted() { apply(policy.onPlaybackStarted()); }
+            @Override public void policySpeechFinished() {
+                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+            }
+            @Override public void policyGenerationFinished() {
+                apply(policy.onGenerationFinished(SystemClock.elapsedRealtime()));
+            }
+        }, new File(app.getCacheDir(), "voice-actions"), app::hasMicrophonePermission,
+                audioWorker, main::post);
         apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
         syncLoopback();
@@ -122,6 +168,7 @@ public final class ModelRuntime {
     public InferenceEngine engine() { return engine; }
     public ExecutorService worker() { return worker; }
     public PlaybackController playback() { return playback; }
+    public VoiceActionRuntime voice() { return voiceActions; }
     public long handle() { return handle; }
     public String loadedPath() { return loadedPath == null ? "" : loadedPath; }
     public boolean keepLoaded() { return preferences.keepLoaded(); }
@@ -269,6 +316,7 @@ public final class ModelRuntime {
     }
 
     public void stopTurn() {
+        voiceActions.cancelAll("Stopped");
         speechCancel = true;
         if (session != null) session.stop();
         engine.stop();
@@ -424,6 +472,7 @@ public final class ModelRuntime {
         else if (ModelRuntimeService.ACTION_APPROVE.equals(action)) resolveConsent(proposalId, true);
         else if (ModelRuntimeService.ACTION_REJECT.equals(action)) resolveConsent(proposalId, false);
         else if (ModelRuntimeService.ACTION_ASK.equals(action)) askFromNotification(askText);
+        else if (ModelRuntimeService.ACTION_TALK.equals(action)) voiceActions.beginShadeTalk();
     }
 
     /** RemoteInput Ask inserts a user message. It never authorizes a tool. */
@@ -733,7 +782,7 @@ public final class ModelRuntime {
         }
         if (service != null) {
             service.render(RuntimeNotifications.build(app, effects.notice, conversationId, historyTitle),
-                    effects.notice.mediaPlayback);
+                    effects.notice);
             return;
         }
         if (!serviceStartRequested) {
