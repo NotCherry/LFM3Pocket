@@ -105,11 +105,14 @@ bool drop_last_prompt_token_from_kv(llama_context * ctx, llama_seq_id seq_id, si
         error = "Prompt was not evaluated before prompt lookup";
         return false;
     }
+    if (kv == prompt_token_count - 1) {
+        return true;
+    }
     if (kv != prompt_token_count) {
         error = "Prompt KV length does not match tokenizer output";
         return false;
     }
-  const llama_pos last_pos = static_cast<llama_pos>(prompt_token_count - 1);
+    const llama_pos last_pos = static_cast<llama_pos>(prompt_token_count - 1);
     if (!llama_memory_seq_rm(mem, seq_id, last_pos, -1)) {
         error = "Cannot trim last prompt token for prompt lookup (hybrid memory)";
         return false;
