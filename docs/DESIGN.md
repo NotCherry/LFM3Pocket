@@ -177,7 +177,7 @@ Atlas prefers **borders over shadows**.
 - Group on `surface` with optional section `headline`.
 - Row: `label` + control (stepper, switch, field) aligned; `mono` for numeric/endpoint values where appropriate.
 - Keep IDs: `settings_context`, `settings_threads`, `settings_tokens`, `search_*`, `import_*`.
-- **Speech (optional tiny-voca):** Section `SPEECH` / `MOWA` with English-only checkbox (`settings_tiny_voca_tts`), download/remove pack actions (`settings_tiny_voca_download`, `settings_tiny_voca_remove`), and status line (`settings_tiny_voca_status`). Help text must state English-only and fallback to system TTS (ADR 0010).
+- **Speech (optional tiny-voca):** Section `SPEECH` / `MOWA` with English-only checkbox (`settings_tiny_voca_tts`), download/remove pack actions (`settings_tiny_voca_download`, `settings_tiny_voca_remove`), and status line (`settings_tiny_voca_status`). Help text must state that the option is English-only, that a missing pack uses system TTS for English, and that non-English replies keep the Omni voice (ADR 0010).
 
 ### 6.8 History list + reader (U12)
 
