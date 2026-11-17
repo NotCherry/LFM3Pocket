@@ -96,7 +96,7 @@ public final class ChatNewChatE2eTest {
         }
     }
 
-    @Test public void topBarNewChatWhileGeneratingShowsStopDialog() {
+    @Test public void topBarNewChatWhileGeneratingShowsStopDialog() throws Exception {
         try (ActivityScenario<MainActivity> chat = ActivityScenario.launch(MainActivity.class)) {
             beginHeldGeneration();
             click("chat_new_chat");
@@ -114,7 +114,7 @@ public final class ChatNewChatE2eTest {
         }
     }
 
-    @Test public void homeNewChatWhileGeneratingShowsStopDialog() {
+    @Test public void homeNewChatWhileGeneratingShowsStopDialog() throws Exception {
         try (ActivityScenario<ComposeHostActivity> home =
                      ActivityScenario.launch(ComposeHostActivity.class)) {
             click("open_chat");
@@ -135,7 +135,7 @@ public final class ChatNewChatE2eTest {
         }
     }
 
-    private void beginHeldGeneration() {
+    private void beginHeldGeneration() throws Exception {
         awaitEnabled("chat_send");
         UiObject2 input = device.wait(Until.findObject(By.res(pkg, "chat_input")), TIMEOUT);
         assertNotNull(input);
