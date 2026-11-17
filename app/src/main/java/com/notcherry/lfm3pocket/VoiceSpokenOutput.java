@@ -60,6 +60,7 @@ public final class VoiceSpokenOutput {
     /** Drop deferred {@code onComplete} hooks without tearing down in-flight PCM/TTS. */
     void invalidateDeferredCompletions() {
         speechGeneration.incrementAndGet();
+        speakQueue.clear();
         pendingComplete = null;
     }
 
@@ -180,15 +181,16 @@ public final class VoiceSpokenOutput {
         String status = omniFailure == null
                 ? "System voice (labelled TTS)"
                 : "Omni speech unavailable — System voice (labelled TTS): " + omniFailure;
+        final long utteranceGeneration = activeUtteranceGeneration;
         tts.speak(spoken, language, new LabeledSystemTts.Callback() {
             @Override public void onStarted() { host.onSpeechUi(true, status); }
             @Override public void onFinished(String path) {
                 host.onSpeechUi(false, path);
-                finishUtterance(onComplete);
+                finishUtteranceFromBackground(onComplete, utteranceGeneration);
             }
             @Override public void onError(String message) {
                 host.onSpeechUi(false, message);
-                finishUtterance(onComplete);
+                finishUtteranceFromBackground(onComplete, utteranceGeneration);
             }
         });
     }
@@ -199,8 +201,20 @@ public final class VoiceSpokenOutput {
     }
 
     private void finishUtterance(Runnable onComplete) {
+        finishUtteranceFromBackground(onComplete, activeUtteranceGeneration);
+    }
+
+    private void finishUtteranceFromBackground(Runnable onComplete, long utteranceGeneration) {
         busy.set(false);
-        if (onComplete != null && activeUtteranceGeneration == speechGeneration.get()) onComplete.run();
+        Runnable complete = onComplete;
+        if (complete != null && utteranceGeneration == speechGeneration.get()) {
+            final long gen = utteranceGeneration;
+            postToMain(() -> {
+                if (gen == speechGeneration.get()) complete.run();
+                drainQueue();
+            });
+            return;
+        }
         drainQueue();
     }
 
@@ -211,13 +225,17 @@ public final class VoiceSpokenOutput {
     }
 
     private void drainQueue() {
-        if (busy.get()) return;
-        QueuedSpeak next;
-        while ((next = speakQueue.poll()) != null) {
-            if (busy.compareAndSet(false, true)) {
-                beginSpeak(next.text, next.locale, next.onComplete);
+        while (!busy.get()) {
+            QueuedSpeak next = speakQueue.peek();
+            if (next == null) return;
+            if (!busy.compareAndSet(false, true)) continue;
+            QueuedSpeak claimed = speakQueue.poll();
+            if (claimed == null) {
+                busy.set(false);
                 return;
             }
+            beginSpeak(claimed.text, claimed.locale, claimed.onComplete);
+            return;
         }
     }
 

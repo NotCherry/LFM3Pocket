@@ -53,9 +53,17 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
 
     public VoiceActionRuntime(Callbacks callbacks, File recordingDir, BooleanSupplier micPermission,
                               java.util.concurrent.Executor recordWorker, Consumer<Runnable> uiPoster) {
+        this(callbacks, recordingDir, micPermission, recordWorker, uiPoster, null);
+    }
+
+    VoiceActionRuntime(Callbacks callbacks, File recordingDir, BooleanSupplier micPermission,
+                       java.util.concurrent.Executor recordWorker, Consumer<Runnable> uiPoster,
+                       RecordingController.Factory recordingFactory) {
         this.callbacks = callbacks;
         this.spoken = new VoiceSpokenOutput(this);
-        RecordingController.Factory factory = () -> ((Lfm3PocketApplication) callbacks.app()).newRecordingSource();
+        RecordingController.Factory factory = recordingFactory != null
+                ? recordingFactory
+                : () -> ((Lfm3PocketApplication) callbacks.app()).newRecordingSource();
         this.listen = new VoiceListenSession(recordingDir, factory, micPermission, recordWorker, uiPoster,
                 listenTimeout, new VoiceListenSession.Listener() {
                     @Override public void changed(VoiceListenSession.State state, String message) {
@@ -95,7 +103,7 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
             spoken.speakExact(disabledReason(), callbacks.userLocale(), null);
             return;
         }
-        rejectPendingConfirm();
+        preemptForNewCommand("shade talk");
         mode = Mode.COMMAND;
         listen.startTimed(VoiceListenLimits.TALK_TIMEOUT_MS);
     }
@@ -103,14 +111,14 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
     /** TalkBack toggle: same 8 s cap as shade Talk. */
     public boolean beginAccessibilityTalk() {
         if (!isEnabled() || callbacks.modelHandle() == 0L || callbacks.isGenerating()) return false;
-        rejectPendingConfirm();
+        preemptForNewCommand("accessibility talk");
         mode = Mode.COMMAND;
         return listen.startTimed(VoiceListenLimits.TALK_TIMEOUT_MS);
     }
 
     public boolean pttPressed() {
         if (!isEnabled() || callbacks.modelHandle() == 0L || callbacks.isGenerating()) return false;
-        rejectPendingConfirm();
+        preemptForNewCommand("ptt");
         mode = Mode.COMMAND;
         return listen.startPtt();
     }
@@ -131,6 +139,19 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
         spoken.onPlaybackIdle();
     }
 
+    private void preemptForNewCommand(String reason) {
+        String id = pendingConfirmId;
+        pendingConfirmId = null;
+        pendingConfirmDescribe = null;
+        if (id != null) {
+            callbacks.resolveConsent(id, false);
+            callbacks.clearConsent();
+        }
+        spoken.stop();
+        listen.cancel(reason);
+        deletePending();
+    }
+
     private void rejectPendingConfirm() {
         String id = pendingConfirmId;
         if (id == null) return;
@@ -141,6 +162,8 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
         callbacks.resolveConsent(id, false);
         callbacks.clearConsent();
     }
+
+    VoiceListenSession listenSessionForTests() { return listen; }
 
     void onWavReady(File wav) {
         if (wav == null || !wav.isFile()) return;

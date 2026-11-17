@@ -47,6 +47,32 @@ public final class VoiceSpokenOutputDeferralTest {
         assertFalse(ran.get());
     }
 
+    @Test public void invalidateDeferredCompletionsClearsSpeakQueue() throws Exception {
+        StubHost host = new StubHost();
+        VoiceSpokenOutput spoken = new VoiceSpokenOutput(host);
+        markBusy(spoken, true);
+        spoken.speakExact("stale", Locale.US, null);
+        assertEquals(1, queueSize(spoken));
+        spoken.invalidateDeferredCompletions();
+        assertEquals(0, queueSize(spoken));
+        markBusy(spoken, false);
+        spoken.onPlaybackIdle();
+        assertFalse(host.speakRequested.get());
+    }
+
+    @Test public void drainQueueDoesNotDropWhenBusyClaimFails() throws Exception {
+        StubHost host = new StubHost();
+        VoiceSpokenOutput spoken = new VoiceSpokenOutput(host);
+        markBusy(spoken, true);
+        spoken.speakExact("keep-me", Locale.US, null);
+        assertEquals(1, queueSize(spoken));
+        invokeDrainQueue(spoken);
+        assertEquals(1, queueSize(spoken));
+        markBusy(spoken, false);
+        spoken.onPlaybackIdle();
+        assertTrue(host.speakRequested.get());
+    }
+
     @Test public void playbackDeferralThenDrainStartsQueuedUtterance() {
         StubHost host = new StubHost();
         VoiceSpokenOutput spoken = new VoiceSpokenOutput(host);
@@ -57,6 +83,18 @@ public final class VoiceSpokenOutputDeferralTest {
         assertTrue(spoken.isBusy());
         spoken.onPlaybackIdle();
         assertTrue(host.speakRequested.get());
+    }
+
+    private static int queueSize(VoiceSpokenOutput spoken) throws Exception {
+        java.lang.reflect.Field queue = VoiceSpokenOutput.class.getDeclaredField("speakQueue");
+        queue.setAccessible(true);
+        return ((java.util.Queue<?>) queue.get(spoken)).size();
+    }
+
+    private static void invokeDrainQueue(VoiceSpokenOutput spoken) throws Exception {
+        java.lang.reflect.Method drain = VoiceSpokenOutput.class.getDeclaredMethod("drainQueue");
+        drain.setAccessible(true);
+        drain.invoke(spoken);
     }
 
     private static void markBusy(VoiceSpokenOutput spoken, boolean value) {
