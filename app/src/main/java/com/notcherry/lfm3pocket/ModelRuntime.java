@@ -319,7 +319,8 @@ public final class ModelRuntime {
             java.util.ArrayList<ChatSession.RestoredMessage> restored = new java.util.ArrayList<>();
             for (HistoryRepository.StoredMessage row : rows) {
                 restored.add(new ChatSession.RestoredMessage(
-                        row.getRole(), row.getText(), row.getTurnId(), row.getTurnStatus(), row.getMediaRef()));
+                        row.getRole(), row.getText(), row.getTurnId(), row.getTurnStatus(), row.getMediaRef(),
+                        row.getInferenceStats()));
             }
             main.post(() -> {
                 if (born != sessionEpoch || session == null) return;
@@ -668,7 +669,7 @@ public final class ModelRuntime {
         history.completeTurn(new HistoryRepository.Turn(turn.id, id, historyTitle, turn.userText,
                 turn.assistantText == null ? "" : turn.assistantText, turn.speechTranscript,
                 HistoryRepository.Status.valueOf(turn.status.name()), turn.completedAt, null,
-                turn.speechTranscriptStatus, mediaRef));
+                turn.speechTranscriptStatus, mediaRef, turn.inferenceStatsJson));
     }
 
     private void onChat(String transcript, String status, boolean running) {
@@ -829,5 +830,8 @@ public final class ModelRuntime {
         }
         @Override public void stop() { delegate.stop(); }
         @Override public void resetStop() { delegate.resetStop(); }
+        @Override public long[] consumeGenerationStats(long handle) {
+            return delegate.consumeGenerationStats(handle);
+        }
     }
 }

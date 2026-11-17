@@ -40,4 +40,12 @@ public interface InferenceEngine {
     }
     void stop();
     void resetStop();
+
+    /**
+     * Optional timings from the last {@link #generateWithMedia} on {@code handle}.
+     * Production JNI returns native prefill/decode splits; test engines may return {@code null}.
+     */
+    default long[] consumeGenerationStats(long handle) {
+        return null;
+    }
 }

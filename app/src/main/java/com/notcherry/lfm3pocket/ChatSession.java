@@ -4,6 +4,7 @@ import java.io.File;
 import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongSupplier;
 
 /** Owns one active conversation; old callbacks cannot mutate a cleared or closed session. */
@@ -57,19 +58,29 @@ public final class ChatSession {
         }
         CompletedTurn(String id,String userText,String assistantText,String speechTranscript,String speechTranscriptStatus,
                       TerminalState status,long completedAt,String mediaRef) {
+            this(id,userText,assistantText,speechTranscript,speechTranscriptStatus,status,completedAt,mediaRef,null);
+        }
+        CompletedTurn(String id,String userText,String assistantText,String speechTranscript,String speechTranscriptStatus,
+                      TerminalState status,long completedAt,String mediaRef,String inferenceStatsJson) {
             this.id=id;this.userText=userText;this.assistantText=assistantText;
             this.speechTranscript=speechTranscript;this.speechTranscriptStatus=speechTranscriptStatus;
             this.status=status;this.completedAt=completedAt;this.mediaRef=mediaRef==null?"":mediaRef;
+            this.inferenceStatsJson=inferenceStatsJson;
         }
+        public final String inferenceStatsJson;
     }
     public static final class RestoredMessage {
-        public final String role,text,turnId,turnStatus,mediaRef;
+        public final String role,text,turnId,turnStatus,mediaRef,inferenceStats;
         public RestoredMessage(String role,String text,String turnId,String turnStatus,String mediaRef) {
+            this(role,text,turnId,turnStatus,mediaRef,null);
+        }
+        public RestoredMessage(String role,String text,String turnId,String turnStatus,String mediaRef,String inferenceStats) {
             this.role=role==null?"":role;
             this.text=text==null?"":text;
             this.turnId=turnId;
             this.turnStatus=turnStatus==null?"":turnStatus;
             this.mediaRef=mediaRef;
+            this.inferenceStats=inferenceStats;
         }
     }
     private static final class Message {
@@ -80,17 +91,23 @@ public final class ChatSession {
         final boolean interrupted;
         final String turnId;
         final String mediaRef;
+        final InferenceStats inferenceStats;
         Message(String role,String text,List<WebSearch.Source> sources) {
-            this(role,text,null,sources,false,null,null);
+            this(role,text,null,sources,false,null,null,null);
         }
         Message(String role,String text,String reasoning,List<WebSearch.Source> sources) {
-            this(role,text,reasoning,sources,false,null,null);
+            this(role,text,reasoning,sources,false,null,null,null);
         }
         Message(String role,String text,String reasoning,List<WebSearch.Source> sources,
                 boolean interrupted,String turnId,String mediaRef) {
+            this(role,text,reasoning,sources,interrupted,turnId,mediaRef,null);
+        }
+        Message(String role,String text,String reasoning,List<WebSearch.Source> sources,
+                boolean interrupted,String turnId,String mediaRef,InferenceStats inferenceStats) {
             this.role=role;this.text=text;this.reasoning=reasoning;
             this.sources=new ArrayList<>(sources);
             this.interrupted=interrupted;this.turnId=turnId;this.mediaRef=mediaRef;
+            this.inferenceStats=inferenceStats;
         }
     }
     private static final class Turn {
@@ -102,6 +119,10 @@ public final class ChatSession {
         final AtomicBoolean imageDeleted=new AtomicBoolean();
         volatile boolean cancelled,discarded,workerFinished;
         volatile long lastPartialSaveAt;
+        volatile long replyStartedElapsedMs;
+        volatile long firstTokenElapsedMs=-1L;
+        final AtomicInteger streamedTokens=new AtomicInteger();
+        volatile InferenceStats inferenceStats;
         Turn(long id,long handle,boolean webSearch,String question,List<Attachment> media,String imagePath) {
             this.id=id;this.handle=handle;this.webSearch=webSearch;this.question=question;
             this.media=new ArrayList<>(media);this.imagePath=imagePath;
@@ -159,8 +180,9 @@ public final class ChatSession {
             if(row.role==null || row.role.isEmpty()) continue;
             if(!"user".equals(row.role) && !"assistant".equals(row.role)) continue;
             boolean interrupted="INTERRUPTED".equals(row.turnStatus);
+            InferenceStats stats=InferenceStats.fromJson(row.inferenceStats);
             messages.add(new Message(row.role,row.text,null,Collections.emptyList(),
-                    interrupted && "assistant".equals(row.role),row.turnId,row.mediaRef));
+                    interrupted && "assistant".equals(row.role),row.turnId,row.mediaRef,stats));
             if("user".equals(row.role) && row.mediaRef!=null && !row.mediaRef.isEmpty()) {
                 activeImagePath=row.mediaRef;
                 lastInterruptedMedia=row.mediaRef;
@@ -290,7 +312,7 @@ public final class ChatSession {
     private void generateTurn(Turn turn,String question,boolean voiceRecording,boolean useSearch,
                               String endpoint,int maxTokens,List<Message> history) {
         if(!current(turn)) {
-            persistTerminal(turn,question,"",null,null,TerminalState.CANCELLED);
+            persistTerminal(turn,question,"",null,null,TerminalState.CANCELLED,null);
             return;
         }
         try {
@@ -308,7 +330,7 @@ public final class ChatSession {
             return;
         }
         if(!current(turn)) {
-            persistTerminal(turn,question,"",null,null,TerminalState.CANCELLED);
+            persistTerminal(turn,question,"",null,null,TerminalState.CANCELLED,null);
             return;
         }
         List<WebSearch.Source> sources=Collections.emptyList();
@@ -368,9 +390,13 @@ public final class ChatSession {
                 }
                 String[] mediaPaths=replyMedia.stream().map(attachment->attachment.path).toArray(String[]::new);
                 List<Message> replyHistory=assistantHistory(history,question,speechTranscript);
+                turn.replyStartedElapsedMs=System.currentTimeMillis();
+                turn.firstTokenElapsedMs=-1L;
+                turn.streamedTokens.set(0);
                 try { error=engine.generateWithMedia(turn.handle,prompt(replyHistory,sources,mediaPaths.length),
                         mediaPaths,maxTokens,piece -> queue(turn,piece)); }
                 catch(Throwable e) { error=safeFailureMessage(e); }
+                turn.inferenceStats=collectInferenceStats(turn);
             }
         }
         final List<WebSearch.Source> resultSources=new ArrayList<>(sources);
@@ -379,16 +405,17 @@ public final class ChatSession {
                 :turn.cancelled||turn.discarded?TerminalState.CANCELLED:TerminalState.COMPLETED;
         String answer=ThinkingSanitizer.clean(partialFor(turn)).answer;
         if(failure!=null && answer.isEmpty()) answer="Could not finish this reply: "+failure;
-        String saveFailure=persistTerminal(turn,question,answer,speechTranscript,speechTranscriptStatus,terminal);
+        String saveFailure=persistTerminal(turn,question,answer,speechTranscript,speechTranscriptStatus,terminal,turn.inferenceStats);
         final String historyFailure=saveFailure;
         ui.post(() -> finish(turn,resultSources,failure,useSearch,searchFailure,historyFailure),0);
     }
     private String persistTerminal(Turn turn,String question,String answer,String speechTranscript,
-                                   String speechTranscriptStatus,TerminalState terminal) {
+                                   String speechTranscriptStatus,TerminalState terminal,InferenceStats stats) {
+        String statsJson=stats==null?null:stats.toJson();
         if(turn.discarded && terminal==TerminalState.CANCELLED) {
             try {
                 persistence.save(new CompletedTurn(turn.persistenceId,question,answer==null?"":answer,
-                        speechTranscript,speechTranscriptStatus,terminal,System.currentTimeMillis(),turn.imagePath));
+                        speechTranscript,speechTranscriptStatus,terminal,System.currentTimeMillis(),turn.imagePath,statsJson));
             } catch(Exception e) {
                 return e.getMessage()==null?e.toString():e.getMessage();
             }
@@ -397,7 +424,7 @@ public final class ChatSession {
         if(!turn.discarded) {
             try {
                 persistence.save(new CompletedTurn(turn.persistenceId,question,answer==null?"":answer,
-                        speechTranscript,speechTranscriptStatus,terminal,System.currentTimeMillis(),turn.imagePath));
+                        speechTranscript,speechTranscriptStatus,terminal,System.currentTimeMillis(),turn.imagePath,statsJson));
             } catch(Exception e) {
                 return e.getMessage()==null?e.toString():e.getMessage();
             }
@@ -464,8 +491,18 @@ public final class ChatSession {
         for(Attachment attachment:turn.media)if(attachment.kind==kind)return attachment.path;
         return "";
     }
+    private InferenceStats collectInferenceStats(Turn turn) {
+        if(turn.replyStartedElapsedMs<=0) return null;
+        long totalMs=Math.max(0L,System.currentTimeMillis()-turn.replyStartedElapsedMs);
+        long ttftMs=turn.firstTokenElapsedMs>=0?turn.firstTokenElapsedMs-turn.replyStartedElapsedMs:-1L;
+        int tokens=turn.streamedTokens.get();
+        long[] nativeStats=engine.consumeGenerationStats(turn.handle);
+        return InferenceStats.merge(ttftMs,totalMs,tokens,nativeStats);
+    }
     private synchronized void queue(Turn turn,String piece) {
         if(!current(turn) || turn.cancelled) return;
+        if(turn.firstTokenElapsedMs<0) turn.firstTokenElapsedMs=System.currentTimeMillis();
+        turn.streamedTokens.incrementAndGet();
         pending.append(piece);
         long now=System.currentTimeMillis();
         if(now-turn.lastPartialSaveAt>=PARTIAL_SAVE_INTERVAL_MS) {
@@ -496,7 +533,7 @@ public final class ChatSession {
             String answer=cleaned.answer;
             if(failure!=null && answer.isEmpty())
                 answer="Could not finish this reply: "+failure;
-            messages.add(new Message("assistant",answer,cleaned.reasoning,sources));
+            messages.add(new Message("assistant",answer,cleaned.reasoning,sources,false,null,null,turn.inferenceStats));
         }
         partial.setLength(0);active=null;
         String mode=searched?"web search + local model":"local model · offline";
@@ -518,7 +555,7 @@ public final class ChatSession {
         List<ChatSnapshot.Turn> turns=new ArrayList<>();
         for(Message message:messages) {
             turns.add(new ChatSnapshot.Turn(message.role,message.text,message.reasoning,
-                    toSnapshotSources(message.sources),false,message.interrupted,message.turnId));
+                    toSnapshotSources(message.sources),false,message.interrupted,message.turnId,message.inferenceStats));
         }
         if(active!=null) {
             ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(partial.toString());

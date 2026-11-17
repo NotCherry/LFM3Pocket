@@ -40,6 +40,18 @@ public final class HistoryRepositoryTest {
         assertFalse(saved.getSucceeded());
     }
 
+    @Test public void completedTurnPersistsAssistantInferenceStats(){
+        db=Room.inMemoryDatabaseBuilder(context,HistoryDatabase.class).build();
+        HistoryRepository repository=new HistoryRepository(db);
+        String stats="{\"ttftMs\":120,\"totalMs\":900,\"tokens\":6,\"decodeTps\":14.0,\"prefillTps\":800.0}";
+        HistoryRepository.Turn turn=new HistoryRepository.Turn(
+                "turn-stats","conversation-stats","Bench","Question","Done.",
+                null,HistoryRepository.Status.COMPLETED,100,null,null,null,stats);
+        assertTrue(repository.completeTurn(turn));
+        HistoryMessage assistant=db.history().messages("conversation-stats").get(1);
+        assertEquals(stats,assistant.getInferenceStats());
+    }
+
     @Test public void unavailableSpeechTranscriptIsPersistedSeparatelyFromAssistantText(){
         db=Room.inMemoryDatabaseBuilder(context,HistoryDatabase.class).build();
         HistoryRepository repository=new HistoryRepository(db);

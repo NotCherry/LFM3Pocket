@@ -53,10 +53,11 @@ jobs:
           bash .github/scripts/collect-arm64-omni-evidence.sh --self-test
       - name: Execute JVM JUnit tests
         run: gradle :app:testSmokeDebugUnitTest --no-daemon --stacktrace
-      - name: Verify Room v4 and v5 schemas were exported
+      - name: Verify Room v4, v5, and v6 schemas were exported
         run: |
           test -s app/schemas/com.notcherry.lfm3pocket.HistoryDatabase/4.json
           test -s app/schemas/com.notcherry.lfm3pocket.HistoryDatabase/5.json
+          test -s app/schemas/com.notcherry.lfm3pocket.HistoryDatabase/6.json
       - name: Upload JVM JUnit XML and reports
         if: always()
         uses: actions/upload-artifact@v4

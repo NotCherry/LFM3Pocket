@@ -110,7 +110,7 @@ Complete checklist from `app/src/main/res/values/ids.xml`:
 
 **Compose `testTag` resource-id style** (package-qualified): same names as above via `"{package}:id/{name}"`. Host/history: `history_open` (and other host tags used by E2E) remain stable under U09/U12.
 
-**Additive IDs (U11/U13):** `tool_risk`, `tool_result`, `settings_open`, `settings_back`, `chat_overflow`, `settings_save`, `search_save` — keep discovering the Stage 1 chat IDs above; do not replace them.
+**Additive IDs (U11/U13):** `tool_risk`, `tool_result`, `settings_open`, `settings_back`, `chat_overflow`, `settings_save`, `search_save`, `chat_turn_stats` (assistant inference speed line, visible after tapping a finished reply) — keep discovering the Stage 1 chat IDs above; do not replace them.
 
 **Do not** rename or remove IDs to “look cleaner.”
 

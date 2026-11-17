@@ -275,5 +275,9 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         @Override public void resetStop() {
             stopRequested = false;
         }
+
+        @Override public long[] consumeGenerationStats(long handle) {
+            return new long[] { 40L, 12L, 180L, 3L, 90L };
+        }
     }
 }

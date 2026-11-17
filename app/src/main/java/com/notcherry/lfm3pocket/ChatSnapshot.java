@@ -36,13 +36,20 @@ public final class ChatSnapshot {
         public final boolean interrupted;
         /** Persistence id for interrupted retries; null otherwise. */
         public final String turnId;
+        /** Optional on-device inference timings for a finished assistant reply. */
+        public final InferenceStats inferenceStats;
 
         public Turn(String role, String text, String reasoning, List<Source> sources, boolean streaming) {
-            this(role, text, reasoning, sources, streaming, false, null);
+            this(role, text, reasoning, sources, streaming, false, null, null);
         }
 
         public Turn(String role, String text, String reasoning, List<Source> sources, boolean streaming,
                     boolean interrupted, String turnId) {
+            this(role, text, reasoning, sources, streaming, interrupted, turnId, null);
+        }
+
+        public Turn(String role, String text, String reasoning, List<Source> sources, boolean streaming,
+                    boolean interrupted, String turnId, InferenceStats inferenceStats) {
             this.role = Objects.requireNonNull(role, "role");
             this.text = text == null ? "" : text;
             this.reasoning = reasoning == null || reasoning.isEmpty() ? null : reasoning;
@@ -51,6 +58,7 @@ public final class ChatSnapshot {
             this.streaming = streaming;
             this.interrupted = interrupted;
             this.turnId = turnId == null || turnId.isEmpty() ? null : turnId;
+            this.inferenceStats = inferenceStats;
         }
     }
 

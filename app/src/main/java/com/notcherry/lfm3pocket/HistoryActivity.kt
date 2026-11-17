@@ -333,6 +333,9 @@ private fun HistoryScreen(
                                 cleaned?.reasoning,
                                 emptyList(),
                                 false,
+                                false,
+                                message.turnId,
+                                InferenceStats.fromJson(message.inferenceStats),
                             )
                             ChatTurn(
                                 turn = turn,

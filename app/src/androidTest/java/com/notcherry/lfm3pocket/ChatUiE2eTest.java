@@ -315,4 +315,28 @@ public final class ChatUiE2eTest {
         }
     }
 
+    @Test public void tappingAssistantReplyTogglesInferenceStatsLine() throws Exception {
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            app.scriptedEngine().completeFirstTurn();
+            awaitEnabled("chat_send");
+            UiObject2 input = device.wait(Until.findObject(By.res(packageName, "chat_input")), UI_TIMEOUT_MS);
+            assertNotNull(input);
+            input.setText("How fast?");
+            awaitEnabled("chat_send").click();
+            awaitTranscript("FAKE_STREAM_BEGIN");
+            assertNotNull(device.wait(Until.findObject(By.res(packageName, "chat_live_status")
+                    .textContains("Response complete")), UI_TIMEOUT_MS));
+
+            UiObject2 body = device.wait(Until.findObject(By.desc("FAKE_STREAM_BEGIN")), UI_TIMEOUT_MS);
+            assertNotNull(body);
+            body.click();
+            UiObject2 stats = device.wait(Until.findObject(By.res(packageName, "chat_turn_stats")), UI_TIMEOUT_MS);
+            assertNotNull(stats);
+            assertTrue(stats.getText().contains("tok/s"));
+
+            body.click();
+            assertTrue(device.wait(Until.gone(By.res(packageName, "chat_turn_stats")), UI_TIMEOUT_MS));
+        }
+    }
+
 }

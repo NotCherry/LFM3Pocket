@@ -105,4 +105,17 @@
     <string name="settings_crash_log_empty">Brak zapisanych informacji o awarii.</string>
     <string name="settings_crash_log_exported">Dziennik awarii gotowy do udostępnienia z tego telefonu.</string>
     <string name="chat_interrupted_retry">Przerwano — Ponów</string>
+    <string name="inference_stats_separator"> · </string>
+    <string name="inference_stats_ttft">Pierwszy token %.1f s</string>
+    <string name="inference_stats_total">Łącznie %.1f s</string>
+    <plurals name="inference_stats_tokens">
+        <item quantity="one">%d token</item>
+        <item quantity="few">%d tokeny</item>
+        <item quantity="many">%d tokenów</item>
+        <item quantity="other">%d tokena</item>
+    </plurals>
+    <string name="inference_stats_decode_tps">Dekodowanie %.0f tok/s</string>
+    <string name="inference_stats_prefill_tps">Prefill %.0f tok/s</string>
+    <string name="inference_stats_show_a11y">Pokaż statystyki szybkości inferencji</string>
+    <string name="inference_stats_hide_a11y">Ukryj statystyki szybkości inferencji</string>
 </resources>

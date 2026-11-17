@@ -24,6 +24,11 @@ public final class NativeBridge {
     /** Compile-time + runtime build summary for Settings / diagnostics copy. */
     public static native String nativeBuildInfo();
     /**
+     * Timing snapshot from the last {@link #generateUtf8} on this handle.
+     * Returns {@code [prefillMs, prefillTokens, decodeMs, decodeTokens, firstTokenMs]} or {@code null}.
+     */
+    public static native long[] consumeGenerationStats(long handle);
+    /**
      * llama-bench style prompt-processing (pp) and text-generation (tg) tok/s.
      * Returns a multi-line English report, or an error string.
      */

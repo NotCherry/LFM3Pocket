@@ -7,9 +7,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,7 +33,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -61,6 +64,7 @@ fun ChatTurnList(
     onRetryInterrupted: (String) -> Unit = {},
 ) {
     val scroll = rememberScrollState()
+    val expandedStats = remember { mutableStateMapOf<String, Boolean>() }
     LaunchedEffect(turns.size, turns.lastOrNull()?.text, turns.lastOrNull()?.streaming) {
         if (autoScroll) scroll.scrollTo(scroll.maxValue)
     }
@@ -73,12 +77,18 @@ fun ChatTurnList(
             EmptyConversation(onSuggest)
         } else {
             turns.forEachIndexed { index, turn ->
+                val statsKey = inferenceStatsKey(turn, index)
                 ChatTurn(
                     turn = turn,
                     packageName = packageName,
                     userMessageTag = userMessageTag,
                     assistantMessageTag = assistantMessageTag,
                     onRetryInterrupted = onRetryInterrupted,
+                    statsExpanded = expandedStats[statsKey] == true,
+                    onToggleStats = {
+                        if (expandedStats[statsKey] == true) expandedStats.remove(statsKey)
+                        else expandedStats[statsKey] = true
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 7.dp),
@@ -99,10 +109,18 @@ fun ChatTurn(
     userMessageTag: String? = null,
     assistantMessageTag: String? = null,
     onRetryInterrupted: (String) -> Unit = {},
+    statsExpanded: Boolean = false,
+    onToggleStats: () -> Unit = {},
 ) {
+    val context = LocalContext.current
     val atlas = MaterialTheme.atlasColors
     val type = MaterialTheme.atlasTypography
     val isUser = turn.role == "user"
+    val stats = turn.inferenceStats
+    val canShowStats = !isUser && !turn.streaming && stats != null && stats.hasAnyMetric()
+    val statsLine = if (canShowStats) InferenceStatsFormat.format(stats) else ""
+    val toggleShow = InferenceStatsFormat.toggleShowDescription(context)
+    val toggleHide = InferenceStatsFormat.toggleHideDescription(context)
     val roleLabel = if (isUser) "YOU" else "Hanami"
     val bodyTag = when {
         isUser && userMessageTag != null -> "$packageName:id/$userMessageTag"
@@ -143,7 +161,22 @@ fun ChatTurn(
                             .widthIn(min = 96.dp, max = 168.dp),
                     )
                 }
-                Column(Modifier.weight(1f)) {
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .then(
+                            if (canShowStats) {
+                                Modifier.semantics(mergeDescendants = true) {
+                                    onClick(label = if (statsExpanded) toggleHide else toggleShow) {
+                                        onToggleStats()
+                                        true
+                                    }
+                                }.clickable { onToggleStats() }
+                            } else {
+                                Modifier
+                            },
+                        ),
+                ) {
                     SelectionContainer {
                         Column(
                             Modifier
@@ -157,6 +190,22 @@ fun ChatTurn(
                                 StreamingCursor()
                             }
                         }
+                    }
+                    AnimatedVisibility(
+                        visible = statsExpanded && canShowStats,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                    ) {
+                        Text(
+                            text = statsLine,
+                            style = type.bodySmall,
+                            color = atlas.inkMuted,
+                            modifier = Modifier
+                                .padding(top = 6.dp)
+                                .fillMaxWidth()
+                                .testTag("$packageName:id/chat_turn_stats")
+                                .semantics { contentDescription = statsLine },
+                        )
                     }
                     if (!turn.streaming && turn.sources.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
@@ -235,6 +284,9 @@ fun ReasoningRail(reasoning: String, modifier: Modifier = Modifier) {
         }
     }
 }
+
+private fun inferenceStatsKey(turn: ChatSnapshot.Turn, index: Int): String =
+    turn.turnId?.takeIf { it.isNotBlank() } ?: "turn-$index-${turn.role}"
 
 private val ColorSoft = androidx.compose.ui.graphics.Color(0xFFC9C2B4)
 

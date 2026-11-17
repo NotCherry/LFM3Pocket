@@ -32,8 +32,10 @@ public class ChatSessionTest {
             }
             return p.contains("Perform ASR.")?asrError:null;
         }
+        long[] nativeStats;
         public void stop(){stopped=true;}
         public void resetStop(){stopped=false;}
+        @Override public long[] consumeGenerationStats(long handle) { return nativeStats; }
     }
     static final class Harness {
         final Queue worker=new Queue(),ui=new Queue();final Engine engine=new Engine();
@@ -370,6 +372,18 @@ public class ChatSessionTest {
         assertEquals(Collections.singletonList("/private/cache/voice.wav"),engine.mediaByCall.get(1));
         assertEquals(1,occurrences(engine.prompts.get(1),"<__media__>"));
         assertTrue(engine.prompts.get(1).contains(ChatSession.DEFAULT_VOICE_QUESTION));
+    }
+
+    @Test public void assistantTurnCollectsInferenceStatsForUiAndHistory(){
+        Harness h=new Harness();
+        h.engine.nativeStats=new long[]{50L,8L,400L,1L,120L};
+        assertTrue(h.send("Speed?"));
+        h.complete();
+        InferenceStats stats=h.snapshot.turns.get(1).inferenceStats;
+        assertNotNull(stats);
+        assertEquals(1,stats.tokensGenerated);
+        assertEquals(2.5,stats.decodeTokensPerSec,0.1);
+        assertEquals(160.0,stats.prefillTokensPerSec,0.1);
     }
 
     private static int occurrences(String value,String token){

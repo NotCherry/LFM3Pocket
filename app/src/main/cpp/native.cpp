@@ -30,6 +30,14 @@ struct ModelHandle {
     bool media_dirty = false;
     std::atomic<bool> cancelled{false};
     std::mutex decode_mutex;
+  struct {
+      bool valid = false;
+      jlong prefill_ms = 0;
+      jint prefill_tokens = 0;
+      jlong decode_ms = 0;
+      jint decode_tokens = 0;
+      jlong first_token_ms = 0;
+  } last_generation_stats;
 
     void release_session() {
         if (batch) {
@@ -340,6 +348,25 @@ Java_com_notcherry_lfm3pocket_NativeBridge_nativeBuildInfo(JNIEnv * env, jclass)
     return make_string(env, info);
 }
 
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_com_notcherry_lfm3pocket_NativeBridge_consumeGenerationStats(JNIEnv * env, jclass, jlong handle) {
+    if (!handle) return nullptr;
+    auto state = find_model(handle);
+    if (!state || !state->last_generation_stats.valid) return nullptr;
+    jlongArray array = env->NewLongArray(5);
+    if (!array) return nullptr;
+    const jlong values[5] = {
+            state->last_generation_stats.prefill_ms,
+            static_cast<jlong>(state->last_generation_stats.prefill_tokens),
+            state->last_generation_stats.decode_ms,
+            static_cast<jlong>(state->last_generation_stats.decode_tokens),
+            state->last_generation_stats.first_token_ms,
+    };
+    env->SetLongArrayRegion(array, 0, 5, values);
+    state->last_generation_stats.valid = false;
+    return array;
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         JNIEnv * env, jclass, jlong handle, jbyteArray prompt, jobjectArray media_paths,
@@ -356,6 +383,9 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     // Do not clear cancelled here — ChatSession/ModelRuntime call resetStop first.
     // Clearing would drop a Stop that raced ahead of this entry.
     if (state->cancelled.load()) return nullptr;
+    state->last_generation_stats = {};
+    using steady = std::chrono::steady_clock;
+    const auto generation_start = steady::now();
     llama_model * model = state->model;
     const bool mrope = state->multimodal && mtmd_decode_use_mrope(state->multimodal);
     const llama_vocab * vocab = llama_model_get_vocab(model);
@@ -452,12 +482,17 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
                         error = "Could not prepare the selected media for LFM3";
                     } else {
                         llama_pos next_position = 0;
+                        const auto media_prefill_start = steady::now();
                         if (mtmd_helper_eval_chunks(state->multimodal, state->ctx, chunks, 0, 0,
                                                     choose_batch_size(context_tokens), true,
                                                     &next_position) != 0) {
                             error = "Model failed while evaluating the selected media";
                         } else {
+                            const auto media_prefill_end = steady::now();
                             position = static_cast<int>(next_position);
+                            state->last_generation_stats.prefill_ms = static_cast<jlong>(
+                                    std::chrono::duration<double, std::milli>(media_prefill_end - media_prefill_start).count());
+                            state->last_generation_stats.prefill_tokens = std::max(1, position);
                             if (position + 1 >= context_tokens) {
                                 error = "Selected media is too large for the selected phone context";
                             }
@@ -492,12 +527,18 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
             }
             position = static_cast<int>(shared);
             if (position < converted) {
+                const int prefill_count = converted - position;
+                const auto prefill_start = steady::now();
                 if (!eval_tokens(state.get(), tokens.data() + position, converted - position,
                                  position, mrope, error)) {
                     // Cancel or decode error: drop partial session so the next turn
                     // cannot reuse a half-evaluated prompt (blocking review #1).
                     state->release_session();
                 } else {
+                    const auto prefill_end = steady::now();
+                    state->last_generation_stats.prefill_ms = static_cast<jlong>(
+                            std::chrono::duration<double, std::milli>(prefill_end - prefill_start).count());
+                    state->last_generation_stats.prefill_tokens = prefill_count;
                     position = converted;
                     prompt_ready = true;
                 }
@@ -516,6 +557,9 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     }
 
     std::vector<llama_token> generated;
+    bool first_token_recorded = false;
+    auto decode_phase_start = generation_start;
+    auto decode_phase_end = generation_start;
     for (int i = 0; error.empty() && sampler && !state->cancelled.load() &&
                     i < max_tokens && position + i < context_tokens; ++i) {
         const llama_token next = llama_sampler_sample(sampler, state->ctx, -1);
@@ -526,7 +570,15 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         const int n = llama_token_to_piece(vocab, next, piece, sizeof(piece), 0, true);
         if (n < 0) { error = "Token decoding failed"; break; }
         pending.append(piece, static_cast<size_t>(n));
+        const bool had_pending = !pending.empty();
         deliver(env, sink, callback, decode_utf8_prefix(pending));
+        if (had_pending && !first_token_recorded) {
+            first_token_recorded = true;
+            const auto first_token_at = steady::now();
+            state->last_generation_stats.first_token_ms = static_cast<jlong>(
+                    std::chrono::duration<double, std::milli>(first_token_at - generation_start).count());
+            decode_phase_start = first_token_at;
+        }
         if (env->ExceptionCheck()) {
             env->ExceptionClear();
             error = "Java callback failed";
@@ -546,6 +598,15 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         generated.push_back(next);
         if (static_cast<int>(generated.size()) >= max_tokens) break;
     }
+  decode_phase_end = steady::now();
+  state->last_generation_stats.decode_tokens = static_cast<jint>(generated.size());
+  if (first_token_recorded && generated.size() > 0) {
+      state->last_generation_stats.decode_ms = static_cast<jlong>(
+              std::chrono::duration<double, std::milli>(decode_phase_end - decode_phase_start).count());
+  }
+  if (generated.size() > 0 || state->last_generation_stats.prefill_ms > 0) {
+      state->last_generation_stats.valid = true;
+  }
     if (!pending.empty() && error.empty() && !state->cancelled.load())
         deliver(env, sink, callback, u"\uFFFD");
 

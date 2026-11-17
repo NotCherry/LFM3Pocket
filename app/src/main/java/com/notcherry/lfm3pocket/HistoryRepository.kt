@@ -50,6 +50,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
         val toolExecution: ToolExecution? = null,
         val speechTranscriptStatus: String? = null,
         val mediaRef: String? = null,
+        val inferenceStats: String? = null,
     ) {
         init {
             require(id.isNotBlank() && conversationId.isNotBlank() && title.isNotBlank())
@@ -70,6 +71,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
         val mediaRef: String?,
         val speechTranscript: String?,
         val speechTranscriptStatus: String?,
+        val inferenceStats: String?,
     )
 
     companion object {
@@ -117,7 +119,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
                 return@Callable false
             }
             ensureConversation(dao, turn.conversationId, turn.title, turn.completedAt)
-            dao.updateTurn(turn.id, turn.assistantText, turn.status.storedValue)
+            dao.updateTurn(turn.id, turn.assistantText, turn.status.storedValue, turn.inferenceStats)
             val user = dao.messageAt(existing.conversationId, existing.sequence - 1L)
             if (user != null && user.role == "user") {
                 dao.updateSpeech(user.id, turn.speechTranscript, turn.speechTranscriptStatus)
@@ -146,7 +148,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
         ))
         dao.insertMessage(HistoryMessage(
             assistantId, turn.conversationId, firstSequence + 1L, "assistant", turn.assistantText,
-            null, turn.completedAt, turn.id, turn.status.storedValue,
+            null, turn.completedAt, turn.id, turn.status.storedValue, null, null, turn.inferenceStats,
         ))
         turn.toolExecution?.let { execution ->
             dao.insertToolOutcome(HistoryToolOutcome(
@@ -174,7 +176,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
         database.history().messages(conversationId).map {
             StoredMessage(
                 it.role, it.text, it.turnId, it.turnStatus, it.mediaRef,
-                it.speechTranscript, it.speechTranscriptStatus,
+                it.speechTranscript, it.speechTranscriptStatus, it.inferenceStats,
             )
         }
 
