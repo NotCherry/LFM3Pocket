@@ -68,7 +68,7 @@ public final class ModelRuntime {
     private volatile long handle;
     private volatile String loadedPath = "";
     private volatile String conversationId = "";
-    private volatile String historyTitle = "New conversation";
+    private volatile String historyTitle;
     private volatile String lastAssistant = "";
     private volatile boolean speechCancel;
     private boolean playbackNoted;
@@ -84,6 +84,9 @@ public final class ModelRuntime {
     private final AtomicInteger pendingTokens = new AtomicInteger();
     private final AtomicBoolean tokenFlushPosted = new AtomicBoolean();
     private final LoopbackAgentApi loopback;
+    private final SpeechReplyRouter speechRouter;
+    private final TinyVocaPackStore tinyVocaPack;
+    private final AndroidSystemSpeechSynthesizer systemSpeech;
     private final Runnable idleTick = new Runnable() {
         @Override public void run() {
             apply(policy.onClock(SystemClock.elapsedRealtime()));
@@ -93,12 +96,16 @@ public final class ModelRuntime {
 
     ModelRuntime(Lfm3PocketApplication app) {
         this.app = app;
+        this.historyTitle = defaultHistoryTitle();
         this.preferences = new RuntimePreferences(app);
         this.engine = new CountingEngine(app.inferenceEngine());
         this.playbackFocus = new AndroidPlaybackFocus(app);
         this.playback = new PlaybackController(app.newPlaybackTrackFactory(), playbackFocus::request,
                 playbackFocus::abandon, audioWorker, main::post, (state, message) -> onPlayback(state, message));
         this.loopback = new LoopbackAgentApi(this::submitFromLoopback, message -> {});
+        this.tinyVocaPack = new TinyVocaPackStore(app);
+        this.speechRouter = new SpeechReplyRouter(preferences, tinyVocaPack);
+        this.systemSpeech = new AndroidSystemSpeechSynthesizer(app);
         apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
         syncLoopback();
@@ -129,6 +136,10 @@ public final class ModelRuntime {
     public String conversationId() { return conversationId; }
     public String historyTitle() { return historyTitle; }
     public RuntimeNotice currentNotice() { return policyNotice(); }
+
+    private String defaultHistoryTitle() {
+        return app.getString(R.string.new_conversation_title);
+    }
 
     public void setConversation(String id, String title) {
         if (id != null && !id.isBlank()) conversationId = id;
@@ -250,6 +261,7 @@ public final class ModelRuntime {
         if (session != null) session.stop();
         engine.stop();
         playback.stop();
+        systemSpeech.stop();
         last = policy.unloadRequested();
         String why = cause == null ? "user" : cause;
         worker.execute(() -> {
@@ -273,22 +285,83 @@ public final class ModelRuntime {
         if (session != null) session.stop();
         engine.stop();
         playback.stop();
+        systemSpeech.stop();
         apply(policy.stopRequested(SystemClock.elapsedRealtime()));
     }
 
     public void clearConversation() {
         if (session != null) session.clear();
         lastAssistant = "";
+        lastTranscript = "";
+        lastStatus = "";
+        lastSnapshot = null;
+        lastGenerating = false;
+    }
+
+    /** Retry the most recent interrupted assistant turn in the live session. */
+    public boolean retryInterrupted(String turnId) {
+        ensureSession();
+        if (handle == 0L || session == null) return false;
+        int tokens = pendingMax <= 0 ? 512 : pendingMax;
+        noteSubmission("retry", tokens);
+        return session.retryInterrupted(turnId, tokens);
+    }
+
+    /**
+     * Force a Room rehydrate after conversation id changes on a cold process.
+     * Room work runs on the runtime worker; the live session is updated on the main thread.
+     */
+    public void restoreOpenConversation() {
+        ensureSession();
+        final String id = conversationId;
+        final int born = sessionEpoch;
+        worker.execute(() -> {
+            if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
+            try {
+                history.markInterruptedGenerations(System.currentTimeMillis());
+            } catch (Exception ignored) {
+            }
+            if (id == null || id.isBlank()) return;
+            java.util.List<HistoryRepository.StoredMessage> rows;
+            try {
+                rows = history.messages(id);
+            } catch (Exception ignored) {
+                return;
+            }
+            if (rows.isEmpty()) return;
+            java.util.ArrayList<ChatSession.RestoredMessage> restored = new java.util.ArrayList<>();
+            for (HistoryRepository.StoredMessage row : rows) {
+                restored.add(new ChatSession.RestoredMessage(
+                        row.getRole(), row.getText(), row.getTurnId(), row.getTurnStatus(), row.getMediaRef()));
+            }
+            main.post(() -> {
+                if (born != sessionEpoch || session == null) return;
+                if (session.isGenerating()) return;
+                ChatSnapshot existing = session.snapshot();
+                if (existing != null && !existing.turns.isEmpty()) return;
+                session.restore(restored);
+                lastSnapshot = session.snapshot();
+                lastTranscript = FlatTranscript.format(lastSnapshot);
+                lastStatus = lastSnapshot == null ? "" : lastSnapshot.status;
+                lastGenerating = session.isGenerating();
+            });
+        });
     }
 
     public void speak(String replyText) {
-        if (playbackActive()) {
+        if (playbackActive() || systemSpeech.isSpeaking()) {
+            speechCancel = true;
             playback.stop();
+            systemSpeech.stop();
+            engine.stop();
+            apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+            if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response cancelled.");
             return;
         }
         if (policyNotice().kind == RuntimeNotice.Kind.SPEAKING && !playbackNoted) {
             speechCancel = true;
             engine.stop();
+            systemSpeech.stop();
             if (ui != null && ui.isUsable()) ui.onSpeech(true, "Stopping spoken response...");
             return;
         }
@@ -300,9 +373,33 @@ public final class ModelRuntime {
         }
         speechCancel = false;
         apply(policy.onSpeechStarted());
-        if (ui != null && ui.isUsable()) ui.onSpeech(true, "Generating spoken response locally…");
-        int frames = SpeechOptions.framesForText(reply);
-        worker.execute(() -> generateSpeech(reply, frames));
+        final String spoken = reply;
+        worker.execute(() -> {
+            if (speechCancel) {
+                main.post(() -> {
+                    apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                    if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response cancelled.");
+                });
+                return;
+            }
+            SpeechReplyBackend backend = speechRouter.select(spoken);
+            if (backend == SpeechReplyBackend.SYSTEM_TTS) {
+                generateSystemSpeech(spoken);
+                return;
+            }
+            if (backend == SpeechReplyBackend.TINY_VOCA) {
+                main.post(() -> {
+                    if (ui != null && ui.isUsable()) ui.onSpeech(true, "Speaking with English tiny-voca…");
+                });
+                generateTinyVocaSpeech(spoken);
+                return;
+            }
+            main.post(() -> {
+                if (ui != null && ui.isUsable()) ui.onSpeech(true, "Generating spoken response locally…");
+            });
+            int frames = SpeechOptions.framesForText(spoken);
+            generateSpeech(spoken, frames);
+        });
     }
 
     public void showConsent(String id, String text, boolean safe) {
@@ -426,10 +523,11 @@ public final class ModelRuntime {
         lastGenerating = false;
         lastSnapshot = null;
         conversationId = "";
-        historyTitle = "New conversation";
+        historyTitle = defaultHistoryTitle();
         if (old != null) old.close();
         if (current != 0L) engine.unloadModel(current);
         playback.stop();
+        systemSpeech.stop();
         policy.reset();
         apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
@@ -454,6 +552,74 @@ public final class ModelRuntime {
                             outcome.proposal.risk == ToolCoordinator.Risk.SAFE);
                 }
             });
+        });
+    }
+
+    private void generateSystemSpeech(String reply) {
+        if (speechCancel) {
+            main.post(() -> {
+                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response cancelled.");
+            });
+            return;
+        }
+        main.post(() -> {
+            if (ui != null && ui.isUsable()) ui.onSpeech(true, "Speaking with system voice…");
+        });
+        systemSpeech.speak(java.util.Locale.US, reply, new AndroidSystemSpeechSynthesizer.Callback() {
+            @Override public void onDone() {
+                main.post(() -> {
+                    apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                    if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response finished.");
+                });
+            }
+            @Override public void onError(String message) {
+                main.post(() -> {
+                    apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                    if (ui != null && ui.isUsable()) ui.onSpeech(false, message);
+                });
+            }
+        });
+    }
+
+    private void generateTinyVocaSpeech(String reply) {
+        String failure = null;
+        byte[] audio = new byte[0];
+        int sampleRate = 24000;
+        boolean synthesisCancelled = false;
+        try (TinyVocaOnnxRuntime synth = TinyVocaOnnxRuntime.open(app)) {
+            sampleRate = synth.sampleRateHz();
+            audio = synth.synthesizePcm16(reply, "F2", () -> speechCancel);
+        } catch (SpeechSynthesisCancelled cancelled) {
+            synthesisCancelled = true;
+        } catch (Throwable thrown) {
+            failure = thrown.getMessage() == null ? thrown.toString() : thrown.getMessage();
+        }
+        boolean cancelled = speechCancel || synthesisCancelled;
+        byte[] pcm = audio;
+        int rate = sampleRate;
+        String error = failure;
+        main.post(() -> {
+            if (cancelled) {
+                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response cancelled.");
+                return;
+            }
+            if (error != null || pcm.length == 0) {
+                if (ui != null && ui.isUsable()) {
+                    ui.onSpeech(true, error == null
+                            ? "tiny-voca produced no audio; using system voice…"
+                            : "tiny-voca failed; using system voice…");
+                }
+                worker.execute(() -> generateSystemSpeech(reply));
+                return;
+            }
+            if (!playback.play(pcm, rate, 1, 16)) {
+                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                if (ui != null && ui.isUsable()) ui.onSpeech(false, "Could not start spoken playback.");
+                return;
+            }
+            if (ui != null && ui.isUsable()) ui.onSpeech(false, "Playing tiny-voca speech…");
         });
     }
 
@@ -534,8 +700,20 @@ public final class ModelRuntime {
         if (session != null) return;
         if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
         final int born = sessionEpoch;
+        ChatSession.Persistence persistence = new ChatSession.Persistence() {
+            @Override public void begin(ChatSession.StartedTurn turn) throws Exception {
+                beginTurn(turn);
+            }
+            @Override public void updatePartial(String turnId, String assistantText, long atMs) {
+                if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
+                history.updateTurnPartial(turnId, assistantText == null ? "" : assistantText, atMs);
+            }
+            @Override public void save(ChatSession.CompletedTurn turn) throws Exception {
+                saveTurn(turn);
+            }
+        };
         session = new ChatSession(engine, worker, (task, delay) -> main.postDelayed(task, delay),
-                this::handle, WebSearch::search, this::saveTurn,
+                this::handle, WebSearch::search, persistence,
                 path -> HistoryMediaCleanup.deleteAttachment(app, path),
                 (text, status, running) -> {
                     if (born != sessionEpoch) return;
@@ -544,6 +722,37 @@ public final class ModelRuntime {
                     if (born != sessionEpoch) return;
                     onSnapshot(snapshot);
                 });
+    }
+
+    private void beginTurn(ChatSession.StartedTurn turn) throws Exception {
+        if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
+        String title = historyTitle;
+        if (defaultHistoryTitle().equals(title)) {
+            title = titleFor(turn.userText);
+            historyTitle = title;
+            preferences.raw().edit().putString("history_title", title).apply();
+            String shown = title;
+            main.post(() -> { if (ui != null && ui.isUsable()) ui.onHistoryTitle(shown); });
+        }
+        String id = conversationId == null || conversationId.isBlank()
+                ? java.util.UUID.randomUUID().toString() : conversationId;
+        conversationId = id;
+        preferences.raw().edit()
+                .putString("history_conversation_id", conversationId)
+                .putString("history_title", historyTitle)
+                .commit();
+        String mediaRef = turn.mediaRef;
+        if (mediaRef != null && !mediaRef.isBlank()) {
+            mediaRef = HistoryMediaStore.persistPhoto(app, mediaRef, conversationId, turn.id);
+            // Keep the live session pointing at the durable copy for follow-ups / retry.
+            if (session != null && !mediaRef.isEmpty()) {
+                // ChatSession already captured the cache path in the in-memory user row;
+                // durable path is what Room stores for restore after death.
+            }
+        }
+        history.beginTurn(new HistoryRepository.TurnStart(
+                turn.id, id, historyTitle, turn.userText, turn.startedAt,
+                mediaRef == null || mediaRef.isBlank() ? null : mediaRef));
     }
 
     private void saveTurn(ChatSession.CompletedTurn turn) {
@@ -556,7 +765,7 @@ public final class ModelRuntime {
             }
         }
         String title = historyTitle;
-        if ("New conversation".equals(title)) {
+        if (defaultHistoryTitle().equals(title)) {
             title = titleFor(turn.userText);
             historyTitle = title;
             preferences.raw().edit().putString("history_title", title).apply();
@@ -566,10 +775,12 @@ public final class ModelRuntime {
         String id = conversationId == null || conversationId.isBlank()
                 ? java.util.UUID.randomUUID().toString() : conversationId;
         conversationId = id;
+        if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
+        String mediaRef = turn.mediaRef == null || turn.mediaRef.isBlank() ? null : turn.mediaRef;
         history.completeTurn(new HistoryRepository.Turn(turn.id, id, historyTitle, turn.userText,
-                turn.assistantText, turn.speechTranscript,
+                turn.assistantText == null ? "" : turn.assistantText, turn.speechTranscript,
                 HistoryRepository.Status.valueOf(turn.status.name()), turn.completedAt, null,
-                turn.speechTranscriptStatus));
+                turn.speechTranscriptStatus, mediaRef));
     }
 
     private void onChat(String transcript, String status, boolean running) {
@@ -584,7 +795,12 @@ public final class ModelRuntime {
                 if (!unloading) apply(policy.refreshRate(SystemClock.elapsedRealtime()));
             }, 1100L);
         }
-        if (stopped) apply(policy.onGenerationFinished(SystemClock.elapsedRealtime()));
+        if (stopped) {
+            apply(policy.onGenerationFinished(SystemClock.elapsedRealtime()));
+            if (app.startedActivityCount() == 0) {
+                RuntimeNotifications.notifyReplyReady(app, conversationId, historyTitle, lastStatus);
+            }
+        }
         if (ui != null && ui.isUsable()) ui.onChat(lastTranscript, lastStatus, running);
     }
 
@@ -696,10 +912,11 @@ public final class ModelRuntime {
         return (level * 100f) / scale < 15f;
     }
 
-    private static String titleFor(String question) {
-        String title = question == null ? "New conversation" : question.replaceAll("\\s+", " ").trim();
+    private String titleFor(String question) {
+        String fresh = defaultHistoryTitle();
+        String title = question == null ? fresh : question.replaceAll("\\s+", " ").trim();
         if (title.length() > 60) title = title.substring(0, 57) + "…";
-        return title.isEmpty() ? "New conversation" : title;
+        return title.isEmpty() ? fresh : title;
     }
 
     private final class CountingEngine implements InferenceEngine {

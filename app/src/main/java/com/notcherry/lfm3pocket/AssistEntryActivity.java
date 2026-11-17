@@ -1,6 +1,7 @@
 package com.notcherry.lfm3pocket;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 
@@ -9,6 +10,18 @@ import android.os.Bundle;
  * without authorizing tools. Voice interaction is not implemented yet.
  */
 public final class AssistEntryActivity extends Activity {
+    private float attachedInterfaceScale = InterfaceSize.DEFAULT;
+
+    @Override protected void attachBaseContext(Context newBase) {
+        attachedInterfaceScale = InterfaceSize.read(newBase);
+        super.attachBaseContext(InterfaceSize.wrap(newBase));
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        InterfaceSize.recreateIfChanged(this, attachedInterfaceScale);
+    }
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         startActivity(new Intent(this, MainActivity.class)

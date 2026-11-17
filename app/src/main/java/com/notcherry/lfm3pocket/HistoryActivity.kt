@@ -1,5 +1,6 @@
 package com.notcherry.lfm3pocket
 
+import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -16,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.semantics.contentDescription
@@ -51,6 +53,18 @@ class HistoryActivity : ComponentActivity() {
     private var selected by mutableStateOf<HistoryTranscript?>(null)
     private var loading by mutableStateOf(true)
     private var error by mutableStateOf<String?>(null)
+
+    private var attachedInterfaceScale = InterfaceSize.DEFAULT
+
+    override fun attachBaseContext(newBase: Context) {
+        attachedInterfaceScale = InterfaceSize.read(newBase)
+        super.attachBaseContext(InterfaceSize.wrap(newBase))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        InterfaceSize.recreateIfChanged(this, attachedInterfaceScale)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -107,7 +121,8 @@ class HistoryActivity : ComponentActivity() {
     private fun deleteConversation(id: String) {
         worker.execute {
             dao.deleteConversation(id)
-            val mediaClean = HistoryMediaCleanup.deleteTemporaryAttachments(this)
+            val durableClean = HistoryMediaStore.deleteConversation(this, id)
+            val mediaClean = HistoryMediaCleanup.deleteTemporaryAttachments(this) && durableClean
             main.post {
                 if (selected?.conversation?.id == id) selected = null
                 refreshConversations(if (mediaClean) null else
@@ -119,7 +134,8 @@ class HistoryActivity : ComponentActivity() {
     private fun deleteAllConversations() {
         worker.execute {
             dao.deleteAllConversations()
-            val mediaClean = HistoryMediaCleanup.deleteTemporaryAttachments(this)
+            val durableClean = HistoryMediaStore.deleteAll(this)
+            val mediaClean = HistoryMediaCleanup.deleteTemporaryAttachments(this) && durableClean
             main.post {
                 selected = null
                 refreshConversations(if (mediaClean) null else
@@ -131,7 +147,7 @@ class HistoryActivity : ComponentActivity() {
     private fun startNewChat() {
         startActivity(android.content.Intent(this, MainActivity::class.java)
             .putExtra(MainActivity.EXTRA_HISTORY_CONVERSATION_ID, UUID.randomUUID().toString())
-            .putExtra(MainActivity.EXTRA_HISTORY_TITLE, "New conversation"))
+            .putExtra(MainActivity.EXTRA_HISTORY_TITLE, getString(R.string.new_conversation_title)))
         finish()
     }
 
@@ -181,7 +197,7 @@ private fun HistoryScreen(
                 shape = MaterialTheme.shapes.extraSmall,
                 colors = StillwaterControls.buttonColors(),
             ) {
-                Text("New chat")
+                Text(stringResource(R.string.new_chat))
             }
         }
         if (selected == null) {

@@ -29,4 +29,6 @@ YYYY-MM-DD
 ## Index
 
 - [ADR-0001: arm64 DOTPROD kernels and text KV residency](0001-arm64-dotprod-and-kv-residency.md) — Accepted (2026-11-16)
-- [ADR-0002: Prepare vision images before the projector](0002-prepare-vision-images-before-projector.md) — Accepted (2026-11-16)
+- [ADR-0002: App-wide interface size via densityDpi context wrap](0002-interface-size-density.md) — Accepted
+- [ADR-0005: Prepare vision images before the projector](0005-prepare-vision-images-before-projector.md) — Accepted (2026-11-16)
+- [ADR-0010: Optional English tiny-voca TTS](0010-tiny-voca-english-tts.md) — Accepted (2026-11-17)
