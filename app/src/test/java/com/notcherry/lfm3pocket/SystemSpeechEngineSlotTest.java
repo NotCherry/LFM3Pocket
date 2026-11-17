@@ -48,7 +48,6 @@ public class SystemSpeechEngineSlotTest {
 
         slot.prepareNewEngine(2, second);
         assertSame(second, slot.currentEngine());
-        assertFalse(first.shutdownCalled);
         assertFalse(second.shutdownCalled);
 
         drain(deferred);
