@@ -41,4 +41,6 @@ For current answers, open **Settings**, configure an HTTPS SearXNG `/search` end
 
 ## Security and license
 
-Internet access is used only for opt-in web search; search queries go to the configured SearXNG instance. Model inference and media processing run on-device. No telemetry. Source code is MIT-licensed (see LICENSE). Bundled fonts are SIL OFL 1.1 (see `licenses/fonts/`). Each model has its own Liquid AI license. CI smoke testing does not guarantee performance on every phone.
+Internet access is used only for opt-in web search; search queries go to the configured SearXNG instance. Model inference and media processing run on-device. No telemetry. Hanami’s own source is MIT-licensed (see [`LICENSE`](LICENSE)).
+
+The APK bundles third-party native and JVM libraries (llama.cpp, ONNX Runtime, optional tiny-voca phonemizer JNI, AndroidX, and others). Attribution and full license texts are in [`licenses/THIRD_PARTY_NOTICES.md`](licenses/THIRD_PARTY_NOTICES.md). Bundled fonts are SIL OFL 1.1 (see [`licenses/fonts/`](licenses/fonts/)). GGUF model weights and the optional tiny-voca pack are not in the APK; each imported model has its own Liquid AI license. CI smoke testing does not guarantee performance on every phone.

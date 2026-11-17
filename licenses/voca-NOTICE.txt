@@ -1,0 +1,12 @@
+voca
+Fork of tiny-voca (https://github.com/n4ze3m/tiny-voca) by Muhammed Nazeem,
+licensed under the Apache License 2.0.
+
+The model architecture, the trained weights and the dizione phonemizer
+(https://github.com/n4ze3m/dizione) are the upstream author's work.
+
+Changes in this fork: the Python inference code and the phonemizer were
+rewritten in Rust, the training code was removed, and the `voca` command, the
+installer and the Claude Code skill were added.
+
+The phonemizer data derives from CMUdict; its licence files ship with the data.
