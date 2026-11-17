@@ -13,7 +13,6 @@ import java.util.Locale;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 public final class VoiceActionRuntimePreemptTest {
@@ -71,7 +70,8 @@ public final class VoiceActionRuntimePreemptTest {
         java.lang.reflect.Field mode = VoiceActionRuntime.class.getDeclaredField("mode");
         mode.setAccessible(true);
         Class<?> modeType = Class.forName("com.notcherry.lfm3pocket.VoiceActionRuntime$Mode");
-        Object confirm = java.lang.reflect.Enum.valueOf((Class<? extends Enum>) modeType, "CONFIRM");
+        @SuppressWarnings({ "unchecked", "rawtypes" })
+        Object confirm = Enum.valueOf((Class) modeType, "CONFIRM");
         mode.set(runtime, confirm);
         java.lang.reflect.Field pending = VoiceActionRuntime.class.getDeclaredField("pendingConfirmId");
         pending.setAccessible(true);
@@ -105,7 +105,9 @@ public final class VoiceActionRuntimePreemptTest {
             return new PlaybackController(() -> { throw new UnsupportedOperationException(); },
                     () -> true, () -> { }, Runnable::run, Runnable::run, (s, m) -> { });
         }
-        @Override public java.util.concurrent.ExecutorService worker() { return Runnable::run; }
+        @Override public java.util.concurrent.ExecutorService worker() {
+            return Executors.newSingleThreadExecutor();
+        }
         @Override public android.os.Handler main() { return null; }
         @Override public android.content.Context app() { return null; }
         @Override public SharedPreferences modelPrefs() { return null; }
