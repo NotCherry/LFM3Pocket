@@ -253,11 +253,6 @@ bool generate_ngram_mod(
 
     bool has_eos = false;
     generated.clear();
-    std::vector<llama_token> session_trace;
-    if (prompt_tokens.size() > 1) {
-        session_trace.assign(prompt_tokens.begin(), prompt_tokens.end() - 1);
-    }
-    bool prompt_tail_in_session = prompt_tokens.size() <= 1;
     llama_memory_t mem = llama_get_memory(ctx);
 
     auto trim_kv_tail = [&](int from_pos) {
@@ -269,16 +264,33 @@ bool generate_ngram_mod(
         trim_kv_tail(n_past);
         const size_t kv = kv_token_count(ctx, seq_id);
         const size_t np = static_cast<size_t>(n_past);
-        if (!prompt_tail_in_session && !prompt_tokens.empty() &&
-            session_trace.size() + 1 == np) {
-            session_trace.push_back(prompt_tokens.back());
-            prompt_tail_in_session = true;
+        auto build_layout = [&](bool full_prompt) {
+            std::vector<llama_token> layout;
+            if (full_prompt) {
+                layout = prompt_tokens;
+            } else if (prompt_tokens.size() > 1) {
+                layout.assign(prompt_tokens.begin(), prompt_tokens.end() - 1);
+            } else {
+                layout = prompt_tokens;
+            }
+            layout.insert(layout.end(), generated.begin(), generated.end());
+            if (layout.size() > np) layout.resize(np);
+            return layout;
+        };
+        bool matched = false;
+        for (const bool full_prompt : {true, false}) {
+            std::vector<llama_token> layout = build_layout(full_prompt);
+            if (layout.size() == kv && kv == np) {
+                *session_tokens = std::move(layout);
+                matched = true;
+                break;
+            }
         }
-        *session_tokens = session_trace;
-        if (session_trace.size() != np) {
-            error = "Prompt lookup session trace does not match KV length";
-        } else if (kv != np) {
-            error = "KV cache does not match session token list after prompt lookup";
+        if (!matched) {
+            *session_tokens = build_layout(true);
+            if (session_tokens->size() != kv || kv != np) {
+                error = "KV cache does not match session token list after prompt lookup";
+            }
         }
     };
 
@@ -359,14 +371,6 @@ bool generate_ngram_mod(
             prompt_tgt.resize(static_cast<size_t>(ckpt.n_tokens));
             smpl = std::move(smpl_save);
             n_past = static_cast<int>(prompt_tgt.size());
-            const size_t target = static_cast<size_t>(n_past);
-            while (session_trace.size() > target) {
-                session_trace.pop_back();
-                if (!generated.empty()) generated.pop_back();
-            }
-            const size_t prefix_len =
-                    prompt_tokens.size() > 1 ? prompt_tokens.size() - 1 : prompt_tokens.size();
-            prompt_tail_in_session = session_trace.size() > prefix_len;
             continue;
         }
 
@@ -382,14 +386,9 @@ bool generate_ngram_mod(
                 n_past = batch_id_last_pos + i;
                 break;
             }
-            if (!prompt_tail_in_session) {
-                session_trace.push_back(prompt_tokens.back());
-                prompt_tail_in_session = true;
-            }
             prompt_tgt.push_back(id_last);
             id_last = t;
             generated.push_back(t);
-            session_trace.push_back(t);
             n_output += 1;
 
             if (delivery && delivery->env) {
