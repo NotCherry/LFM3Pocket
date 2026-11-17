@@ -65,11 +65,8 @@ public final class TinyVocaPackStore {
 
     public void markComplete() {
         root.mkdirs();
-        try {
-            java.nio.file.Files.writeString(
-                    new File(root, ".revision").toPath(),
-                    TinyVocaPackManifest.HF_REVISION,
-                    StandardCharsets.UTF_8);
+        try (FileOutputStream revision = new FileOutputStream(new File(root, ".revision"))) {
+            revision.write(TinyVocaPackManifest.HF_REVISION.getBytes(StandardCharsets.UTF_8));
             if (!marker.exists()) marker.createNewFile();
         } catch (Exception ignored) { }
     }
