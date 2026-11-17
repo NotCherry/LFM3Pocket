@@ -69,7 +69,7 @@ public final class VoiceListenSession implements AutoCloseable {
         cancelTimeout();
         if (state == State.LISTENING) {
             controller.cancel();
-            set(State.IDLE, reason == null ? "Cancelled" : reason);
+            set(State.CANCELLED, reason == null ? "Cancelled" : reason);
         }
     }
 

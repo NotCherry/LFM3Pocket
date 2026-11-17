@@ -61,6 +61,62 @@ public class RecordingControllerTest {
             assertNull(complete);assertEquals(0,dir.list().length);
         }finally{dir.delete();}
     }
+    @Test public void cancelThenStartWhileCaptureRunningDeliversNewWavWithoutStaleTurn() throws Exception {
+        File dir = Files.createTempDirectory("recording-preempt").toFile();
+        try {
+            java.util.Queue<Runnable> queue = new java.util.ArrayDeque<>();
+            java.util.concurrent.atomic.AtomicBoolean holdFirstRead = new java.util.concurrent.atomic.AtomicBoolean(true);
+            java.util.concurrent.atomic.AtomicInteger openCount = new java.util.concurrent.atomic.AtomicInteger();
+            java.util.concurrent.atomic.AtomicInteger wavDeliveries = new java.util.concurrent.atomic.AtomicInteger();
+            java.util.concurrent.atomic.AtomicReference<File> lastWav = new java.util.concurrent.atomic.AtomicReference<>();
+            RecordingController[] box = new RecordingController[1];
+            box[0] = new RecordingController(dir, () -> {
+                int opened = openCount.incrementAndGet();
+                return new RecordingController.Source() {
+                    @Override public void start() { }
+                    @Override public int read(short[] buffer) throws Exception {
+                        if (opened == 1) {
+                            while (holdFirstRead.get()) Thread.sleep(2);
+                            return 0;
+                        }
+                        java.util.Arrays.fill(buffer, (short) 0x5678);
+                        box[0].stop();
+                        return buffer.length;
+                    }
+                    @Override public void close() { }
+                };
+            }, () -> true, queue::add, Runnable::run,
+                    (state, message, file) -> {
+                        if (file != null) {
+                            wavDeliveries.incrementAndGet();
+                            lastWav.set(file);
+                        }
+                    });
+            RecordingController c = box[0];
+            assertTrue(c.start());
+            assertEquals(1, queue.size());
+            Thread blocked = new Thread(queue.poll());
+            blocked.start();
+            while (openCount.get() < 1) Thread.sleep(2);
+            c.cancel();
+            assertTrue(c.start());
+            holdFirstRead.set(false);
+            blocked.join(5_000);
+            assertFalse(blocked.isAlive());
+            assertEquals(1, queue.size());
+            queue.remove().run();
+            assertEquals(1, wavDeliveries.get());
+            assertNotNull(lastWav.get());
+            byte[] wav = Files.readAllBytes(lastWav.get().toPath());
+            assertTrue(wav.length > 44);
+            assertEquals((byte) 0x78, wav[44]);
+            assertEquals((byte) 0x56, wav[45]);
+        } finally {
+            for (File f : dir.listFiles()) f.delete();
+            dir.delete();
+        }
+    }
+
     @Test public void shortRecordingRecoversForAnotherExplicitAttempt()throws Exception{
         File dir=Files.createTempDirectory("recording").toFile();
         try{

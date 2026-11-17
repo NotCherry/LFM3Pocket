@@ -66,7 +66,7 @@ public final class VoiceActionRuntimePreemptTest {
         assertEquals(VoiceListenSession.State.LISTENING, session.state());
         assertEquals(false, session.startPtt());
         session.cancel("preempt");
-        assertEquals(VoiceListenSession.State.IDLE, session.state());
+        assertEquals(VoiceListenSession.State.CANCELLED, session.state());
         assertTrue(session.startPtt());
         session.close();
     }
