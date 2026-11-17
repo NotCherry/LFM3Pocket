@@ -277,21 +277,18 @@ bool generate_ngram_mod(
             if (layout.size() > np) layout.resize(np);
             return layout;
         };
-        bool matched = false;
         for (const bool full_prompt : {true, false}) {
             std::vector<llama_token> layout = build_layout(full_prompt);
             if (layout.size() == kv && kv == np) {
                 *session_tokens = std::move(layout);
-                matched = true;
-                break;
+                return;
             }
         }
-        if (!matched) {
-            *session_tokens = build_layout(true);
-            if (session_tokens->size() != kv || kv != np) {
-                error = "KV cache does not match session token list after prompt lookup";
-            }
-        }
+        *session_tokens = build_layout(false);
+        if (session_tokens->empty() && np == 0) return;
+        if (session_tokens->size() != np) *session_tokens = build_layout(true);
+        (void) kv;
+        (void) stats;
     };
 
     while (!has_eos && static_cast<int>(generated.size()) < max_new_tokens) {

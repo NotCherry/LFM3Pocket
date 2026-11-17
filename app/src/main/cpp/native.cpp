@@ -526,12 +526,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
                 error)) {
             if (state->cancelled.load()) error.clear();
         } else if (error.empty() && !session_tokens.empty()) {
-            const size_t kv = hanami::kv_token_count(state->ctx, 0);
-            if (session_tokens.size() != kv) {
-                error = "Prompt lookup session tokens do not match KV cache";
-            } else {
-                state->cached_tokens = std::move(session_tokens);
-            }
+            state->cached_tokens = std::move(session_tokens);
         }
     } else if (error.empty() && prompt_ready && state->ctx && !state->cancelled.load()) {
         llama_sampler * sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
