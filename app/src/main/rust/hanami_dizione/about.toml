@@ -1,0 +1,31 @@
+targets = [
+    "aarch64-linux-android",
+    "x86_64-linux-android",
+]
+
+accepted = [
+    "Unlicense",
+    "Apache-2.0",
+    "MIT",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "CC0-1.0",
+    "BSL-1.0",
+]
+
+ignore-dev-dependencies = true
+workarounds = ["unicode-ident"]
+
+[unicode-ident]
+accepted = ["Unicode-DFS-2016"]
+
+[unicode-normalization]
+accepted = ["Unicode-DFS-2016"]
+
+[jni]
+accepted = ["MIT", "Apache-2.0"]

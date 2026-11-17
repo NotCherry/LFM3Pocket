@@ -30,7 +30,7 @@ Hanami needs an **opt-in, off-by-default** global setting with **Polish-aware fa
 - Faster English speak-reply on weak phones when the pack is installed (separate 4.5M model vs Omni TTS decode).
 - Extra optional download and a second inference stack (ONNX + small native phonemizer).
 - CI gains `scripts/fetch-voca.sh` and a best-effort Rust JNI build step (`buildHanamiDizioneJni`); builds without Rust/NDK still compile with fallback-only behaviour.
-- License: Hanami app remains MIT; tiny-voca / dizione / ONNX Runtime licenses documented in README and this ADR.
+- License: Hanami app remains MIT; tiny-voca / dizione / ONNX Runtime / CMUdict and Rust JNI deps are documented in [`licenses/THIRD_PARTY_NOTICES.md`](../licenses/THIRD_PARTY_NOTICES.md) and README. Shipping those notices inside the APK is a follow-up.
 
 ## Alternatives considered
 

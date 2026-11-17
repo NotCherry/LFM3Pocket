@@ -1,0 +1,24 @@
+# Rust crates in `libhanami_dizione.so`
+
+Generated from `app/src/main/rust/hanami_dizione/Cargo.lock` by [cargo-about](https://github.com/EmbarkStudios/cargo-about) for Android targets (`aarch64-linux-android`, `x86_64-linux-android`). Regenerate: `bash scripts/generate-dizione-licenses.sh`.
+
+Hanami pins voca at `vendor/VOCA_COMMIT`; the `dizione` path dependency is not published to crates.io.
+
+## Crates
+
+| Crate | Version | License |
+| --- | --- | --- |
+{{#each crates}}
+| `{{package.name}}` | {{package.version}} | {{license}} |
+{{/each}}
+
+## License texts
+
+{{#each overview}}
+### {{name}}
+
+```
+{{{text}}}
+```
+
+{{/each}}

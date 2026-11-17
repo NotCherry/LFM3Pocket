@@ -117,7 +117,7 @@ The `phone` flavor is the one F-Droid should build. It is `arm64-v8a` only. `smo
 
 ### License
 
-`LICENSE` is MIT. The copyright line still says "LFM3 Pocket contributors". That is the existing license, not a new one. Bundled Inter, JetBrains Mono, and Noto Serif Display are SIL OFL 1.1 (`licenses/fonts/`). llama.cpp `v0.8.0` is MIT. Model weights are not shipped and stay under Liquid AI's model license.
+`LICENSE` is MIT. The copyright line still says "LFM3 Pocket contributors". That is the existing license, not a new one. Bundled Inter, JetBrains Mono, and Noto Serif Display are SIL OFL 1.1 (`licenses/fonts/`). Third-party libraries shipped in the APK (llama.cpp, ONNX Runtime, dizione JNI, AndroidX, and others) are listed in [`licenses/THIRD_PARTY_NOTICES.md`](../licenses/THIRD_PARTY_NOTICES.md). Model weights are not shipped and stay under Liquid AI's model license.
 
 ### Dependency audit
 
