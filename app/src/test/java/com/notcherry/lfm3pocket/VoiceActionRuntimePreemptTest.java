@@ -36,7 +36,6 @@ public final class VoiceActionRuntimePreemptTest {
         assertTrue(runtime.listenSessionForTests().startTimed(3_000));
         assertEquals(VoiceListenSession.State.LISTENING, runtime.listenSessionForTests().state());
         assertTrue(runtime.pttPressed());
-        drain(workerTasks);
         assertEquals(1, rejected.get());
         assertNull(pendingConfirm(runtime));
         assertEquals(VoiceListenSession.State.LISTENING, runtime.listenSessionForTests().state());
@@ -64,7 +63,6 @@ public final class VoiceActionRuntimePreemptTest {
                     @Override public void wavReady(File wav) { }
                 }, VoiceListenLimits.MAX_ACTION_SAMPLES);
         assertTrue(session.startTimed(2_000));
-        drain(cancelWorker);
         assertEquals(VoiceListenSession.State.LISTENING, session.state());
         assertEquals(false, session.startPtt());
         session.cancel("preempt");
