@@ -133,7 +133,7 @@ Atlas prefers **borders over shadows**.
 - One short supporting sentence in `inkMuted`.
 - CTA group: primary **Open chat** (resume the last live session; accent filled or strong outline), secondary text buttons **New chat** (under **Open chat**), **History**, **Settings**, **About**.
 - No cards, no stat strip, no inset hero image collage.
-- Preserve E2E: history open control (`history_open` / existing host tags) and the Home new-chat control (`home_new_chat`).
+- Preserve E2E: open-chat control (`open_chat`), history open control (`history_open` / existing host tags), and the Home new-chat control (`home_new_chat`).
 
 ### 6.2 Chat turn (`ChatTurnList` / U08)
 
@@ -182,6 +182,7 @@ Atlas prefers **borders over shadows**.
 ### 6.8 History list + reader (U12)
 
 - List: charcoal rows, `ink` title, `inkMuted` preview/time — not Material outlined cards stack.
+- **New chat** (`history_new_chat`) starts a new conversation (see 6.11).
 - Reader: **same** turn / markdown / reasoning components as live chat for parity (UT-06).
 
 ### 6.9 Consent + camera chrome (U14)
@@ -197,10 +198,11 @@ Atlas prefers **borders over shadows**.
 ### 6.11 Conversation lifecycle
 
 - **Open chat** resumes the last live session.
-- **New chat** (Home, and the chat top bar) starts a new conversation and a new history entry.
+- **New chat** (Home, History, and the chat top bar) starts a new conversation and a new history entry.
 - **Clear** empties the transcript and keeps the same conversation.
 - Starting a new chat while a reply is generating asks for confirmation, the same guard as switching conversations from History.
-- The chat top-bar **New chat** action (`chat_new_chat`) uses an accent label, meets the Interface size minimum touch target (section 11), and has a TalkBack description. User-visible strings for these actions, including the default title of an untitled conversation, ship in English and Polish.
+- The chat top-bar **New chat** action (`chat_new_chat`) uses an accent label and meets the Interface size minimum touch target (section 11). TalkBack announces its visible label.
+- User-visible strings for these actions, including the default title of an untitled conversation, ship in English and Polish.
 
 ---
 
