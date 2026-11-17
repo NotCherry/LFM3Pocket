@@ -1,4 +1,4 @@
-# ADR 0001: CI on the cherry-tree runner
+# ADR 0008: CI on the cherry-tree runner
 
 ## Status
 

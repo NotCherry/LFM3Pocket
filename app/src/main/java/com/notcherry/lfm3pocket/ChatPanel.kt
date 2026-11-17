@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.TextSelectionColors
@@ -27,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,12 +43,14 @@ import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import com.notcherry.lfm3pocket.ui.theme.PocketTheme
 import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
+import com.notcherry.lfm3pocket.ui.theme.atlasSpacing
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 import java.io.File
 import java.util.function.Consumer
@@ -62,6 +66,7 @@ class ChatPanel(
     private val send: Consumer<String>,
     private val stop: Runnable,
     private val clear: Runnable,
+    private val retryInterrupted: Consumer<String> = Consumer { },
 ) : LinearLayout(context) {
     private data class Controls(val send: Boolean = false, val stop: Boolean = false, val clear: Boolean = true)
     private data class ToolCardState(
@@ -180,6 +185,7 @@ class ChatPanel(
             val keyboard = LocalSoftwareKeyboardController.current
             val atlas = MaterialTheme.atlasColors
             val type = MaterialTheme.atlasTypography
+            val space = MaterialTheme.atlasSpacing
             var previewBitmap by remember(attachment?.path) { mutableStateOf<Bitmap?>(null) }
             LaunchedEffect(attachment?.path) {
                 val path = attachment?.path
@@ -201,13 +207,13 @@ class ChatPanel(
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .padding(horizontal = space.space4, vertical = space.space2)
                             .background(atlas.surfaceRaised, MaterialTheme.shapes.large)
                             .border(1.dp, atlas.border, MaterialTheme.shapes.large)
-                            .padding(12.dp),
+                            .padding(space.space4),
                     ) {
                         Text("Android action", style = type.title, color = atlas.ink)
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(space.space1))
                         Text(
                             card.details,
                             style = type.mono,
@@ -266,16 +272,17 @@ class ChatPanel(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 6.dp),
+                        .padding(horizontal = space.space1),
                     onSuggest = { input = it },
+                    onRetryInterrupted = { turnId -> retryInterrupted.accept(turnId) },
                 )
                 attachment?.let { image ->
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .padding(horizontal = space.space4, vertical = space.space1)
                             .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
-                            .padding(10.dp)
+                            .padding(space.space3)
                             .testTag(tag("image_attachment")),
                     ) {
                         Text(
@@ -326,14 +333,14 @@ class ChatPanel(
                         .fillMaxWidth()
                         .background(atlas.surface)
                         .border(width = 1.dp, color = atlas.border)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = space.composer, vertical = space.space2),
                 ) {
                     ChatLiveStatus(idleMode, liveStatus, context.packageName)
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(space.space1))
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(space.space2),
                     ) {
                         OutlinedTextField(
                             value = input,
@@ -365,10 +372,13 @@ class ChatPanel(
                         OutlinedButton(
                             onClick = { stop.run() },
                             enabled = controls.stop,
-                            modifier = Modifier.testTag(tag("chat_stop")),
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .heightIn(min = 40.dp)
+                                .testTag(tag("chat_stop")),
                             shape = RoundedCornerShape(0.dp),
                             colors = StillwaterControls.outlinedColors(),
-                        ) { Text("Stop") }
+                        ) { Text(stringResource(R.string.stop)) }
                         Button(
                             onClick = {
                                 val text = input
@@ -378,10 +388,13 @@ class ChatPanel(
                                 send.accept(text)
                             },
                             enabled = controls.send,
-                            modifier = Modifier.testTag(tag("chat_send")),
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .heightIn(min = 40.dp)
+                                .testTag(tag("chat_send")),
                             shape = RoundedCornerShape(0.dp),
                             colors = StillwaterControls.buttonColors(),
-                        ) { Text("Send") }
+                        ) { Text(stringResource(R.string.send)) }
                     }
                     Row(
                         Modifier.fillMaxWidth(),

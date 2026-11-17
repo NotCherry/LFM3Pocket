@@ -123,7 +123,7 @@ The `phone` flavor is the one F-Droid should build. It is `arm64-v8a` only. `smo
 
 Runtime libraries are AndroidX (CameraX, Room, DataStore, Compose, Navigation, Activity), Kotlin, and kotlinx-serialization. JUnit and UI Automator are test-only. There is no Firebase, no Google Play Services client, and no Play Billing. The `google()` Maven repository is used to resolve AndroidX. The CI emulator image `google_apis` is a test runner image, not an app dependency.
 
-Native code is llama.cpp, built with `GGML_NATIVE=OFF`, `GGML_OPENMP=OFF`, `LLAMA_CURL=OFF`, and `GGML_BACKEND_DL=OFF`. The only prebuilt binary found in the pinned llama.cpp tree is `examples/llama.android/gradle/wrapper/gradle-wrapper.jar`. The app does not build that example. The fdroiddata draft deletes it before the scan.
+Native code is llama.cpp, built with `GGML_NATIVE=OFF`, `GGML_OPENMP=OFF`, `GGML_CPU_KLEIDIAI=OFF`, `LLAMA_CURL=OFF`, and `GGML_BACKEND_DL=OFF`. On `arm64-v8a`, CMake sets `GGML_CPU_ARM_ARCH=armv8.2-a+dotprod` (same preferred CPU ladder step as PocketPal’s llama.rn `v8_2_dotprod` variant) and appends `-O3` for Debug APKs without wiping NDK flags or forcing `-DNDEBUG` (see `docs/adr/0001-arm64-dotprod-and-kv-residency.md`). The only prebuilt binary found in the pinned llama.cpp tree is `examples/llama.android/gradle/wrapper/gradle-wrapper.jar`. The app does not build that example. The fdroiddata draft deletes it before the scan.
 
 ### Reproducible native build
 

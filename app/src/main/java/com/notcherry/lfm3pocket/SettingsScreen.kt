@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
@@ -17,16 +18,24 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
 import com.notcherry.lfm3pocket.ui.theme.atlasColors
+import com.notcherry.lfm3pocket.ui.theme.atlasSpacing
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 
 /**
@@ -53,10 +62,13 @@ fun SettingsScreen(
     onSaveSearch: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    interfaceScale: Float = InterfaceSize.DEFAULT,
+    onInterfaceScaleChange: (Float) -> Unit = {},
 ) {
     val tag = { name: String -> "$packageName:id/$name" }
     val atlas = MaterialTheme.atlasColors
     val type = MaterialTheme.atlasTypography
+    val space = MaterialTheme.atlasSpacing
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedTextColor = atlas.ink,
         unfocusedTextColor = atlas.ink,
@@ -71,17 +83,24 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(atlas.surface)
             .semantics { testTagsAsResourceId = true }
-            .padding(16.dp),
+            .padding(space.screen),
     ) {
         TextButton(
             onClick = onBack,
-            modifier = Modifier.testTag(tag("settings_back")),
+            modifier = Modifier
+                .minimumInteractiveComponentSize()
+                .testTag(tag("settings_back")),
             colors = StillwaterControls.textButtonColors(),
         ) {
-            Text("Back to chat")
+            Text(stringResource(R.string.back_to_chat))
         }
-        Text("Settings", style = type.headline, color = atlas.ink)
-        Spacer(Modifier.height(8.dp))
+        Text(
+            stringResource(R.string.settings_title),
+            style = type.headline,
+            color = atlas.ink,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(space.space2))
         Column(
             Modifier
                 .weight(1f)
@@ -89,20 +108,108 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .border(1.dp, atlas.border)
                 .background(atlas.surfaceRaised)
-                .padding(12.dp)
+                .padding(space.space4)
                 .testTag(tag("model_configuration_scroll")),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(space.space3),
         ) {
-            Text("Model", style = type.title, color = atlas.ink)
-            Text(modelSummary, style = type.bodySmall, color = atlas.inkMuted)
-            Text("Inference", style = type.title, color = atlas.ink)
-            StepperField("Context", "512–8192, step 256", contextTokens, onContextChange, 256, 512, 8192, fieldColors, Modifier.fillMaxWidth().testTag(tag("settings_context")))
-            StepperField("Decode threads", "1–8, capped to CPUs", threads, onThreadsChange, 1, 1, 8, fieldColors, Modifier.fillMaxWidth().testTag(tag("settings_threads")))
-            StepperField("Response tokens", "1–2048, below context", maxTokens, onTokensChange, 1, 1, 2048, fieldColors, Modifier.fillMaxWidth().testTag(tag("settings_tokens")))
-            if (!error.isNullOrBlank()) {
-                Text(error, color = atlas.danger, style = type.bodySmall)
+            Text(stringResource(R.string.appearance_heading), style = type.title, color = atlas.ink)
+            Text(stringResource(R.string.interface_size_label), style = type.body, color = atlas.ink)
+            Text(stringResource(R.string.interface_size_help), style = type.bodySmall, color = atlas.inkMuted)
+            // Recipe / test host: keep a local draft while dragging; commit on finish so a
+            // future write+recreate host does not recreate on every step.
+            var draftScale by remember(interfaceScale) {
+                mutableFloatStateOf(InterfaceSize.clamp(interfaceScale))
             }
-            Text("SearXNG", style = type.title, color = atlas.ink)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .testTag(tag("settings_interface_size")),
+                horizontalArrangement = Arrangement.spacedBy(space.space2),
+            ) {
+                InterfacePresetChip(
+                    label = stringResource(R.string.interface_size_compact),
+                    selected = InterfaceSize.isCompact(draftScale),
+                    onClick = {
+                        draftScale = InterfaceSize.COMPACT
+                        onInterfaceScaleChange(InterfaceSize.COMPACT)
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag(tag("settings_interface_compact")),
+                )
+                InterfacePresetChip(
+                    label = stringResource(R.string.interface_size_default),
+                    selected = InterfaceSize.isDefault(draftScale),
+                    onClick = {
+                        draftScale = InterfaceSize.DEFAULT
+                        onInterfaceScaleChange(InterfaceSize.DEFAULT)
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag(tag("settings_interface_default")),
+                )
+                InterfacePresetChip(
+                    label = stringResource(R.string.interface_size_large),
+                    selected = InterfaceSize.isLarge(draftScale),
+                    onClick = {
+                        draftScale = InterfaceSize.LARGE
+                        onInterfaceScaleChange(InterfaceSize.LARGE)
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag(tag("settings_interface_large")),
+                )
+            }
+            Text(
+                stringResource(R.string.interface_size_percent, InterfaceSize.percent(draftScale)),
+                style = type.bodySmall,
+                color = atlas.inkMuted,
+                modifier = Modifier.testTag(tag("settings_interface_value")),
+            )
+            Slider(
+                value = draftScale,
+                onValueChange = { draftScale = InterfaceSize.clamp(it) },
+                onValueChangeFinished = { onInterfaceScaleChange(draftScale) },
+                valueRange = InterfaceSize.MIN..InterfaceSize.MAX,
+                steps = 49,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .testTag(tag("settings_interface_slider")),
+            )
+
+            Text(stringResource(R.string.model_section), style = type.title, color = atlas.ink)
+            Text(modelSummary, style = type.bodySmall, color = atlas.inkMuted)
+            Text(stringResource(R.string.inference_heading), style = type.title, color = atlas.ink)
+            StepperField(
+                stringResource(R.string.context_label),
+                stringResource(R.string.context_hint),
+                contextTokens, onContextChange, 256, 512, 8192, fieldColors,
+                Modifier.fillMaxWidth().testTag(tag("settings_context")),
+            )
+            StepperField(
+                stringResource(R.string.decode_threads_label),
+                stringResource(R.string.decode_threads_hint),
+                threads, onThreadsChange, 1, 1, 8, fieldColors,
+                Modifier.fillMaxWidth().testTag(tag("settings_threads")),
+            )
+            StepperField(
+                stringResource(R.string.response_tokens_label),
+                stringResource(R.string.response_tokens_hint),
+                maxTokens, onTokensChange, 1, 1, 2048, fieldColors,
+                Modifier.fillMaxWidth().testTag(tag("settings_tokens")),
+            )
+            Text("Benchmark", style = type.title, color = atlas.ink)
+            Text(
+                "Prompt-processing (pp) and decode (tg) tok/s on the loaded model. Results wrap and can be copied from the Settings host.",
+                style = type.bodySmall,
+                color = atlas.inkMuted,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (!error.isNullOrBlank()) {
+                Text(error, color = atlas.danger, style = type.bodySmall, modifier = Modifier.fillMaxWidth())
+            }
+            Text(stringResource(R.string.searxng_heading), style = type.title, color = atlas.ink)
             OutlinedTextField(
                 value = searchEndpoint,
                 onValueChange = onEndpointChange,
@@ -117,31 +224,65 @@ fun SettingsScreen(
                 modifier = Modifier.testTag(tag("search_enabled")),
             )
             Text(
-                if (searchEnabled) "Web search: on" else "Web search: off",
+                if (searchEnabled) stringResource(R.string.web_search_on) else stringResource(R.string.web_search_off),
                 style = type.label,
                 color = atlas.inkMuted,
                 modifier = Modifier.testTag(tag("web_search")),
             )
         }
         // Sticky Save row — Stage 1 Automator must find settings_save / search_save on-screen.
-        Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            Modifier.fillMaxWidth().padding(top = space.space2),
+            verticalArrangement = Arrangement.spacedBy(space.space2),
+        ) {
             Button(
                 onClick = onSaveInference,
-                modifier = Modifier.fillMaxWidth().testTag(tag("settings_save")),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .heightIn(min = 48.dp)
+                    .testTag(tag("settings_save")),
+                shape = RoundedCornerShape(0.dp),
                 colors = StillwaterControls.buttonColors(),
             ) {
-                Text("Save")
+                Text(stringResource(R.string.save))
             }
             Button(
                 onClick = onSaveSearch,
-                modifier = Modifier.fillMaxWidth().testTag(tag("search_save")),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .heightIn(min = 40.dp)
+                    .testTag(tag("search_save")),
+                shape = RoundedCornerShape(0.dp),
                 colors = StillwaterControls.buttonColors(),
             ) {
-                Text("Save search")
+                Text(stringResource(R.string.save_search))
             }
         }
+    }
+}
+
+@Composable
+private fun InterfacePresetChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (selected) {
+        Button(
+            onClick = onClick,
+            modifier = modifier.minimumInteractiveComponentSize().heightIn(min = 40.dp),
+            shape = RoundedCornerShape(0.dp),
+            colors = StillwaterControls.buttonColors(),
+        ) { Text(label) }
+    } else {
+        TextButton(
+            onClick = onClick,
+            modifier = modifier.minimumInteractiveComponentSize().heightIn(min = 40.dp),
+            colors = StillwaterControls.textButtonColors(),
+        ) { Text(label) }
     }
 }
 
@@ -164,6 +305,7 @@ private fun StepperField(
     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         TextButton(
             onClick = { onChange(nudge(value, -step, min, max)) },
+            modifier = Modifier.minimumInteractiveComponentSize(),
             colors = StillwaterControls.textButtonColors(),
         ) { Text("–") }
         OutlinedTextField(
@@ -176,6 +318,7 @@ private fun StepperField(
         )
         TextButton(
             onClick = { onChange(nudge(value, step, min, max)) },
+            modifier = Modifier.minimumInteractiveComponentSize(),
             colors = StillwaterControls.textButtonColors(),
         ) { Text("+") }
     }

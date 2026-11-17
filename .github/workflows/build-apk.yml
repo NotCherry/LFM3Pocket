@@ -38,6 +38,8 @@ jobs:
         run: |
           mkdir -p third_party
           git clone --depth 1 --branch v0.8.0 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp
+      - name: Fetch voca phonemizer (tiny-voca)
+        run: bash scripts/fetch-voca.sh
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -65,8 +67,10 @@ jobs:
           bash .github/scripts/collect-arm64-omni-evidence.sh --self-test
       - name: Execute JVM JUnit tests
         run: gradle :app:testSmokeDebugUnitTest --no-daemon --stacktrace
-      - name: Verify Room v4 schema was exported
-        run: test -s app/schemas/com.notcherry.lfm3pocket.HistoryDatabase/4.json
+      - name: Verify Room v4 and v5 schemas were exported
+        run: |
+          test -s app/schemas/com.notcherry.lfm3pocket.HistoryDatabase/4.json
+          test -s app/schemas/com.notcherry.lfm3pocket.HistoryDatabase/5.json
       - name: Upload JVM JUnit XML and reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -96,6 +100,8 @@ jobs:
           mkdir -p third_party
           git clone --depth 1 --branch v0.8.0 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp
           git -C third_party/llama.cpp rev-parse HEAD
+      - name: Fetch voca phonemizer (tiny-voca)
+        run: bash scripts/fetch-voca.sh
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -106,6 +112,8 @@ jobs:
         with:
           packages: 'platform-tools emulator platforms;android-35 build-tools;35.0.0 ndk;27.2.12479018 cmake;3.22.1'
           log-accepted-android-sdk-licenses: false
+      - name: Set up Rust for dizione JNI
+        run: rustup target add aarch64-linux-android x86_64-linux-android
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:

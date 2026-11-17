@@ -31,6 +31,11 @@ android {
         manifestPlaceholders = [appLabel: 'Hanami']
         externalNativeBuild {
             cmake {
+                // GGML_NATIVE=OFF required for cross-compile (F-Droid / CI).
+                // GGML_OPENMP=OFF: Android NDK OpenMP is not supported by llama.cpp yet
+                // (same as llama.cpp docs/android.md and PocketPal/llama.rn).
+                // GGML_CPU_ARM_ARCH is set in CMakeLists.txt for arm64-v8a only
+                // (armv8.2-a+dotprod — PocketPal's preferred CPU ladder step).
                 arguments '-DANDROID_STL=c++_shared',
                           '-DGGML_NATIVE=OFF',
                           '-DGGML_OPENMP=OFF',
@@ -39,6 +44,7 @@ android {
                           '-DLLAMA_OPENSSL=OFF',
                           '-DGGML_BACKEND_DL=OFF',
                           '-DGGML_CPU_ALL_VARIANTS=OFF',
+                          '-DGGML_CPU_KLEIDIAI=OFF',
                           '-DLLAMA_BUILD_TESTS=OFF',
                           '-DLLAMA_BUILD_EXAMPLES=OFF',
                           '-DLLAMA_BUILD_SERVER=OFF'
@@ -101,7 +107,21 @@ android {
             useLegacyPackaging true
         }
     }
+    sourceSets {
+        main {
+            jniLibs.srcDirs += file("$buildDir/rust-jni")
+        }
+    }
 }
+
+tasks.register('buildHanamiDizioneJni', Exec) {
+    workingDir rootProject.projectDir
+    commandLine 'bash', rootProject.file('scripts/build-dizione-jni.sh').absolutePath
+    environment 'HANAMI_BUILD_ALL_ABIS', '1'
+    ignoreExitValue true
+}
+
+tasks.named('preBuild').configure { dependsOn buildHanamiDizioneJni }
 
 dependencies {
     def camerax_version = '1.5.3'
@@ -130,6 +150,7 @@ dependencies {
     androidTestImplementation platform('androidx.compose:compose-bom:2025.04.01')
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'
 }
 
 ksp { arg('room.schemaLocation', "$projectDir/schemas"); arg('room.generateKotlin', 'false') }

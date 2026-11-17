@@ -21,7 +21,7 @@ The label match is exact: `cherry-tree`. The machine name can be `CHERRY-TREE`. 
 
 `timeout-minutes` starts when a runner picks up the job. It does not include time spent waiting to be assigned. GitHub cancels a job that is still queued after 24 hours. A busy runner therefore falls back to `ubuntu-latest` instead of entering that queue. The check and the assignment are still separate: if CHERRY-TREE goes offline after `pick-runner` has selected it, the build jobs wait on those labels until the machine returns or the 24 hour queue limit expires. The three build jobs share one decision, so on a single machine they run one after another.
 
-`.github/workflows/release.yml` always uses `ubuntu-latest`. That job can push a tag and it publishes the APK. It does not build on the disk that pull-request jobs leave behind on CHERRY-TREE. The reason is recorded in [`docs/adr/0001-self-hosted-ci-runner.md`](adr/0001-self-hosted-ci-runner.md).
+`.github/workflows/release.yml` always uses `ubuntu-latest`. That job can push a tag and it publishes the APK. It does not build on the disk that pull-request jobs leave behind on CHERRY-TREE. The reason is recorded in [`docs/adr/0008-self-hosted-ci-runner.md`](adr/0008-self-hosted-ci-runner.md).
 
 Pushes to `main`, `workflow_dispatch` of the Stage 1 workflow, and pull requests opened from branches in this repository may use the self-hosted runner. Tag builds and `release.yml` stay on `ubuntu-latest`. The selection rules are checked by `.github/scripts/pick-runner.py --self-test` in the unit-test job.
 

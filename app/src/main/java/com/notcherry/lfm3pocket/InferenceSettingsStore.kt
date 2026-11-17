@@ -19,12 +19,32 @@ class InferenceSettingsStore(context: Context) {
     private val contextKey=intPreferencesKey("context")
     private val threadsKey=intPreferencesKey("threads")
     private val maxKey=intPreferencesKey("max_tokens")
+    private val threadsInitializedKey=booleanPreferencesKey("threads_initialized")
     fun load(success: Consumer<InferenceSettings>,failure: Consumer<String>) {
         scope.launch {
             try {
                 val p=store.data.first()
-                val settings=try { InferenceSettings(p[contextKey]?:InferenceSettings.DEFAULT.contextTokens,p[threadsKey]?:InferenceSettings.DEFAULT.threads,p[maxKey]?:InferenceSettings.DEFAULT.maxTokens) }
-                    catch(e: IllegalArgumentException) { InferenceSettings.DEFAULT }
+                val threads = if (p[threadsInitializedKey] == true) {
+                    p[threadsKey] ?: InferenceSettings.DEFAULT.threads
+                } else {
+                    // First launch: detect big/mid cores (or PocketPal 80% fallback).
+                    CpuTopology.recommendedDecodeThreads()
+                }
+                val settings=try {
+                    InferenceSettings(
+                        p[contextKey]?:InferenceSettings.DEFAULT.contextTokens,
+                        threads,
+                        p[maxKey]?:InferenceSettings.DEFAULT.maxTokens,
+                    )
+                } catch(e: IllegalArgumentException) { InferenceSettings.DEFAULT }
+                if (p[threadsInitializedKey] != true) {
+                    store.edit { prefs ->
+                        prefs[threadsKey] = settings.threads
+                        prefs[threadsInitializedKey] = true
+                        if (prefs[contextKey] == null) prefs[contextKey] = settings.contextTokens
+                        if (prefs[maxKey] == null) prefs[maxKey] = settings.maxTokens
+                    }
+                }
                 success.accept(settings)
             } catch(e: Exception) {
                 if(e is CancellationException)throw e
@@ -35,7 +55,12 @@ class InferenceSettingsStore(context: Context) {
     fun save(settings: InferenceSettings,success: Runnable,failure: Consumer<String>) {
         scope.launch {
             try {
-                store.edit { p->p[contextKey]=settings.contextTokens;p[threadsKey]=settings.threads;p[maxKey]=settings.maxTokens }
+                store.edit { p->
+                    p[contextKey]=settings.contextTokens
+                    p[threadsKey]=settings.threads
+                    p[maxKey]=settings.maxTokens
+                    p[threadsInitializedKey]=true
+                }
                 success.run()
             } catch(e: Exception) {
                 if(e is CancellationException)throw e

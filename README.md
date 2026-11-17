@@ -27,7 +27,7 @@ The Stage 1 release recipe is in [`docs/RELEASE.md`](docs/RELEASE.md). Signing, 
 
 Stage 1 build jobs prefer the owner's self-hosted runner when it is online and idle. Register that machine on this repository with the labels `self-hosted` and `cherry-tree`. The `pick-runner` job runs on `ubuntu-latest`, calls `GET /repos/{owner}/{repo}/actions/runners` with the `RUNNER_STATUS_TOKEN` secret, and sets those jobs to `["self-hosted","cherry-tree"]` or `"ubuntu-latest"`. A busy runner, an offline runner, a missing token, and every fork pull request stay on `ubuntu-latest`. The release workflow always uses `ubuntu-latest`. The build jobs install Temurin JDK 17, Gradle 8.13, Python 3.12, and the Android SDK themselves.
 
-The runner prerequisites, the fine-grained PAT (Administration: Read), and the fork-approval setting are in [`docs/ci.md`](docs/ci.md). The decision record is [`docs/adr/0001-self-hosted-ci-runner.md`](docs/adr/0001-self-hosted-ci-runner.md).
+The runner prerequisites, the fine-grained PAT (Administration: Read), and the fork-approval setting are in [`docs/ci.md`](docs/ci.md). The decision record is [`docs/adr/0008-self-hosted-ci-runner.md`](docs/adr/0008-self-hosted-ci-runner.md).
 
 ## App navigation
 
@@ -35,7 +35,7 @@ The app opens on a Stillwater **Home** screen (`ComposeHostActivity`): the Hanam
 
 **Chat** (`MainActivity`) is the primary viewport: structured turns, optional Reasoning rail, composer, and media controls. A session controller owns active context, cancellation, retry and Clear; JNI inference remains local. Old conversations are not injected into a new session.
 
-**Settings** (from Home, chat **Settings**, or overflow) hosts model import / load / unload, inference limits, and SearXNG. Chat keeps Offline/Search as a compact pill; model and search controls are not in the first chat viewport. Open Settings to choose context (512–8192 in steps of 256), text decode threads (1–8, capped to available CPUs), and response tokens (1–2048, below context). Defaults are 4096 / 4 / 512. Settings are stored privately with DataStore and apply to the next response. Projector encoder threads remain fixed at load time.
+**Settings** (from Home, chat **Settings**, or overflow) hosts model import / load / unload, inference limits, SearXNG, a built-in speed test (prompt-processing and decode tok/s), and **Appearance → Interface size** (Compact / Default / Large, or 80–130%). Chat keeps Offline/Search as a compact pill; model and search controls are not in the first chat viewport. Open Settings to choose context (512–8192 in steps of 256), text decode threads (1–8; default from big/mid CPU cores), and response tokens (1–2048, below context). Defaults are 4096 / topology / 512. Inference settings use DataStore and apply to the next response; interface size is stored with the private chat preferences and scales typography and spacing app-wide on top of the system font scale. Projector encoder threads remain fixed at load time. The default UI is intentionally dense (~14sp body). The arm64 native build uses `-O3` and `GGML_CPU_ARM_ARCH=armv8.2-a+dotprod` (PocketPal/llama.rn parity) while keeping `GGML_NATIVE=OFF` for reproducible cross-compiles.
 
 **History** reuses the same turn / markdown / reasoning rendering as live chat. Emulator navigation and Stage 1 chat E2E IDs are documented in [`docs/UI_E2E_CONTRACT.md`](docs/UI_E2E_CONTRACT.md). The visible assistant role label is Hanami. The flat automator transcript still uses the marker `LFM3`.
 

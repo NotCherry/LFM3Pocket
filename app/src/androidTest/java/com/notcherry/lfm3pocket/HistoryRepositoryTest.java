@@ -117,4 +117,33 @@ public final class HistoryRepositoryTest {
         assertEquals("Timer created",messages.get(0).getText());
         assertEquals(1,db.history().toolOutcomes("conversation-1").size());
     }
+
+    @Test public void beginTurnPersistsUserBeforeCompletionAndSurvivesInterruptMarking(){
+        db=Room.inMemoryDatabaseBuilder(context,HistoryDatabase.class).build();
+        HistoryRepository repository=new HistoryRepository(db);
+        HistoryRepository.TurnStart start=new HistoryRepository.TurnStart(
+                "turn-live","conversation-live","Vision","What is in this photo?",100,"/files/history-media/photo.img");
+        assertTrue(repository.beginTurn(start));
+        List<HistoryMessage> midway=db.history().messages("conversation-live");
+        assertEquals(2,midway.size());
+        assertEquals("user",midway.get(0).getRole());
+        assertEquals("/files/history-media/photo.img",midway.get(0).getMediaRef());
+        assertEquals("GENERATING",midway.get(1).getTurnStatus());
+        assertEquals("",midway.get(1).getText());
+
+        assertEquals(1,repository.markInterruptedGenerations(150));
+        List<HistoryMessage> interrupted=db.history().messages("conversation-live");
+        assertEquals("INTERRUPTED",interrupted.get(1).getTurnStatus());
+        assertEquals(HistoryRepository.INTERRUPTED_PLACEHOLDER,interrupted.get(1).getText());
+        assertEquals("user",interrupted.get(0).getRole());
+
+        HistoryRepository.Turn finished=new HistoryRepository.Turn(
+                "turn-live","conversation-live","Vision","What is in this photo?","A cat on a sofa",
+                null,HistoryRepository.Status.COMPLETED,200,null,null,"/files/history-media/photo.img");
+        assertTrue(repository.completeTurn(finished));
+        List<HistoryMessage> done=db.history().messages("conversation-live");
+        assertEquals(2,done.size());
+        assertEquals("COMPLETED",done.get(1).getTurnStatus());
+        assertEquals("A cat on a sofa",done.get(1).getText());
+    }
 }

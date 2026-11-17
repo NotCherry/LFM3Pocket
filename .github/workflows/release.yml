@@ -13,7 +13,7 @@ name: Publish GitHub Release
 #
 # This job stays on ubuntu-latest. It has contents: write and publishes the APK.
 # CHERRY-TREE's disk persists across pull-request jobs, so the release build
-# does not run there. See docs/adr/0001-self-hosted-ci-runner.md.
+# does not run there. See docs/adr/0008-self-hosted-ci-runner.md.
 on:
   push:
     branches: [main]
