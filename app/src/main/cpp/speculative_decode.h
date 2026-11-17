@@ -4,14 +4,12 @@
 #include "llama.h"
 #include "sampling.h"
 
+#include <jni.h>
+
 #include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
-
-struct JNIEnv;
-struct jobject;
-struct jmethodID;
 
 namespace hanami {
 struct SpecDecodeStats {
