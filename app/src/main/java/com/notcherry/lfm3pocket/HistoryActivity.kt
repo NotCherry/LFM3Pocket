@@ -147,7 +147,7 @@ class HistoryActivity : ComponentActivity() {
     private fun startNewChat() {
         startActivity(android.content.Intent(this, MainActivity::class.java)
             .putExtra(MainActivity.EXTRA_HISTORY_CONVERSATION_ID, UUID.randomUUID().toString())
-            .putExtra(MainActivity.EXTRA_HISTORY_TITLE, "New conversation"))
+            .putExtra(MainActivity.EXTRA_HISTORY_TITLE, getString(R.string.new_conversation_title)))
         finish()
     }
 

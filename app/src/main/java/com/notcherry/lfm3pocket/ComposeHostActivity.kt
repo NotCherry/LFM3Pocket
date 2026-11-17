@@ -79,7 +79,7 @@ class ComposeHostActivity : ComponentActivity() {
                         onNewChat = {
                             startActivity(
                                 Intent(this@ComposeHostActivity, MainActivity::class.java)
-                                    .putExtra(MainActivity.EXTRA_FRESH_CHAT, true),
+                                    .putExtra(MainActivity.EXTRA_REQUEST_NEW_CHAT, true),
                             )
                         },
                         onOpenHistory = {

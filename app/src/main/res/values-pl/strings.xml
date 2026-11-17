@@ -74,6 +74,7 @@
     <string name="stopping_speech">Zatrzymywanie mowy…</string>
     <string name="open_chat">Otwórz czat</string>
     <string name="new_chat">Nowy czat</string>
+    <string name="new_conversation_title">Nowa rozmowa</string>
     <string name="new_chat_ready">Nowa rozmowa — napisz wiadomość poniżej.</string>
     <string name="fresh_chat_from_assist">Nowy czat z asystenta systemowego.</string>
     <string name="reply_still_running_title">Odpowiedź nadal trwa</string>

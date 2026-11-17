@@ -75,6 +75,7 @@
     <string name="stopping_speech">Stopping speech…</string>
     <string name="open_chat">Open chat</string>
     <string name="new_chat">New chat</string>
+    <string name="new_conversation_title">New conversation</string>
     <string name="new_chat_ready">New conversation — add a message below.</string>
     <string name="fresh_chat_from_assist">Fresh chat from the system assistant.</string>
     <string name="reply_still_running_title">Reply still running</string>

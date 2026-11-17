@@ -24,9 +24,10 @@ public final class ChatNewChatE2eTest {
     private String pkg;
     private UiDevice device;
     private TestLfm3PocketApplication app;
+    private Context context;
 
     @Before public void prepareFakeModel() throws IOException {
-        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         app = (TestLfm3PocketApplication) context.getApplicationContext();
         app.scriptedEngine().resetForTest();
         device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
@@ -41,7 +42,6 @@ public final class ChatNewChatE2eTest {
 
     @Test public void openChatResumesThenTopBarNewChatStartsEmptySession() {
         String conversationId = "resume-then-new";
-        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertTrue(context.getSharedPreferences("MainActivity", Context.MODE_PRIVATE).edit()
                 .putString("history_conversation_id", conversationId)
                 .putString("history_title", "Pinned title")
@@ -80,7 +80,7 @@ public final class ChatNewChatE2eTest {
         }
     }
 
-    @Test public void homeNewChatShortcutStartsEmptyWithoutTouchingResumePath() throws IOException {
+    @Test public void homeNewChatShortcutStartsEmptyWithoutTouchingResumePath() {
         try (ActivityScenario<ComposeHostActivity> home =
                      ActivityScenario.launch(ComposeHostActivity.class)) {
             click("home_new_chat");
@@ -89,7 +89,73 @@ public final class ChatNewChatE2eTest {
                     By.res(pkg, "chat_transcript").textContains("No conversation yet")), TIMEOUT);
             assertNotNull(empty);
             assertEquals(0, app.scriptedEngine().callCount());
+            UiObject2 status = device.wait(Until.findObject(
+                    By.res(pkg, "chat_status").textContains(context.getString(R.string.new_chat_ready))),
+                    TIMEOUT);
+            assertNotNull("Home new chat must use the normal empty-chat status", status);
         }
+    }
+
+    @Test public void topBarNewChatWhileGeneratingShowsStopDialog() {
+        try (ActivityScenario<MainActivity> chat = ActivityScenario.launch(MainActivity.class)) {
+            beginHeldGeneration();
+            click("chat_new_chat");
+
+            UiObject2 keep = awaitDialogButton(R.string.keep_this_reply);
+            keep.click();
+            assertTrue("Keeping the reply must leave generation in flight", runtimeGenerating());
+
+            click("chat_new_chat");
+            awaitDialogButton(R.string.stop_and_start_new).click();
+            UiObject2 empty = device.wait(Until.findObject(
+                    By.res(pkg, "chat_transcript").textContains("No conversation yet")), TIMEOUT);
+            assertNotNull("Stop and start new must clear the live transcript", empty);
+            assertFalse("Held generation must be cancelled", runtimeGenerating());
+        }
+    }
+
+    @Test public void homeNewChatWhileGeneratingShowsStopDialog() {
+        try (ActivityScenario<ComposeHostActivity> home =
+                     ActivityScenario.launch(ComposeHostActivity.class)) {
+            click("open_chat");
+            beginHeldGeneration();
+            device.pressBack();
+            click("home_new_chat");
+
+            UiObject2 keep = awaitDialogButton(R.string.keep_this_reply);
+            keep.click();
+            assertTrue("Keeping the reply must leave generation in flight", runtimeGenerating());
+
+            click("home_new_chat");
+            awaitDialogButton(R.string.stop_and_start_new).click();
+            UiObject2 empty = device.wait(Until.findObject(
+                    By.res(pkg, "chat_transcript").textContains("No conversation yet")), TIMEOUT);
+            assertNotNull(empty);
+            assertFalse(runtimeGenerating());
+        }
+    }
+
+    private void beginHeldGeneration() {
+        awaitEnabled("chat_send");
+        UiObject2 input = device.wait(Until.findObject(By.res(pkg, "chat_input")), TIMEOUT);
+        assertNotNull(input);
+        input.setText("Hold me");
+        app.scriptedEngine().holdFirstToken();
+        awaitEnabled("chat_send").click();
+        assertTrue(app.scriptedEngine().awaitGenerationStarted());
+        awaitEnabled("chat_stop");
+    }
+
+    private boolean runtimeGenerating() {
+        return ((TestLfm3PocketApplication) context.getApplicationContext())
+                .modelRuntime().isGenerating();
+    }
+
+    private UiObject2 awaitDialogButton(int label) {
+        String text = context.getString(label);
+        UiObject2 button = device.wait(Until.findObject(By.text(text)), TIMEOUT);
+        assertNotNull("Expected dialog button: " + text, button);
+        return button;
     }
 
     private void click(String id) {
