@@ -18,6 +18,8 @@ public final class NativeBridge {
     }
 
     public static native long loadModel(String privatePath, String privateMmprojPath);
+    /** {@code true} when the loaded projector exposes an audio input path ({@code mtmd_support_audio}). */
+    public static native boolean modelSupportsAudioIn(long handle);
     public static native void unloadModel(long handle);
     /** Drop the persistent text KV/hybrid session; weights stay loaded. */
     public static native void releaseSession(long handle);

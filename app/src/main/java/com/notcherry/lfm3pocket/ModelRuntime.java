@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * viewers. Leaving the screen does not unload the weights or cancel a reply
  * unless the user turned keep-loaded off, or thermal / memory policy says so.
  */
-public final class ModelRuntime {
+public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     public interface Ui {
         void onChat(String transcript, String status, boolean generating);
         void onSnapshot(ChatSnapshot snapshot);
@@ -84,6 +84,7 @@ public final class ModelRuntime {
     private final AtomicInteger pendingTokens = new AtomicInteger();
     private final AtomicBoolean tokenFlushPosted = new AtomicBoolean();
     private final LoopbackAgentApi loopback;
+    private final VoiceActionRuntime voiceActions;
     private final SpeechReplyRouter speechRouter;
     private final TinyVocaPackStore tinyVocaPack;
     private final AndroidSystemSpeechSynthesizer systemSpeech;
@@ -103,6 +104,9 @@ public final class ModelRuntime {
         this.playback = new PlaybackController(app.newPlaybackTrackFactory(), playbackFocus::request,
                 playbackFocus::abandon, audioWorker, main::post, (state, message) -> onPlayback(state, message));
         this.loopback = new LoopbackAgentApi(this::submitFromLoopback, message -> {});
+        this.voiceActions = new VoiceActionRuntime(new ModelRuntimeVoiceCallbacks(this),
+                new File(app.getCacheDir(), "voice-actions"), app::hasMicrophonePermission,
+                audioWorker, main::post);
         this.tinyVocaPack = new TinyVocaPackStore(app);
         this.speechRouter = new SpeechReplyRouter(preferences, tinyVocaPack);
         this.systemSpeech = new AndroidSystemSpeechSynthesizer(app);
@@ -126,10 +130,34 @@ public final class ModelRuntime {
         return true;
     }
 
-    public InferenceEngine engine() { return engine; }
-    public ExecutorService worker() { return worker; }
-    public PlaybackController playback() { return playback; }
+    public VoiceActionRuntime voice() { return voiceActions; }
+    @Override public long modelHandle() { return handle; }
     public long handle() { return handle; }
+    @Override public InferenceEngine engine() { return engine; }
+    @Override public PlaybackController playback() { return playback; }
+    @Override public ExecutorService worker() { return worker; }
+    @Override public Handler main() { return main; }
+    @Override public Context app() { return app; }
+    @Override public android.content.SharedPreferences modelPrefs() { return preferences.raw(); }
+    @Override public ToolCoordinator toolCoordinator() { return app.toolCoordinator(); }
+    @Override public java.util.Locale userLocale() {
+        return app.getResources().getConfiguration().getLocales().get(0);
+    }
+    @Override public void policyListenStarted() { apply(policy.onListenStarted("Listening…")); }
+    @Override public void policyListenFinished() {
+        apply(policy.onListenFinished(SystemClock.elapsedRealtime()));
+    }
+    @Override public void policyVoiceThinking() {
+        apply(policy.onGenerationStarted("Voice command", 512, SystemClock.elapsedRealtime()));
+    }
+    @Override public void policySpeechStarted() { apply(policy.onSpeechStarted()); }
+    @Override public void policyPlaybackStarted() { apply(policy.onPlaybackStarted()); }
+    @Override public void policySpeechFinished() {
+        apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+    }
+    @Override public void policyGenerationFinished() {
+        apply(policy.onGenerationFinished(SystemClock.elapsedRealtime()));
+    }
     public String loadedPath() { return loadedPath == null ? "" : loadedPath; }
     public boolean keepLoaded() { return preferences.keepLoaded(); }
     public boolean acceptsTurn() { return !policy.refuseNewTurns(); }
@@ -156,7 +184,7 @@ public final class ModelRuntime {
         return session;
     }
 
-    public boolean isGenerating() { return session != null && session.isGenerating(); }
+    @Override public boolean isGenerating() { return session != null && session.isGenerating(); }
 
     public boolean hasTranscript() {
         if (session == null) return false;
@@ -244,8 +272,10 @@ public final class ModelRuntime {
                     : "Model and projector loaded • offline")
                 : "Model error: " + failure;
         main.post(() -> {
-            if (loaded != 0L) apply(policy.onLoaded(name, SystemClock.elapsedRealtime()));
-            else apply(policy.onLoadFailed());
+            if (loaded != 0L) {
+                apply(policy.onLoaded(name, SystemClock.elapsedRealtime()));
+                apply(policy.onVoiceTalkAvailable(voiceActions.isEnabled()));
+            } else apply(policy.onLoadFailed());
             if (callback != null) callback.finished(status);
         });
         return loaded != 0L;
@@ -280,7 +310,8 @@ public final class ModelRuntime {
         });
     }
 
-    public void stopTurn() {
+    @Override public void stopTurn() {
+        voiceActions.cancelAll("Stopped");
         speechCancel = true;
         if (session != null) session.stop();
         engine.stop();
@@ -402,11 +433,11 @@ public final class ModelRuntime {
         });
     }
 
-    public void showConsent(String id, String text, boolean safe) {
+    @Override public void showConsent(String id, String text, boolean safe) {
         apply(policy.onConsent(id, text, safe));
     }
 
-    public void clearConsent() {
+    @Override public void clearConsent() {
         apply(policy.onConsentCleared(SystemClock.elapsedRealtime()));
     }
 
@@ -467,6 +498,7 @@ public final class ModelRuntime {
         else if (ModelRuntimeService.ACTION_APPROVE.equals(action)) resolveConsent(proposalId, true);
         else if (ModelRuntimeService.ACTION_REJECT.equals(action)) resolveConsent(proposalId, false);
         else if (ModelRuntimeService.ACTION_ASK.equals(action)) askFromNotification(askText);
+        else if (ModelRuntimeService.ACTION_TALK.equals(action)) voiceActions.beginShadeTalk();
     }
 
     /** RemoteInput Ask inserts a user message. It never authorizes a tool. */
@@ -529,13 +561,14 @@ public final class ModelRuntime {
         playback.stop();
         systemSpeech.stop();
         policy.reset();
+        apply(policy.onVoiceTalkAvailable(false));
         apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
         if (service != null) service.stopNow();
         releaseWake();
     }
 
-    private void resolveConsent(String proposalId, boolean approve) {
+    @Override public void resolveConsent(String proposalId, boolean approve) {
         if (proposalId == null || proposalId.isEmpty()) return;
         worker.execute(() -> {
             ToolCoordinator coordinator = app.toolCoordinator();
@@ -692,6 +725,7 @@ public final class ModelRuntime {
                 playbackNoted = false;
                 apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
             }
+            voiceActions.onPlaybackIdle();
         }
         if (ui != null && ui.isUsable()) ui.onPlayback(message);
     }
@@ -845,7 +879,7 @@ public final class ModelRuntime {
         }
         if (service != null) {
             service.render(RuntimeNotifications.build(app, effects.notice, conversationId, historyTitle),
-                    effects.notice.mediaPlayback);
+                    effects.notice);
             return;
         }
         if (!serviceStartRequested) {

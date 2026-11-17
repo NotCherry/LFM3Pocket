@@ -68,6 +68,10 @@ final class RuntimeNotifications {
                         openChat(context, conversationId, title)).build();
             case ASK:
                 return askAction(context, code);
+            case TALK:
+                return new Notification.Action.Builder(null,
+                        context.getString(R.string.notification_action_talk),
+                        service(context, ModelRuntimeService.ACTION_TALK, null, code)).build();
             case REVIEW:
                 return new Notification.Action.Builder(null,
                         context.getString(R.string.notification_action_review),

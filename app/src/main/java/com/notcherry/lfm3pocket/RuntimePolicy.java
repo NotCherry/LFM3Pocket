@@ -28,6 +28,7 @@ public final class RuntimePolicy {
     private boolean generating;
     private boolean synthesizing;
     private boolean playing;
+    private boolean listening;
     private boolean keepLoaded = true;
     private int idleMinutes;
     private boolean lockPreview;
@@ -48,6 +49,7 @@ public final class RuntimePolicy {
     private String consentText = "";
     private String proposalId = "";
     private long idleDeadlineMs = -1L;
+    private boolean voiceTalkAvailable;
 
     public boolean refuseNewTurns() { return refuseNewTurns; }
     public boolean modelLoaded() { return modelLoaded; }
@@ -59,6 +61,7 @@ public final class RuntimePolicy {
         generating = false;
         synthesizing = false;
         playing = false;
+        listening = false;
         tokens = 0;
         windowTokens = 0;
         windowStartMs = -1L;
@@ -75,6 +78,12 @@ public final class RuntimePolicy {
         consentText = "";
         proposalId = "";
         idleDeadlineMs = -1L;
+        voiceTalkAvailable = false;
+    }
+
+    public Effects onVoiceTalkAvailable(boolean available) {
+        voiceTalkAvailable = available;
+        return view(false, false);
     }
 
     public Effects onSettings(boolean keep, int idle, boolean preview, long nowMs) {
@@ -172,11 +181,29 @@ public final class RuntimePolicy {
         return finishIfNeeded(nowMs);
     }
 
+    public Effects onListenStarted(String status) {
+        listening = true;
+        idleDeadlineMs = -1L;
+        return view(false, false);
+    }
+
+    public Effects onListenFinished(long nowMs) {
+        listening = false;
+        if (modelLoaded && !generating && !busyAudio()) armIdle(nowMs);
+        return view(false, false);
+    }
+
+    public Effects onVoiceThinking() {
+        idleDeadlineMs = -1L;
+        return view(false, false);
+    }
+
     public Effects stopRequested(long nowMs) {
-        boolean cancel = generating || synthesizing || playing;
+        boolean cancel = generating || synthesizing || playing || listening;
         generating = false;
         synthesizing = false;
         playing = false;
+        listening = false;
         trimStrikesWhileGenerating = 0;
         if (modelLoaded) armIdle(nowMs);
         Effects base = finishIfNeeded(nowMs);
@@ -188,7 +215,8 @@ public final class RuntimePolicy {
     }
 
     public Effects onClock(long nowMs) {
-        if (idleDeadlineMs >= 0 && nowMs >= idleDeadlineMs && modelLoaded && !generating && !busyAudio() && !consent)
+        if (idleDeadlineMs >= 0 && nowMs >= idleDeadlineMs && modelLoaded && !generating && !busyAudio()
+                && !listening && !consent)
             return drop(false);
         return view(false, false);
     }
@@ -262,10 +290,12 @@ public final class RuntimePolicy {
         generating = false;
         synthesizing = false;
         playing = false;
+        listening = false;
         unloadAfterTurn = false;
         idleDeadlineMs = -1L;
         trimStrikesWhileGenerating = 0;
         consent = false;
+        voiceTalkAvailable = false;
         return new Effects(RuntimeNotice.hidden(), false, false, cancel, true);
     }
 
@@ -276,14 +306,25 @@ public final class RuntimePolicy {
     private boolean busyAudio() { return synthesizing || playing; }
 
     private Effects view(boolean cancel, boolean unload) {
-        boolean wake = generating || synthesizing || playing;
-        boolean service = loading || modelLoaded || generating || busyAudio() || consent;
+        boolean wake = generating || synthesizing || playing || listening;
+        boolean service = loading || modelLoaded || generating || busyAudio() || listening || consent;
         return new Effects(notice(), service, wake, cancel, unload);
     }
 
     private RuntimeNotice notice() {
-        if (!loading && !modelLoaded && !generating && !busyAudio() && !consent) return RuntimeNotice.hidden();
+        if (!loading && !modelLoaded && !generating && !busyAudio() && !listening && !consent)
+            return RuntimeNotice.hidden();
         String warning = warning();
+        if (listening) {
+            String body = "Listening for a voice command…";
+            if (!warning.isEmpty()) body = body + "\n" + warning;
+            boolean talkEnabled = modelLoaded;
+            RuntimeNotice.Action[] actions = talkEnabled
+                    ? new RuntimeNotice.Action[] { RuntimeNotice.Action.STOP, RuntimeNotice.Action.OPEN }
+                    : new RuntimeNotice.Action[] { RuntimeNotice.Action.STOP, RuntimeNotice.Action.OPEN };
+            return RuntimeNotice.of(RuntimeNotice.Kind.LISTENING, "Listening", body, lockPreview,
+                    0, 0, "", false, true, actions);
+        }
         if (consent) {
             boolean fits = consentSafe && consentText.length() <= 400;
             String text = consentText.isEmpty() ? "Review the Android action." : consentText;
@@ -323,9 +364,13 @@ public final class RuntimePolicy {
         if (!modelName.isEmpty()) body = body + "\n" + modelName;
         if (idleMinutes > 0) body = body + "\nUnloads after " + idleMinutes + " idle minutes";
         if (!warning.isEmpty()) body = body + "\n" + warning;
+        if (voiceTalkAvailable) {
+            return RuntimeNotice.of(RuntimeNotice.Kind.RESIDENT, "Model loaded", body, false,
+                    0, 0, "", false, RuntimeNotice.Action.TALK, RuntimeNotice.Action.ASK,
+                    RuntimeNotice.Action.UNLOAD);
+        }
         return RuntimeNotice.of(RuntimeNotice.Kind.RESIDENT, "Model loaded", body, false,
-                0, 0, "", false, RuntimeNotice.Action.ASK, RuntimeNotice.Action.UNLOAD,
-                RuntimeNotice.Action.OPEN);
+                0, 0, "", false, RuntimeNotice.Action.ASK, RuntimeNotice.Action.UNLOAD);
     }
 
     private String warning() {

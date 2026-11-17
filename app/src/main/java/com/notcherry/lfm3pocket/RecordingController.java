@@ -17,6 +17,7 @@ public final class RecordingController implements AutoCloseable {
     public interface Factory { Source open() throws Exception; }
     public interface Listener { void changed(State state,String message,File completed); }
     private static final int RATE=16000, MIN_SAMPLES=RATE/4, MAX_SAMPLES=RATE*60;
+    private final int maxSamples;
     private final File directory;private final Factory factory;private final BooleanSupplier permission;
     private final Executor worker;private final Consumer<Runnable> ui;private final Listener listener;
     private volatile State state=State.IDLE;
@@ -24,7 +25,13 @@ public final class RecordingController implements AutoCloseable {
     private boolean active;private long epoch;
     public RecordingController(File directory,Factory factory,BooleanSupplier permission,Executor worker,
                                Consumer<Runnable> ui,Listener listener){
-        this.directory=directory;this.factory=factory;this.permission=permission;this.worker=worker;this.ui=ui;this.listener=listener;
+        this(directory,factory,permission,worker,ui,listener,MAX_SAMPLES);
+    }
+    public RecordingController(File directory,Factory factory,BooleanSupplier permission,Executor worker,
+                               Consumer<Runnable> ui,Listener listener,int maxSamples){
+        this.directory=directory;this.factory=factory;this.permission=permission;this.worker=worker;this.ui=ui;
+        this.listener=listener;
+        this.maxSamples=maxSamples<=0?MAX_SAMPLES:maxSamples;
     }
     public State state(){return state;}
     public synchronized boolean start(){
@@ -41,7 +48,8 @@ public final class RecordingController implements AutoCloseable {
     }
     public synchronized void cancel(){
         if(!active || closed)return;
-        discard=true;stopping=true;publish(epoch,State.STOPPING,"Cancelling voice recording...",null);
+        discard=true;stopping=true;
+        finish(epoch,State.IDLE,"Recording cancelled",null);
     }
     @Override public synchronized void close(){closed=true;discard=true;stopping=true;state=State.CLOSED;}
     private synchronized void publish(long turn,State next,String message,File file){
@@ -55,48 +63,63 @@ public final class RecordingController implements AutoCloseable {
     private synchronized void finish(long turn,State next,String message,File file){
         active=false;publish(turn,next,message,file);
     }
+    private synchronized boolean superseded(long turn){return turn!=epoch;}
+
     private void capture(long turn){
         File partial=null,complete=null;
         try{
-            if(stopping){finish(turn,State.IDLE,"Recording cancelled",null);return;}
+            if(superseded(turn))return;
+            if(stopping){finishIfCurrent(turn,State.IDLE,"Recording cancelled",null);return;}
             if(!permission.getAsBoolean())throw new SecurityException("Microphone permission is unavailable");
             if(!directory.isDirectory() && !directory.mkdirs())throw new IOException("Cannot create private recording directory");
             partial=File.createTempFile("voice-",".partial",directory);
             long count=0;
             try(Source source=factory.open();RandomAccessFile output=new RandomAccessFile(partial,"rw")){
                 output.write(new byte[44]);
-                if(stopping){finish(turn,State.IDLE,"Recording cancelled",null);return;}
+                if(superseded(turn))return;
+                if(stopping){finishIfCurrent(turn,State.IDLE,"Recording cancelled",null);return;}
                 if(!permission.getAsBoolean())throw new SecurityException("Microphone permission was revoked");
                 source.start();
-                if(!stopping)publish(turn,State.RECORDING,"Recording voice input. Tap Stop recording when finished.",null);
+                if(!stopping && !superseded(turn)) {
+                    publish(turn,State.RECORDING,"Recording voice input. Tap Stop recording when finished.",null);
+                }
                 short[] samples=new short[4096];byte[] pcm=new byte[samples.length*2];
-                long deadline=System.nanoTime()+60_000_000_000L;
+                long deadline=System.nanoTime()+((long)maxSamples*1_000_000_000L)/RATE;
                 while(!stopping){
+                    if(superseded(turn))return;
                     if(!permission.getAsBoolean())throw new SecurityException("Microphone permission was revoked");
                     int n=source.read(samples);
+                    if(superseded(turn))return;
                     if(n<0 || n>samples.length)throw new IOException("Microphone read failed: "+n);
                     if(n==0)Thread.sleep(10);
                     else{
-                        n=(int)Math.min(n,MAX_SAMPLES-count);
+                        n=(int)Math.min(n,maxSamples-count);
                         for(int i=0;i<n;i++){pcm[i*2]=(byte)samples[i];pcm[i*2+1]=(byte)(samples[i]>>8);}
                         output.write(pcm,0,n*2);count+=n;
                     }
-                    if(count>=MAX_SAMPLES || System.nanoTime()>=deadline)stop();
+                    if(count>=maxSamples || System.nanoTime()>=deadline)stop();
                 }
-                if(discard){finish(turn,State.IDLE,"Recording cancelled",null);return;}
+                if(superseded(turn))return;
+                if(discard){finishIfCurrent(turn,State.IDLE,"Recording cancelled",null);return;}
                 if(!permission.getAsBoolean())throw new SecurityException("Microphone permission was revoked");
                 if(count<MIN_SAMPLES)throw new IOException("Recording was too short; try again");
                 writeHeader(output,count*2);output.getFD().sync();
             }
-            if(discard){finish(turn,State.IDLE,"Recording cancelled",null);return;}
+            if(superseded(turn))return;
+            if(discard){finishIfCurrent(turn,State.IDLE,"Recording cancelled",null);return;}
             complete=new File(directory,partial.getName().replace(".partial",".wav"));
             Files.move(partial.toPath(),complete.toPath(),StandardCopyOption.ATOMIC_MOVE);
-            finish(turn,State.IDLE,"Voice recording attached. Add a question and press Send.",complete);
+            finishIfCurrent(turn,State.IDLE,"Voice recording attached. Add a question and press Send.",complete);
             complete=null; // Listener owns this completed private file.
         }catch(Exception e){
             if(e instanceof InterruptedException)Thread.currentThread().interrupt();
-            finish(turn,State.ERROR,"Voice recording failed: "+e.getMessage(),null);
+            if(!superseded(turn)) finishIfCurrent(turn,State.ERROR,"Voice recording failed: "+e.getMessage(),null);
         }finally{if(partial!=null)partial.delete();if(complete!=null)complete.delete();}
+    }
+
+    private void finishIfCurrent(long turn,State next,String message,File file){
+        if(superseded(turn))return;
+        finish(turn,next,message,file);
     }
     private static void writeHeader(RandomAccessFile out,long bytes)throws IOException{
         out.seek(0);out.writeBytes("RIFF");le(out,bytes+36,4);out.writeBytes("WAVEfmt ");le(out,16,4);

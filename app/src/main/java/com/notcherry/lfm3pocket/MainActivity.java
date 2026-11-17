@@ -73,6 +73,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private volatile AtomicBoolean importCancellation;
     private final ExecutorService audioWorker = Executors.newSingleThreadExecutor();
     private RecordingController recordingController;
+    private VoicePttCoordinator voicePtt;
     private PlaybackController playbackController;
     private CheckBox keepLoadedBox;
     private Button idleOffButton;
@@ -768,7 +769,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         searchButton.setOnClickListener(v -> showSearchSettings());
         photoButton.setOnClickListener(v -> pickPhoto());
         cameraButton.setOnClickListener(v -> takePhoto());
-        recordButton.setOnClickListener(v -> toggleRecording());
+        voicePtt = new VoicePttCoordinator(runtime, () -> {
+            if (!((Lfm3PocketApplication) getApplication()).hasMicrophonePermission()) {
+                microphoneRequested = true;
+                requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQUEST_AUDIO);
+            }
+        });
+        recordButton.setOnClickListener(v -> {
+            if (runtime.voice().isEnabled() && voicePtt.onClick(v)) return;
+            if (runtime.voice().isEnabled()) return;
+            toggleRecording();
+        });
+        recordButton.setOnTouchListener((v, event) -> runtime.voice().isEnabled() && voicePtt.onTouch(v, event));
         speakButton.setOnClickListener(v -> toggleSpokenReply());
         // Keep Settings open across interface-size recreate via EXTRA_OPEN_SETTINGS only.
         // Do not persist settings_open in savedInstanceState — InferenceSettingsE2eTest and
@@ -808,9 +820,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         photoButton.setEnabled(!busy);
         cameraButton.setEnabled(!busy);
         RecordingController.State capture = recordingController.state();
+        boolean voiceMic = runtime.voice().isEnabled();
         recordButton.setText(capture == RecordingController.State.STOPPING ? getString(R.string.finishing)
+                : voiceMic && runtime.voice().isListening() ? getString(R.string.voice_listening)
                 : recordingActive() ? getString(R.string.stop_recording) : getString(R.string.voice_input));
-        recordButton.setEnabled(capture != RecordingController.State.STOPPING && (!busy || recordingActive()));
+        recordButton.setContentDescription(voiceMic ? getString(R.string.voice_record_talkback) : null);
+        recordButton.setEnabled(capture != RecordingController.State.STOPPING && (!busy || recordingActive() || voiceMic));
         PlaybackController.State playback = playbackController.state();
         speakButton.setText(playback == PlaybackController.State.STOPPING
                 ? getString(R.string.stopping_speech)

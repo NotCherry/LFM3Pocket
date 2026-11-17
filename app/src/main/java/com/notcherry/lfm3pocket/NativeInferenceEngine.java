@@ -80,6 +80,10 @@ public final class NativeInferenceEngine implements InferenceEngine {
         NativeBridge.resetModelStop(ownedHandle);
     }
 
+    @Override public boolean supportsVoiceAudioIn(long handle) {
+        return handle != 0L && NativeBridge.modelSupportsAudioIn(handle);
+    }
+
     /** Phone arm64 builds need DOTPROD; x86_64 smoke/emulator does not. */
     static boolean supportsPhoneNativeKernels() {
         boolean arm64 = false;

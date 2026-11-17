@@ -104,6 +104,13 @@
     <string name="notification_action_unload">Unload</string>
     <string name="notification_action_open">Open</string>
     <string name="notification_action_ask">Ask</string>
+    <string name="notification_action_talk">Talk</string>
+    <string name="voice_listening">Listening…</string>
+    <string name="voice_thinking">Thinking…</string>
+    <string name="voice_no_audio_model">This model cannot hear audio — load LFM3-Omni with a matching mmproj projector.</string>
+    <string name="voice_system_tts_fallback">System voice (labelled TTS)</string>
+    <string name="voice_mic_required">Microphone permission is required for Talk.</string>
+    <string name="voice_record_talkback">Voice command. Double tap to start or stop listening; or press and hold.</string>
     <string name="notification_action_review">Review</string>
     <string name="notification_action_approve">Approve</string>
     <string name="notification_action_reject">Reject</string>

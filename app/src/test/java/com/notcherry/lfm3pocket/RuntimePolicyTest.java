@@ -9,8 +9,27 @@ import org.junit.Test;
 public final class RuntimePolicyTest {
     private final RuntimePolicy policy = new RuntimePolicy();
 
+    @Test public void listeningUsesMicrophoneCaptureFlag() {
+        policy.onLoaded("lfm.gguf", 0L);
+        RuntimePolicy.Effects effects = policy.onListenStarted("Listening…");
+        assertEquals(RuntimeNotice.Kind.LISTENING, effects.notice.kind);
+        assertTrue(effects.notice.microphoneCapture);
+        RuntimePolicy.Effects done = policy.onListenFinished(1_000L);
+        assertEquals(RuntimeNotice.Kind.RESIDENT, done.notice.kind);
+        assertFalse(done.notice.microphoneCapture);
+    }
+
+    @Test public void residentHidesTalkWithoutAudioIn() {
+        policy.onLoaded("text.gguf", 1_000L);
+        RuntimePolicy.Effects effects = policy.onVoiceTalkAvailable(false);
+        assertEquals(2, effects.notice.actions.length);
+        assertEquals(RuntimeNotice.Action.ASK, effects.notice.actions[0]);
+        assertEquals(RuntimeNotice.Action.UNLOAD, effects.notice.actions[1]);
+    }
+
     @Test public void residentNoticeOffersUnloadAndOpen() {
-        RuntimePolicy.Effects effects = policy.onLoaded("lfm.gguf", 1_000L);
+        policy.onLoaded("lfm.gguf", 1_000L);
+        RuntimePolicy.Effects effects = policy.onVoiceTalkAvailable(true);
         assertTrue(effects.wantService);
         assertFalse(effects.wantWake);
         assertFalse(effects.unloadModel);
@@ -18,9 +37,10 @@ public final class RuntimePolicyTest {
         assertEquals("Model loaded", effects.notice.title);
         assertTrue(effects.notice.text.startsWith("Model loaded · using memory"));
         assertTrue(effects.notice.text.contains("lfm.gguf"));
-        assertEquals(RuntimeNotice.Action.ASK, effects.notice.actions[0]);
-        assertEquals(RuntimeNotice.Action.UNLOAD, effects.notice.actions[1]);
-        assertEquals(RuntimeNotice.Action.OPEN, effects.notice.actions[2]);
+        assertEquals(RuntimeNotice.Action.TALK, effects.notice.actions[0]);
+        assertEquals(RuntimeNotice.Action.ASK, effects.notice.actions[1]);
+        assertEquals(RuntimeNotice.Action.UNLOAD, effects.notice.actions[2]);
+        assertEquals(3, effects.notice.actions.length);
         assertFalse(effects.notice.publicLockScreen);
     }
 
