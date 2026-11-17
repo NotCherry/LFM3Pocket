@@ -2,6 +2,7 @@ package com.notcherry.lfm3pocket;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import android.content.SharedPreferences;
 import org.junit.Test;
