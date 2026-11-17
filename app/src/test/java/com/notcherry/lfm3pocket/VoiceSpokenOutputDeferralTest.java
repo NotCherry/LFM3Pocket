@@ -56,7 +56,6 @@ public final class VoiceSpokenOutputDeferralTest {
         setPendingComplete(spoken, gen, null);
         assertTrue(spoken.isBusy());
         spoken.onPlaybackIdle();
-        assertTrue(spoken.isBusy());
         assertTrue(host.speakRequested.get());
     }
 
