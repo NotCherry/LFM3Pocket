@@ -29,4 +29,11 @@ public final class InferenceStatsTest {
         assertFalse(new InferenceStats(-1L, 0L, 0, null, null).hasAnyMetric());
         assertTrue(new InferenceStats(10L, 0L, 0, null, null).hasAnyMetric());
     }
+
+    @Test public void mergeEstimatesDecodeRateFromWallClockWhenNativeDecodeMissing() {
+        InferenceStats merged = InferenceStats.merge(100L, 1_100L, 10, null);
+        assertNotNull(merged);
+        assertEquals(10.0, merged.decodeTokensPerSec, 0.05);
+        assertNull(merged.prefillTokensPerSec);
+    }
 }

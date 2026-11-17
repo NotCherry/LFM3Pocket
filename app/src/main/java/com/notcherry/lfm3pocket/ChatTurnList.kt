@@ -161,27 +161,26 @@ fun ChatTurn(
                             .widthIn(min = 96.dp, max = 168.dp),
                     )
                 }
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .then(
-                            if (canShowStats) {
-                                Modifier.semantics(mergeDescendants = true) {
-                                    onClick(label = if (statsExpanded) toggleHide else toggleShow) {
-                                        onToggleStats()
-                                        true
-                                    }
-                                }.clickable { onToggleStats() }
-                            } else {
-                                Modifier
-                            },
-                        ),
-                ) {
+                Column(Modifier.weight(1f)) {
                     SelectionContainer {
                         Column(
                             Modifier
                                 .then(if (bodyTag != null) Modifier.testTag(bodyTag) else Modifier)
-                                .semantics { contentDescription = turn.text },
+                                .then(
+                                    if (canShowStats) {
+                                        Modifier
+                                            .clickable { onToggleStats() }
+                                            .semantics {
+                                                contentDescription = turn.text
+                                                onClick(label = if (statsExpanded) toggleHide else toggleShow) {
+                                                    onToggleStats()
+                                                    true
+                                                }
+                                            }
+                                    } else {
+                                        Modifier.semantics { contentDescription = turn.text }
+                                    },
+                                ),
                         ) {
                             if (turn.text.isNotBlank()) {
                                 MarkdownBody(turn.text)

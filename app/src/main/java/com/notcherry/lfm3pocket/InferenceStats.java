@@ -83,7 +83,7 @@ public final class InferenceStats {
             if (prefillMs > 0 && prefillTokens > 0)
                 prefillTps = prefillTokens * 1000.0 / prefillMs;
         }
-        if (tokens <= 0 && total > 0 && decodeTps == null && ttft >= 0 && total > ttft) {
+        if (tokens > 0 && total > 0 && decodeTps == null && ttft >= 0 && total > ttft) {
             long decodeMs = Math.max(1L, total - ttft);
             decodeTps = tokens * 1000.0 / decodeMs;
         }

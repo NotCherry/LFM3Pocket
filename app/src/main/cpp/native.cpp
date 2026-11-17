@@ -352,7 +352,9 @@ extern "C" JNIEXPORT jlongArray JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_consumeGenerationStats(JNIEnv * env, jclass, jlong handle) {
     if (!handle) return nullptr;
     auto state = find_model(handle);
-    if (!state || !state->last_generation_stats.valid) return nullptr;
+    if (!state) return nullptr;
+    std::lock_guard<std::mutex> lock(state->decode_mutex);
+    if (!state->last_generation_stats.valid) return nullptr;
     jlongArray array = env->NewLongArray(5);
     if (!array) return nullptr;
     const jlong values[5] = {
