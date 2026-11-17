@@ -9,6 +9,7 @@ import android.speech.tts.UtteranceProgressListener;
 import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /** System TTS fallback for English when tiny-voca is unavailable. */
@@ -17,9 +18,21 @@ public final class AndroidSystemSpeechSynthesizer {
 
     private final Context context;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final Object lock = new Object();
-    private volatile TextToSpeech engine;
+    private final SystemSpeechEngineSlot<TextToSpeech> slot =
+            new SystemSpeechEngineSlot<>(main::post, new SystemSpeechEngineSlot.EngineOps<TextToSpeech>() {
+                @Override public void stopEngine(TextToSpeech engine) {
+                    if (engine == null) return;
+                    try { engine.stop(); } catch (IllegalStateException ignored) { }
+                }
+                @Override public void shutdownEngine(TextToSpeech engine) {
+                    if (engine == null) return;
+                    try { engine.shutdown(); } catch (Exception ignored) { }
+                }
+            });
+    private final AtomicLong sessionSeq = new AtomicLong();
+
     private volatile boolean speaking;
+    private volatile boolean sessionActive;
     private volatile boolean stopRequested;
 
     public AndroidSystemSpeechSynthesizer(Context context) {
@@ -27,7 +40,7 @@ public final class AndroidSystemSpeechSynthesizer {
     }
 
     public boolean isSpeaking() {
-        return speaking;
+        return speaking || sessionActive;
     }
 
     public interface Callback {
@@ -38,26 +51,22 @@ public final class AndroidSystemSpeechSynthesizer {
     public void stop() {
         stopRequested = true;
         main.post(() -> {
-            TextToSpeech tts = engine;
+            TextToSpeech tts = slot.currentEngine();
             if (tts != null) {
                 try { tts.stop(); } catch (IllegalStateException ignored) { }
             }
-            speaking = false;
         });
     }
 
-    private void shutdownEngineOnMain() {
-        main.post(() -> {
-            synchronized (lock) {
-                TextToSpeech tts = engine;
-                if (tts != null) {
-                    try { tts.stop(); } catch (IllegalStateException ignored) { }
-                    try { tts.shutdown(); } catch (Exception ignored) { }
-                }
-                engine = null;
-            }
+    private void clearSpeakingForSession(long sessionId) {
+        if (slot.activeSessionId() == sessionId) {
             speaking = false;
-        });
+            sessionActive = false;
+        }
+    }
+
+    private void shutdownSession(TextToSpeech victim, long sessionId) {
+        slot.shutdownOnMain(victim, sessionId, () -> clearSpeakingForSession(sessionId));
     }
 
     public void speak(Locale locale, String text, Callback callback) {
@@ -66,78 +75,80 @@ public final class AndroidSystemSpeechSynthesizer {
             return;
         }
         stopRequested = false;
+        long sessionId = sessionSeq.incrementAndGet();
+        sessionActive = true;
         CountDownLatch ready = new CountDownLatch(1);
         AtomicReference<String> initError = new AtomicReference<>();
+        AtomicReference<TextToSpeech> sessionEngine = new AtomicReference<>();
         main.post(() -> {
-            synchronized (lock) {
-                if (engine != null) {
-                    try { engine.shutdown(); } catch (Exception ignored) { }
-                }
-                engine = new TextToSpeech(context, status -> {
-                    if (status != TextToSpeech.SUCCESS) {
-                        initError.set("TextToSpeech init failed");
-                        ready.countDown();
-                        return;
-                    }
-                    TextToSpeech tts = engine;
-                    if (tts == null) {
-                        initError.set("TextToSpeech unavailable");
-                        ready.countDown();
-                        return;
-                    }
-                    Locale chosen = locale == null ? Locale.US : locale;
-                    int available = tts.isLanguageAvailable(chosen);
-                    if (available < TextToSpeech.LANG_AVAILABLE) {
-                        chosen = Locale.US;
-                        available = tts.isLanguageAvailable(chosen);
-                    }
-                    if (available < TextToSpeech.LANG_AVAILABLE) {
-                        initError.set("No English system voice");
-                        ready.countDown();
-                        return;
-                    }
-                    tts.setLanguage(chosen);
+            final TextToSpeech[] holder = new TextToSpeech[1];
+            TextToSpeech created = new TextToSpeech(context, status -> {
+                TextToSpeech tts = holder[0];
+                if (tts == null) {
+                    initError.set("TextToSpeech unavailable");
                     ready.countDown();
-                });
-            }
+                    return;
+                }
+                if (status != TextToSpeech.SUCCESS) {
+                    initError.set("TextToSpeech init failed");
+                    ready.countDown();
+                    return;
+                }
+                Locale chosen = locale == null ? Locale.US : locale;
+                int available = tts.isLanguageAvailable(chosen);
+                if (available < TextToSpeech.LANG_AVAILABLE) {
+                    chosen = Locale.US;
+                    available = tts.isLanguageAvailable(chosen);
+                }
+                if (available < TextToSpeech.LANG_AVAILABLE) {
+                    initError.set("No English system voice");
+                    ready.countDown();
+                    return;
+                }
+                tts.setLanguage(chosen);
+                ready.countDown();
+            });
+            holder[0] = created;
+            sessionEngine.set(slot.prepareNewEngine(sessionId, created));
         });
         try {
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             while (!ready.await(250, TimeUnit.MILLISECONDS)) {
                 if (stopRequested) {
-                    shutdownEngineOnMain();
+                    shutdownSession(sessionEngine.get(), sessionId);
                     if (callback != null) callback.onError("Spoken response cancelled.");
                     return;
                 }
                 if (System.nanoTime() >= deadline) {
-                    shutdownEngineOnMain();
+                    shutdownSession(sessionEngine.get(), sessionId);
                     if (callback != null) callback.onError("TextToSpeech timed out");
                     return;
                 }
             }
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            shutdownEngineOnMain();
+            shutdownSession(sessionEngine.get(), sessionId);
             if (callback != null) callback.onError("Interrupted");
             return;
         }
         if (stopRequested) {
-            shutdownEngineOnMain();
+            shutdownSession(sessionEngine.get(), sessionId);
             if (callback != null) callback.onError("Spoken response cancelled.");
             return;
         }
         if (initError.get() != null) {
-            shutdownEngineOnMain();
+            shutdownSession(sessionEngine.get(), sessionId);
             if (callback != null) callback.onError(initError.get());
             return;
         }
-        TextToSpeech tts = engine;
+        TextToSpeech tts = sessionEngine.get();
         if (tts == null) {
+            clearSpeakingForSession(sessionId);
             if (callback != null) callback.onError("TextToSpeech unavailable");
             return;
         }
         if (stopRequested) {
-            shutdownEngineOnMain();
+            shutdownSession(tts, sessionId);
             if (callback != null) callback.onError("Spoken response cancelled.");
             return;
         }
@@ -154,11 +165,11 @@ public final class AndroidSystemSpeechSynthesizer {
         });
         int queued = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_ID);
         if (queued == TextToSpeech.ERROR) {
-            speaking = false;
-            shutdownEngineOnMain();
+            shutdownSession(tts, sessionId);
             if (callback != null) callback.onError("Could not queue system speech");
             return;
         }
+        TextToSpeech sessionTts = tts;
         new Thread(() -> {
             try {
                 long seconds = Math.max(15, text.length() / 8);
@@ -175,8 +186,7 @@ public final class AndroidSystemSpeechSynthesizer {
                 Thread.currentThread().interrupt();
                 error.set("Interrupted");
             } finally {
-                speaking = false;
-                shutdownEngineOnMain();
+                shutdownSession(sessionTts, sessionId);
             }
             if (stopRequested) {
                 if (callback != null) callback.onError("Spoken response cancelled.");
