@@ -42,6 +42,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+          dependency-graph: generate-and-submit
+          dependency-graph-continue-on-failure: true
+      - name: Cache ONNX Runtime (Maven)
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches/modules-2/files-2.1/com.microsoft.onnxruntime
+          key: onnxruntime-android-1.20.0-${{ runner.os }}
       - name: Prove regression gate rejects failing or missing test results
         run: |
           python3 .github/scripts/assert-android-test-results.py --self-test
@@ -107,6 +114,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+          dependency-graph: generate-and-submit
+          dependency-graph-continue-on-failure: true
+      - name: Cache ONNX Runtime (Maven)
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches/modules-2/files-2.1/com.microsoft.onnxruntime
+          key: onnxruntime-android-1.20.0-${{ runner.os }}
       - name: Cache checksum-verified smoke GGUF
         uses: actions/cache@v4
         with:
@@ -184,6 +198,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+          dependency-graph: generate-and-submit
+          dependency-graph-continue-on-failure: true
+      - name: Cache ONNX Runtime (Maven)
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches/modules-2/files-2.1/com.microsoft.onnxruntime
+          key: onnxruntime-android-1.20.0-${{ runner.os }}
       - name: Build ARM64 APK
         run: gradle :app:assemblePhoneDebug :app:assembleDeviceCheckDebug :app:assembleDeviceCheckDebugAndroidTest --no-daemon --stacktrace
       - name: Assert ARM64 APK exists

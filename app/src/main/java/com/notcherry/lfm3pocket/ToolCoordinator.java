@@ -97,7 +97,11 @@ public final class ToolCoordinator {
             StringBuilder out = new StringBuilder(title(request));
             appendDescribeLine(out, "title", reminder.title);
             appendDescribeLine(out, "body", reminder.body);
-            out.append("\nwhen: ").append(ReminderDescriptions.formatLocal(reminder.whenEpochSec));
+            java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+            java.util.Locale locale = java.util.Locale.getDefault();
+            boolean relative = reminder.arguments.containsKey("in_minutes");
+            out.append("\nwhen: ").append(ReminderDescriptions.formatConsentWhen(
+                    reminder.whenEpochSec, locale, zone, relative));
             return out.toString();
         }
         if (request instanceof ToolRegistry.CancelReminderRequest cancel) {

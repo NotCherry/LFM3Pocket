@@ -168,9 +168,24 @@ public final class ToolRegistry {
         oneLineText(args,"title");
         text(args,"body",0,ReminderController.MAX_BODY);
         oneLineText(args,"body");
-        long now=System.currentTimeMillis()/1000L;
-        long when=ReminderTimeParser.toEpochSec(args,now,java.time.ZoneId.systemDefault());
+        long now=reminderNowEpochSec.getAsLong();
+        long when=ReminderTimeParser.toEpochSec(args,now,reminderZone);
         args.put("_when_epoch_sec",when);
+    }
+    private static java.util.function.LongSupplier reminderNowEpochSec=
+            ()->System.currentTimeMillis()/1000L;
+    private static java.time.ZoneId reminderZone=java.time.ZoneId.systemDefault();
+
+    /** JVM tests only: deterministic reminder parse relative to a fixed clock. */
+    public static void setReminderParseClockForTests(java.util.function.LongSupplier epochSec,
+            java.time.ZoneId zone){
+        reminderNowEpochSec=epochSec!=null?epochSec:()->System.currentTimeMillis()/1000L;
+        reminderZone=zone!=null?zone:java.time.ZoneId.systemDefault();
+    }
+
+    public static void resetReminderParseClockForTests(){
+        reminderNowEpochSec=()->System.currentTimeMillis()/1000L;
+        reminderZone=java.time.ZoneId.systemDefault();
     }
     private static void oneLineText(Map<String,Object> args,String key){
         String text=(String)args.get(key);

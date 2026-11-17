@@ -28,6 +28,11 @@ public final class ReminderNotifier {
             .setAutoCancel(true)
             .setContentIntent(content);
     android.app.NotificationManager manager = app.getSystemService(android.app.NotificationManager.class);
-    if (manager != null) manager.notify(notificationId, builder.build());
+    if (manager == null) return;
+    try {
+      manager.notify(notificationId, builder.build());
+    } catch (SecurityException ignored) {
+      // POST_NOTIFICATIONS denied; scheduling should have been gated earlier.
+    }
   }
 }

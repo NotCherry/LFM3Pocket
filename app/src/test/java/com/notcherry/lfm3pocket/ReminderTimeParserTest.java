@@ -19,10 +19,10 @@ public final class ReminderTimeParserTest {
 
     @Test public void localAtParsesInZone() {
         Map<String, Object> args = new LinkedHashMap<>();
-        args.put("at", "2030-06-15T09:30");
+        args.put("at", "2024-06-15T09:30");
         long now = 1_700_000_000L;
         ZoneId zone = ZoneId.of("UTC");
-        long expected = java.time.LocalDateTime.parse("2030-06-15T09:30").atZone(zone).toEpochSecond();
+        long expected = java.time.LocalDateTime.parse("2024-06-15T09:30").atZone(zone).toEpochSecond();
         assertEquals(expected, ReminderTimeParser.toEpochSec(args, now, zone));
     }
 

@@ -1,13 +1,15 @@
 package com.notcherry.lfm3pocket;
 
+import org.junit.After;
 import org.junit.Test;
 
+import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -16,6 +18,11 @@ import static org.junit.Assert.assertTrue;
 public final class ReminderControllerTest {
     private static final long NOW = 1_700_000_000L;
     private static final long VALID_WHEN = NOW + 600L;
+    private static final ZoneId TEST_ZONE = ZoneId.of("UTC");
+
+    @After public void resetReminderParseClock() {
+        ToolRegistry.resetReminderParseClockForTests();
+    }
 
     @Test public void schedulesFutureReminderWithExactTitleAndBody() {
         FakeScheduler scheduler = new FakeScheduler();
@@ -57,6 +64,7 @@ public final class ReminderControllerTest {
     }
 
     @Test public void voiceConfirmApproveSchedulesAndRejectHasNoSideEffect() {
+        ToolRegistry.setReminderParseClockForTests(() -> NOW, TEST_ZONE);
         FakeScheduler scheduler = new FakeScheduler();
         FakeBook book = new FakeBook();
         ToolCoordinator.Handler handler = request -> {
@@ -77,6 +85,7 @@ public final class ReminderControllerTest {
         String describe = ToolCoordinator.describe(parsed.request);
         assertFalse(describe.contains("when_epoch_sec"));
         assertTrue(describe.contains("when:"));
+        assertTrue(describe.contains("(UTC)"));
 
         ToolCoordinator.Outcome pending = coordinator.propose(parsed.request, ToolCoordinator.Source.MODEL_PROPOSAL);
         assertEquals("PENDING_CONFIRMATION", pending.status);
@@ -84,15 +93,17 @@ public final class ReminderControllerTest {
         ToolCoordinator.Outcome retry = coordinator.propose(parsed.request, ToolCoordinator.Source.MODEL_PROPOSAL);
         assertTrue(coordinator.approve(retry.proposal.id).result.succeeded);
         assertEquals(1, scheduler.plans.size());
+        assertEquals(NOW + 30L * 60L, scheduler.plans.get(0).whenEpochSec);
     }
 
     @Test public void expiryAndPermissionDenialHaveNoScheduleSideEffects() {
+        ToolRegistry.setReminderParseClockForTests(() -> NOW, TEST_ZONE);
         FakeScheduler scheduler = new FakeScheduler();
         FakeBook book = new FakeBook();
         ToolCoordinator coordinator = new ToolCoordinator(
                 request -> new ReminderActionExecutor(new ReminderController(scheduler, book, () -> NOW))
                         .execute("set_reminder", Map.of(
-                                "when_epoch_sec", String.valueOf(VALID_WHEN),
+                                "when_epoch_sec", String.valueOf(((ToolRegistry.ReminderRequest) request).whenEpochSec),
                                 "title", "Tea", "body", "")),
                 request -> false, () -> 0L);
         ToolRegistry.Request reminder = new ToolRegistry().parse(
@@ -111,11 +122,14 @@ public final class ReminderControllerTest {
     }
 
     @Test public void registryAcceptsInMinutesOrLocalAt() {
+        ToolRegistry.setReminderParseClockForTests(() -> NOW, TEST_ZONE);
         ToolRegistry registry = new ToolRegistry();
         assertTrue(registry.parse("{\"tool\":\"set_reminder\",\"arguments\":{"
                 + "\"in_minutes\":45,\"title\":\"Call\",\"body\":\"Mom\"}}").isValid());
+        assertTrue(registry.parse("{\"tool\":\"set_reminder\",\"arguments\":{"
+                + "\"at\":\"2024-06-15T10:00\",\"title\":\"Call\",\"body\":\"Mom\"}}").isValid());
         assertFalse(registry.parse("{\"tool\":\"set_reminder\",\"arguments\":{"
-                + "\"in_minutes\":45,\"at\":\"2026-01-01T12:00\",\"title\":\"X\",\"body\":\"\"}}").isValid());
+                + "\"in_minutes\":45,\"at\":\"2024-06-15T10:00\",\"title\":\"X\",\"body\":\"\"}}").isValid());
         assertFalse(registry.parse("{\"tool\":\"set_reminder\",\"arguments\":{"
                 + "\"in_minutes\":0,\"title\":\"A\",\"body\":\"\"}}").isValid());
     }

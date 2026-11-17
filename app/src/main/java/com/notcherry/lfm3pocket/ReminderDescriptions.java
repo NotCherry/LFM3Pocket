@@ -23,4 +23,14 @@ public final class ReminderDescriptions {
             .withZone(zone);
     return formatter.format(Instant.ofEpochSecond(whenEpochSec));
   }
+
+  /** Consent/voice read-back: local time plus zone; prefix approximate for relative proposals. */
+  public static String formatConsentWhen(long whenEpochSec, Locale locale, ZoneId zone, boolean relativeMinutes) {
+    String text = formatLocal(whenEpochSec, locale, zone);
+    if (relativeMinutes) {
+      if (locale != null && "pl".equals(locale.getLanguage())) text = "około " + text;
+      else text = "around " + text;
+    }
+    return text + " (" + zone.getId() + ")";
+  }
 }

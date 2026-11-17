@@ -9,7 +9,7 @@ import java.util.Map;
 
 /** Converts model-facing reminder time fields into epoch seconds (device zone). */
 public final class ReminderTimeParser {
-  private static final DateTimeFormatter AT_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd['T'][' ']HH:mm[:ss]")
+  private static final DateTimeFormatter AT_FORMAT = DateTimeFormatter.ofPattern("uuuu-MM-dd['T'][' ']HH:mm[:ss]")
           .withResolverStyle(ResolverStyle.STRICT);
 
   private ReminderTimeParser() {}
@@ -39,7 +39,7 @@ public final class ReminderTimeParser {
     try {
       when = LocalDateTime.parse(at, AT_FORMAT);
     } catch (DateTimeParseException e) {
-      throw new IllegalArgumentException("at must be ISO-8601 local date-time yyyy-MM-ddTHH:mm");
+      throw new IllegalArgumentException("at must be ISO-8601 local date-time uuuu-MM-ddTHH:mm");
     }
   long epoch = when.atZone(zone == null ? ZoneId.systemDefault() : zone).toEpochSecond();
     long lead = epoch - nowEpochSec;
