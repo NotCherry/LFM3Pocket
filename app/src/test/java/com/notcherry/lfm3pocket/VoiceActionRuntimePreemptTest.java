@@ -66,7 +66,7 @@ public final class VoiceActionRuntimePreemptTest {
                 }, VoiceListenLimits.MAX_ACTION_SAMPLES);
         LinkedBlockingQueue<Runnable> workerTasks = new LinkedBlockingQueue<>();
         assertTrue(session.startTimed(2_000));
-        drain(workerTasks);
+        drain(cancelWorker);
         assertEquals(VoiceListenSession.State.LISTENING, session.state());
         assertEquals(false, session.startPtt());
         session.cancel("preempt");
