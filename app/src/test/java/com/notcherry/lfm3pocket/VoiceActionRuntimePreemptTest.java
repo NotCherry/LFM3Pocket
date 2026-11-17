@@ -34,13 +34,18 @@ public final class VoiceActionRuntimePreemptTest {
                 workerTasks::offer, Runnable::run, factory);
         setPendingConfirm(runtime, "proposal-1");
         assertTrue(runtime.listenSessionForTests().startTimed(3_000));
+        drain(workerTasks);
         assertEquals(VoiceListenSession.State.LISTENING, runtime.listenSessionForTests().state());
         assertTrue(runtime.pttPressed());
+        drain(workerTasks);
         assertEquals(1, rejected.get());
         assertNull(pendingConfirm(runtime));
         assertEquals(VoiceListenSession.State.LISTENING, runtime.listenSessionForTests().state());
-        while (!workerTasks.isEmpty()) workerTasks.poll().run();
         runtime.listenSessionForTests().close();
+    }
+
+    private static void drain(LinkedBlockingQueue<Runnable> tasks) {
+        while (!tasks.isEmpty()) tasks.poll().run();
     }
 
   /** Matches {@link VoiceListenSessionTest}: cancel must happen before a new PTT can start. */
@@ -52,16 +57,20 @@ public final class VoiceActionRuntimePreemptTest {
             @Override public int read(short[] buffer) { return 0; }
             @Override public void close() { }
         };
-        VoiceListenSession session = new VoiceListenSession(dir, factory, () -> true, Runnable::run,
+        LinkedBlockingQueue<Runnable> cancelWorker = new LinkedBlockingQueue<>();
+        VoiceListenSession session = new VoiceListenSession(dir, factory, () -> true, cancelWorker::offer,
                 Runnable::run, Executors.newSingleThreadScheduledExecutor(),
                 new VoiceListenSession.Listener() {
                     @Override public void changed(VoiceListenSession.State state, String message) { }
                     @Override public void wavReady(File wav) { }
                 }, VoiceListenLimits.MAX_ACTION_SAMPLES);
+        LinkedBlockingQueue<Runnable> workerTasks = new LinkedBlockingQueue<>();
         assertTrue(session.startTimed(2_000));
+        drain(workerTasks);
         assertEquals(VoiceListenSession.State.LISTENING, session.state());
         assertEquals(false, session.startPtt());
         session.cancel("preempt");
+        assertEquals(VoiceListenSession.State.IDLE, session.state());
         assertTrue(session.startPtt());
         session.close();
     }
