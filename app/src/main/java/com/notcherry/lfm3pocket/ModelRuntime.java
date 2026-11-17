@@ -560,7 +560,6 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         if (current != 0L) engine.unloadModel(current);
         playback.stop();
         systemSpeech.stop();
-        voiceActions.cancelAll("Reset");
         policy.reset();
         apply(policy.onVoiceTalkAvailable(false));
         apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
