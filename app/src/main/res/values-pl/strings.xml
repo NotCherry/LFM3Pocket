@@ -73,6 +73,13 @@
     <string name="stop_speech">Zatrzymaj mowę</string>
     <string name="stopping_speech">Zatrzymywanie mowy…</string>
     <string name="open_chat">Otwórz czat</string>
+    <string name="new_chat">Nowy czat</string>
+    <string name="new_chat_ready">Nowa rozmowa — napisz wiadomość poniżej.</string>
+    <string name="fresh_chat_from_assist">Nowy czat z asystenta systemowego.</string>
+    <string name="reply_still_running_title">Odpowiedź nadal trwa</string>
+    <string name="reply_still_running_message">Zatrzymać bieżącą odpowiedź i rozpocząć nową rozmowę?</string>
+    <string name="stop_and_start_new">Zatrzymaj i zacznij od nowa</string>
+    <string name="keep_this_reply">Zostaw tę odpowiedź</string>
     <string name="history">Historia</string>
     <string name="about_offline_mode">O trybie offline</string>
     <string name="load_model">Załaduj model</string>

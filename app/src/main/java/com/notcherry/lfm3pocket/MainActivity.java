@@ -292,9 +292,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         pendingSwitchId = null;
         pendingSwitchTitle = null;
         new AlertDialog.Builder(this)
-                .setTitle("Reply still running")
-                .setMessage("Stop the current reply and start a new conversation?")
-                .setPositiveButton("Stop and start new", (dialog, which) -> {
+                .setTitle(R.string.reply_still_running_title)
+                .setMessage(R.string.reply_still_running_message)
+                .setPositiveButton(R.string.stop_and_start_new, (dialog, which) -> {
                     runtime.stopTurn();
                     runtime.clearConversation();
                     lastAssistantReply = "";
@@ -303,7 +303,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     runtime.setConversation(historyConversationId, historyTitle);
                     if (brandTitle != null) brandTitle.setText(historyTitle);
                 })
-                .setNegativeButton("Keep this reply", (dialog, which) -> {
+                .setNegativeButton(R.string.keep_this_reply, (dialog, which) -> {
                     historyConversationId = runtime.conversationId();
                     historyTitle = runtime.historyTitle();
                 })
@@ -360,6 +360,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         StillwaterReadable.prepareWrappingLabel(modePill);
         titles.addView(modePill);
         topBar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
+        Button newChat = button(getString(R.string.new_chat));
+        newChat.setId(R.id.chat_new_chat);
+        newChat.setContentDescription(getString(R.string.new_chat));
+        StillwaterUi.quiet(newChat);
+        newChat.setTextColor(accent);
+        newChat.setOnClickListener(v -> requestNewChat());
+        newChat.setMinimumWidth(InterfaceSize.minTouchPx(this));
+        newChat.setMinimumHeight(InterfaceSize.minTouchPx(this));
+        StillwaterReadable.prepareWrappingControl(newChat, dp(44));
+        topBar.addView(newChat, new LinearLayout.LayoutParams(-2, -2));
         settingsOpenButton = button("");
         settingsOpenButton.setId(R.id.settings_open);
         settingsOpenButton.setContentDescription("Settings");
@@ -1688,7 +1698,27 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         return value != null && value.startsWith("content:");
     }
 
+    private void requestNewChat() {
+        if (runtime.isGenerating()) {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.reply_still_running_title)
+                    .setMessage(R.string.reply_still_running_message)
+                    .setPositiveButton(R.string.stop_and_start_new, (dialog, which) -> {
+                        runtime.stopTurn();
+                        startFreshChat(false);
+                    })
+                    .setNegativeButton(R.string.keep_this_reply, null)
+                    .show();
+            return;
+        }
+        startFreshChat(false);
+    }
+
     private void startFreshChat() {
+        startFreshChat(true);
+    }
+
+    private void startFreshChat(boolean fromSystemAssist) {
         HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
         HistoryMediaCleanup.deleteAttachment(this, pendingAudioPath);
         pendingImagePath = "";
@@ -1703,7 +1733,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         runtime.setConversation(id, historyTitle);
         runtime.clearConversation();
         setSettingsOpen(false);
-        status.setText("Fresh chat from the system assistant.");
+        status.setText(fromSystemAssist
+                ? getString(R.string.fresh_chat_from_assist)
+                : getString(R.string.new_chat_ready));
+        updateControls();
     }
 
     private void openDefaultAssistantPicker() {

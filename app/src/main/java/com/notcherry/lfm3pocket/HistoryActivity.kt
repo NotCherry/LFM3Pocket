@@ -17,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.semantics.contentDescription
@@ -196,7 +197,7 @@ private fun HistoryScreen(
                 shape = MaterialTheme.shapes.extraSmall,
                 colors = StillwaterControls.buttonColors(),
             ) {
-                Text("New chat")
+                Text(stringResource(R.string.new_chat))
             }
         }
         if (selected == null) {

@@ -33,6 +33,7 @@
     <item name="settings_open" type="id"/>
     <item name="settings_back" type="id"/>
     <item name="chat_overflow" type="id"/>
+    <item name="chat_new_chat" type="id"/>
     <item name="chat_camera" type="id"/>
     <item name="camera_status" type="id"/>
     <item name="camera_preview" type="id"/>
