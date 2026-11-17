@@ -3,9 +3,6 @@ package com.notcherry.lfm3pocket;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import android.os.Handler;
-import android.os.Looper;
-
 import org.junit.Test;
 
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -28,8 +25,6 @@ public final class VoiceSpokenOutputPlaybackTest {
     }
 
     private static final class StubHost implements VoiceSpokenOutput.Host {
-        final Handler main = new Handler(Looper.getMainLooper());
-
         @Override public long modelHandle() { return 1L; }
         @Override public InferenceEngine engine() {
             return new InferenceEngine() {
@@ -43,7 +38,7 @@ public final class VoiceSpokenOutputPlaybackTest {
         }
         @Override public PlaybackController playback() { return null; }
         @Override public java.util.concurrent.Executor worker() { return Runnable::run; }
-        @Override public Handler main() { return main; }
+        @Override public android.os.Handler main() { return null; }
         @Override public android.content.Context app() { return null; }
         @Override public void onSpeechUi(boolean active, String status) { }
         @Override public void onPlaybackPolicy(boolean playing) { }

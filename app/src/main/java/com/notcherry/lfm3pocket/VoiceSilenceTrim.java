@@ -67,6 +67,11 @@ public final class VoiceSilenceTrim {
         return -1;
     }
 
+    /** Exposed for JVM tests verifying little-endian PCM sign extension. */
+    static int pcm16Sample(byte[] wav, int dataOffset, int index) {
+        return pcm16At(wav, dataOffset, index);
+    }
+
     private static int pcm16At(byte[] wav, int dataOffset, int index) {
         int off = dataOffset + index * 2;
         return (wav[off] & 0xFF) | (wav[off + 1] << 8);

@@ -54,7 +54,11 @@ public final class VoiceSpokenOutput {
         Runnable done = pendingComplete;
         pendingComplete = null;
         busy.set(false);
-        if (done != null) host.main().post(done);
+        if (done != null) {
+            Handler main = host.main();
+            if (main != null) main.post(done);
+            else done.run();
+        }
     }
 
     public void speakExact(String exactText, Locale locale, Runnable onComplete) {
