@@ -258,13 +258,13 @@ Do **not**:
 
 ## 12. Vision image input
 
-Gallery picks, camera captures, and share-sheet images pass through one local preparation stage before the vision projector. The decision is [ADR-0002](adr/0002-prepare-vision-images-before-projector.md).
+Gallery picks, camera captures, and share-sheet images pass through one local preparation stage before the vision projector. The decision is [ADR-0005](adr/0005-prepare-vision-images-before-projector.md).
 
 | Point | Behavior |
 | --- | --- |
 | Entry | The still is brought into private app storage. The gallery item, camera roll, and the sharing app's file are not modified. |
 | Preparation | On by default. Longest-side cap, default 512 (the projector's nominal vision size); presets 384, 512, 768, 1024, and Original. Aspect ratio kept. Optional square crop stays off, because this projector is a native-resolution encoder. A prepared copy bakes orientation into a private JPEG, and that copy is what the projector sees. |
-| Pass-through | Preparation off, or Original with no crop and an upright photo, sends the private working copy unchanged. Orientation is not applied, and the source container is kept. HEIC and WebP on that path are not readable by the Android vision decoder; a prepared JPEG is. See ADR-0002. |
+| Pass-through | Preparation off, or Original with no crop and an upright photo, sends the private working copy unchanged. Orientation is not applied, and the source container is kept. HEIC and WebP on that path are not readable by the Android vision decoder; a prepared JPEG is. See ADR-0005. |
 | Retention | Prepared copies are temporary private cache and are removed by the existing history media cleanup. |
 | Settings → Images | On/off, cap, square crop, and JPEG quality (40–95, default 85) persist in private preferences, with the other settings. |
 | Share sheet | The app is a share target for images. A shared image opens chat and takes the same preparation path. It does not approve tools. Preparation and inference stay on the device. |
@@ -281,4 +281,4 @@ The attachment chip (6.6) is the only chat-surface hint that a still was prepare
 | [`UI_ACCEPTANCE_MATRIX.md`](UI_ACCEPTANCE_MATRIX.md) | UT-01..UT-08 |
 | [`UI_E2E_CONTRACT.md`](UI_E2E_CONTRACT.md) | Flat transcript + ID contract |
 | [`ACCEPTANCE_MATRIX.md`](ACCEPTANCE_MATRIX.md) | Stage 1 AT-01..AT-09 (unchanged authority for product capability) |
-| [`adr/`](adr/README.md) | Architecture decision records. [ADR-0002](adr/0002-prepare-vision-images-before-projector.md) is vision image preparation. |
+| [`adr/`](adr/README.md) | Architecture decision records. [ADR-0005](adr/0005-prepare-vision-images-before-projector.md) is vision image preparation. |
