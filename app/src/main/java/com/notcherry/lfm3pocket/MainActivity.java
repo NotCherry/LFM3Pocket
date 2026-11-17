@@ -1850,6 +1850,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                         });
                     }
                     @Override public void onDone() {
+                        TinyVocaPackStore pack = new TinyVocaPackStore(MainActivity.this);
+                        new Thread(() -> TinyVocaPhonemizerBridge.ensureLoaded(pack.phonemizerDir()),
+                                "tiny-voca-phonemizer-warmup").start();
                         runOnUiThread(() -> {
                             paintTinyVocaPackStatus();
                             if (status != null) status.setText(getString(R.string.tiny_voca_status_ready));

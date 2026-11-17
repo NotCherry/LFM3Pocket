@@ -47,14 +47,31 @@ public final class TinyVocaOnnxRuntime implements AutoCloseable {
 
     public int sampleRateHz() { return sampleRate; }
 
+    static void checkNotCancelled(SpeechCancellation cancellation) throws SpeechSynthesisCancelled {
+        if (cancellation != null && cancellation.isCancelled()) {
+            throw new SpeechSynthesisCancelled();
+        }
+    }
+
+    public interface SpeechCancellation {
+        boolean isCancelled();
+    }
+
     public byte[] synthesizePcm16(String text, String voice) throws Exception {
+        return synthesizePcm16(text, voice, null);
+    }
+
+    public byte[] synthesizePcm16(String text, String voice, SpeechCancellation cancellation) throws Exception {
+        checkNotCancelled(cancellation);
         List<String> sentences = TinyVocaSentenceSplit.sentences(TinyVocaSentenceSplit.finished(text));
         List<float[]> chunks = new ArrayList<>();
         int budget = Math.max(32, maxTokens - 12);
         int voiceIndex = "M2".equalsIgnoreCase(voice) ? 1 : 0;
         for (String sentence : sentences) {
+            checkNotCancelled(cancellation);
             List<String> pieces = TinyVocaSentenceSplit.shrinkForTokens(sentence, budget);
             for (String piece : pieces) {
+                checkNotCancelled(cancellation);
                 TinyVocaPhonemes phones = TinyVocaPhonemizerBridge.phonemize(piece);
                 if (phones == null || phones.ids.length == 0) continue;
                 float[] audio = runSession(phones, voiceIndex);

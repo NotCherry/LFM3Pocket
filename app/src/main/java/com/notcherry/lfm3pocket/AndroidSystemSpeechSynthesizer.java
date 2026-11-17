@@ -46,6 +46,20 @@ public final class AndroidSystemSpeechSynthesizer {
         });
     }
 
+    private void shutdownEngineOnMain() {
+        main.post(() -> {
+            synchronized (lock) {
+                TextToSpeech tts = engine;
+                if (tts != null) {
+                    try { tts.stop(); } catch (IllegalStateException ignored) { }
+                    try { tts.shutdown(); } catch (Exception ignored) { }
+                }
+                engine = null;
+            }
+            speaking = false;
+        });
+    }
+
     public void speak(Locale locale, String text, Callback callback) {
         if (text == null || text.isBlank()) {
             if (callback != null) callback.onError("Nothing to speak");
@@ -88,22 +102,43 @@ public final class AndroidSystemSpeechSynthesizer {
             }
         });
         try {
-            if (!ready.await(5, TimeUnit.SECONDS)) {
-                if (callback != null) callback.onError("TextToSpeech timed out");
-                return;
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (!ready.await(250, TimeUnit.MILLISECONDS)) {
+                if (stopRequested) {
+                    shutdownEngineOnMain();
+                    if (callback != null) callback.onError("Spoken response cancelled.");
+                    return;
+                }
+                if (System.nanoTime() >= deadline) {
+                    shutdownEngineOnMain();
+                    if (callback != null) callback.onError("TextToSpeech timed out");
+                    return;
+                }
             }
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
+            shutdownEngineOnMain();
             if (callback != null) callback.onError("Interrupted");
             return;
         }
+        if (stopRequested) {
+            shutdownEngineOnMain();
+            if (callback != null) callback.onError("Spoken response cancelled.");
+            return;
+        }
         if (initError.get() != null) {
+            shutdownEngineOnMain();
             if (callback != null) callback.onError(initError.get());
             return;
         }
         TextToSpeech tts = engine;
         if (tts == null) {
             if (callback != null) callback.onError("TextToSpeech unavailable");
+            return;
+        }
+        if (stopRequested) {
+            shutdownEngineOnMain();
+            if (callback != null) callback.onError("Spoken response cancelled.");
             return;
         }
         speaking = true;
@@ -120,6 +155,7 @@ public final class AndroidSystemSpeechSynthesizer {
         int queued = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_ID);
         if (queued == TextToSpeech.ERROR) {
             speaking = false;
+            shutdownEngineOnMain();
             if (callback != null) callback.onError("Could not queue system speech");
             return;
         }
@@ -140,14 +176,7 @@ public final class AndroidSystemSpeechSynthesizer {
                 error.set("Interrupted");
             } finally {
                 speaking = false;
-                main.post(() -> {
-                    TextToSpeech live = engine;
-                    if (live != null) {
-                        try { live.stop(); } catch (IllegalStateException ignored) { }
-                        try { live.shutdown(); } catch (Exception ignored) { }
-                    }
-                    engine = null;
-                });
+                shutdownEngineOnMain();
             }
             if (stopRequested) {
                 if (callback != null) callback.onError("Spoken response cancelled.");

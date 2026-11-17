@@ -256,6 +256,7 @@ public final class ModelRuntime {
         if (session != null) session.stop();
         engine.stop();
         playback.stop();
+        systemSpeech.stop();
         last = policy.unloadRequested();
         String why = cause == null ? "user" : cause;
         worker.execute(() -> {
@@ -279,6 +280,7 @@ public final class ModelRuntime {
         if (session != null) session.stop();
         engine.stop();
         playback.stop();
+        systemSpeech.stop();
         apply(policy.stopRequested(SystemClock.elapsedRealtime()));
     }
 
@@ -366,19 +368,33 @@ public final class ModelRuntime {
         }
         speechCancel = false;
         apply(policy.onSpeechStarted());
-        SpeechReplyBackend backend = speechRouter.select(reply);
-        if (backend == SpeechReplyBackend.SYSTEM_TTS) {
-            worker.execute(() -> generateSystemSpeech(reply));
-            return;
-        }
-        if (backend == SpeechReplyBackend.TINY_VOCA) {
-            if (ui != null && ui.isUsable()) ui.onSpeech(true, "Speaking with English tiny-voca…");
-            worker.execute(() -> generateTinyVocaSpeech(reply));
-            return;
-        }
-        if (ui != null && ui.isUsable()) ui.onSpeech(true, "Generating spoken response locally…");
-        int frames = SpeechOptions.framesForText(reply);
-        worker.execute(() -> generateSpeech(reply, frames));
+        final String spoken = reply;
+        worker.execute(() -> {
+            if (speechCancel) {
+                main.post(() -> {
+                    apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                    if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response cancelled.");
+                });
+                return;
+            }
+            SpeechReplyBackend backend = speechRouter.select(spoken);
+            if (backend == SpeechReplyBackend.SYSTEM_TTS) {
+                generateSystemSpeech(spoken);
+                return;
+            }
+            if (backend == SpeechReplyBackend.TINY_VOCA) {
+                main.post(() -> {
+                    if (ui != null && ui.isUsable()) ui.onSpeech(true, "Speaking with English tiny-voca…");
+                });
+                generateTinyVocaSpeech(spoken);
+                return;
+            }
+            main.post(() -> {
+                if (ui != null && ui.isUsable()) ui.onSpeech(true, "Generating spoken response locally…");
+            });
+            int frames = SpeechOptions.framesForText(spoken);
+            generateSpeech(spoken, frames);
+        });
     }
 
     public void showConsent(String id, String text, boolean safe) {
@@ -506,6 +522,7 @@ public final class ModelRuntime {
         if (old != null) old.close();
         if (current != 0L) engine.unloadModel(current);
         playback.stop();
+        systemSpeech.stop();
         policy.reset();
         apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
@@ -564,13 +581,16 @@ public final class ModelRuntime {
         String failure = null;
         byte[] audio = new byte[0];
         int sampleRate = 24000;
+        boolean synthesisCancelled = false;
         try (TinyVocaOnnxRuntime synth = TinyVocaOnnxRuntime.open(app)) {
             sampleRate = synth.sampleRateHz();
-            audio = synth.synthesizePcm16(reply, "F2");
+            audio = synth.synthesizePcm16(reply, "F2", () -> speechCancel);
+        } catch (SpeechSynthesisCancelled cancelled) {
+            synthesisCancelled = true;
         } catch (Throwable thrown) {
             failure = thrown.getMessage() == null ? thrown.toString() : thrown.getMessage();
         }
-        boolean cancelled = speechCancel;
+        boolean cancelled = speechCancel || synthesisCancelled;
         byte[] pcm = audio;
         int rate = sampleRate;
         String error = failure;
