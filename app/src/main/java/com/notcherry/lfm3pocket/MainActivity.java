@@ -79,6 +79,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private CheckBox lockPreviewBox;
     private CheckBox loopbackBox;
     private CheckBox networkToolsBox;
+    private CheckBox tinyVocaTtsBox;
+    private TextView tinyVocaStatus;
+    private Button tinyVocaDownloadButton;
+    private Button tinyVocaRemoveButton;
     private Button interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton;
     private SeekBar interfaceSizeSlider;
     private TextView interfaceSizeValue;
@@ -575,6 +579,41 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         TextView networkToolsHelp = label(getString(R.string.network_tools_help), 12, inkMuted);
         StillwaterReadable.prepareWrappingLabel(networkToolsHelp);
         configuration.addView(networkToolsHelp);
+
+        TextView speechHeading = label(getString(R.string.speech_heading), 11, inkMuted);
+        speechHeading.setTypeface(StillwaterUi.sansMedium(this));
+        speechHeading.setLetterSpacing(0.12f);
+        speechHeading.setPadding(0, dp(16), 0, dp(4));
+        configuration.addView(speechHeading);
+        tinyVocaTtsBox = new CheckBox(this);
+        tinyVocaTtsBox.setId(R.id.settings_tiny_voca_tts);
+        tinyVocaTtsBox.setText(R.string.tiny_voca_tts_label);
+        StillwaterUi.styleCheck(tinyVocaTtsBox);
+        tinyVocaTtsBox.setOnCheckedChangeListener((button, checked) -> {
+            if (bindingBackground) return;
+            new RuntimePreferences(this).setTinyVocaEnglishTtsEnabled(checked);
+        });
+        configuration.addView(tinyVocaTtsBox);
+        TextView tinyVocaHelp = label(getString(R.string.tiny_voca_tts_help), 12, inkMuted);
+        StillwaterReadable.prepareWrappingLabel(tinyVocaHelp);
+        configuration.addView(tinyVocaHelp);
+        tinyVocaStatus = label(getString(R.string.tiny_voca_status_missing), 13, ink);
+        tinyVocaStatus.setId(R.id.settings_tiny_voca_status);
+        configuration.addView(tinyVocaStatus);
+        tinyVocaDownloadButton = button(getString(R.string.tiny_voca_download));
+        tinyVocaDownloadButton.setId(R.id.settings_tiny_voca_download);
+        StillwaterUi.quiet(tinyVocaDownloadButton);
+        tinyVocaDownloadButton.setOnClickListener(v -> downloadTinyVocaPack());
+        configuration.addView(tinyVocaDownloadButton, new LinearLayout.LayoutParams(-1, dp(44)));
+        tinyVocaRemoveButton = button(getString(R.string.tiny_voca_remove));
+        tinyVocaRemoveButton.setId(R.id.settings_tiny_voca_remove);
+        StillwaterUi.quiet(tinyVocaRemoveButton);
+        tinyVocaRemoveButton.setOnClickListener(v -> {
+            new TinyVocaPackStore(this).clear();
+            paintTinyVocaPackStatus();
+        });
+        configuration.addView(tinyVocaRemoveButton, new LinearLayout.LayoutParams(-1, dp(44)));
+
         defaultAssistantButton = button(getString(R.string.default_assistant_button));
         defaultAssistantButton.setId(R.id.settings_default_assistant);
         StillwaterUi.quiet(defaultAssistantButton);
@@ -875,6 +914,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (networkToolsBox != null) {
             bindingBackground = true;
             networkToolsBox.setChecked(new RuntimePreferences(this).networkToolsEnabled());
+            RuntimePreferences prefs = new RuntimePreferences(this);
+            if (tinyVocaTtsBox != null) tinyVocaTtsBox.setChecked(prefs.tinyVocaEnglishTtsEnabled());
+            paintTinyVocaPackStatus();
             bindingBackground = false;
         }
     }
@@ -1781,8 +1823,48 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         lockPreviewBox.setChecked(prefs.lockPreview());
         if (loopbackBox != null) loopbackBox.setChecked(prefs.loopbackEnabled());
         if (networkToolsBox != null) networkToolsBox.setChecked(prefs.networkToolsEnabled());
+        if (tinyVocaTtsBox != null) tinyVocaTtsBox.setChecked(prefs.tinyVocaEnglishTtsEnabled());
+        paintTinyVocaPackStatus();
         paintIdle(prefs.idleMinutes());
         bindingBackground = false;
+    }
+
+    private void paintTinyVocaPackStatus() {
+        if (tinyVocaStatus == null) return;
+        boolean ready = new TinyVocaPackStore(this).isReady();
+        tinyVocaStatus.setText(ready ? getString(R.string.tiny_voca_status_ready)
+                : getString(R.string.tiny_voca_status_missing));
+        if (tinyVocaDownloadButton != null) tinyVocaDownloadButton.setEnabled(!ready);
+        if (tinyVocaRemoveButton != null) tinyVocaRemoveButton.setEnabled(ready);
+    }
+
+    private void downloadTinyVocaPack() {
+        if (tinyVocaDownloadButton != null) tinyVocaDownloadButton.setEnabled(false);
+        new Thread(() -> new TinyVocaPackDownloader(new TinyVocaPackStore(this)).download(
+                new TinyVocaPackDownloader.Progress() {
+                    @Override public void onFile(String path, long written, long total) {
+                        runOnUiThread(() -> {
+                            if (tinyVocaStatus != null) {
+                                tinyVocaStatus.setText(getString(R.string.tiny_voca_downloading, path));
+                            }
+                        });
+                    }
+                    @Override public void onDone() {
+                        TinyVocaPackStore pack = new TinyVocaPackStore(MainActivity.this);
+                        new Thread(() -> TinyVocaPhonemizerBridge.ensureLoaded(pack.phonemizerDir()),
+                                "tiny-voca-phonemizer-warmup").start();
+                        runOnUiThread(() -> {
+                            paintTinyVocaPackStatus();
+                            if (status != null) status.setText(getString(R.string.tiny_voca_status_ready));
+                        });
+                    }
+                    @Override public void onError(String message) {
+                        runOnUiThread(() -> {
+                            paintTinyVocaPackStatus();
+                            if (status != null) status.setText(message);
+                        });
+                    }
+                }), "tiny-voca-download").start();
     }
 
     private boolean bindingBackground;
