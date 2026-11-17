@@ -521,6 +521,28 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         }
     }
 
+    if (prompt_lookup && prompt_ready && state->ctx && !has_media && error.empty()) {
+        const size_t target = static_cast<size_t>(converted);
+        size_t kv = hanami::kv_token_count(state->ctx, 0);
+        llama_memory_t mem = llama_get_memory(state->ctx);
+        if (kv > target) {
+            if (!mem || !llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(target), -1)) {
+                error = "Could not align KV cache with prompt";
+                prompt_ready = false;
+            } else {
+                kv = hanami::kv_token_count(state->ctx, 0);
+            }
+        }
+        if (prompt_ready && kv < target) {
+            const int start = static_cast<int>(kv);
+            if (!eval_tokens(state.get(), tokens.data() + start, static_cast<int>(target) - start, start,
+                             mrope, error)) {
+                state->release_session();
+                prompt_ready = false;
+            }
+        }
+    }
+
     std::vector<llama_token> generated;
     const bool use_ngram = prompt_lookup && prompt_ready && state->ctx && !has_media && error.empty();
     if (use_ngram) {

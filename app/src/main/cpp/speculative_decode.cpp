@@ -105,10 +105,17 @@ bool drop_last_prompt_token_from_kv(llama_context * ctx, llama_seq_id seq_id, si
         error = "Prompt was not evaluated before prompt lookup";
         return false;
     }
-    if (kv == prompt_token_count - 1) {
+    if (kv > prompt_token_count) {
+        if (!llama_memory_seq_rm(mem, seq_id, static_cast<llama_pos>(prompt_token_count), -1)) {
+            error = "Cannot trim KV tail before prompt lookup";
+            return false;
+        }
+    }
+    const size_t kv2 = kv_token_count(ctx, seq_id);
+    if (kv2 == prompt_token_count - 1) {
         return true;
     }
-    if (kv != prompt_token_count) {
+    if (kv2 != prompt_token_count) {
         error = "Prompt KV length does not match tokenizer output";
         return false;
     }
