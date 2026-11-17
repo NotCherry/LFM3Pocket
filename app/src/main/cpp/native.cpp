@@ -491,6 +491,18 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
                 if (!trim_cached_prefix(state.get(), shared)) {
                     shared = 0;
                 }
+            } else {
+                const size_t kv = hanami::kv_token_count(state->ctx, 0);
+                if (kv > shared) {
+                    llama_memory_t mem = llama_get_memory(state->ctx);
+                    if (!mem || !llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(shared), -1)) {
+                        shared = 0;
+                        if (mem) llama_memory_clear(mem, true);
+                        state->cached_tokens.clear();
+                    } else if (state->cached_tokens.size() > shared) {
+                        state->cached_tokens.resize(shared);
+                    }
+                }
             }
             position = static_cast<int>(shared);
             if (position < converted) {
