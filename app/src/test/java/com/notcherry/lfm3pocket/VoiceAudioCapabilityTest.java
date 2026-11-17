@@ -31,6 +31,9 @@ public final class VoiceAudioCapabilityTest {
         @Override public float getFloat(String key, float defValue) { return defValue; }
         @Override public int getInt(String key, int defValue) { return defValue; }
         @Override public long getLong(String key, long defValue) { return defValue; }
+        @Override public java.util.Set<String> getStringSet(String key, java.util.Set<String> defValue) {
+            return defValue;
+        }
         @Override public boolean contains(String key) { return map.containsKey(key); }
         @Override public Editor edit() { throw new UnsupportedOperationException(); }
         @Override public void registerOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener listener) {}
