@@ -284,7 +284,14 @@ Stillwater chrome must stay readable when the user enlarges text or display size
 
 ---
 
-## 13. References
+## 13. Inference performance (concept)
+
+Atlas UI does not surface decode algorithms; inference lives on the Settings host. Besides DOTPROD
+kernels and KV reuse (ADR 0001), Hanami may enable **llama.cpp ngram-mod prompt lookup** on text turns
+(ADR 0011): a Settings checkbox, default off until arm64 measurement, no extra model download. tok/s A/B is reported by the
+existing benchmark controls (`settings_bench_run` / `settings_bench_result`).
+
+## 14. References
 
 | Doc / issue | Role |
 | --- | --- |

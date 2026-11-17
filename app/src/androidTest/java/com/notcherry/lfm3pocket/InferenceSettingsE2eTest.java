@@ -33,7 +33,7 @@ public final class InferenceSettingsE2eTest {
             openSettings(device,pkg);fields(device,pkg,"300","2","128");saveInference(device,pkg);
             assertNotNull(device.wait(Until.findObject(By.textContains("Context must be")),WAIT));
             fields(device,pkg,"2048","2","128");saveInference(device,pkg);
-            assertNotNull(device.wait(Until.findObject(By.text("Context 2048 • Threads 2 • Max 128")),WAIT));
+            assertNotNull(device.wait(Until.findObject(By.text("Context 2048 • Threads 2 • Max 128 • Prompt lookup off")),WAIT));
             if(phase.equals("prepare")) return;
             scenario.recreate();
             assertNotNull(device.wait(Until.findObject(By.res(pkg,"chat_send").enabled(true)),WAIT));
@@ -51,14 +51,14 @@ public final class InferenceSettingsE2eTest {
             scroll.setAsVerticalList();
             scroll.scrollIntoView(new UiSelector().textContains("Context 2048"));
         } catch(Exception ignored) { }
-        assertNotNull(device.wait(Until.findObject(By.text("Context 2048 • Threads 2 • Max 128")),WAIT));
+        assertNotNull(device.wait(Until.findObject(By.text("Context 2048 • Threads 2 • Max 128 • Prompt lookup off")),WAIT));
         assertEquals(2048,app.scriptedEngine().configuredSettings().contextTokens);
         assertEquals(2,app.scriptedEngine().configuredSettings().threads);
         assertEquals(128,app.scriptedEngine().configuredSettings().maxTokens);
     }
     private void restoreDefaults(UiDevice device,String pkg) throws Exception {
         openSettings(device,pkg);fields(device,pkg,"4096","4","512");saveInference(device,pkg);
-        assertNotNull(device.wait(Until.findObject(By.text("Context 4096 • Threads 4 • Max 512")),WAIT));
+        assertNotNull(device.wait(Until.findObject(By.text("Context 4096 • Threads 4 • Max 512 • Prompt lookup off")),WAIT));
     }
     private void openSettings(UiDevice device,String pkg) {
         UiObject2 open=device.wait(Until.findObject(By.res(pkg,"settings_open").enabled(true)),2000);

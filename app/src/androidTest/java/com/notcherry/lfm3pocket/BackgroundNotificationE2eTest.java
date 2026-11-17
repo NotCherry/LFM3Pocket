@@ -81,11 +81,11 @@ public final class BackgroundNotificationE2eTest {
             device.findObject(By.res(pkg, "chat_input")).setText("Hold this reply");
             device.findObject(By.res(pkg, "chat_send")).click();
             assertTrue(app.scriptedEngine().awaitGenerationStarted());
-            app.scriptedEngine().releaseFirstToken();
             Notification generating = awaitNotice("Generating");
             String text = String.valueOf(generating.extras.getCharSequence(Notification.EXTRA_TEXT))
                     + "\n" + String.valueOf(generating.extras.getCharSequence(Notification.EXTRA_BIG_TEXT));
-            assertTrue(text.contains("token"));
+            assertTrue("Notification body should mention token progress: " + text, text.contains("token"));
+            app.scriptedEngine().releaseFirstToken();
             if (captureShots) {
                 SystemClock.sleep(1200);
                 shootShade("notification_generating.png");

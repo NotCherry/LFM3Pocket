@@ -128,6 +128,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private Button searchButton, photoButton, cameraButton, recordButton, speakButton;
     private Button settingsOpenButton;
     private EditText settingsContextField, settingsThreadsField, settingsTokensField;
+    private CheckBox promptLookupBox;
     private TextView settingsInlineError;
     private TextView settingsBenchResult;
     private TextView settingsBuildInfo;
@@ -477,6 +478,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         settingsTokensField = settingInput(configuration, getString(R.string.response_tokens_label),
                 getString(R.string.response_tokens_hint),
                 inferenceSettings.maxTokens, R.id.settings_tokens, 1, 1, 2048);
+        promptLookupBox = new CheckBox(this);
+        promptLookupBox.setId(R.id.settings_prompt_lookup);
+        promptLookupBox.setText(R.string.prompt_lookup_label);
+        StillwaterUi.styleCheck(promptLookupBox);
+        promptLookupBox.setChecked(inferenceSettings.promptLookup);
+        configuration.addView(promptLookupBox);
+        configuration.addView(label(getString(R.string.prompt_lookup_hint), 12, inkMuted));
         settingsInlineError = label("", 13, StillwaterUi.DANGER);
         StillwaterReadable.prepareWrappingLabel(settingsInlineError);
         configuration.addView(settingsInlineError);
@@ -934,6 +942,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             settingsContextField.setText(Integer.toString(inferenceSettings.contextTokens));
             settingsThreadsField.setText(Integer.toString(inferenceSettings.threads));
             settingsTokensField.setText(Integer.toString(inferenceSettings.maxTokens));
+            if (promptLookupBox != null) promptLookupBox.setChecked(inferenceSettings.promptLookup);
         }
         if (searchEndpointField != null) {
             searchEndpointField.setText(searchEndpoint);
@@ -956,7 +965,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             InferenceSettings next = new InferenceSettings(
                     Integer.parseInt(settingsContextField.getText().toString()),
                     Integer.parseInt(settingsThreadsField.getText().toString()),
-                    Integer.parseInt(settingsTokensField.getText().toString()));
+                    Integer.parseInt(settingsTokensField.getText().toString()),
+                    promptLookupBox == null || promptLookupBox.isChecked());
             ImageSettings nextImages = new ImageSettings(
                     imagePrepareBox == null || imagePrepareBox.isChecked(),
                     imageSettings.maxSide,
@@ -1007,7 +1017,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 limits = new InferenceSettings(
                         Integer.parseInt(settingsContextField.getText().toString()),
                         Integer.parseInt(settingsThreadsField.getText().toString()),
-                        Integer.parseInt(settingsTokensField.getText().toString()));
+                        Integer.parseInt(settingsTokensField.getText().toString()),
+                        promptLookupBox == null || promptLookupBox.isChecked());
             }
         } catch (RuntimeException ignored) {
             limits = inferenceSettings;

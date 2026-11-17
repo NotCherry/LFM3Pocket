@@ -64,6 +64,8 @@
     <string name="decode_threads_hint">1–8, domyślnie z dużych/średnich rdzeni CPU</string>
     <string name="response_tokens_label">Tokeny odpowiedzi</string>
     <string name="response_tokens_hint">1–2048, poniżej kontekstu</string>
+    <string name="prompt_lookup_label">Szukanie w prompcie (ngram-mod)</string>
+    <string name="prompt_lookup_hint">Szybszy czat, gdy model powtarza frazy z promptu lub wcześniejszych wiadomości. Bez drugiego modelu. Każdy token nadal weryfikuje model docelowy.</string>
     <string name="use_web_search">Używaj wyszukiwania w sieci dla nowych pytań</string>
     <string name="keep_model_loaded">Utrzymuj model załadowany po wyjściu</string>
     <string name="unload_after_idle">Rozładuj po bezczynności</string>

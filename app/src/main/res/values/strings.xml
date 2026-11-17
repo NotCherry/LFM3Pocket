@@ -65,6 +65,8 @@
     <string name="decode_threads_hint">1–8, default from big/mid CPU cores</string>
     <string name="response_tokens_label">Response tokens</string>
     <string name="response_tokens_hint">1–2048, below context</string>
+    <string name="prompt_lookup_label">Prompt lookup decode (ngram-mod)</string>
+    <string name="prompt_lookup_hint">Faster chat when the model repeats phrases from your prompt or earlier turns. No extra model download. The target model still verifies every token.</string>
     <string name="use_web_search">Use web search for new questions</string>
     <string name="keep_model_loaded">Keep the model loaded when I leave</string>
     <string name="unload_after_idle">Unload after idle</string>

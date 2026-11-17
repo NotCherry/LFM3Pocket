@@ -16,6 +16,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         "$<$<CONFIG:RelWithDebInfo>:-O3>")
 endif()
 
+set(LLAMA_BUILD_COMMON ON CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
@@ -43,10 +44,16 @@ if(NOT EXISTS "${LLAMA_DIR}/CMakeLists.txt")
 endif()
 add_subdirectory("${LLAMA_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/llama-build" EXCLUDE_FROM_ALL)
 
-add_library(lfm3pocket SHARED native.cpp)
+add_library(lfm3pocket SHARED native.cpp speculative_decode.cpp)
 target_compile_options(lfm3pocket PRIVATE "$<$<CONFIG:Debug>:-O3>" "$<$<CONFIG:Release>:-O3>")
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     target_compile_options(lfm3pocket PRIVATE -march=armv8.2-a+dotprod)
     target_compile_definitions(lfm3pocket PRIVATE HANAMI_ARM_DOTPROD=1)
 endif()
-target_link_libraries(lfm3pocket PRIVATE llama mtmd android log)
+# NDK Gradle does not always propagate llama-common INTERFACE includes to JNI sources.
+target_include_directories(lfm3pocket PRIVATE
+    "${LLAMA_DIR}/common"
+    "${LLAMA_DIR}/include"
+    "${LLAMA_DIR}/vendor"
+)
+target_link_libraries(lfm3pocket PRIVATE llama llama-common mtmd android log)
