@@ -107,7 +107,21 @@ android {
             useLegacyPackaging true
         }
     }
+    sourceSets {
+        main {
+            jniLibs.srcDirs += file("$buildDir/rust-jni")
+        }
+    }
 }
+
+tasks.register('buildHanamiDizioneJni', Exec) {
+    workingDir rootProject.projectDir
+    commandLine 'bash', rootProject.file('scripts/build-dizione-jni.sh').absolutePath
+    environment 'HANAMI_BUILD_ALL_ABIS', '1'
+    ignoreExitValue true
+}
+
+tasks.named('preBuild').configure { dependsOn buildHanamiDizioneJni }
 
 dependencies {
     def camerax_version = '1.5.3'
@@ -136,6 +150,7 @@ dependencies {
     androidTestImplementation platform('androidx.compose:compose-bom:2025.04.01')
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'
 }
 
 ksp { arg('room.schemaLocation', "$projectDir/schemas"); arg('room.generateKotlin', 'false') }

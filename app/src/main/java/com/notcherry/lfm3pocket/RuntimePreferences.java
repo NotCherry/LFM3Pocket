@@ -56,6 +56,9 @@ public final class RuntimePreferences {
     /** Opt-in network tools such as Open-Meteo weather. Off by default. */
     public boolean networkToolsEnabled() { return prefs.getBoolean("network_tools", false); }
 
+    /** English-only tiny-voca TTS for Speak reply (off by default). */
+    public boolean tinyVocaEnglishTtsEnabled() { return prefs.getBoolean("tiny_voca_english_tts", false); }
+
     /**
      * App-level interface size multiplier (0.80–1.30). Applied via densityDpi so typography and
      * spacing scale together on top of the system font scale. Default is {@link InterfaceSize#DEFAULT}.
@@ -81,4 +84,8 @@ public final class RuntimePreferences {
     public void setLoopbackEnabled(boolean value) { prefs.edit().putBoolean("loopback_api", value).apply(); }
 
     public void setNetworkToolsEnabled(boolean value) { prefs.edit().putBoolean("network_tools", value).apply(); }
+
+    public void setTinyVocaEnglishTtsEnabled(boolean value) {
+        prefs.edit().putBoolean("tiny_voca_english_tts", value).apply();
+    }
 }

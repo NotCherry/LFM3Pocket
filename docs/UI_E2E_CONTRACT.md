@@ -76,6 +76,7 @@ Complete checklist from `app/src/main/res/values/ids.xml`:
 | `chat_input` | Composer field |
 | `chat_send` | Send |
 | `chat_stop` | Stop generation |
+| `chat_new_chat` | Start a fresh in-app conversation (clears live transcript; persists new id) |
 | `voice_record` | Voice input |
 | `voice_speak` | Voice output |
 | `import_model` | Model GGUF import |
@@ -108,9 +109,9 @@ Complete checklist from `app/src/main/res/values/ids.xml`:
 | `search_endpoint` | SearXNG endpoint field |
 | `search_enabled` | Search opt-in |
 
-**Compose `testTag` resource-id style** (package-qualified): same names as above via `"{package}:id/{name}"`. Host/history: `history_open` (and other host tags used by E2E) remain stable under U09/U12.
+**Compose `testTag` resource-id style** (package-qualified): same names as above via `"{package}:id/{name}"`. Host/history: `history_open`, `history_new_chat`, `home_new_chat` (and other host tags used by E2E) remain stable under U09/U12.
 
-**Additive IDs (U11/U13):** `tool_risk`, `tool_result`, `settings_open`, `settings_back`, `chat_overflow`, `settings_save`, `search_save`, `chat_turn_stats` (assistant inference speed line, visible after tapping a finished reply) — keep discovering the Stage 1 chat IDs above; do not replace them.
+**Additive IDs (U11/U13):** `tool_risk`, `tool_result`, `settings_open`, `settings_back`, `chat_overflow`, `chat_new_chat`, `settings_save`, `search_save`, `chat_turn_stats` (assistant inference speed line, visible after tapping a finished reply) — keep discovering the Stage 1 chat IDs above; do not replace them.
 
 **Do not** rename or remove IDs to “look cleaner.”
 

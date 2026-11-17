@@ -25,6 +25,8 @@ public class ChatSessionTest {
         @Override public String generateWithMedia(long h,String p,String[] media,int max,TokenSink sink){
             calls++;prompt=p;prompts.add(p);
             mediaByCall.add(new ArrayList<>(Arrays.asList(media)));
+            if(p.contains("Perform ASR.") && asrNativeStats!=null) nativeStats=asrNativeStats;
+            else if(!p.contains("Perform ASR.") && replyNativeStats!=null) nativeStats=replyNativeStats;
             if(!stopped) {
                 if(p.contains("Perform ASR.")) { if(asrTranscript!=null)sink.onToken(asrTranscript); }
                 else if(assistantToken!=null) sink.onToken(assistantToken);
@@ -33,6 +35,8 @@ public class ChatSessionTest {
             return p.contains("Perform ASR.")?asrError:null;
         }
         long[] nativeStats;
+        long[] asrNativeStats;
+        long[] replyNativeStats;
         int consumeStatsCalls;
         public void stop(){stopped=true;}
         public void resetStop(){stopped=false;}
@@ -383,27 +387,41 @@ public class ChatSessionTest {
     @Test public void asrPassDiscardsGenerationStatsBeforeAssistantReply(){
         Queue worker=new Queue(),ui=new Queue();
         Engine engine=new Engine();
-        engine.nativeStats=new long[]{30L,4L,200L,8L,50L};
+        engine.asrNativeStats=new long[]{30L,4L,200L,8L,50L};
+        engine.replyNativeStats=new long[]{50L,8L,400L,1L,120L};
         List<ChatSession.CompletedTurn> saved=new ArrayList<>();
         ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
                 turn->saved.add(turn),path->{},
                 (text,status,running)->{});
         assertTrue(session.submit("","/private/cache/voice.wav","voice recording",false,"",64));
         worker.drain();ui.drain();
-        assertTrue("ASR must discard native stats before the assistant reply",
-                engine.consumeStatsCalls>=1);
+        assertEquals(2,engine.consumeStatsCalls);
+        assertEquals(1,saved.size());
+        InferenceStats persisted=InferenceStats.fromJson(saved.get(0).inferenceStatsJson);
+        assertNotNull(persisted);
+        assertEquals(2.5,persisted.decodeTokensPerSec,0.1);
+        assertEquals(160.0,persisted.prefillTokensPerSec,0.1);
     }
 
     @Test public void assistantTurnCollectsInferenceStatsForUiAndHistory(){
-        Harness h=new Harness();
-        h.engine.nativeStats=new long[]{50L,8L,400L,1L,120L};
-        assertTrue(h.send("Speed?"));
-        h.complete();
-        InferenceStats stats=h.snapshot.turns.get(1).inferenceStats;
+        Queue worker=new Queue(),ui=new Queue();
+        Engine engine=new Engine();
+        engine.replyNativeStats=new long[]{50L,8L,400L,1L,120L};
+        List<ChatSession.CompletedTurn> saved=new ArrayList<>();
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,
+                (endpoint,question)->{throw new AssertionError("Disabled search must not run");},
+                turn->saved.add(turn),path->{},
+                (text,status,running)->{});
+        assertTrue(session.submit("Speed?",Collections.emptyList(),false,"",32));
+        worker.drain();ui.drain();
+        ChatSnapshot snapshot=session.snapshot();
+        InferenceStats stats=snapshot.turns.get(1).inferenceStats;
         assertNotNull(stats);
         assertEquals(1,stats.tokensGenerated);
         assertEquals(2.5,stats.decodeTokensPerSec,0.1);
         assertEquals(160.0,stats.prefillTokensPerSec,0.1);
+        assertEquals(1,saved.size());
+        assertEquals(stats,InferenceStats.fromJson(saved.get(0).inferenceStatsJson));
     }
 
     private static int occurrences(String value,String token){

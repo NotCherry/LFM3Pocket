@@ -127,6 +127,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
 
     public static final class ScriptedInferenceEngine implements InferenceEngine {
         private final AtomicInteger turns = new AtomicInteger();
+        private final AtomicInteger loadInvocations = new AtomicInteger();
         private final AtomicInteger assistantTurns = new AtomicInteger();
         private final AtomicInteger asrCalls = new AtomicInteger();
         private volatile CountDownLatch releaseFirstTurn = new CountDownLatch(1);
@@ -164,6 +165,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         public void resetForTest() {
             if (onReset != null) onReset.run();
             turns.set(0);
+            loadInvocations.set(0);
             assistantTurns.set(0);
             asrCalls.set(0);
             speechCalls.set(0);
@@ -195,9 +197,11 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         public void failNextGeneration() { failNextGeneration=true; }
 
         public int callCount() { return turns.get(); }
+        public int loadInvocationCount() { return loadInvocations.get(); }
         public String loadedPath() { return loadedPath; }
 
         @Override public long loadModel(String modelPath, String projectorPath) {
+            loadInvocations.incrementAndGet();
             if (failLoad) { failLoad = false; return 0; }
             loadedPath = modelPath;
             return 13L; // Test-only fake handle; deliberately never opens the dummy file.
