@@ -68,7 +68,7 @@ public final class ModelRuntime {
     private volatile long handle;
     private volatile String loadedPath = "";
     private volatile String conversationId = "";
-    private volatile String historyTitle = "New conversation";
+    private volatile String historyTitle;
     private volatile String lastAssistant = "";
     private volatile boolean speechCancel;
     private boolean playbackNoted;
@@ -96,6 +96,7 @@ public final class ModelRuntime {
 
     ModelRuntime(Lfm3PocketApplication app) {
         this.app = app;
+        this.historyTitle = defaultHistoryTitle();
         this.preferences = new RuntimePreferences(app);
         this.engine = new CountingEngine(app.inferenceEngine());
         this.playbackFocus = new AndroidPlaybackFocus(app);
@@ -135,6 +136,10 @@ public final class ModelRuntime {
     public String conversationId() { return conversationId; }
     public String historyTitle() { return historyTitle; }
     public RuntimeNotice currentNotice() { return policyNotice(); }
+
+    private String defaultHistoryTitle() {
+        return app.getString(R.string.new_conversation_title);
+    }
 
     public void setConversation(String id, String title) {
         if (id != null && !id.isBlank()) conversationId = id;
@@ -518,7 +523,7 @@ public final class ModelRuntime {
         lastGenerating = false;
         lastSnapshot = null;
         conversationId = "";
-        historyTitle = "New conversation";
+        historyTitle = defaultHistoryTitle();
         if (old != null) old.close();
         if (current != 0L) engine.unloadModel(current);
         playback.stop();
@@ -722,7 +727,7 @@ public final class ModelRuntime {
     private void beginTurn(ChatSession.StartedTurn turn) throws Exception {
         if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
         String title = historyTitle;
-        if ("New conversation".equals(title)) {
+        if (defaultHistoryTitle().equals(title)) {
             title = titleFor(turn.userText);
             historyTitle = title;
             preferences.raw().edit().putString("history_title", title).apply();
@@ -760,7 +765,7 @@ public final class ModelRuntime {
             }
         }
         String title = historyTitle;
-        if ("New conversation".equals(title)) {
+        if (defaultHistoryTitle().equals(title)) {
             title = titleFor(turn.userText);
             historyTitle = title;
             preferences.raw().edit().putString("history_title", title).apply();
@@ -907,10 +912,11 @@ public final class ModelRuntime {
         return (level * 100f) / scale < 15f;
     }
 
-    private static String titleFor(String question) {
-        String title = question == null ? "New conversation" : question.replaceAll("\\s+", " ").trim();
+    private String titleFor(String question) {
+        String fresh = defaultHistoryTitle();
+        String title = question == null ? fresh : question.replaceAll("\\s+", " ").trim();
         if (title.length() > 60) title = title.substring(0, 57) + "…";
-        return title.isEmpty() ? "New conversation" : title;
+        return title.isEmpty() ? fresh : title;
     }
 
     private final class CountingEngine implements InferenceEngine {

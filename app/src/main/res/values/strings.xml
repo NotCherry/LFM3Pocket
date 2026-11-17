@@ -82,6 +82,14 @@
     <string name="stop_speech">Stop speech</string>
     <string name="stopping_speech">Stopping speech…</string>
     <string name="open_chat">Open chat</string>
+    <string name="new_chat">New chat</string>
+    <string name="new_conversation_title">New conversation</string>
+    <string name="new_chat_ready">New conversation — add a message below.</string>
+    <string name="fresh_chat_from_assist">Fresh chat from the system assistant.</string>
+    <string name="reply_still_running_title">Reply still running</string>
+    <string name="reply_still_running_message">Stop the current reply and start a new conversation?</string>
+    <string name="stop_and_start_new">Stop and start new</string>
+    <string name="keep_this_reply">Keep this reply</string>
     <string name="history">History</string>
     <string name="about_offline_mode">About offline mode</string>
     <string name="load_model">Load model</string>
