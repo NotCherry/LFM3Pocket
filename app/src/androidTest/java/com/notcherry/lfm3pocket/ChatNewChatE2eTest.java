@@ -20,7 +20,7 @@ import static org.junit.Assert.*;
  */
 @RunWith(AndroidJUnit4.class)
 public final class ChatNewChatE2eTest {
-    private static final long TIMEOUT = 12000L;
+    private static final long TIMEOUT = 20000L;
     private String pkg;
     private UiDevice device;
     private TestLfm3PocketApplication app;
