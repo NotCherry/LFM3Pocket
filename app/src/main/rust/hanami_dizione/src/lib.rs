@@ -1,5 +1,5 @@
-use jni::objects::{JClass, JString};
-use jni::sys::{jboolean, jlong, jobjectArray};
+use jni::objects::{JClass, JObject, JString};
+use jni::sys::{jboolean, jobjectArray};
 use jni::JNIEnv;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -18,7 +18,9 @@ pub extern "system" fn Java_com_notcherry_lfm3pocket_TinyVocaPhonemizerBridge_na
     };
     match dizione::Phonemizer::load(Path::new(&dir)) {
         Ok(phonemizer) => {
-            let _ = PHONEMIZER.set(phonemizer);
+            if PHONEMIZER.set(phonemizer).is_err() {
+                return 1;
+            }
             1
         }
         Err(_) => 0,
@@ -42,15 +44,35 @@ pub extern "system" fn Java_com_notcherry_lfm3pocket_TinyVocaPhonemizerBridge_na
         Ok(value) => value,
         Err(_) => return std::ptr::null_mut(),
     };
-    let ids = env.new_long_array(phones.ids.len() as i32).unwrap();
-    let stress = env.new_long_array(phones.stress.len() as i32).unwrap();
-    let id_values: Vec<jlong> = phones.ids.iter().map(|&v| v as jlong).collect();
-    let stress_values: Vec<jlong> = phones.stress.iter().map(|&v| v as jlong).collect();
-    env.set_long_array_region(&ids, 0, &id_values).unwrap();
-    env.set_long_array_region(&stress, 0, &stress_values).unwrap();
-    let long_array_class = env.find_class("[J").unwrap();
-    let outer = env.new_object_array(2, long_array_class, jni::objects::JObject::null()).unwrap();
-    env.set_object_array_element(&outer, 0, ids).unwrap();
-    env.set_object_array_element(&outer, 1, stress).unwrap();
+    let ids = match env.new_long_array(phones.ids.len() as i32) {
+        Ok(value) => value,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let stress = match env.new_long_array(phones.stress.len() as i32) {
+        Ok(value) => value,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let id_values: Vec<i64> = phones.ids.iter().map(|&v| v as i64).collect();
+    let stress_values: Vec<i64> = phones.stress.iter().map(|&v| v as i64).collect();
+    if env.set_long_array_region(&ids, 0, &id_values).is_err() {
+        return std::ptr::null_mut();
+    }
+    if env.set_long_array_region(&stress, 0, &stress_values).is_err() {
+        return std::ptr::null_mut();
+    }
+    let long_array_class = match env.find_class("[J") {
+        Ok(value) => value,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let outer = match env.new_object_array(2, long_array_class, JObject::null()) {
+        Ok(value) => value,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    if env.set_object_array_element(&outer, 0, ids).is_err() {
+        return std::ptr::null_mut();
+    }
+    if env.set_object_array_element(&outer, 1, stress).is_err() {
+        return std::ptr::null_mut();
+    }
     outer.into_raw()
 }

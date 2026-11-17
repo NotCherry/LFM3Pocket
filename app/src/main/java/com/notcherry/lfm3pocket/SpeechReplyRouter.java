@@ -14,8 +14,13 @@ public final class SpeechReplyRouter {
     }
 
     public SpeechReplyBackend select(String spokenText) {
-        return route(preferences.tinyVocaEnglishTtsEnabled(), packStore.isReady(),
-                TinyVocaOnnxRuntime.isNativePhonemizerAvailable(), spokenText);
+        boolean enabled = preferences.tinyVocaEnglishTtsEnabled();
+        boolean packReady = packStore.isReady();
+        boolean phonemizerReady = false;
+        if (enabled && packReady) {
+            phonemizerReady = TinyVocaPhonemizerBridge.ensureLoaded(packStore.phonemizerDir());
+        }
+        return route(enabled, packReady, phonemizerReady, spokenText);
     }
 
     /** Unit-test seam without Android preferences or storage. */
@@ -27,7 +32,7 @@ public final class SpeechReplyRouter {
         EnglishSpeechHeuristics.LikelyLanguage language =
                 EnglishSpeechHeuristics.classify(spokenText);
         if (language != EnglishSpeechHeuristics.LikelyLanguage.ENGLISH) {
-            return SpeechReplyBackend.SYSTEM_TTS;
+            return SpeechReplyBackend.OMNI;
         }
         if (packReady && phonemizerReady) {
             return SpeechReplyBackend.TINY_VOCA;

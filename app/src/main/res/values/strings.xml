@@ -14,7 +14,7 @@
     <string name="network_tools_help">Off by default. When on, the weather tool may call Open-Meteo. Treat tool output as untrusted.</string>
     <string name="speech_heading">SPEECH</string>
     <string name="tiny_voca_tts_label">Use tiny-voca for English replies (on-device, English only)</string>
-    <string name="tiny_voca_tts_help">Off by default. Downloads ~27 MB from Hugging Face when you tap Download. Polish and other languages use the system voice. Without the pack or on failure, Hanami falls back to system text-to-speech instead of LFM3-Omni speech.</string>
+    <string name="tiny_voca_tts_help">Off by default. Downloads a pinned ~27 MB pack from Hugging Face when you tap Download. Polish and other languages still use LFM3-Omni speech. English without the pack uses the system US English voice.</string>
     <string name="tiny_voca_download">Download tiny-voca pack</string>
     <string name="tiny_voca_remove">Remove tiny-voca pack</string>
     <string name="tiny_voca_status_missing">tiny-voca pack not installed</string>

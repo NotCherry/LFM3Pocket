@@ -342,13 +342,19 @@ public final class ModelRuntime {
     }
 
     public void speak(String replyText) {
-        if (playbackActive()) {
+        if (playbackActive() || systemSpeech.isSpeaking()) {
+            speechCancel = true;
             playback.stop();
+            systemSpeech.stop();
+            engine.stop();
+            apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+            if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response cancelled.");
             return;
         }
         if (policyNotice().kind == RuntimeNotice.Kind.SPEAKING && !playbackNoted) {
             speechCancel = true;
             engine.stop();
+            systemSpeech.stop();
             if (ui != null && ui.isUsable()) ui.onSpeech(true, "Stopping spoken response...");
             return;
         }
@@ -538,7 +544,7 @@ public final class ModelRuntime {
         main.post(() -> {
             if (ui != null && ui.isUsable()) ui.onSpeech(true, "Speaking with system voice…");
         });
-        systemSpeech.speak(reply, new AndroidSystemSpeechSynthesizer.Callback() {
+        systemSpeech.speak(java.util.Locale.US, reply, new AndroidSystemSpeechSynthesizer.Callback() {
             @Override public void onDone() {
                 main.post(() -> {
                     apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));

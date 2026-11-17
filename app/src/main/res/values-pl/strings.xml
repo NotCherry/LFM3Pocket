@@ -13,7 +13,7 @@
     <string name="network_tools_help">Domyślnie wyłączone. Po włączeniu narzędzie pogodowe może wywołać Open-Meteo. Traktuj wynik narzędzia jako niezaufany.</string>
     <string name="speech_heading">MOWA</string>
     <string name="tiny_voca_tts_label">Użyj tiny-voca do angielskich odpowiedzi (na urządzeniu, tylko angielski)</string>
-    <string name="tiny_voca_tts_help">Domyślnie wyłączone. Pobiera ok. 27 MB z Hugging Face po naciśnięciu Pobierz. Polski i inne języki używają głosu systemowego. Bez paczki lub po błędzie Hanami przechodzi na syntezę systemową zamiast mowy LFM3-Omni.</string>
+    <string name="tiny_voca_tts_help">Domyślnie wyłączone. Pobiera przypiętą paczkę (~27 MB) z Hugging Face po naciśnięciu Pobierz. Polski i inne języki nadal używają mowy LFM3-Omni. Angielski bez paczki korzysta z systemowego głosu EN-US.</string>
     <string name="tiny_voca_download">Pobierz paczkę tiny-voca</string>
     <string name="tiny_voca_remove">Usuń paczkę tiny-voca</string>
     <string name="tiny_voca_status_missing">Brak paczki tiny-voca</string>

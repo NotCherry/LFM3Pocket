@@ -4,7 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CRATE="$ROOT/app/src/main/rust/hanami_dizione"
 OUT="$ROOT/app/build/rust-jni"
-bash "$ROOT/scripts/fetch-voca.sh"
+# voca sources are pinned in vendor/VOCA_COMMIT; CI fetches before Gradle as well.
+if [[ ! -d "$ROOT/vendor/voca/crates/dizione" ]]; then
+  bash "$ROOT/scripts/fetch-voca.sh"
+fi
 if ! command -v cargo >/dev/null 2>&1; then
   echo "cargo not installed; skipping hanami_dizione JNI"
   exit 0

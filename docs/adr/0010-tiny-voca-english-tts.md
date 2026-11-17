@@ -16,13 +16,14 @@ Hanami needs an **opt-in, off-by-default** global setting with **Polish-aware fa
 
 1. **Setting** — `RuntimePreferences.tiny_voca_english_tts` (default `false`), exposed under Settings → Speech with EN/PL copy that states **English only**.
 2. **Assets** — Do not ship weights in the APK. User taps **Download tiny-voca pack** to fetch `onnx/model.onnx` plus dizione phonemizer files from `n4ze3m/tiny-voca` on Hugging Face (~27 MB total) into app private storage (`files/tiny-voca/`).
-3. **Runtime** — `SpeechReplyRouter` in `ModelRuntime.speak()`:
+3. **Runtime** — `SpeechReplyRouter` in `ModelRuntime.speak()` (phonemizer library loaded via `ensureLoaded` before routing):
    - setting off → **Omni** (unchanged);
-   - setting on + non-English heuristic → **system TTS**;
+   - setting on + non-English (e.g. Polish) → **Omni** (unchanged for non-English);
    - setting on + English + pack + `libhanami_dizione.so` → **ONNX Runtime** synthesis;
-   - otherwise → **system TTS** (not Omni).
-4. **Phonemizer** — JNI wrapper around the Rust [voca](https://github.com/sultson/voca) `dizione` crate (Apache-2.0, CMUdict-derived data), built via `scripts/build-dizione-jni.sh` when voca + NDK + Rust are available. Missing JNI does not crash; router falls back.
-5. **Voice epic boundary** — No changes to audio-in, PTT, or `VoiceInteractionService` planned in #149. This ADR only extends **Speak reply** text-out.
+   - setting on + English + missing pack or JNI → **system TTS (US English)** (not Omni).
+4. **Pins** — Hugging Face revision `TinyVocaPackManifest.HF_REVISION` with per-file SHA-256 verification after download; voca sources pinned in `vendor/VOCA_COMMIT` (`scripts/fetch-voca.sh`).
+5. **Phonemizer** — JNI wrapper around the Rust [voca](https://github.com/sultson/voca) `dizione` crate (Apache-2.0, CMUdict-derived data), built via `scripts/build-dizione-jni.sh` when voca + NDK + Rust are available. JNI returns errors to Java instead of panicking.
+6. **Voice epic boundary** — No changes to audio-in, PTT, or `VoiceInteractionService` planned in #149. This ADR only extends **Speak reply** text-out.
 
 ## Consequences
 

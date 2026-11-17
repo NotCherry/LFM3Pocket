@@ -1,30 +1,56 @@
 package com.notcherry.lfm3pocket;
 
 import java.io.File;
+import java.util.Objects;
 
 /** JNI dizione (voca port) or JVM test shim. */
 public final class TinyVocaPhonemizerBridge {
-    static volatile boolean nativeLoaded;
-    static volatile File dataDir;
+    private static final Object LOAD_LOCK = new Object();
+    private static volatile boolean libraryLoaded;
+    private static volatile boolean nativeReady;
+    private static volatile File dataDir;
 
     private TinyVocaPhonemizerBridge() {}
 
     public static boolean isAvailable() {
-        return nativeLoaded && dataDir != null && dataDir.isDirectory();
+        return nativeReady && dataDir != null && dataDir.isDirectory();
+    }
+
+    /** Load the native library (once) and initialize dizione for the given phonemizer directory. */
+    public static boolean ensureLoaded(File phonemizerDir) {
+        if (phonemizerDir == null || !phonemizerDir.isDirectory()) {
+            return false;
+        }
+        synchronized (LOAD_LOCK) {
+            if (isAvailable() && Objects.equals(dataDir.getAbsolutePath(), phonemizerDir.getAbsolutePath())) {
+                return true;
+            }
+            return loadLocked(phonemizerDir);
+        }
     }
 
     public static void load(File phonemizerDir) {
+        synchronized (LOAD_LOCK) {
+            loadLocked(phonemizerDir);
+        }
+    }
+
+    private static boolean loadLocked(File phonemizerDir) {
         dataDir = phonemizerDir;
-        if (phonemizerDir == null || !phonemizerDir.isDirectory()) {
-            nativeLoaded = false;
-            return;
+        if (!phonemizerDir.isDirectory()) {
+            nativeReady = false;
+            return false;
         }
         try {
-            System.loadLibrary("hanami_dizione");
-            nativeLoaded = nativeInit(phonemizerDir.getAbsolutePath());
+            if (!libraryLoaded) {
+                System.loadLibrary("hanami_dizione");
+                libraryLoaded = true;
+            }
+            nativeReady = nativeInit(phonemizerDir.getAbsolutePath());
         } catch (Throwable unavailable) {
-            nativeLoaded = false;
+            nativeReady = false;
         }
+        return nativeReady;
     }
 
     public static TinyVocaPhonemes phonemize(String text) {

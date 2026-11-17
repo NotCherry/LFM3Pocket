@@ -12,8 +12,8 @@ public class SpeechReplyRouterTest {
     }
 
     @Test
-    public void polishUsesSystemTtsWhenEnabled() {
-        assertEquals(SpeechReplyBackend.SYSTEM_TTS,
+    public void polishKeepsOmniWhenTinyVocaEnabled() {
+        assertEquals(SpeechReplyBackend.OMNI,
                 SpeechReplyRouter.route(true, true, true, "Cześć, to po polsku."));
     }
 

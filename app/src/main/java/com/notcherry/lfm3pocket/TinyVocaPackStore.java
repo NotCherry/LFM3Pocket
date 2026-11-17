@@ -11,8 +11,8 @@ import java.nio.charset.StandardCharsets;
 
 /** On-disk layout for optional tiny-voca assets (not shipped in APK). */
 public final class TinyVocaPackStore {
-    public static final String HF_REPO = "n4ze3m/tiny-voca";
-    public static final String HF_BASE = "https://huggingface.co/" + HF_REPO + "/resolve/main/";
+    public static final String HF_REPO = TinyVocaPackManifest.HF_REPO;
+    public static final String HF_BASE = TinyVocaPackManifest.HF_BASE;
 
     private final File root;
     private final File marker;
@@ -32,11 +32,23 @@ public final class TinyVocaPackStore {
 
     public boolean isReady() {
         return marker.isFile()
+                && storedRevision().equals(TinyVocaPackManifest.HF_REVISION)
                 && onnxModel().isFile() && onnxModel().length() > 1_000_000L
                 && configFile().isFile()
                 && phonemizerDir().isDirectory()
                 && new File(phonemizerDir(), "lexicon.tsv").isFile()
                 && new File(phonemizerDir(), "g2p.npz").isFile();
+    }
+
+    public String storedRevision() {
+        File revision = new File(root, ".revision");
+        if (!revision.isFile()) return "";
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(new FileReader(revision, StandardCharsets.UTF_8))) {
+            String line = reader.readLine();
+            return line == null ? "" : line.trim();
+        } catch (Exception failed) {
+            return "";
+        }
     }
 
     public JSONObject readConfig() {
@@ -54,6 +66,10 @@ public final class TinyVocaPackStore {
     public void markComplete() {
         root.mkdirs();
         try {
+            java.nio.file.Files.writeString(
+                    new File(root, ".revision").toPath(),
+                    TinyVocaPackManifest.HF_REVISION,
+                    StandardCharsets.UTF_8);
             if (!marker.exists()) marker.createNewFile();
         } catch (Exception ignored) { }
     }

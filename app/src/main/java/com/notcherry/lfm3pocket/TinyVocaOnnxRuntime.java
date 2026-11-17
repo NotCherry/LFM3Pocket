@@ -33,8 +33,7 @@ public final class TinyVocaOnnxRuntime implements AutoCloseable {
     public static TinyVocaOnnxRuntime open(Context context) throws Exception {
         TinyVocaPackStore store = new TinyVocaPackStore(context);
         if (!store.isReady()) throw new IllegalStateException("tiny-voca pack is not installed");
-        TinyVocaPhonemizerBridge.load(store.phonemizerDir());
-        if (!isNativePhonemizerAvailable()) {
+        if (!TinyVocaPhonemizerBridge.ensureLoaded(store.phonemizerDir())) {
             throw new IllegalStateException("English phonemizer is unavailable on this build");
         }
         JSONObject config = store.readConfig();

@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Vendored phonemizer + optional native TTS for Settings → English tiny-voca (Apache-2.0).
+# Pinned voca (dizione) sources for hanami_dizione JNI — Apache-2.0.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEST="$ROOT/third_party/voca"
-mkdir -p "$ROOT/third_party"
-if [[ -d "$DEST/crates/dizione" ]]; then
-  echo "voca already present at $DEST"
-  exit 0
+DEST="$ROOT/vendor/voca"
+PIN="$ROOT/vendor/VOCA_COMMIT"
+REV="$(tr -d '[:space:]' < "$PIN")"
+mkdir -p "$ROOT/vendor"
+if [[ ! -d "$DEST/.git" ]]; then
+  git clone https://github.com/sultson/voca.git "$DEST"
 fi
-git clone --depth 1 https://github.com/sultson/voca.git "$DEST"
+git -C "$DEST" fetch --depth 1 origin "$REV" 2>/dev/null || git -C "$DEST" fetch origin "$REV"
+git -C "$DEST" checkout --detach "$REV"
+echo "voca at $DEST $(git -C "$DEST" rev-parse HEAD)"
