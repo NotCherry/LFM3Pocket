@@ -49,4 +49,10 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     target_compile_options(lfm3pocket PRIVATE -march=armv8.2-a+dotprod)
     target_compile_definitions(lfm3pocket PRIVATE HANAMI_ARM_DOTPROD=1)
 endif()
+# NDK Gradle does not always propagate llama-common INTERFACE includes to JNI sources.
+target_include_directories(lfm3pocket PRIVATE
+    "${LLAMA_DIR}/common"
+    "${LLAMA_DIR}/include"
+    "${LLAMA_DIR}/vendor"
+)
 target_link_libraries(lfm3pocket PRIVATE llama llama-common mtmd android log)
