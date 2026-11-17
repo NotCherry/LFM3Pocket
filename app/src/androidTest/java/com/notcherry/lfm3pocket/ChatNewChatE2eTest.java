@@ -127,7 +127,7 @@ public final class ChatNewChatE2eTest {
             keep.click();
             assertTrue("Keeping the reply must leave generation in flight", runtimeGenerating());
 
-            click("home_new_chat");
+            click("chat_new_chat");
             awaitDialogButton(true).click();
             UiObject2 empty = device.wait(Until.findObject(
                     By.res(pkg, "chat_transcript").textContains("No conversation yet")), TIMEOUT);
