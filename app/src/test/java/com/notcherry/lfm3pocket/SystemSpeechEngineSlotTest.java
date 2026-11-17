@@ -6,9 +6,12 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
@@ -72,5 +75,45 @@ public class SystemSpeechEngineSlotTest {
         assertTrue(stopped.shutdownCalled);
         assertFalse(replacement.shutdownCalled);
         assertSame(replacement, slot.currentEngine());
+    }
+
+    @Test
+    public void nullVictimShutdownBeforePrepareClearsCancelledSession() {
+        Queue<Runnable> deferred = new ArrayDeque<>();
+        SystemSpeechEngineSlot<FakeEngine> slot = slotWithDeferredMain(deferred);
+        AtomicBoolean speakingCleared = new AtomicBoolean();
+        slot.cancelSession(5);
+        slot.shutdownOnMain(null, 5, () -> speakingCleared.set(true));
+        assertNull(slot.currentEngine());
+        drain(deferred);
+        assertTrue("cancelled session must not leave speaking stuck", speakingCleared.get());
+        assertNull(slot.currentEngine());
+    }
+
+    @Test
+    public void nullVictimShutdownAfterPrepareShutsEngineAndClears() {
+        Queue<Runnable> deferred = new ArrayDeque<>();
+        SystemSpeechEngineSlot<FakeEngine> slot = slotWithDeferredMain(deferred);
+        FakeEngine engine = new FakeEngine();
+        slot.prepareNewEngine(7, engine);
+        AtomicBoolean speakingCleared = new AtomicBoolean();
+        slot.shutdownOnMain(null, 7, () -> speakingCleared.set(true));
+        assertFalse(engine.shutdownCalled);
+        drain(deferred);
+        assertTrue(engine.shutdownCalled);
+        assertTrue(speakingCleared.get());
+        assertNull(slot.currentEngine());
+    }
+
+    @Test
+    public void prepareNewEngineAfterCancelShutsDownWithoutAdopting() {
+        SystemSpeechEngineSlot<FakeEngine> slot = slotWithDeferredMain(new ArrayDeque<>());
+        slot.cancelSession(3);
+        FakeEngine created = new FakeEngine();
+        FakeEngine adopted = slot.prepareNewEngine(3, created);
+        assertNull(adopted);
+        assertTrue(created.shutdownCalled);
+        assertNull(slot.currentEngine());
+        assertNotSame(created, slot.currentEngine());
     }
 }

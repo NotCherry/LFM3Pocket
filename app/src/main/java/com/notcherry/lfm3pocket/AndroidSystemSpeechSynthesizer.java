@@ -59,13 +59,12 @@ public final class AndroidSystemSpeechSynthesizer {
     }
 
     private void clearSpeakingForSession(long sessionId) {
-        if (slot.activeSessionId() == sessionId) {
-            speaking = false;
-            sessionActive = false;
-        }
+        speaking = false;
+        sessionActive = false;
     }
 
     private void shutdownSession(TextToSpeech victim, long sessionId) {
+        slot.cancelSession(sessionId);
         slot.shutdownOnMain(victim, sessionId, () -> clearSpeakingForSession(sessionId));
     }
 
@@ -83,6 +82,10 @@ public final class AndroidSystemSpeechSynthesizer {
         main.post(() -> {
             final TextToSpeech[] holder = new TextToSpeech[1];
             TextToSpeech created = new TextToSpeech(context, status -> {
+                if (slot.isSessionCancelled(sessionId)) {
+                    ready.countDown();
+                    return;
+                }
                 TextToSpeech tts = holder[0];
                 if (tts == null) {
                     initError.set("TextToSpeech unavailable");
@@ -109,7 +112,12 @@ public final class AndroidSystemSpeechSynthesizer {
                 ready.countDown();
             });
             holder[0] = created;
-            sessionEngine.set(slot.prepareNewEngine(sessionId, created));
+            TextToSpeech prepared = slot.prepareNewEngine(sessionId, created);
+            sessionEngine.set(prepared);
+            if (prepared == null && slot.isSessionCancelled(sessionId)) {
+                initError.set("Spoken response cancelled.");
+                ready.countDown();
+            }
         });
         try {
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
