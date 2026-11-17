@@ -160,9 +160,15 @@ Atlas prefers **borders over shadows**.
 - Actions: **Approve** / **Reject** as clear buttons; keep stable IDs `tool_approve`, `tool_reject`, `tool_details`, `tool_status` (add `tool_risk`, `tool_result` per U11).
 - This is one of the few justified “card-like” containers because it wraps a consent interaction.
 
-### Voice actions (V1)
+### 6.4.1 Voice actions (V1)
 
-Hands-free voice rides the same **ModelRuntime** residency and **ToolCoordinator** consent as shade Approve/Reject. Push-to-talk and notification **Talk** feed 16 kHz WAV into one Omni `generateWithMedia` pass (`VoiceActionRuntime`); tool JSON still arrives only via `MODEL_PROPOSAL`. Spoken confirm uses exact describe read-back plus a closed tak/nie lexicon—never free-form model judgment. Mic FGS type is asserted only during listen windows. Details: [ADR 0006](adr/0006-voice-actions-loop.md).
+Hands-free voice uses the same resident model and the same Approve/Reject consent as the tool panel. The chat screen only forwards the microphone control. Details: [ADR 0006](adr/0006-voice-actions-loop.md).
+
+Flow when the reply is a tool: short capture → one LFM3-Omni multimodal pass → model proposal → consent → spoken read-back of the exact tool description → closed yes/no confirm → spoken result. A reply with no tool is spoken and stops there.
+
+- **Entry.** In-app push-to-talk, and a notification **Talk** action that works with the screen off. Talk is offered only when the loaded model and projector can hear audio. Otherwise Talk is omitted, and starting it speaks a clear English and Polish explanation.
+- **Listen window.** Bounded 16 kHz audio. The microphone foreground-service type is held only while listening.
+- **Confirm.** The read-back is the exact description. Only a closed Polish and English yes/no lexicon accepts; anything ambiguous rejects. The model does not judge the answer.
 
 ### 6.5 Composer (U11)
 
