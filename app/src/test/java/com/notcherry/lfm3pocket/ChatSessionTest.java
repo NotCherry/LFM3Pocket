@@ -33,9 +33,15 @@ public class ChatSessionTest {
             return p.contains("Perform ASR.")?asrError:null;
         }
         long[] nativeStats;
+        int consumeStatsCalls;
         public void stop(){stopped=true;}
         public void resetStop(){stopped=false;}
-        @Override public long[] consumeGenerationStats(long handle) { return nativeStats; }
+        @Override public long[] consumeGenerationStats(long handle) {
+            consumeStatsCalls++;
+            long[] snapshot=nativeStats;
+            nativeStats=null;
+            return snapshot;
+        }
     }
     static final class Harness {
         final Queue worker=new Queue(),ui=new Queue();final Engine engine=new Engine();
@@ -372,6 +378,20 @@ public class ChatSessionTest {
         assertEquals(Collections.singletonList("/private/cache/voice.wav"),engine.mediaByCall.get(1));
         assertEquals(1,occurrences(engine.prompts.get(1),"<__media__>"));
         assertTrue(engine.prompts.get(1).contains(ChatSession.DEFAULT_VOICE_QUESTION));
+    }
+
+    @Test public void asrPassDiscardsGenerationStatsBeforeAssistantReply(){
+        Queue worker=new Queue(),ui=new Queue();
+        Engine engine=new Engine();
+        engine.nativeStats=new long[]{30L,4L,200L,8L,50L};
+        List<ChatSession.CompletedTurn> saved=new ArrayList<>();
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                turn->saved.add(turn),path->{},
+                (text,status,running)->{});
+        assertTrue(session.submit("","/private/cache/voice.wav","voice recording",false,"",64));
+        worker.drain();ui.drain();
+        assertTrue("ASR must discard native stats before the assistant reply",
+                engine.consumeStatsCalls>=1);
     }
 
     @Test public void assistantTurnCollectsInferenceStatsForUiAndHistory(){

@@ -348,6 +348,8 @@ public final class ChatSession {
             } catch(Throwable ignored) {
                 // A failed ASR pass must not prevent the normal audio conversation turn.
             }
+            // Drop ASR-native timings so they never attach to the assistant reply stats.
+            engine.consumeGenerationStats(turn.handle);
             speechTranscriptStatus=speechTranscript==null?"UNAVAILABLE":"AVAILABLE";
             final String progress=speechTranscript==null
                     ? "Speech transcript unavailable · generating response locally…"

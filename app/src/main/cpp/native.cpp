@@ -382,10 +382,10 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     if (!state) return make_string(env, "Model handle is retired or invalid");
     std::unique_lock<std::mutex> decode_lock(state->decode_mutex, std::try_to_lock);
     if (!decode_lock.owns_lock()) return make_string(env, "Model is already generating");
+    state->last_generation_stats = {};
     // Do not clear cancelled here — ChatSession/ModelRuntime call resetStop first.
     // Clearing would drop a Stop that raced ahead of this entry.
     if (state->cancelled.load()) return nullptr;
-    state->last_generation_stats = {};
     using steady = std::chrono::steady_clock;
     const auto generation_start = steady::now();
     llama_model * model = state->model;
