@@ -16,7 +16,7 @@ public final class VoiceSpokenOutputDeferralTest {
         VoiceSpokenOutput spoken = new VoiceSpokenOutput(host);
         markBusy(spoken, true);
         AtomicBoolean chained = new AtomicBoolean();
-        spoken.speakExact("queued", Locale.US, chained::set);
+        spoken.speakExact("queued", Locale.US, () -> chained.set(true));
         assertFalse(chained.get());
     }
 
@@ -41,7 +41,7 @@ public final class VoiceSpokenOutputDeferralTest {
         VoiceSpokenOutput spoken = new VoiceSpokenOutput(host);
         long gen = spoken.currentSpeechGeneration();
         AtomicBoolean ran = new AtomicBoolean();
-        setPendingComplete(spoken, gen, ran::set);
+        setPendingComplete(spoken, gen, () -> ran.set(true));
         spoken.stop();
         spoken.onPlaybackIdle();
         assertFalse(ran.get());
@@ -98,7 +98,7 @@ public final class VoiceSpokenOutputDeferralTest {
                 @Override public void resetStop() { }
             };
         }
-        @Override public PlaybackController playback() { return new StubPlayback(); }
+        @Override public PlaybackController playback() { return noopPlayback(); }
         @Override public java.util.concurrent.Executor worker() { return Runnable::run; }
         @Override public android.os.Handler main() { return null; }
         @Override public android.content.Context app() { return null; }
@@ -107,16 +107,8 @@ public final class VoiceSpokenOutputDeferralTest {
         @Override public void policySpeechStarted() { speakRequested.set(true); }
     }
 
-    private static final class StubPlayback extends PlaybackController {
-        StubPlayback() {
-            super(() -> { throw new UnsupportedOperationException(); },
-                    () -> true, () -> { }, Runnable::run, Runnable::run, (s, m) -> { });
-        }
-
-        @Override public synchronized boolean play(byte[] pcm16le, int sampleRateHz, int channels, int bitsPerSample) {
-            return false;
-        }
-
-        @Override public synchronized void stop() { }
+    private static PlaybackController noopPlayback() {
+        return new PlaybackController(() -> { throw new UnsupportedOperationException(); },
+                () -> true, () -> { }, Runnable::run, Runnable::run, (s, m) -> { });
     }
 }
