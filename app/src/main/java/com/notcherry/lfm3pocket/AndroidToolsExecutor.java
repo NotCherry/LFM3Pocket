@@ -8,6 +8,7 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
     private final AndroidActionExecutor volume;
     private final AndroidActionExecutor timer;
     private final AndroidActionExecutor alarm;
+    private final AndroidActionExecutor reminder;
     private final AndroidActionExecutor application;
     private final AndroidActionExecutor settings;
     private final AndroidActionExecutor text;
@@ -15,17 +16,18 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
 
     AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
                          AndroidActionExecutor timer, AndroidActionExecutor alarm,
-                         AndroidActionExecutor application, AndroidActionExecutor settings,
-                         AndroidActionExecutor text) {
-        this(flashlight, volume, timer, alarm, application, settings, text,
+                         AndroidActionExecutor reminder, AndroidActionExecutor application,
+                         AndroidActionExecutor settings, AndroidActionExecutor text) {
+        this(flashlight, volume, timer, alarm, reminder, application, settings, text,
                 (name, arguments) -> new ActionResult(false, "UNKNOWN_TOOL", "This Android action is not enabled."));
     }
 
     AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
                          AndroidActionExecutor timer, AndroidActionExecutor alarm,
-                         AndroidActionExecutor application, AndroidActionExecutor settings,
-                         AndroidActionExecutor text, AndroidActionExecutor builtins) {
-        if (flashlight == null || volume == null || timer == null || alarm == null
+                         AndroidActionExecutor reminder, AndroidActionExecutor application,
+                         AndroidActionExecutor settings, AndroidActionExecutor text,
+                         AndroidActionExecutor builtins) {
+        if (flashlight == null || volume == null || timer == null || alarm == null || reminder == null
                 || application == null || settings == null || text == null || builtins == null) {
             throw new IllegalArgumentException("Missing action executor");
         }
@@ -33,6 +35,7 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
         this.volume = volume;
         this.timer = timer;
         this.alarm = alarm;
+        this.reminder = reminder;
         this.application = application;
         this.settings = settings;
         this.text = text;
@@ -45,6 +48,7 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
         if ("set_timer".equals(approvedToolName)) return timer.execute(approvedToolName, arguments);
         if ("set_alarm".equals(approvedToolName) || "show_alarms".equals(approvedToolName))
             return alarm.execute(approvedToolName, arguments);
+        if ("set_reminder".equals(approvedToolName)) return reminder.execute(approvedToolName, arguments);
         if ("open_application".equals(approvedToolName)) return application.execute(approvedToolName, arguments);
         if ("open_settings".equals(approvedToolName)) return settings.execute(approvedToolName, arguments);
         if ("copy_text".equals(approvedToolName) || "share_text".equals(approvedToolName))

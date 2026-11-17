@@ -6,6 +6,9 @@
     <string name="model_section">Model</string>
     <string name="notification_channel_model_runtime">Hanami model</string>
     <string name="notification_channel_model_runtime_desc">Shown while Hanami keeps a Liquid AI LFM3 model loaded on this phone.</string>
+    <string name="notification_channel_reminder">Hanami reminders</string>
+    <string name="notification_channel_reminder_desc">Local reminders you schedule through Hanami voice or chat actions.</string>
+    <string name="reminder_default_title">Reminder</string>
     <string name="import_model">Import model</string>
     <string name="import_projector">Import projector</string>
     <string name="open_model_from_storage">Open model from storage</string>

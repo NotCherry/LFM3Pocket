@@ -8,7 +8,7 @@ public final class ToolRegistry {
         FLASHLIGHT("toggle_flashlight"),VOLUME("set_volume"),TIMER("set_timer"),ALARM("set_alarm"),
         SHOW_ALARMS("show_alarms"),APPLICATION("open_application"),SETTINGS("open_settings"),
         COPY("copy_text"),SHARE("share_text"),CURRENT_TIME("current_time"),CALCULATOR("calculator"),
-        UNIT_CONVERT("unit_convert"),WEATHER("weather");
+        UNIT_CONVERT("unit_convert"),WEATHER("weather"),REMINDER("set_reminder");
         public final String wireName;Tool(String name){wireName=name;}
     }
     public static abstract class Request {
@@ -71,6 +71,15 @@ public final class ToolRegistry {
             longitude=a.containsKey("longitude")?((Number)a.get("longitude")).doubleValue():null;
         }
     }
+    public static final class ReminderRequest extends Request {
+        public final long whenEpochSec;public final String title;public final String body;
+        private ReminderRequest(Map<String,Object> a){
+            super(Tool.REMINDER,a);
+            whenEpochSec=(Long)a.get("when_epoch_sec");
+            title=(String)a.get("title");
+            body=(String)a.get("body");
+        }
+    }
     private static Request request(Tool tool,Map<String,Object> args){
         switch(tool){
             case FLASHLIGHT:return new FlashlightRequest(args);case VOLUME:return new VolumeRequest(args);
@@ -82,6 +91,7 @@ public final class ToolRegistry {
             case CALCULATOR:return new CalculatorRequest(args);
             case UNIT_CONVERT:return new UnitConvertRequest(args);
             case WEATHER:return new WeatherRequest(args);
+            case REMINDER:return new ReminderRequest(args);
             default:throw new IllegalArgumentException("Unregistered tool");
         }
     }
@@ -119,6 +129,8 @@ public final class ToolRegistry {
                 case UNIT_CONVERT:keys(args,"value","from","to");number(args,"value");text(args,"from",1,32);text(args,"to",1,32);
                     UnitConverter.convert(((Number)args.get("value")).doubleValue(),(String)args.get("from"),(String)args.get("to"));break;
                 case WEATHER:keys(args,"location","latitude","longitude");weather(args);break;
+                case REMINDER:keys(args,"when_epoch_sec","title","body");epochSec(args,"when_epoch_sec");
+                    text(args,"title",1,200);oneLineText(args,"title");text(args,"body",0,2000);oneLineText(args,"body");break;
             }
         }catch(IllegalArgumentException e){return reject("INVALID_ARGUMENTS",e.getMessage());}
         return new Parsed(request(selected,args),"VALIDATED","Arguments validated; authorization still required");
@@ -129,6 +141,20 @@ public final class ToolRegistry {
     private static void integer(Map<String,Object> args,String key,int low,int high){
         Object v=args.get(key);if(!(v instanceof Long) || (Long)v<low || (Long)v>high)bad(key+" must be an integer in "+low+".."+high);
         args.put(key,((Long)v).intValue());
+    }
+    private static void epochSec(Map<String,Object> args,String key){
+        Object v=args.get(key);
+        if(!(v instanceof Long))bad(key+" must be a Unix epoch second");
+        long sec=(Long)v;
+        if(sec<946_684_800L || sec>4_102_444_800L)bad(key+" is out of supported bounds");
+        args.put(key,sec);
+    }
+    private static void oneLineText(Map<String,Object> args,String key){
+        String text=(String)args.get(key);
+        for(int i=0;i<text.length();i++){
+            char c=text.charAt(i);
+            if(Character.isISOControl(c) || c=='\u2028' || c=='\u2029')bad(key+" must be one line");
+        }
     }
     private static void number(Map<String,Object> args,String key){
         Object v=args.get(key);

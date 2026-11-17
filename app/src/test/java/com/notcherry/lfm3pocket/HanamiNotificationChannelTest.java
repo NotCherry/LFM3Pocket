@@ -43,7 +43,10 @@ public final class HanamiNotificationChannelTest {
         String creator = read(root.resolve(
                 "app/src/main/java/com/notcherry/lfm3pocket/HanamiNotifications.java"));
         assertTrue(creator.contains("MODEL_RUNTIME_CHANNEL_ID = \"model_runtime\""));
+        assertTrue(creator.contains("REMINDER_CHANNEL_ID = \"hanami_reminder\""));
         assertTrue(creator.contains("notification_channel_model_runtime"));
+        assertTrue(creator.contains("notification_channel_reminder"));
+        assertTrue(strings.contains("name=\"notification_channel_reminder\">Hanami reminders<"));
     }
 
     private static String read(Path path) throws IOException {

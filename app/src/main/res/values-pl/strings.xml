@@ -5,6 +5,9 @@
     <string name="send">Wyślij</string>
     <string name="model_section">Model</string>
     <string name="notification_channel_model_runtime_desc">Pokazywane, gdy Hanami utrzymuje załadowany model Liquid AI LFM3 na tym telefonie.</string>
+    <string name="notification_channel_reminder">Przypomnienia Hanami</string>
+    <string name="notification_channel_reminder_desc">Lokalne przypomnienia zaplanowane przez działania głosowe lub czat w Hanami.</string>
+    <string name="reminder_default_title">Przypomnienie</string>
     <string name="import_model">Importuj model</string>
     <string name="import_projector">Importuj projektor</string>
     <string name="open_model_from_storage">Otwórz model z pamięci telefonu</string>

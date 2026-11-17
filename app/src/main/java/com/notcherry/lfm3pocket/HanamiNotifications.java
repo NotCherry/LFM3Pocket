@@ -13,18 +13,25 @@ import android.content.Context;
  */
 public final class HanamiNotifications {
     public static final String MODEL_RUNTIME_CHANNEL_ID = "model_runtime";
+    public static final String REMINDER_CHANNEL_ID = "hanami_reminder";
 
     private HanamiNotifications() {}
 
     public static void ensureChannels(Context context) {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         if (manager == null) return;
-        NotificationChannel channel = new NotificationChannel(
+        NotificationChannel runtime = new NotificationChannel(
                 MODEL_RUNTIME_CHANNEL_ID,
                 context.getString(R.string.notification_channel_model_runtime),
                 NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription(context.getString(R.string.notification_channel_model_runtime_desc));
-        channel.setShowBadge(false);
-        manager.createNotificationChannel(channel);
+        runtime.setDescription(context.getString(R.string.notification_channel_model_runtime_desc));
+        runtime.setShowBadge(false);
+        manager.createNotificationChannel(runtime);
+        NotificationChannel reminder = new NotificationChannel(
+                REMINDER_CHANNEL_ID,
+                context.getString(R.string.notification_channel_reminder),
+                NotificationManager.IMPORTANCE_DEFAULT);
+        reminder.setDescription(context.getString(R.string.notification_channel_reminder_desc));
+        manager.createNotificationChannel(reminder);
     }
 }

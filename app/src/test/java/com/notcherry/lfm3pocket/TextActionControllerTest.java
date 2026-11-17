@@ -60,7 +60,7 @@ public final class TextActionControllerTest {
         ClipboardShareActionExecutor text = new ClipboardShareActionExecutor(new TextActionController(actions, actions));
         AndroidActionExecutor unused = (name, arguments) ->
                 new AndroidActionExecutor.ActionResult(true, "WRONG_HANDLER", name);
-        AndroidToolsExecutor dispatcher = new AndroidToolsExecutor(unused, unused, unused, unused, unused, unused, text);
+        AndroidToolsExecutor dispatcher = new AndroidToolsExecutor(unused, unused, unused, unused, unused, unused, unused, text);
         Map<String, String> args = new LinkedHashMap<>(); args.put("text", "copy exactly");
 
         assertEquals("INVALID_ARGUMENTS", text.execute("copy_text", Collections.emptyMap()).status);

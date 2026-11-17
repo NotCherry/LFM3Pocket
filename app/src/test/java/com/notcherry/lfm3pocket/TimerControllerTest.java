@@ -70,7 +70,7 @@ public final class TimerControllerTest {
         AndroidActionExecutor unused = (name, arguments) ->
                 new AndroidActionExecutor.ActionResult(true, "WRONG_HANDLER", name);
         AndroidToolsExecutor executor = new AndroidToolsExecutor(unused, unused,
-                new TimerActionExecutor(new TimerController(launcher)), unused, unused, unused, unused);
+                new TimerActionExecutor(new TimerController(launcher)), unused, unused, unused, unused, unused);
         java.util.Map<String, String> args = new java.util.LinkedHashMap<>();
         args.put("seconds", "45");
         args.put("label", "Tea");

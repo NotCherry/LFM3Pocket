@@ -101,7 +101,8 @@ public class Lfm3PocketApplication extends Application {
                     !(request instanceof ToolRegistry.CurrentTimeRequest) &&
                     !(request instanceof ToolRegistry.CalculatorRequest) &&
                     !(request instanceof ToolRegistry.UnitConvertRequest) &&
-                    !(request instanceof ToolRegistry.WeatherRequest)) {
+                    !(request instanceof ToolRegistry.WeatherRequest) &&
+                    !(request instanceof ToolRegistry.ReminderRequest)) {
                 return new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
                         "This Android tool is not enabled yet");
             }
@@ -135,6 +136,11 @@ public class Lfm3PocketApplication extends Application {
             }
             if (request.tool == ToolRegistry.Tool.WEATHER) {
                 return new RuntimePreferences(this).networkToolsEnabled();
+            }
+            if (request.tool == ToolRegistry.Tool.REMINDER) {
+                if (android.os.Build.VERSION.SDK_INT < 33) return true;
+                return checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED;
             }
             return true;
         };
@@ -201,6 +207,10 @@ public class Lfm3PocketApplication extends Application {
         AndroidActionExecutor volume = new VolumeActionExecutor(new VolumeController(new AndroidAudioVolume(this)));
         AndroidActionExecutor timer = new TimerActionExecutor(new TimerController(new AndroidClockTimer(this)));
         AndroidActionExecutor alarm = new AlarmActionExecutor(new AlarmController(new AndroidClockAlarm(this)));
+        ReminderController reminderController = new ReminderController(
+                new WorkManagerReminderScheduler(this),
+                () -> System.currentTimeMillis() / 1000L);
+        AndroidActionExecutor reminder = new ReminderActionExecutor(reminderController);
         AndroidActionExecutor application = new ApplicationActionExecutor(
                 new InstalledAppController(new AndroidInstalledAppLauncher(this)));
         AndroidActionExecutor settings = new SettingsActionExecutor(new SettingsPageController(new AndroidSettingsLauncher(this)));
@@ -210,6 +220,6 @@ public class Lfm3PocketApplication extends Application {
         AndroidActionExecutor builtins = new BuiltinToolsExecutor(
                 () -> new RuntimePreferences(this).networkToolsEnabled(),
                 OpenMeteoWeather.httpTransport());
-        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text, builtins);
+        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, reminder, application, settings, text, builtins);
     }
 }

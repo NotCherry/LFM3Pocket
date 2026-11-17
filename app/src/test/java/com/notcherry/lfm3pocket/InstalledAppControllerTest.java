@@ -61,7 +61,7 @@ public final class InstalledAppControllerTest {
                 new AlarmActionExecutor(new AlarmController(new AlarmController.Launcher() {
                     @Override public void open(int hour, int minute, String label, java.util.List<Integer> days) {}
                     @Override public void showAlarms() {}
-                })), apps, unused, unused);
+                })), unused, apps, unused, unused);
         Map<String, String> args = new LinkedHashMap<>();
         args.put("package", "com.example.notes");
 

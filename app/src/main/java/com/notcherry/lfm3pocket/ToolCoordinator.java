@@ -71,6 +71,8 @@ public final class ToolCoordinator {
             message = "Grant Camera permission in Android app settings to control the flashlight.";
         } else if (request != null && request.tool == ToolRegistry.Tool.WEATHER) {
             message = "Enable network tools in Settings before fetching weather.";
+        } else if (request != null && request.tool == ToolRegistry.Tool.REMINDER) {
+            message = "Grant Notifications permission in Android settings to schedule reminders.";
         }
         return denied("PERMISSION_DENIED",message);
     }
@@ -84,6 +86,7 @@ public final class ToolCoordinator {
             case COPY:return "Copy text";case SHARE:return "Share text";
             case CURRENT_TIME:return "Current time";case CALCULATOR:return "Calculator";
             case UNIT_CONVERT:return "Unit conversion";case WEATHER:return "Weather";
+            case REMINDER:return "Reminder";
             default:return "Android action";
         }
     }
