@@ -96,17 +96,17 @@ public final class ChatNewChatE2eTest {
         }
     }
 
-    @Test public void topBarNewChatWhileGeneratingShowsStopDialog() {
+    @Test public void topBarNewChatWhileGeneratingShowsStopDialog() throws Exception {
         try (ActivityScenario<MainActivity> chat = ActivityScenario.launch(MainActivity.class)) {
             beginHeldGeneration();
             click("chat_new_chat");
 
-            UiObject2 keep = awaitDialogButton(R.string.keep_this_reply);
+            UiObject2 keep = awaitDialogButton(false);
             keep.click();
             assertTrue("Keeping the reply must leave generation in flight", runtimeGenerating());
 
             click("chat_new_chat");
-            awaitDialogButton(R.string.stop_and_start_new).click();
+            awaitDialogButton(true).click();
             UiObject2 empty = device.wait(Until.findObject(
                     By.res(pkg, "chat_transcript").textContains("No conversation yet")), TIMEOUT);
             assertNotNull("Stop and start new must clear the live transcript", empty);
@@ -114,20 +114,19 @@ public final class ChatNewChatE2eTest {
         }
     }
 
-    @Test public void homeNewChatWhileGeneratingShowsStopDialog() {
-        try (ActivityScenario<ComposeHostActivity> home =
-                     ActivityScenario.launch(ComposeHostActivity.class)) {
-            click("open_chat");
+    @Test public void homeNewChatWhileGeneratingShowsStopDialog() throws Exception {
+        try (ActivityScenario<MainActivity> chat = ActivityScenario.launch(MainActivity.class)) {
             beginHeldGeneration();
-            device.pressBack();
+            context.startActivity(new android.content.Intent(context, ComposeHostActivity.class)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
             click("home_new_chat");
 
-            UiObject2 keep = awaitDialogButton(R.string.keep_this_reply);
+            UiObject2 keep = awaitDialogButton(false);
             keep.click();
             assertTrue("Keeping the reply must leave generation in flight", runtimeGenerating());
 
             click("home_new_chat");
-            awaitDialogButton(R.string.stop_and_start_new).click();
+            awaitDialogButton(true).click();
             UiObject2 empty = device.wait(Until.findObject(
                     By.res(pkg, "chat_transcript").textContains("No conversation yet")), TIMEOUT);
             assertNotNull(empty);
@@ -135,14 +134,15 @@ public final class ChatNewChatE2eTest {
         }
     }
 
-    private void beginHeldGeneration() {
+    private void beginHeldGeneration() throws Exception {
         awaitEnabled("chat_send");
         UiObject2 input = device.wait(Until.findObject(By.res(pkg, "chat_input")), TIMEOUT);
         assertNotNull(input);
         input.setText("Dialog generation turn");
+        app.scriptedEngine().holdFirstToken();
         awaitEnabled("chat_send").click();
-        assertNotNull(device.wait(Until.findObject(
-                By.res(pkg, "chat_transcript").textContains("FAKE_STREAM_BEGIN")), TIMEOUT));
+        assertTrue(app.scriptedEngine().awaitGenerationStarted());
+        assertTrue("Generation must be active before opening new-chat dialog", runtimeGenerating());
         awaitEnabled("chat_stop");
     }
 
@@ -151,12 +151,12 @@ public final class ChatNewChatE2eTest {
                 .modelRuntime().isGenerating();
     }
 
-    private UiObject2 awaitDialogButton(int label) {
-        String text = context.getString(label);
+    private UiObject2 awaitDialogButton(boolean positive) {
         assertNotNull(device.wait(Until.findObject(
                 By.text(context.getString(R.string.reply_still_running_title))), TIMEOUT));
-        UiObject2 button = device.wait(Until.findObject(By.text(text)), TIMEOUT);
-        assertNotNull("Expected dialog button: " + text, button);
+        String buttonId = positive ? "button1" : "button2";
+        UiObject2 button = device.wait(Until.findObject(By.res("android", buttonId)), TIMEOUT);
+        assertNotNull("Expected dialog control android:id/" + buttonId, button);
         return button;
     }
 
