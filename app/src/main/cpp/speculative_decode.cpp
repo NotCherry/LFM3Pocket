@@ -266,9 +266,18 @@ bool generate_ngram_mod(
 
     auto finish_session = [&]() {
         if (!session_tokens) return;
-        *session_tokens = session_trace;
+        trim_kv_tail(n_past);
         const size_t kv = kv_token_count(ctx, seq_id);
-        if (session_tokens->size() != kv) {
+        const size_t np = static_cast<size_t>(n_past);
+        if (!prompt_tail_in_session && !prompt_tokens.empty() &&
+            session_trace.size() + 1 == np) {
+            session_trace.push_back(prompt_tokens.back());
+            prompt_tail_in_session = true;
+        }
+        *session_tokens = session_trace;
+        if (session_trace.size() != np) {
+            error = "Prompt lookup session trace does not match KV length";
+        } else if (kv != np) {
             error = "KV cache does not match session token list after prompt lookup";
         }
     };
@@ -350,6 +359,14 @@ bool generate_ngram_mod(
             prompt_tgt.resize(static_cast<size_t>(ckpt.n_tokens));
             smpl = std::move(smpl_save);
             n_past = static_cast<int>(prompt_tgt.size());
+            const size_t target = static_cast<size_t>(n_past);
+            while (session_trace.size() > target) {
+                session_trace.pop_back();
+                if (!generated.empty()) generated.pop_back();
+            }
+            const size_t prefix_len =
+                    prompt_tokens.size() > 1 ? prompt_tokens.size() - 1 : prompt_tokens.size();
+            prompt_tail_in_session = session_trace.size() > prefix_len;
             continue;
         }
 
