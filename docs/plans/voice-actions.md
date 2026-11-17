@@ -155,11 +155,11 @@ Every new power is a typed `ToolRegistry` row (or a read-only **context provider
 ```json
 {"tool":"set_timer","arguments":{"seconds":300,"label":"Herbata"}}
 {"tool":"set_alarm","arguments":{"hour":7,"minute":0,"label":"Pobudka"}}
-{"tool":"set_reminder","arguments":{"when_epoch_sec":1731780000,"title":"Zadzwoń do dentysty","body":""}}
+{"tool":"set_reminder","arguments":{"in_minutes":90,"title":"Zadzwoń do dentysty","body":""}}
 ```
 
 - `set_timer` / `set_alarm`: keep current validation.
-- `set_reminder` (new): `when_epoch_sec` in a bounded window (e.g. now+60s … now+366 days); `title` ≤ 100; `body` ≤ 500; no HTML; reject past times.
+- `set_reminder` (new): exactly one of `in_minutes` (1..525600) or local `at` (`yyyy-MM-ddTHH:mm`); `title` ≤ 100; `body` ≤ 500; Hanami converts to epoch; reject past/duplicate times. Exact alarms when OS allows; otherwise inexact WorkManager (Doze delay disclosed).
 
 **Risk / confirm**
 
@@ -364,7 +364,7 @@ Order is dependency order within a phase. Do not block **V1** on new tools — e
 | **Deps** | Existing timer/alarm (#37, #38) — **do not reimplement**; #156 for voice path |
 | **Approach** | Schema bounds; fake WM in tests; exact alarm only with justified permission |
 | **Risks** | Play exact-alarm policy; OEM notification delay |
-| **Accept** | Approve schedules exact title; reject/expiry none; fires after force-stop |
+| **Accept** | Approve schedules exact title; reject/expiry none; persisted reminders reschedule after reboot and when app opens after force-stop (OS force-stop still requires one launch) |
 | **Tests** | JVM schema + fake WM; injected voice confirm |
 
 ### Milestone Voice V3 — Messages

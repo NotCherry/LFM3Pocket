@@ -23,6 +23,7 @@ public class Lfm3PocketApplication extends Application {
         CrashLog.install(this);
         CrashLog.captureExitInfo(this);
         HanamiNotifications.ensureChannels(this);
+        AndroidReminderScheduler.rescheduleAll(this);
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
             @Override public void onActivityStarted(Activity activity) { startedActivities++; }
             @Override public void onActivityStopped(Activity activity) {
@@ -90,6 +91,17 @@ public class Lfm3PocketApplication extends Application {
 
     protected ToolCoordinator.Handler createToolHandler() {
         return request -> {
+            if (request instanceof ToolRegistry.ReminderRequest reminder) {
+                java.util.Map<String, String> arguments = new java.util.LinkedHashMap<>();
+                arguments.put("when_epoch_sec", String.valueOf(reminder.whenEpochSec));
+                arguments.put("title", reminder.title);
+                arguments.put("body", reminder.body);
+                return actionExecutor().execute(ToolRegistry.Tool.REMINDER.wireName, arguments);
+            }
+            if (request instanceof ToolRegistry.CancelReminderRequest cancel) {
+                return actionExecutor().execute(ToolRegistry.Tool.CANCEL_REMINDER.wireName,
+                        java.util.Map.of("title", cancel.title));
+            }
             if (!(request instanceof ToolRegistry.FlashlightRequest) &&
                     !(request instanceof ToolRegistry.VolumeRequest) &&
                     !(request instanceof ToolRegistry.TimerRequest) &&
@@ -102,7 +114,8 @@ public class Lfm3PocketApplication extends Application {
                     !(request instanceof ToolRegistry.CalculatorRequest) &&
                     !(request instanceof ToolRegistry.UnitConvertRequest) &&
                     !(request instanceof ToolRegistry.WeatherRequest) &&
-                    !(request instanceof ToolRegistry.ReminderRequest)) {
+                    !(request instanceof ToolRegistry.ReminderRequest) &&
+                    !(request instanceof ToolRegistry.CancelReminderRequest)) {
                 return new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
                         "This Android tool is not enabled yet");
             }
@@ -137,7 +150,8 @@ public class Lfm3PocketApplication extends Application {
             if (request.tool == ToolRegistry.Tool.WEATHER) {
                 return new RuntimePreferences(this).networkToolsEnabled();
             }
-            if (request.tool == ToolRegistry.Tool.REMINDER) {
+            if (request.tool == ToolRegistry.Tool.REMINDER
+                    || request.tool == ToolRegistry.Tool.CANCEL_REMINDER) {
                 if (android.os.Build.VERSION.SDK_INT < 33) return true;
                 return checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
                         == android.content.pm.PackageManager.PERMISSION_GRANTED;
@@ -207,8 +221,10 @@ public class Lfm3PocketApplication extends Application {
         AndroidActionExecutor volume = new VolumeActionExecutor(new VolumeController(new AndroidAudioVolume(this)));
         AndroidActionExecutor timer = new TimerActionExecutor(new TimerController(new AndroidClockTimer(this)));
         AndroidActionExecutor alarm = new AlarmActionExecutor(new AlarmController(new AndroidClockAlarm(this)));
+        ReminderStore reminderStore = new ReminderStore(this);
         ReminderController reminderController = new ReminderController(
-                new WorkManagerReminderScheduler(this),
+                new AndroidReminderScheduler(this, reminderStore),
+                reminderStore,
                 () -> System.currentTimeMillis() / 1000L);
         AndroidActionExecutor reminder = new ReminderActionExecutor(reminderController);
         AndroidActionExecutor application = new ApplicationActionExecutor(

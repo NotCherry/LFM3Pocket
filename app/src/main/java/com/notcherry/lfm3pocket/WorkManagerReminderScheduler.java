@@ -23,6 +23,8 @@ public final class WorkManagerReminderScheduler implements ReminderScheduler {
         }
         long delayMs = Math.max(0L, plan.whenEpochSec * 1000L - System.currentTimeMillis());
         Data input = new Data.Builder()
+                .putString(ReminderNotifyWorker.KEY_ID, plan.workId)
+                .putInt(ReminderNotifyWorker.KEY_NOTIFICATION_ID, plan.notificationId)
                 .putString(ReminderNotifyWorker.KEY_TITLE, plan.title == null ? "" : plan.title)
                 .putString(ReminderNotifyWorker.KEY_BODY, plan.body == null ? "" : plan.body)
                 .build();

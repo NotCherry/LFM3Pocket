@@ -7,12 +7,14 @@ public interface ReminderScheduler {
         public final long whenEpochSec;
         public final String title;
         public final String body;
+        public final int notificationId;
 
-        public Plan(String workId, long whenEpochSec, String title, String body) {
+        public Plan(String workId, long whenEpochSec, String title, String body, int notificationId) {
             this.workId = workId;
             this.whenEpochSec = whenEpochSec;
             this.title = title;
             this.body = body;
+            this.notificationId = notificationId;
         }
     }
 

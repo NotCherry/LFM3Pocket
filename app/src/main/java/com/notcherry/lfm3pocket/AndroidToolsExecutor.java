@@ -48,7 +48,8 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
         if ("set_timer".equals(approvedToolName)) return timer.execute(approvedToolName, arguments);
         if ("set_alarm".equals(approvedToolName) || "show_alarms".equals(approvedToolName))
             return alarm.execute(approvedToolName, arguments);
-        if ("set_reminder".equals(approvedToolName)) return reminder.execute(approvedToolName, arguments);
+        if ("set_reminder".equals(approvedToolName) || "cancel_reminder".equals(approvedToolName))
+            return reminder.execute(approvedToolName, arguments);
         if ("open_application".equals(approvedToolName)) return application.execute(approvedToolName, arguments);
         if ("open_settings".equals(approvedToolName)) return settings.execute(approvedToolName, arguments);
         if ("copy_text".equals(approvedToolName) || "share_text".equals(approvedToolName))

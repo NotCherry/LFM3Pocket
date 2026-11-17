@@ -8,7 +8,8 @@ public final class ToolRegistry {
         FLASHLIGHT("toggle_flashlight"),VOLUME("set_volume"),TIMER("set_timer"),ALARM("set_alarm"),
         SHOW_ALARMS("show_alarms"),APPLICATION("open_application"),SETTINGS("open_settings"),
         COPY("copy_text"),SHARE("share_text"),CURRENT_TIME("current_time"),CALCULATOR("calculator"),
-        UNIT_CONVERT("unit_convert"),WEATHER("weather"),REMINDER("set_reminder");
+        UNIT_CONVERT("unit_convert"),WEATHER("weather"),REMINDER("set_reminder"),
+        CANCEL_REMINDER("cancel_reminder");
         public final String wireName;Tool(String name){wireName=name;}
     }
     public static abstract class Request {
@@ -73,11 +74,18 @@ public final class ToolRegistry {
     }
     public static final class ReminderRequest extends Request {
         public final long whenEpochSec;public final String title;public final String body;
-        private ReminderRequest(Map<String,Object> a){
+        private ReminderRequest(long whenEpochSec,Map<String,Object> a){
             super(Tool.REMINDER,a);
-            whenEpochSec=(Long)a.get("when_epoch_sec");
+            this.whenEpochSec=whenEpochSec;
             title=(String)a.get("title");
             body=(String)a.get("body");
+        }
+    }
+    public static final class CancelReminderRequest extends Request {
+        public final String title;
+        private CancelReminderRequest(Map<String,Object> a){
+            super(Tool.CANCEL_REMINDER,a);
+            title=(String)a.get("title");
         }
     }
     private static Request request(Tool tool,Map<String,Object> args){
@@ -91,7 +99,8 @@ public final class ToolRegistry {
             case CALCULATOR:return new CalculatorRequest(args);
             case UNIT_CONVERT:return new UnitConvertRequest(args);
             case WEATHER:return new WeatherRequest(args);
-            case REMINDER:return new ReminderRequest(args);
+            case REMINDER:return new ReminderRequest((Long)args.remove("_when_epoch_sec"),args);
+            case CANCEL_REMINDER:return new CancelReminderRequest(args);
             default:throw new IllegalArgumentException("Unregistered tool");
         }
     }
@@ -129,8 +138,9 @@ public final class ToolRegistry {
                 case UNIT_CONVERT:keys(args,"value","from","to");number(args,"value");text(args,"from",1,32);text(args,"to",1,32);
                     UnitConverter.convert(((Number)args.get("value")).doubleValue(),(String)args.get("from"),(String)args.get("to"));break;
                 case WEATHER:keys(args,"location","latitude","longitude");weather(args);break;
-                case REMINDER:keys(args,"when_epoch_sec","title","body");epochSec(args,"when_epoch_sec");
-                    text(args,"title",1,200);oneLineText(args,"title");text(args,"body",0,2000);oneLineText(args,"body");break;
+                case REMINDER:reminder(args);break;
+                case CANCEL_REMINDER:keys(args,"title");text(args,"title",1,ReminderController.MAX_TITLE);
+                    oneLineText(args,"title");break;
             }
         }catch(IllegalArgumentException e){return reject("INVALID_ARGUMENTS",e.getMessage());}
         return new Parsed(request(selected,args),"VALIDATED","Arguments validated; authorization still required");
@@ -142,12 +152,25 @@ public final class ToolRegistry {
         Object v=args.get(key);if(!(v instanceof Long) || (Long)v<low || (Long)v>high)bad(key+" must be an integer in "+low+".."+high);
         args.put(key,((Long)v).intValue());
     }
-    private static void epochSec(Map<String,Object> args,String key){
-        Object v=args.get(key);
-        if(!(v instanceof Long))bad(key+" must be a Unix epoch second");
-        long sec=(Long)v;
-        if(sec<946_684_800L || sec>4_102_444_800L)bad(key+" is out of supported bounds");
-        args.put(key,sec);
+    private static void reminder(Map<String,Object> args){
+        boolean hasMinutes=args.containsKey("in_minutes");
+        boolean hasAt=args.containsKey("at");
+        if(hasMinutes==hasAt)bad("Provide exactly one of in_minutes or at");
+        if(hasMinutes){
+            keys(args,"in_minutes","title","body");
+            integer(args,"in_minutes",1,(int)(ReminderController.MAX_HORIZON_SECONDS/60L));
+        }else{
+            keys(args,"at","title","body");
+            text(args,"at",16,32);
+            oneLineText(args,"at");
+        }
+        text(args,"title",1,ReminderController.MAX_TITLE);
+        oneLineText(args,"title");
+        text(args,"body",0,ReminderController.MAX_BODY);
+        oneLineText(args,"body");
+        long now=System.currentTimeMillis()/1000L;
+        long when=ReminderTimeParser.toEpochSec(args,now,java.time.ZoneId.systemDefault());
+        args.put("_when_epoch_sec",when);
     }
     private static void oneLineText(Map<String,Object> args,String key){
         String text=(String)args.get(key);

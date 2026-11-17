@@ -7,9 +7,10 @@ public final class VoiceToolPromptCard {
     private static final String TOOL_CARD =
             "You may emit exactly one JSON tool object from this allowlist, or reply in the user's language.\n"
                     + "Tools: toggle_flashlight, set_volume, set_timer, set_alarm, show_alarms, set_reminder, "
-                    + "open_application, open_settings, copy_text, share_text, current_time, calculator, "
-                    + "unit_convert, weather.\n"
-                    + "Example: {\"tool\":\"set_timer\",\"arguments\":{\"seconds\":300,\"label\":\"Tea\"}}";
+                    + "cancel_reminder, open_application, open_settings, copy_text, share_text, current_time, "
+                    + "calculator, unit_convert, weather.\n"
+                    + "set_reminder uses in_minutes (from now) or at (local yyyy-MM-ddTHH:mm), plus title/body.\n"
+                    + "Example: {\"tool\":\"set_reminder\",\"arguments\":{\"in_minutes\":30,\"title\":\"Tea\",\"body\":\"\"}}";
 
     private VoiceToolPromptCard() {}
 

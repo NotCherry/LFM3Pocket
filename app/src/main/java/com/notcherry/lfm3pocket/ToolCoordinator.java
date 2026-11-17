@@ -71,8 +71,9 @@ public final class ToolCoordinator {
             message = "Grant Camera permission in Android app settings to control the flashlight.";
         } else if (request != null && request.tool == ToolRegistry.Tool.WEATHER) {
             message = "Enable network tools in Settings before fetching weather.";
-        } else if (request != null && request.tool == ToolRegistry.Tool.REMINDER) {
-            message = "Grant Notifications permission in Android settings to schedule reminders.";
+        } else if (request != null && (request.tool == ToolRegistry.Tool.REMINDER
+                || request.tool == ToolRegistry.Tool.CANCEL_REMINDER)) {
+            message = "Allow Notifications for Hanami to schedule and show reminders.";
         }
         return denied("PERMISSION_DENIED",message);
     }
@@ -87,23 +88,39 @@ public final class ToolCoordinator {
             case CURRENT_TIME:return "Current time";case CALCULATOR:return "Calculator";
             case UNIT_CONVERT:return "Unit conversion";case WEATHER:return "Weather";
             case REMINDER:return "Reminder";
+            case CANCEL_REMINDER:return "Cancel reminder";
             default:return "Android action";
         }
     }
     public static String describe(ToolRegistry.Request request){
+        if (request instanceof ToolRegistry.ReminderRequest reminder) {
+            StringBuilder out = new StringBuilder(title(request));
+            appendDescribeLine(out, "title", reminder.title);
+            appendDescribeLine(out, "body", reminder.body);
+            out.append("\nwhen: ").append(ReminderDescriptions.formatLocal(reminder.whenEpochSec));
+            return out.toString();
+        }
+        if (request instanceof ToolRegistry.CancelReminderRequest cancel) {
+            StringBuilder out = new StringBuilder(title(request));
+            appendDescribeLine(out, "title", cancel.title);
+            return out.toString();
+        }
         StringBuilder out=new StringBuilder(title(request));
         for(Map.Entry<String,Object> entry:request.arguments.entrySet()){
-            out.append('\n').append(entry.getKey()).append(": ");Object value=entry.getValue();
-            if(!(value instanceof String)){out.append(value);continue;}
-            out.append('"');String text=(String)value;
-            for(int i=0;i<text.length();i++){
-                char c=text.charAt(i);
-                if(Character.isISOControl(c) || Character.getType(c)==Character.FORMAT || c=='\u2028' || c=='\u2029')
-                    out.append(String.format(Locale.ROOT,"\\u%04X",(int)c));
-                else {if(c=='"' || c=='\\')out.append('\\');out.append(c);}
-            }
-            out.append('"');
+            appendDescribeLine(out, entry.getKey(), String.valueOf(entry.getValue()));
         }
         return out.toString();
+    }
+    private static void appendDescribeLine(StringBuilder out, String key, String text){
+        out.append('\n').append(key).append(": ");
+        if (text == null) { out.append("null"); return; }
+        out.append('"');
+        for(int i=0;i<text.length();i++){
+            char c=text.charAt(i);
+            if(Character.isISOControl(c) || Character.getType(c)==Character.FORMAT || c=='\u2028' || c=='\u2029')
+                out.append(String.format(Locale.ROOT,"\\u%04X",(int)c));
+            else {if(c=='"' || c=='\\')out.append('\\');out.append(c);}
+        }
+        out.append('"');
     }
 }

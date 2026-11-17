@@ -20,10 +20,11 @@ public class ToolRegistryTest {
             "{\"tool\":\"calculator\",\"arguments\":{\"expression\":\"(2+3)*4\"}}",
             "{\"tool\":\"unit_convert\",\"arguments\":{\"value\":1,\"from\":\"km\",\"to\":\"m\"}}",
             "{\"tool\":\"weather\",\"arguments\":{\"location\":\"Warsaw\"}}",
-            "{\"tool\":\"set_reminder\",\"arguments\":{\"when_epoch_sec\":1731859200,\"title\":\"Tea\",\"body\":\"5 min\"}}"};
+            "{\"tool\":\"set_reminder\",\"arguments\":{\"in_minutes\":30,\"title\":\"Tea\",\"body\":\"5 min\"}}",
+            "{\"tool\":\"cancel_reminder\",\"arguments\":{\"title\":\"Tea\"}}"};
         Set<ToolRegistry.Tool> tools=new HashSet<>();
         for(String call:calls){ToolRegistry.Parsed p=registry.parse(call);assertTrue(p.status,p.isValid());tools.add(p.request.tool);}
-        assertEquals(14,tools.size());
+        assertEquals(15,tools.size());
         assertEquals(60,((ToolRegistry.TimerRequest)registry.parse(calls[2]).request).seconds);
         assertEquals("",registry.parse(calls[3]).request.arguments.get("label"));
         ToolRegistry.AlarmRequest alarm=(ToolRegistry.AlarmRequest)registry.parse(

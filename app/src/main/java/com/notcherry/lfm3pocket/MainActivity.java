@@ -52,6 +52,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final int TAKE_PHOTO = 45;
     private static final int REQUEST_AUDIO = 46;
     private static final int REQUEST_CAMERA = 47;
+    private static final int REQUEST_NOTIFICATIONS = 51;
     private static final int OPEN_MODEL_URI = 48;
     private static final int OPEN_MMPROJ_URI = 49;
 
@@ -101,6 +102,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean foreground;
     private boolean microphoneRequested;
     private boolean cameraRequested;
+    private boolean notificationPermissionRequested;
     private String pendingImagePath = "";
     private String pendingAudioPath = "";
     private String lastAssistantReply = "";
@@ -1525,6 +1527,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED
                     && foreground && !destroyed && !busy) recordingController.start();
             else status.setText("Microphone access is needed for voice input.");
+            return;
+        }
+        if (requestCode == REQUEST_NOTIFICATIONS && notificationPermissionRequested) {
+            notificationPermissionRequested = false;
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                status.setText("Notifications allowed. You can approve the reminder.");
+            } else {
+                status.setText("Allow Notifications for Hanami to schedule and show reminders.");
+            }
         }
     }
 
@@ -1858,8 +1869,20 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         renderToolOutcome(outcome.proposal, request, outcome);
     }
 
+    private void maybeRequestNotificationPermission(ToolRegistry.Request request) {
+        if (request == null || destroyed) return;
+        if (request.tool != ToolRegistry.Tool.REMINDER
+                && request.tool != ToolRegistry.Tool.CANCEL_REMINDER) return;
+        if (android.os.Build.VERSION.SDK_INT < 33) return;
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) return;
+        notificationPermissionRequested = true;
+        requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, REQUEST_NOTIFICATIONS);
+    }
+
     private void renderToolOutcome(ToolCoordinator.Proposal proposal, ToolRegistry.Request request,
                                   ToolCoordinator.Outcome outcome) {
+        if ("PERMISSION_DENIED".equals(outcome.status)) maybeRequestNotificationPermission(request);
         boolean pending = proposal != null && "PENDING_CONFIRMATION".equals(outcome.status);
         if (proposal != null) request = proposal.request;
         String details = request == null ? "Android action" : ToolCoordinator.describe(request);
@@ -1872,6 +1895,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         Runnable reject = pending ? () -> resolveToolOutcome(proposal, actionRequest, false) : null;
         chatPanel.renderToolCard(details, risk, toolOutcomeLabel(outcome), result, pending, approve, reject);
         if (pending && proposal != null) {
+            maybeRequestNotificationPermission(proposal.request);
             runtime.showConsent(proposal.id, ToolCoordinator.describe(proposal.request),
                     proposal.risk == ToolCoordinator.Risk.SAFE);
         } else {

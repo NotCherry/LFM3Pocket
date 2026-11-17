@@ -43,7 +43,9 @@ public class ToolCoordinatorTest {
         assertEquals(ToolCoordinator.Risk.CONFIRM,ToolCoordinator.risk(request("set_volume","{\"stream\":\"ring\",\"percent\":50}")));
         assertEquals(ToolCoordinator.Risk.CONFIRM,ToolCoordinator.risk(request("share_text","{\"text\":\"Hi\"}")));
         assertEquals(ToolCoordinator.Risk.CONFIRM,ToolCoordinator.risk(request("set_reminder",
-                "{\"when_epoch_sec\":4102444799,\"title\":\"Water\",\"body\":\"Drink\"}")));
+                "{\"in_minutes\":60,\"title\":\"Water\",\"body\":\"Drink\"}")));
+        assertEquals(ToolCoordinator.Risk.CONFIRM,ToolCoordinator.risk(request("cancel_reminder",
+                "{\"title\":\"Water\"}")));
         AtomicInteger effects=new AtomicInteger();
         ToolCoordinator c=new ToolCoordinator(r->{effects.incrementAndGet();return new AndroidActionExecutor.ActionResult(true,"DONE","");},r->true,()->0);
         assertTrue(c.propose(request("toggle_flashlight","{\"on\":false}"),ToolCoordinator.Source.USER_ACTION).result.succeeded);

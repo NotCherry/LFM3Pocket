@@ -23,6 +23,8 @@ A model proposes one JSON object, for example:
 | `calculator` | `expression`: safe arithmetic, at most 200 characters | — |
 | `unit_convert` | `value`: number; `from` / `to`: common length/mass/temperature/volume/speed units | — |
 | `weather` | `location` **or** `latitude`+`longitude` | — |
+| `set_reminder` | `in_minutes` **or** `at` (local `yyyy-MM-ddTHH:mm`); `title` 1–100; `body` 0–500 | Provide exactly one time field; Hanami converts to device local time |
+| `cancel_reminder` | `title` 1–100 | Cancels a single scheduled reminder with that title (`CONFIRM`) |
 
 Timers, alarms, and show-alarms use `android.provider.AlarmClock` intents (`ACTION_SET_TIMER` / `ACTION_SET_ALARM` / `ACTION_SHOW_ALARMS`) with the normal `com.android.alarm.permission.SET_ALARM` permission. Consent UI reads the exact action back before firing. Missing clock apps return `CLOCK_APP_UNAVAILABLE`.
 
@@ -36,6 +38,6 @@ The JSON reader accepts standard JSON only: no comments, single-quoted/unquoted 
 
 `ToolCoordinator` accepts only immutable validated requests. App code supplies origin separately; JSON cannot claim user authority. An explicit app control with the exact arguments is `USER_ACTION`; ordinary model/chat output is `MODEL_PROPOSAL` and always needs approval. Image, web-search, document, background and unknown sources cannot authorize actions.
 
-Flashlight, timer creation **request**, show-alarms, installed-app launch, fixed settings pages, music volume, current time, calculator, unit conversion and weather are SAFE. Alarm, non-music volume, clipboard and sharing require confirmation; unknown risk defaults to confirmation. Individual handlers still enforce Android permissions, availability and policy. The coordinator checks permission/policy both before proposing and immediately before executing.
+Flashlight, timer creation **request**, show-alarms, installed-app launch, fixed settings pages, music volume, current time, calculator, unit conversion and weather are SAFE. Alarm, non-music volume, clipboard, sharing, reminders, and cancel-reminder require confirmation; unknown risk defaults to confirmation. Individual handlers still enforce Android permissions, availability and policy. The coordinator checks permission/policy both before proposing and immediately before executing.
 
 Pending proposals expire after 60 seconds using a monotonic clock and have random IDs; at most 32 may be pending. Internal, non-exported `ToolConfirmationActivity` receives only an ID and displays the stored action and exact arguments, escaping control/bidi text. Approve consumes the proposal before execution; rejection, timeout, permission revocation and replay produce no new side effect.

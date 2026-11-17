@@ -8,6 +8,7 @@
     <string name="notification_channel_reminder">Przypomnienia Hanami</string>
     <string name="notification_channel_reminder_desc">Lokalne przypomnienia zaplanowane przez działania głosowe lub czat w Hanami.</string>
     <string name="reminder_default_title">Przypomnienie</string>
+    <string name="reminder_notifications_permission_rationale">Hanami potrzebuje uprawnienia Powiadomienia, aby zaplanować i pokazać potwierdzone przypomnienia.</string>
     <string name="import_model">Importuj model</string>
     <string name="import_projector">Importuj projektor</string>
     <string name="open_model_from_storage">Otwórz model z pamięci telefonu</string>
