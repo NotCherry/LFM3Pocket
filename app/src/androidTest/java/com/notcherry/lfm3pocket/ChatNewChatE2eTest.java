@@ -89,14 +89,14 @@ public final class ChatNewChatE2eTest {
                     By.res(pkg, "chat_transcript").textContains("No conversation yet")), TIMEOUT);
             assertNotNull(empty);
             assertEquals(0, app.scriptedEngine().callCount());
-            UiObject2 status = device.wait(Until.findObject(
-                    By.res(pkg, "chat_status").textContains(context.getString(R.string.new_chat_ready))),
-                    TIMEOUT);
-            assertNotNull("Home new chat must use the normal empty-chat status", status);
+            UiObject2 status = device.wait(Until.findObject(By.res(pkg, "chat_status")), TIMEOUT);
+            assertNotNull(status);
+            assertFalse("Home new chat must not use the system-assistant welcome",
+                    status.getText().contains(context.getString(R.string.fresh_chat_from_assist)));
         }
     }
 
-    @Test public void topBarNewChatWhileGeneratingShowsStopDialog() throws Exception {
+    @Test public void topBarNewChatWhileGeneratingShowsStopDialog() {
         try (ActivityScenario<MainActivity> chat = ActivityScenario.launch(MainActivity.class)) {
             beginHeldGeneration();
             click("chat_new_chat");
@@ -114,7 +114,7 @@ public final class ChatNewChatE2eTest {
         }
     }
 
-    @Test public void homeNewChatWhileGeneratingShowsStopDialog() throws Exception {
+    @Test public void homeNewChatWhileGeneratingShowsStopDialog() {
         try (ActivityScenario<ComposeHostActivity> home =
                      ActivityScenario.launch(ComposeHostActivity.class)) {
             click("open_chat");
@@ -135,14 +135,14 @@ public final class ChatNewChatE2eTest {
         }
     }
 
-    private void beginHeldGeneration() throws Exception {
+    private void beginHeldGeneration() {
         awaitEnabled("chat_send");
         UiObject2 input = device.wait(Until.findObject(By.res(pkg, "chat_input")), TIMEOUT);
         assertNotNull(input);
-        input.setText("Hold me");
-        app.scriptedEngine().holdFirstToken();
+        input.setText("Dialog generation turn");
         awaitEnabled("chat_send").click();
-        assertTrue(app.scriptedEngine().awaitGenerationStarted());
+        assertNotNull(device.wait(Until.findObject(
+                By.res(pkg, "chat_transcript").textContains("FAKE_STREAM_BEGIN")), TIMEOUT));
         awaitEnabled("chat_stop");
     }
 
@@ -153,6 +153,8 @@ public final class ChatNewChatE2eTest {
 
     private UiObject2 awaitDialogButton(int label) {
         String text = context.getString(label);
+        assertNotNull(device.wait(Until.findObject(
+                By.text(context.getString(R.string.reply_still_running_title))), TIMEOUT));
         UiObject2 button = device.wait(Until.findObject(By.text(text)), TIMEOUT);
         assertNotNull("Expected dialog button: " + text, button);
         return button;

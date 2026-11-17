@@ -239,7 +239,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         chatPanel.setIdleMode(searchEnabled);
         syncInlineSettingsFields();
         syncBackgroundControls();
-        if (runtime.handle() != 0L && (previous.equals(runtime.loadedPath()) || isContentUri(previous))) {
+        final boolean launchNewChat = shouldDeferNewChat(getIntent());
+        if (!launchNewChat && runtime.handle() != 0L && (previous.equals(runtime.loadedPath()) || isContentUri(previous))) {
             if (!runtime.isGenerating()) status.setText(mmprojPath == null || mmprojPath.isEmpty()
                     ? "Text model ready · offline" : "Model and projector loaded · offline");
         } else if (!previous.isEmpty() && (isContentUri(previous) || new File(previous).isFile())) {
@@ -247,7 +248,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         } else if (runtime.handle() == 0L) {
             status.setText("No model loaded. Select an LFM3 GGUF file.");
         }
-        handlePendingNewChatRequests(getIntent());
+        if (launchNewChat) {
+            mainHandler.post(() -> handlePendingNewChatRequests(getIntent()));
+        }
         if (pendingSwitchId != null) confirmSwitchConversation();
     }
 
@@ -1694,6 +1697,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private static boolean isContentUri(String value) {
         return value != null && value.startsWith("content:");
+    }
+
+    private static boolean shouldDeferNewChat(Intent intent) {
+        return intent != null && (intent.getBooleanExtra(EXTRA_REQUEST_NEW_CHAT, false)
+                || intent.getBooleanExtra(EXTRA_FRESH_CHAT, false));
     }
 
     private void handlePendingNewChatRequests(Intent intent) {
