@@ -43,6 +43,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     public static final String EXTRA_OPEN_SETTINGS = "open_settings";
     public static final String EXTRA_DRAFT_TEXT = "draft_text";
     public static final String EXTRA_FRESH_CHAT = "fresh_chat";
+    /** Home and other in-app shortcuts that must share {@link #requestNewChat(boolean)}. */
+    public static final String EXTRA_REQUEST_NEW_CHAT = "request_new_chat";
     public static final String EXTRA_SHARED_IMAGE = "shared_image_uri";
     private static final int PICK_MODEL = 42;
     private static final int PICK_MMPROJ = 43;
@@ -80,6 +82,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private CheckBox lockPreviewBox;
     private CheckBox loopbackBox;
     private CheckBox networkToolsBox;
+    private CheckBox tinyVocaTtsBox;
+    private TextView tinyVocaStatus;
+    private Button tinyVocaDownloadButton;
+    private Button tinyVocaRemoveButton;
     private Button interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton;
     private SeekBar interfaceSizeSlider;
     private TextView interfaceSizeValue;
@@ -238,17 +244,19 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         chatPanel.setIdleMode(searchEnabled);
         syncInlineSettingsFields();
         syncBackgroundControls();
-        if (runtime.handle() != 0L && (previous.equals(runtime.loadedPath()) || isContentUri(previous))) {
-            if (!runtime.isGenerating()) status.setText(mmprojPath == null || mmprojPath.isEmpty()
+        final boolean launchNewChat = shouldDeferNewChat(getIntent());
+        final boolean modelInMemory = runtime.handle() != 0L
+                && (previous.equals(runtime.loadedPath()) || isContentUri(previous));
+        if (modelInMemory) {
+            if (!launchNewChat && !runtime.isGenerating()) status.setText(mmprojPath == null || mmprojPath.isEmpty()
                     ? "Text model ready · offline" : "Model and projector loaded · offline");
         } else if (!previous.isEmpty() && (isContentUri(previous) || new File(previous).isFile())) {
             loadSelectedModel(previous, mmprojPath);
         } else if (runtime.handle() == 0L) {
             status.setText("No model loaded. Select an LFM3 GGUF file.");
         }
-        if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_FRESH_CHAT, false)) {
-            startFreshChat();
-            getIntent().removeExtra(EXTRA_FRESH_CHAT);
+        if (launchNewChat) {
+            mainHandler.post(() -> handlePendingNewChatRequests(getIntent()));
         }
         if (pendingSwitchId != null) confirmSwitchConversation();
     }
@@ -282,7 +290,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             lastAssistantReply = "";
         }
         historyConversationId = id;
-        historyTitle = title == null || title.isBlank() ? "New conversation" : title;
+        historyTitle = title == null || title.isBlank() ? getString(R.string.new_conversation_title) : title;
         runtime.setConversation(historyConversationId, historyTitle);
         runtime.restoreOpenConversation();
     }
@@ -293,18 +301,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         pendingSwitchId = null;
         pendingSwitchTitle = null;
         new AlertDialog.Builder(this)
-                .setTitle("Reply still running")
-                .setMessage("Stop the current reply and start a new conversation?")
-                .setPositiveButton("Stop and start new", (dialog, which) -> {
+                .setTitle(R.string.reply_still_running_title)
+                .setMessage(R.string.reply_still_running_message)
+                .setPositiveButton(R.string.stop_and_start_new, (dialog, which) -> {
                     runtime.stopTurn();
                     runtime.clearConversation();
                     lastAssistantReply = "";
                     historyConversationId = id;
-                    historyTitle = title == null || title.isBlank() ? "New conversation" : title;
+                    historyTitle = title == null || title.isBlank() ? getString(R.string.new_conversation_title) : title;
                     runtime.setConversation(historyConversationId, historyTitle);
                     if (brandTitle != null) brandTitle.setText(historyTitle);
                 })
-                .setNegativeButton("Keep this reply", (dialog, which) -> {
+                .setNegativeButton(R.string.keep_this_reply, (dialog, which) -> {
                     historyConversationId = runtime.conversationId();
                     historyTitle = runtime.historyTitle();
                 })
@@ -361,9 +369,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         StillwaterReadable.prepareWrappingLabel(modePill);
         titles.addView(modePill);
         topBar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
+        Button newChat = button(getString(R.string.new_chat));
+        newChat.setId(R.id.chat_new_chat);
+        StillwaterUi.quiet(newChat);
+        newChat.setTextColor(accent);
+        newChat.setOnClickListener(v -> requestNewChat(false));
+        newChat.setMinimumWidth(InterfaceSize.minTouchPx(this));
+        newChat.setMinimumHeight(InterfaceSize.minTouchPx(this));
+        StillwaterReadable.prepareWrappingControl(newChat, dp(44));
+        topBar.addView(newChat, new LinearLayout.LayoutParams(-2, -2));
         settingsOpenButton = button("");
         settingsOpenButton.setId(R.id.settings_open);
-        settingsOpenButton.setContentDescription("Settings");
+        settingsOpenButton.setContentDescription(getString(R.string.settings_title));
         settingsOpenButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_still_gear, 0, 0, 0);
         StillwaterUi.quiet(settingsOpenButton);
         settingsOpenButton.setOnClickListener(v -> setSettingsOpen(true));
@@ -379,7 +396,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             android.view.ContextThemeWrapper menuContext =
                     new android.view.ContextThemeWrapper(this, R.style.Theme_Stillwater);
             android.widget.PopupMenu menu = new android.widget.PopupMenu(menuContext, v);
-            menu.getMenu().add(0, 1, 0, "Settings");
+            menu.getMenu().add(0, 1, 0, getString(R.string.settings_title));
             menu.getMenu().add(0, 2, 1, "Web search");
             menu.setOnMenuItemClickListener(item -> {
                 if (item.getItemId() == 1) setSettingsOpen(true);
@@ -576,6 +593,41 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         TextView networkToolsHelp = label(getString(R.string.network_tools_help), 12, inkMuted);
         StillwaterReadable.prepareWrappingLabel(networkToolsHelp);
         configuration.addView(networkToolsHelp);
+
+        TextView speechHeading = label(getString(R.string.speech_heading), 11, inkMuted);
+        speechHeading.setTypeface(StillwaterUi.sansMedium(this));
+        speechHeading.setLetterSpacing(0.12f);
+        speechHeading.setPadding(0, dp(16), 0, dp(4));
+        configuration.addView(speechHeading);
+        tinyVocaTtsBox = new CheckBox(this);
+        tinyVocaTtsBox.setId(R.id.settings_tiny_voca_tts);
+        tinyVocaTtsBox.setText(R.string.tiny_voca_tts_label);
+        StillwaterUi.styleCheck(tinyVocaTtsBox);
+        tinyVocaTtsBox.setOnCheckedChangeListener((button, checked) -> {
+            if (bindingBackground) return;
+            new RuntimePreferences(this).setTinyVocaEnglishTtsEnabled(checked);
+        });
+        configuration.addView(tinyVocaTtsBox);
+        TextView tinyVocaHelp = label(getString(R.string.tiny_voca_tts_help), 12, inkMuted);
+        StillwaterReadable.prepareWrappingLabel(tinyVocaHelp);
+        configuration.addView(tinyVocaHelp);
+        tinyVocaStatus = label(getString(R.string.tiny_voca_status_missing), 13, ink);
+        tinyVocaStatus.setId(R.id.settings_tiny_voca_status);
+        configuration.addView(tinyVocaStatus);
+        tinyVocaDownloadButton = button(getString(R.string.tiny_voca_download));
+        tinyVocaDownloadButton.setId(R.id.settings_tiny_voca_download);
+        StillwaterUi.quiet(tinyVocaDownloadButton);
+        tinyVocaDownloadButton.setOnClickListener(v -> downloadTinyVocaPack());
+        configuration.addView(tinyVocaDownloadButton, new LinearLayout.LayoutParams(-1, dp(44)));
+        tinyVocaRemoveButton = button(getString(R.string.tiny_voca_remove));
+        tinyVocaRemoveButton.setId(R.id.settings_tiny_voca_remove);
+        StillwaterUi.quiet(tinyVocaRemoveButton);
+        tinyVocaRemoveButton.setOnClickListener(v -> {
+            new TinyVocaPackStore(this).clear();
+            paintTinyVocaPackStatus();
+        });
+        configuration.addView(tinyVocaRemoveButton, new LinearLayout.LayoutParams(-1, dp(44)));
+
         defaultAssistantButton = button(getString(R.string.default_assistant_button));
         defaultAssistantButton.setId(R.id.settings_default_assistant);
         StillwaterUi.quiet(defaultAssistantButton);
@@ -890,6 +942,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (networkToolsBox != null) {
             bindingBackground = true;
             networkToolsBox.setChecked(new RuntimePreferences(this).networkToolsEnabled());
+            RuntimePreferences prefs = new RuntimePreferences(this);
+            if (tinyVocaTtsBox != null) tinyVocaTtsBox.setChecked(prefs.tinyVocaEnglishTtsEnabled());
+            paintTinyVocaPackStatus();
             bindingBackground = false;
         }
     }
@@ -1703,7 +1758,41 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         return value != null && value.startsWith("content:");
     }
 
-    private void startFreshChat() {
+    private static boolean shouldDeferNewChat(Intent intent) {
+        return intent != null && (intent.getBooleanExtra(EXTRA_REQUEST_NEW_CHAT, false)
+                || intent.getBooleanExtra(EXTRA_FRESH_CHAT, false));
+    }
+
+    private void handlePendingNewChatRequests(Intent intent) {
+        if (intent == null) return;
+        if (intent.getBooleanExtra(EXTRA_REQUEST_NEW_CHAT, false)) {
+            requestNewChat(false);
+            intent.removeExtra(EXTRA_REQUEST_NEW_CHAT);
+            return;
+        }
+        if (intent.getBooleanExtra(EXTRA_FRESH_CHAT, false)) {
+            requestNewChat(true);
+            intent.removeExtra(EXTRA_FRESH_CHAT);
+        }
+    }
+
+    private void requestNewChat(boolean fromSystemAssist) {
+        if (runtime.isGenerating()) {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.reply_still_running_title)
+                    .setMessage(R.string.reply_still_running_message)
+                    .setPositiveButton(R.string.stop_and_start_new, (dialog, which) -> {
+                        runtime.stopTurn();
+                        startFreshChat(fromSystemAssist);
+                    })
+                    .setNegativeButton(R.string.keep_this_reply, null)
+                    .show();
+            return;
+        }
+        startFreshChat(fromSystemAssist);
+    }
+
+    private void startFreshChat(boolean fromSystemAssist) {
         HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
         HistoryMediaCleanup.deleteAttachment(this, pendingAudioPath);
         pendingImagePath = "";
@@ -1713,12 +1802,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (chatPanel != null) chatPanel.clearImageAttachment();
         String id = java.util.UUID.randomUUID().toString();
         historyConversationId = id;
-        historyTitle = "New conversation";
+        historyTitle = getString(R.string.new_conversation_title);
         if (brandTitle != null) brandTitle.setText(historyTitle);
         runtime.setConversation(id, historyTitle);
         runtime.clearConversation();
         setSettingsOpen(false);
-        status.setText("Fresh chat from the system assistant.");
+        status.setText(fromSystemAssist
+                ? getString(R.string.fresh_chat_from_assist)
+                : getString(R.string.new_chat_ready));
+        updateControls();
     }
 
     private void openDefaultAssistantPicker() {
@@ -1796,8 +1888,48 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         lockPreviewBox.setChecked(prefs.lockPreview());
         if (loopbackBox != null) loopbackBox.setChecked(prefs.loopbackEnabled());
         if (networkToolsBox != null) networkToolsBox.setChecked(prefs.networkToolsEnabled());
+        if (tinyVocaTtsBox != null) tinyVocaTtsBox.setChecked(prefs.tinyVocaEnglishTtsEnabled());
+        paintTinyVocaPackStatus();
         paintIdle(prefs.idleMinutes());
         bindingBackground = false;
+    }
+
+    private void paintTinyVocaPackStatus() {
+        if (tinyVocaStatus == null) return;
+        boolean ready = new TinyVocaPackStore(this).isReady();
+        tinyVocaStatus.setText(ready ? getString(R.string.tiny_voca_status_ready)
+                : getString(R.string.tiny_voca_status_missing));
+        if (tinyVocaDownloadButton != null) tinyVocaDownloadButton.setEnabled(!ready);
+        if (tinyVocaRemoveButton != null) tinyVocaRemoveButton.setEnabled(ready);
+    }
+
+    private void downloadTinyVocaPack() {
+        if (tinyVocaDownloadButton != null) tinyVocaDownloadButton.setEnabled(false);
+        new Thread(() -> new TinyVocaPackDownloader(new TinyVocaPackStore(this)).download(
+                new TinyVocaPackDownloader.Progress() {
+                    @Override public void onFile(String path, long written, long total) {
+                        runOnUiThread(() -> {
+                            if (tinyVocaStatus != null) {
+                                tinyVocaStatus.setText(getString(R.string.tiny_voca_downloading, path));
+                            }
+                        });
+                    }
+                    @Override public void onDone() {
+                        TinyVocaPackStore pack = new TinyVocaPackStore(MainActivity.this);
+                        new Thread(() -> TinyVocaPhonemizerBridge.ensureLoaded(pack.phonemizerDir()),
+                                "tiny-voca-phonemizer-warmup").start();
+                        runOnUiThread(() -> {
+                            paintTinyVocaPackStatus();
+                            if (status != null) status.setText(getString(R.string.tiny_voca_status_ready));
+                        });
+                    }
+                    @Override public void onError(String message) {
+                        runOnUiThread(() -> {
+                            paintTinyVocaPackStatus();
+                            if (status != null) status.setText(message);
+                        });
+                    }
+                }), "tiny-voca-download").start();
     }
 
     private boolean bindingBackground;
@@ -1919,10 +2051,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         adoptConversation(intent);
         if (pendingSwitchId != null) confirmSwitchConversation();
         if (intent != null && intent.getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) setSettingsOpen(true);
-        if (intent != null && intent.getBooleanExtra(EXTRA_FRESH_CHAT, false)) {
-            startFreshChat();
-            intent.removeExtra(EXTRA_FRESH_CHAT);
-        }
+        handlePendingNewChatRequests(intent);
         applyDraft(intent);
     }
 

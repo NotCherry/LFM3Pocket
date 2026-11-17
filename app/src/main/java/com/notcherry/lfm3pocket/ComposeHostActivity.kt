@@ -76,6 +76,12 @@ class ComposeHostActivity : ComponentActivity() {
                             // still generating after the user stepped back to Home.
                             startActivity(Intent(this@ComposeHostActivity, MainActivity::class.java))
                         },
+                        onNewChat = {
+                            startActivity(
+                                Intent(this@ComposeHostActivity, MainActivity::class.java)
+                                    .putExtra(MainActivity.EXTRA_REQUEST_NEW_CHAT, true),
+                            )
+                        },
                         onOpenHistory = {
                             startActivity(Intent(this@ComposeHostActivity, HistoryActivity::class.java))
                         },
@@ -135,6 +141,7 @@ class ComposeHostActivity : ComponentActivity() {
 @Composable
 private fun PocketNavigation(
     onOpenChat: () -> Unit,
+    onNewChat: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -143,6 +150,7 @@ private fun PocketNavigation(
         composable("home") {
             StillwaterHome(
                 onOpenChat = onOpenChat,
+                onNewChat = onNewChat,
                 onOpenHistory = onOpenHistory,
                 onOpenSettings = onOpenSettings,
                 onAbout = { controller.navigate("about") },
@@ -188,6 +196,7 @@ private fun PocketNavigation(
 @Composable
 private fun StillwaterHome(
     onOpenChat: () -> Unit,
+    onNewChat: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit,
     onAbout: () -> Unit,
@@ -242,6 +251,22 @@ private fun StillwaterHome(
                 Text(stringResource(R.string.open_chat), style = type.body.copy(color = atlas.candleInk))
             }
             Spacer(Modifier.height(space.space4))
+            TextButton(
+                onClick = onNewChat,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .heightIn(min = 48.dp)
+                    .testTag("${context.packageName}:id/home_new_chat"),
+                colors = StillwaterControls.textButtonColors(),
+            ) {
+                Text(
+                    stringResource(R.string.new_chat),
+                    style = type.body,
+                    textDecoration = TextDecoration.Underline,
+                )
+            }
+            Spacer(Modifier.height(space.space2))
             // Flow so Polish "O trybie offline" does not collide with History/Settings at large fonts.
             FlowRow(
                 Modifier.fillMaxWidth(),
