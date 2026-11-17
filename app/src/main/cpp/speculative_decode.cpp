@@ -62,7 +62,7 @@ std::u16string decode_utf8_prefix(std::string & pending) {
     return decoded;
 }
 
-void emit_token(const llama_vocab * vocab, llama_token id, TokenDelivery * delivery) {
+void emit_token(const llama_vocab * vocab, llama_token id, hanami::TokenDelivery * delivery) {
     if (!delivery) return;
     char piece[512];
     const int n = llama_token_to_piece(vocab, id, piece, sizeof(piece), 0, true);
