@@ -2,6 +2,7 @@ package com.notcherry.lfm3pocket
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import java.util.Locale
 
@@ -59,7 +60,7 @@ object InferenceStatsFormat {
         }
         if (stats.tokensGenerated > 0) {
             parts.add(
-                stringResource(
+                pluralStringResource(
                     R.plurals.inference_stats_tokens,
                     stats.tokensGenerated,
                     stats.tokensGenerated,
