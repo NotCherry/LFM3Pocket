@@ -16,6 +16,10 @@ struct SpecDecodeStats {
     int n_predict = 0;
     int n_drafted = 0;
     int n_accept = 0;
+    /** Tokens submitted to decode batches (for self-check). */
+    int n_eval_tokens = 0;
+    /** Must be 0 — last prompt token must not be in KV before the spec loop starts. */
+    int n_prompt_tail_duplicate = 0;
 };
 
 struct TokenDelivery {
@@ -30,7 +34,16 @@ void configure_phone_ngram_spec(common_params_speculative & spec);
 
 common_sampler * make_chat_sampler(const llama_model * model);
 
-// Target-model ngram-mod speculative decode (no draft GGUF). Prompt must already be in KV.
+/**
+ * Drop the last prompt token from KV so the ngram-mod driver can evaluate it exactly once
+ * (Hanami prefills the full prompt before calling this).
+ */
+bool drop_last_prompt_token_from_kv(llama_context * ctx, llama_seq_id seq_id, size_t prompt_token_count,
+                                    std::string & error);
+
+size_t kv_token_count(llama_context * ctx, llama_seq_id seq_id);
+
+// Target-model ngram-mod speculative decode (no draft GGUF). KV must contain prompt minus last token.
 bool generate_ngram_mod(
         llama_context * ctx,
         const llama_vocab * vocab,
@@ -41,10 +54,10 @@ bool generate_ngram_mod(
         std::atomic<bool> * cancelled,
         TokenDelivery * delivery,
         std::vector<llama_token> & generated,
+        std::vector<llama_token> * session_tokens,
         SpecDecodeStats * stats,
         std::string & error);
 
-// Same sampler path as chat, sequential single-token decode (benchmark baseline).
 bool generate_sequential(
         llama_context * ctx,
         llama_batch_ext * batch,

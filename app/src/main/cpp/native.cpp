@@ -520,9 +520,18 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         delivery.pending = &pending;
         delivery.error = &error;
         hanami::SpecDecodeStats stats;
+        std::vector<llama_token> session_tokens;
         if (!hanami::generate_ngram_mod(state->ctx, vocab, mrope, prompt_in_kv, max_tokens,
-                context_tokens, &state->cancelled, &delivery, generated, &stats, error)) {
+                context_tokens, &state->cancelled, &delivery, generated, &session_tokens, &stats,
+                error)) {
             if (state->cancelled.load()) error.clear();
+        } else if (error.empty() && !session_tokens.empty()) {
+            const size_t kv = hanami::kv_token_count(state->ctx, 0);
+            if (session_tokens.size() != kv) {
+                error = "Prompt lookup session tokens do not match KV cache";
+            } else {
+                state->cached_tokens = std::move(session_tokens);
+            }
         }
     } else if (error.empty() && prompt_ready && state->ctx && !state->cancelled.load()) {
         llama_sampler * sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
@@ -566,8 +575,9 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     if (state->cancelled.load() || !error.empty()) {
         // Cancel / error mid-turn leaves memory inconsistent with any cache claim.
         state->release_session();
+    } else if (!has_media && state->ctx && !state->media_dirty && use_ngram) {
+        // cached_tokens already set from verified KV session list in the ngram-mod path.
     } else if (!has_media && state->ctx && !state->media_dirty) {
-        // Keep prompt + generated tokens that are actually in KV.
         state->cached_tokens = tokens;
         state->cached_tokens.insert(state->cached_tokens.end(), generated.begin(), generated.end());
     } else {
@@ -672,7 +682,8 @@ Java_com_notcherry_lfm3pocket_NativeBridge_runBenchmarkUtf8(
     hanami::SpecDecodeStats spec_stats;
     const auto tg_spec_start = clock::now();
     if (!hanami::generate_ngram_mod(ctx, vocab, false, tokens, tg_tokens, context_tokens,
-                                    &state->cancelled, nullptr, spec_generated, &spec_stats, error)) {
+                                    &state->cancelled, nullptr, spec_generated, nullptr, &spec_stats,
+                                    error)) {
         if (state->cancelled.load()) {
             llama_batch_ext_free(batch);
             llama_free(ctx);

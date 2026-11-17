@@ -16,7 +16,7 @@ llama.cpp v0.8.0 (`8642541b255bfb5dc39cd351a178be09013a55d6`) supports several s
 | Draft model (simple / MTP / Eagle / DFlash) | Second GGUF, vocab must match | ~doubles weights + second context | Poor on 4 GB phones |
 | `ngram-cache` | Optional static corpus file | Cache files | Skipped (no bundled corpus) |
 | `ngram-simple` | None | Small | Moderate; mostly prompt-local repeats |
-| **`ngram-mod`** | **None** | ~4 MB open-address table | **Best default** |
+| **`ngram-mod`** | **None** | ~4 MB open-address table | **Best fit when enabled** |
 
 `ngram-mod` drafts up to *M* tokens from an in-memory n-gram map built from the live prompt and accepted
 generation; the **target** model verifies drafts in one batched `llama_process` (same acceptance rules as
@@ -32,8 +32,8 @@ as `examples/speculative-simple`).
 1. Link `llama-common` (static) from the JNI build and enable **`COMMON_SPECULATIVE_TYPE_NGRAM_MOD`**
    behind **Settings → Prompt lookup decode (ngram-mod)** (`settings_prompt_lookup`), persisted in the
    inference DataStore key `prompt_lookup`.
-2. **Default: ON** — no extra GGUF, bounded ~4 MB table, disabled automatically for multimodal turns
-   (media path keeps the existing sequential decoder).
+2. **Default: OFF** until measured on a physical arm64 device (bounded ~4 MB table, no extra GGUF).
+   Users opt in via Settings; multimodal turns keep the sequential decoder regardless.
 3. Phone-tuned params (smaller than llama-cli defaults tuned for server GPUs):
    - `n_match = 16`, `n_min = 2`, `n_max = 12`
 4. Settings **Run speed test** (`settings_bench_run`) reports **sequential** and **ngram-mod** tg tok/s

@@ -6,14 +6,14 @@ public final class InferenceSettings {
      * Compile-time safe defaults. First-run DataStore init overlays topology-based
      * threads via {@link InferenceSettingsStore}; do not read sysfs here.
      */
-    public static final InferenceSettings DEFAULT = new InferenceSettings(4096, 4, 512, true);
+    public static final InferenceSettings DEFAULT = new InferenceSettings(4096, 4, 512, false);
 
     public final int contextTokens, threads, maxTokens;
     /** llama.cpp ngram-mod prompt lookup (no draft GGUF). */
     public final boolean promptLookup;
 
     public InferenceSettings(int contextTokens, int threads, int maxTokens) {
-        this(contextTokens, threads, maxTokens, true);
+        this(contextTokens, threads, maxTokens, false);
     }
 
     public InferenceSettings(int contextTokens, int threads, int maxTokens, boolean promptLookup) {
