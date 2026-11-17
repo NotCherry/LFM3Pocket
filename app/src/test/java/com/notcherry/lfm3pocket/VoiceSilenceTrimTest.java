@@ -21,6 +21,12 @@ public final class VoiceSilenceTrimTest {
         assertEquals(wav.length, VoiceSilenceTrim.trimWav(wav, 40).length);
     }
 
+    @Test public void treatsPcmSamplesAsSignedLittleEndian() {
+        byte[] wav = sampleWav(new short[] { 0, 0, 0, -500, -600, 0, 0 });
+        byte[] trimmed = VoiceSilenceTrim.trimWav(wav, 400);
+        assertEquals(44 + 4, trimmed.length);
+    }
+
     private static byte[] sampleWav(short[] samples) {
         int pcmBytes = samples.length * 2;
         byte[] wav = new byte[44 + pcmBytes];

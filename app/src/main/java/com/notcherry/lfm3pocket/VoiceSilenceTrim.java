@@ -69,7 +69,7 @@ public final class VoiceSilenceTrim {
 
     private static int pcm16At(byte[] wav, int dataOffset, int index) {
         int off = dataOffset + index * 2;
-        return wav[off] | (wav[off + 1] << 8);
+        return (wav[off] & 0xFF) | (wav[off + 1] << 8);
     }
 
     private static String readAscii(ByteBuffer buf, int offset, int len) {

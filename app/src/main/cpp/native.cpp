@@ -276,6 +276,16 @@ Java_com_notcherry_lfm3pocket_NativeBridge_loadModel(
     return id;
 }
 
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_notcherry_lfm3pocket_NativeBridge_modelSupportsAudioIn(
+        JNIEnv *, jclass, jlong handle) {
+    auto state = find_model(handle);
+    if (!state || !state->multimodal) {
+        return JNI_FALSE;
+    }
+    return mtmd_support_audio(state->multimodal) ? JNI_TRUE : JNI_FALSE;
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_unloadModel(
         JNIEnv *, jclass, jlong handle) {

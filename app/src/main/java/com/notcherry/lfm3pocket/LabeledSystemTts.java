@@ -62,12 +62,19 @@ final class LabeledSystemTts {
         else main.post(work);
     }
 
+    void stopSpeaking() {
+        main.post(() -> {
+            if (engine != null) engine.stop();
+        });
+    }
+
     void shutdown() {
         main.post(() -> {
             if (engine != null) {
                 engine.stop();
                 engine.shutdown();
                 engine = null;
+                ready.set(false);
             }
         });
     }

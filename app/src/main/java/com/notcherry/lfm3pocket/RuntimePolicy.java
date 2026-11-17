@@ -358,7 +358,7 @@ public final class RuntimePolicy {
         if (!warning.isEmpty()) body = body + "\n" + warning;
         return RuntimeNotice.of(RuntimeNotice.Kind.RESIDENT, "Model loaded", body, false,
                 0, 0, "", false, RuntimeNotice.Action.TALK, RuntimeNotice.Action.ASK,
-                RuntimeNotice.Action.UNLOAD, RuntimeNotice.Action.OPEN);
+                RuntimeNotice.Action.UNLOAD);
     }
 
     private String warning() {

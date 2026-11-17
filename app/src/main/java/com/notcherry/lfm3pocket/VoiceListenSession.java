@@ -68,7 +68,6 @@ public final class VoiceListenSession implements AutoCloseable {
     public synchronized void cancel(String reason) {
         cancelTimeout();
         if (state == State.LISTENING) controller.cancel();
-        else if (state != State.READY) set(State.CANCELLED, reason == null ? "Cancelled" : reason);
     }
 
     @Override public synchronized void close() {

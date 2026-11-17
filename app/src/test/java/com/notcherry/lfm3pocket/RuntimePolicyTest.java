@@ -31,7 +31,7 @@ public final class RuntimePolicyTest {
         assertEquals(RuntimeNotice.Action.TALK, effects.notice.actions[0]);
         assertEquals(RuntimeNotice.Action.ASK, effects.notice.actions[1]);
         assertEquals(RuntimeNotice.Action.UNLOAD, effects.notice.actions[2]);
-        assertEquals(RuntimeNotice.Action.OPEN, effects.notice.actions[3]);
+        assertEquals(3, effects.notice.actions.length);
         assertFalse(effects.notice.publicLockScreen);
     }
 

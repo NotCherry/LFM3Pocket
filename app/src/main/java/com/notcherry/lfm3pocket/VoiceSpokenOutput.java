@@ -29,6 +29,7 @@ public final class VoiceSpokenOutput {
     private final Host host;
     private final LabeledSystemTts systemTts;
     private final AtomicBoolean busy = new AtomicBoolean();
+    private volatile Runnable pendingComplete;
     private volatile String lastPath = "omni";
 
     public VoiceSpokenOutput(Host host) {
@@ -42,9 +43,18 @@ public final class VoiceSpokenOutput {
 
     public void stop() {
         host.playback().stop();
-        systemTts.shutdown();
+        systemTts.stopSpeaking();
+        pendingComplete = null;
         busy.set(false);
         host.onSpeechUi(false, "");
+    }
+
+  /** Called when Omni PCM playback reaches idle — runs any deferred {@code onComplete}. */
+    void onPlaybackIdle() {
+        Runnable done = pendingComplete;
+        pendingComplete = null;
+        busy.set(false);
+        if (done != null) host.main().post(done);
     }
 
     public void speakExact(String exactText, Locale locale, Runnable onComplete) {
@@ -101,8 +111,7 @@ public final class VoiceSpokenOutput {
             if (host.playback().play(audio, format[0], format[1], format[2])) {
                 host.onPlaybackPolicy(true);
                 host.onSpeechUi(false, "Playing reply");
-                busy.set(false);
-                if (onComplete != null) onComplete.run();
+                pendingComplete = onComplete;
                 return;
             }
             fail = "Could not start Omni speech playback";

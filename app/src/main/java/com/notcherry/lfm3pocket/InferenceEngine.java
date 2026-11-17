@@ -38,6 +38,11 @@ public interface InferenceEngine {
     default String generateSpeech(long handle, String prompt, SpeechOptions options, AudioSink sink) {
         return "Speech generation is not available";
     }
+
+    /** Whether this loaded pair can ingest microphone WAV for voice actions (not just any mmproj). */
+    default boolean supportsVoiceAudioIn(long handle) {
+        return false;
+    }
     void stop();
     void resetStop();
 }

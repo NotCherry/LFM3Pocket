@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * viewers. Leaving the screen does not unload the weights or cancel a reply
  * unless the user turned keep-loaded off, or thermal / memory policy says so.
  */
-public final class ModelRuntime {
+public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     public interface Ui {
         void onChat(String transcript, String status, boolean generating);
         void onSnapshot(ChatSnapshot snapshot);
@@ -100,50 +100,8 @@ public final class ModelRuntime {
         this.playback = new PlaybackController(app.newPlaybackTrackFactory(), playbackFocus::request,
                 playbackFocus::abandon, audioWorker, main::post, (state, message) -> onPlayback(state, message));
         this.loopback = new LoopbackAgentApi(this::submitFromLoopback, message -> {});
-        this.voiceActions = new VoiceActionRuntime(new VoiceActionRuntime.Callbacks() {
-            @Override public long modelHandle() { return handle; }
-            @Override public InferenceEngine engine() { return engine; }
-            @Override public PlaybackController playback() { return playback; }
-            @Override public ExecutorService worker() { return worker; }
-            @Override public Handler main() { return main; }
-            @Override public Context app() { return app; }
-            @Override public android.content.SharedPreferences modelPrefs() { return preferences.raw(); }
-            @Override public ToolCoordinator toolCoordinator() { return app.toolCoordinator(); }
-            @Override public boolean isGenerating() { return isGenerating(); }
-            @Override public void showConsent(String id, String text, boolean safe) {
-                ModelRuntime.this.showConsent(id, text, safe);
-            }
-            @Override public void clearConsent() {
-                clearConsent();
-            }
-            @Override public void resolveConsent(String proposalId, boolean approve) {
-                ModelRuntime.this.resolveConsent(proposalId, approve);
-            }
-            @Override public void stopTurn() { ModelRuntime.this.stopTurn(); }
-            @Override public java.util.Locale userLocale() {
-                return app.getResources().getConfiguration().getLocales().get(0);
-            }
-            @Override public java.util.function.Consumer<String> onVoiceStatus() {
-                return status -> { /* Shade strings are carried in RuntimePolicy notices */ };
-            }
-            @Override public void policyListenStarted() {
-                apply(policy.onListenStarted("Listening…"));
-            }
-            @Override public void policyListenFinished() {
-                apply(policy.onListenFinished(SystemClock.elapsedRealtime()));
-            }
-            @Override public void policyVoiceThinking() {
-                apply(policy.onGenerationStarted("Voice command", 512, SystemClock.elapsedRealtime()));
-            }
-            @Override public void policySpeechStarted() { apply(policy.onSpeechStarted()); }
-            @Override public void policyPlaybackStarted() { apply(policy.onPlaybackStarted()); }
-            @Override public void policySpeechFinished() {
-                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
-            }
-            @Override public void policyGenerationFinished() {
-                apply(policy.onGenerationFinished(SystemClock.elapsedRealtime()));
-            }
-        }, new File(app.getCacheDir(), "voice-actions"), app::hasMicrophonePermission,
+        this.voiceActions = new VoiceActionRuntime(new ModelRuntimeVoiceCallbacks(this),
+                new File(app.getCacheDir(), "voice-actions"), app::hasMicrophonePermission,
                 audioWorker, main::post);
         apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
@@ -165,11 +123,34 @@ public final class ModelRuntime {
         return true;
     }
 
-    public InferenceEngine engine() { return engine; }
-    public ExecutorService worker() { return worker; }
-    public PlaybackController playback() { return playback; }
     public VoiceActionRuntime voice() { return voiceActions; }
+    @Override public long modelHandle() { return handle; }
     public long handle() { return handle; }
+    @Override public InferenceEngine engine() { return engine; }
+    @Override public PlaybackController playback() { return playback; }
+    @Override public ExecutorService worker() { return worker; }
+    @Override public Handler main() { return main; }
+    @Override public Context app() { return app; }
+    @Override public android.content.SharedPreferences modelPrefs() { return preferences.raw(); }
+    @Override public ToolCoordinator toolCoordinator() { return app.toolCoordinator(); }
+    @Override public java.util.Locale userLocale() {
+        return app.getResources().getConfiguration().getLocales().get(0);
+    }
+    @Override public void policyListenStarted() { apply(policy.onListenStarted("Listening…")); }
+    @Override public void policyListenFinished() {
+        apply(policy.onListenFinished(SystemClock.elapsedRealtime()));
+    }
+    @Override public void policyVoiceThinking() {
+        apply(policy.onGenerationStarted("Voice command", 512, SystemClock.elapsedRealtime()));
+    }
+    @Override public void policySpeechStarted() { apply(policy.onSpeechStarted()); }
+    @Override public void policyPlaybackStarted() { apply(policy.onPlaybackStarted()); }
+    @Override public void policySpeechFinished() {
+        apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+    }
+    @Override public void policyGenerationFinished() {
+        apply(policy.onGenerationFinished(SystemClock.elapsedRealtime()));
+    }
     public String loadedPath() { return loadedPath == null ? "" : loadedPath; }
     public boolean keepLoaded() { return preferences.keepLoaded(); }
     public boolean acceptsTurn() { return !policy.refuseNewTurns(); }
@@ -192,7 +173,7 @@ public final class ModelRuntime {
         return session;
     }
 
-    public boolean isGenerating() { return session != null && session.isGenerating(); }
+    @Override public boolean isGenerating() { return session != null && session.isGenerating(); }
 
     public boolean hasTranscript() {
         if (session == null) return false;
@@ -315,7 +296,7 @@ public final class ModelRuntime {
         });
     }
 
-    public void stopTurn() {
+    @Override public void stopTurn() {
         voiceActions.cancelAll("Stopped");
         speechCancel = true;
         if (session != null) session.stop();
@@ -407,11 +388,11 @@ public final class ModelRuntime {
         worker.execute(() -> generateSpeech(reply, frames));
     }
 
-    public void showConsent(String id, String text, boolean safe) {
+    @Override public void showConsent(String id, String text, boolean safe) {
         apply(policy.onConsent(id, text, safe));
     }
 
-    public void clearConsent() {
+    @Override public void clearConsent() {
         apply(policy.onConsentCleared(SystemClock.elapsedRealtime()));
     }
 
@@ -540,7 +521,7 @@ public final class ModelRuntime {
         releaseWake();
     }
 
-    private void resolveConsent(String proposalId, boolean approve) {
+    @Override public void resolveConsent(String proposalId, boolean approve) {
         if (proposalId == null || proposalId.isEmpty()) return;
         worker.execute(() -> {
             ToolCoordinator coordinator = app.toolCoordinator();
@@ -629,6 +610,7 @@ public final class ModelRuntime {
                 playbackNoted = false;
                 apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
             }
+            voiceActions.onPlaybackIdle();
         }
         if (ui != null && ui.isUsable()) ui.onPlayback(message);
     }

@@ -93,6 +93,7 @@
     <string name="voice_no_audio_model">Ten model nie słyszy audio — załaduj LFM3-Omni z pasującym projektorem mmproj.</string>
     <string name="voice_system_tts_fallback">Głos systemowy (oznaczony TTS)</string>
     <string name="voice_mic_required">Do funkcji Mów potrzebne jest uprawnienie mikrofonu.</string>
+    <string name="voice_record_talkback">Polecenie głosowe. Dwukrotne stuknięcie włącza lub wyłącza nasłuch; można też przytrzymać.</string>
     <string name="notification_action_review">Przejrzyj</string>
     <string name="notification_action_approve">Zatwierdź</string>
     <string name="notification_action_reject">Odrzuć</string>

@@ -61,8 +61,12 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
                     @Override public void changed(VoiceListenSession.State state, String message) {
                         if (state == VoiceListenSession.State.LISTENING) callbacks.policyListenStarted();
                         else if (state == VoiceListenSession.State.READY || state == VoiceListenSession.State.CANCELLED
-                                || state == VoiceListenSession.State.TIMEOUT || state == VoiceListenSession.State.ERROR)
+                                || state == VoiceListenSession.State.TIMEOUT || state == VoiceListenSession.State.ERROR) {
                             callbacks.policyListenFinished();
+                            if (mode == Mode.CONFIRM && state != VoiceListenSession.State.READY) {
+                                rejectPendingConfirm();
+                            }
+                        }
                         callbacks.onVoiceStatus().accept(message);
                     }
 
@@ -73,7 +77,7 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
     }
 
     public boolean isEnabled() {
-        return VoiceAudioCapability.voiceActionsEnabled(callbacks.modelPrefs(), callbacks.modelHandle());
+        return VoiceAudioCapability.voiceActionsEnabled(callbacks.engine(), callbacks.modelHandle());
     }
 
     public boolean isListening() {
@@ -108,8 +112,22 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
     public void cancelAll(String reason) {
         spoken.stop();
         listen.cancel(reason);
+        if (mode == Mode.CONFIRM) rejectPendingConfirm();
         mode = Mode.IDLE;
         deletePending();
+    }
+
+    void onPlaybackIdle() {
+        spoken.onPlaybackIdle();
+    }
+
+    private void rejectPendingConfirm() {
+        String id = pendingConfirmId;
+        if (id == null) return;
+        pendingConfirmId = null;
+        pendingConfirmDescribe = null;
+        callbacks.resolveConsent(id, false);
+        callbacks.clearConsent();
     }
 
     void onWavReady(File wav) {
