@@ -794,7 +794,9 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             lastAssistant = turn.assistantText;
             main.post(() -> { if (ui != null && ui.isUsable()) ui.onAssistantReply(lastAssistant); });
             // Only COMPLETED replies become tool proposals. Cancelled text is inert.
-            if ("COMPLETED".equals(turn.status == null ? "" : turn.status.name())) {
+            // Document content is DOCUMENT/untrusted and must not authorize tool proposals.
+            if ("COMPLETED".equals(turn.status == null ? "" : turn.status.name())
+                    && !turn.untrustedDocumentContext) {
                 proposeToolsFromAssistant(turn.assistantText);
             }
         }

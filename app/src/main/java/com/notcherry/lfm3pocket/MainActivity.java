@@ -53,6 +53,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final int REQUEST_AUDIO = 46;
     private static final int REQUEST_CAMERA = 47;
     private static final int OPEN_MODEL_URI = 48;
+    private static final int PICK_DOCUMENT = 49;
     private static final int OPEN_MMPROJ_URI = 49;
 
 
@@ -103,6 +104,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean cameraRequested;
     private String pendingImagePath = "";
     private String pendingAudioPath = "";
+    private final java.util.List<ChatSession.Attachment> pendingDocuments = new java.util.ArrayList<>();
     private String lastAssistantReply = "";
 
     private TextView status;
@@ -125,7 +127,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private EditText imageQualityField;
     private Button imageMax384Button, imageMax512Button, imageMax768Button, imageMax1024Button, imageMaxOriginalButton;
     private Button modelButton, mmprojButton;
-    private Button searchButton, photoButton, cameraButton, recordButton, speakButton;
+    private Button searchButton, photoButton, cameraButton, documentButton, recordButton, speakButton;
     private Button settingsOpenButton;
     private EditText settingsContextField, settingsThreadsField, settingsTokensField;
     private CheckBox promptLookupBox;
@@ -723,6 +725,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
             pendingImagePath = "";
             pendingAudioPath = "";
+            clearPendingDocuments();
             lastAssistantReply = "";
             if (playbackActive()) playbackController.stop();
             chatPanel.clearImageAttachment();
@@ -735,6 +738,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 session = runtime.session();
                 pendingImagePath = "";
                 pendingAudioPath = "";
+                clearPendingDocuments();
                 chatPanel.clearImageAttachment();
                 busy = true;
                 updateControls();
@@ -750,19 +754,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         photoButton.setId(R.id.chat_photo);
         cameraButton = mediaButton(getString(R.string.camera), R.drawable.ic_still_camera);
         cameraButton.setId(R.id.chat_camera);
+        documentButton = mediaButton(getString(R.string.attach_document), R.drawable.ic_still_document);
+        documentButton.setId(R.id.chat_document);
+        documentButton.setContentDescription(getString(R.string.attach_document_talkback));
         recordButton = mediaButton(getString(R.string.voice_input), R.drawable.ic_still_mic);
         recordButton.setId(R.id.voice_record);
         speakButton = mediaButton(getString(R.string.speak_reply), R.drawable.ic_still_speak);
         speakButton.setId(R.id.voice_speak);
-        // Two rows of two when stacked (narrow / large fonts); one weighted row otherwise.
+        // Two rows when stacked (narrow / large fonts); one row otherwise.
         if (StillwaterReadable.shouldStack(this)) {
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, this, 46, photoButton, cameraButton);
+            StillwaterReadable.addFlexibleButtonRow(mediaHost, this, 46, photoButton, cameraButton, documentButton);
             StillwaterReadable.addFlexibleButtonRow(mediaHost, this, 46,
                     new float[]{1f, 1.2f}, recordButton, speakButton);
         } else {
             StillwaterReadable.addFlexibleButtonRow(mediaHost, this, 46,
-                    new float[]{1f, 1f, 1.2f, 1.2f},
-                    photoButton, cameraButton, recordButton, speakButton);
+                    new float[]{1f, 1f, 1f, 1.2f, 1.2f},
+                    photoButton, cameraButton, documentButton, recordButton, speakButton);
         }
         chatRoot.addView(mediaHost);
         chatShell = chatRoot;
@@ -777,6 +784,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         searchButton.setOnClickListener(v -> showSearchSettings());
         photoButton.setOnClickListener(v -> pickPhoto());
         cameraButton.setOnClickListener(v -> takePhoto());
+        documentButton.setOnClickListener(v -> pickDocument());
         voicePtt = new VoicePttCoordinator(runtime, () -> {
             if (!((Lfm3PocketApplication) getApplication()).hasMicrophonePermission()) {
                 microphoneRequested = true;
@@ -827,6 +835,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (openProjectorUriButton != null) openProjectorUriButton.setEnabled(!busy);
         photoButton.setEnabled(!busy);
         cameraButton.setEnabled(!busy);
+        if (documentButton != null) documentButton.setEnabled(!busy);
         RecordingController.State capture = recordingController.state();
         boolean voiceMic = runtime.voice().isEnabled();
         recordButton.setText(capture == RecordingController.State.STOPPING ? getString(R.string.finishing)
@@ -1355,6 +1364,175 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         startActivityForResult(new Intent(this, CameraCaptureActivity.class), TAKE_PHOTO);
     }
 
+
+    private void pickDocument() {
+        if (busy) return;
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.setType("*/*");
+        pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                "text/plain", "text/markdown", "text/csv", "text/html", "text/xml",
+                "application/json", "application/xml", "application/pdf"
+        });
+        pick.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        startActivityForResult(pick, PICK_DOCUMENT);
+    }
+
+    private void importSelectedDocuments(Intent data) {
+        if (data == null) return;
+        java.util.ArrayList<Uri> uris = new java.util.ArrayList<>();
+        android.content.ClipData clip = data.getClipData();
+        if (clip != null) {
+            for (int i = 0; i < clip.getItemCount(); i++) {
+                Uri uri = clip.getItemAt(i).getUri();
+                if (uri != null) uris.add(uri);
+            }
+        } else if (data.getData() != null) {
+            uris.add(data.getData());
+        }
+        if (uris.isEmpty()) return;
+        if (pendingDocuments.size() + uris.size() > DocumentAttachmentReader.MAX_FILES) {
+            status.setText("You can attach up to " + DocumentAttachmentReader.MAX_FILES + " documents.");
+            return;
+        }
+        busy = true;
+        updateControls();
+        status.setText(getString(R.string.importing_document));
+        worker.execute(() -> {
+            java.util.ArrayList<ChatSession.Attachment> imported = new java.util.ArrayList<>();
+            String error = null;
+            for (Uri uri : uris) {
+                if (destroyed) return;
+                File temp = null;
+                try {
+                    String displayName = displayNameForUri(uri);
+                    String mime = getContentResolver().getType(uri);
+                    long size = selectedUriSize(uri);
+                    long maxBytes = DocumentAttachmentReader.isPdfMimeOrName(mime, displayName)
+                            ? DocumentAttachmentReader.MAX_PDF_BYTES : DocumentAttachmentReader.MAX_TEXT_BYTES;
+                    if (size >= 0 && size > maxBytes) {
+                        error = DocumentAttachmentReader.isPdfMimeOrName(mime, displayName)
+                                ? displayName + ": This PDF is too large to attach."
+                                : displayName + ": This file is too large to attach.";
+                        break;
+                    }
+                    temp = copyUriToCache(uri, "doc-" + System.currentTimeMillis() + "-" + imported.size() + ".tmp", maxBytes);
+                    DocumentAttachmentReader.Result result = DocumentAttachmentReader.read(temp, displayName, mime);
+                    if (!result.isOk()) {
+                        error = result.displayName + ": " + result.error;
+                        break;
+                    }
+                    imported.add(ChatSession.Attachment.document(result.displayName, result.text));
+                } catch (Exception e) {
+                    String name = displayNameForUri(uri);
+                    String message = e.getMessage() == null ? "Could not read this file." : e.getMessage();
+                    error = name + ": " + message;
+                    break;
+                } finally {
+                    if (temp != null && temp.exists()) temp.delete();
+                }
+            }
+            final String importError = error;
+            final java.util.ArrayList<ChatSession.Attachment> ok = imported;
+            runOnUiThread(() -> {
+                if (destroyed) return;
+                busy = false;
+                if (importError != null) {
+                    status.setText(importError);
+                } else if (!ok.isEmpty()) {
+                    pendingDocuments.addAll(ok);
+                    status.setText(getString(R.string.documents_attached_status, pendingDocuments.size()));
+                }
+                syncPendingDocumentsUi();
+                updateControls();
+            });
+        });
+    }
+
+    private boolean isPdfUri(Uri uri, String displayName) {
+        String mime = getContentResolver().getType(uri);
+        return DocumentAttachmentReader.isPdfMimeOrName(mime, displayName);
+    }
+
+    private long selectedUriSize(Uri uri) {
+        try (Cursor cursor = getContentResolver().query(uri,
+                new String[] { OpenableColumns.SIZE }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int column = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (column >= 0 && !cursor.isNull(column)) return cursor.getLong(column);
+            }
+        } catch (Exception ignored) {
+        }
+        return -1L;
+    }
+
+    private String displayNameForUri(Uri uri) {
+        try (Cursor cursor = getContentResolver().query(uri,
+                new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (column >= 0 && !cursor.isNull(column)) {
+                    String name = cursor.getString(column);
+                    if (name != null && !name.trim().isEmpty()) return name.trim();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        String last = uri == null ? null : uri.getLastPathSegment();
+        return last == null || last.trim().isEmpty() ? "document" : last.trim();
+    }
+
+    private File copyUriToCache(Uri uri, String name, long maxBytes) throws IOException {
+        File out = new File(getCacheDir(), name);
+        try (InputStream input = getContentResolver().openInputStream(uri);
+             FileOutputStream output = new FileOutputStream(out)) {
+            if (input == null) throw new IOException("Could not read the selected file.");
+            byte[] buffer = new byte[64 * 1024];
+            long total = 0;
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                total += count;
+                if (maxBytes > 0 && total > maxBytes) {
+                    throw new IOException("This file is too large to attach.");
+                }
+                output.write(buffer, 0, count);
+            }
+            output.getFD().sync();
+            return out;
+        } catch (IOException e) {
+            out.delete();
+            throw e;
+        }
+    }
+
+    private void removePendingDocument(int index) {
+        if (index < 0 || index >= pendingDocuments.size()) return;
+        pendingDocuments.remove(index);
+        syncPendingDocumentsUi();
+        if (pendingDocuments.isEmpty()) {
+            status.setText("Document removed.");
+        } else {
+            status.setText(getString(R.string.documents_attached_status, pendingDocuments.size()));
+        }
+        updateControls();
+    }
+
+    private void syncPendingDocumentsUi() {
+        if (chatPanel == null) return;
+        if (pendingDocuments.isEmpty()) {
+            chatPanel.clearDocumentAttachments();
+            return;
+        }
+        java.util.ArrayList<String> names = new java.util.ArrayList<>(pendingDocuments.size());
+        for (ChatSession.Attachment doc : pendingDocuments) names.add(doc.displayName);
+        chatPanel.setDocumentAttachments(names, this::removePendingDocument);
+    }
+
+    private void clearPendingDocuments() {
+        pendingDocuments.clear();
+        if (chatPanel != null) chatPanel.clearDocumentAttachments();
+    }
+
     private void copySelectedPhoto(Uri uri) {
         busy = true;
         updateControls();
@@ -1808,6 +1986,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         HistoryMediaCleanup.deleteAttachment(this, pendingAudioPath);
         pendingImagePath = "";
         pendingAudioPath = "";
+        clearPendingDocuments();
         lastAssistantReply = "";
         if (playbackActive()) playbackController.stop();
         if (chatPanel != null) chatPanel.clearImageAttachment();
@@ -2049,10 +2228,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 pendingImagePath,ChatSession.AttachmentKind.PHOTO));
         if(!pendingAudioPath.isEmpty())attachments.add(new ChatSession.Attachment(
                 pendingAudioPath,ChatSession.AttachmentKind.VOICE_RECORDING));
+        if(!pendingDocuments.isEmpty()) attachments.addAll(pendingDocuments);
         if (session.submit(text, attachments, searchEnabled, searchEndpoint, inferenceSettings.maxTokens)) {
             pendingImagePath = "";
             pendingAudioPath = "";
+            pendingDocuments.clear();
             chatPanel.clearImageAttachment();
+            chatPanel.clearDocumentAttachments();
         }
     }
 
@@ -2073,6 +2255,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
         pendingImagePath = "";
         pendingAudioPath = "";
+        pendingDocuments.clear();
         if (settingsStore != null) settingsStore.close();
         if (imageSettingsStore != null) imageSettingsStore.close();
         mainHandler.removeCallbacksAndMessages(null);

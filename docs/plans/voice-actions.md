@@ -433,6 +433,8 @@ User-visible summarize-and-compact for long voice sessions; Room keeps full tran
 
 Few-file SAF attach; chunk into prompt; cite filenames; `DOCUMENT`-class injection rules. Reuse SAF patterns from model import quick-wins — do not rebuild the GGUF picker.
 
+Implementation note: text documents can be attached from SAF, read with size limits, chunked/windowed into prompt context as untrusted material with filename citations, and summarized in replies. Document-tainted turns suppress tool proposals so planted tool JSON in a document creates zero proposals. Unsupported or too-large files (including PDFs, where in-app text extraction is not yet available) fail with a clear error.
+
 ### Arm64 manual checklist (V1)
 
 Record device, APK SHA, Omni+mmproj SHA, then:

@@ -36,6 +36,7 @@
     <item name="chat_overflow" type="id"/>
     <item name="chat_new_chat" type="id"/>
     <item name="chat_camera" type="id"/>
+    <item name="chat_document" type="id"/>
     <item name="camera_status" type="id"/>
     <item name="camera_preview" type="id"/>
     <item name="camera_cancel" type="id"/>
