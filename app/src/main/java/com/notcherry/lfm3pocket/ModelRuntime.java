@@ -336,17 +336,6 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         lastStatus = "";
         lastSnapshot = null;
         lastGenerating = false;
-        // Clear persisted rolling summary for this conversation but keep full transcript rows already removed.
-        String id = conversationId == null ? "" : conversationId;
-        if (!id.isBlank() && history != null) {
-            worker.execute(() -> {
-                try {
-                    history.updateConversationSummary(id, historyTitle == null ? defaultHistoryTitle() : historyTitle,
-                            null, 0L, System.currentTimeMillis());
-                } catch (Exception ignored) {
-                }
-            });
-        }
     }
 
     /** Explicit, user-visible summarize-and-compact step for the active conversation. */
@@ -410,6 +399,10 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 lastTranscript = FlatTranscript.format(lastSnapshot);
                 lastStatus = lastSnapshot == null ? "" : lastSnapshot.status;
                 lastGenerating = session.isGenerating();
+                if (ui != null && ui.isUsable()) {
+                    ui.onSnapshot(lastSnapshot);
+                    ui.onChat(lastTranscript, lastStatus, lastGenerating);
+                }
             });
         });
     }
