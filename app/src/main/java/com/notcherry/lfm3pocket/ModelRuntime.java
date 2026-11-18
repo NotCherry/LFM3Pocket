@@ -345,10 +345,17 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     public void clearConversation() {
         if (session != null) session.clear();
         lastAssistant = "";
-        lastTranscript = "";
-        lastStatus = "";
-        lastSnapshot = null;
-        lastGenerating = false;
+        if (session != null) {
+            lastSnapshot = session.snapshot();
+            lastTranscript = FlatTranscript.format(lastSnapshot);
+            lastStatus = lastSnapshot == null ? "" : lastSnapshot.status;
+            lastGenerating = session.isGenerating();
+        } else {
+            lastSnapshot = null;
+            lastTranscript = FlatTranscriptFormatter.EMPTY_TRANSCRIPT;
+            lastStatus = "";
+            lastGenerating = false;
+        }
     }
 
     /** Explicit, user-visible summarize-and-compact step for the active conversation. */
@@ -587,7 +594,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         handle = 0L;
         loadedPath = "";
         lastAssistant = "";
-        lastTranscript = "";
+        lastTranscript = FlatTranscriptFormatter.EMPTY_TRANSCRIPT;
         lastStatus = "";
         lastGenerating = false;
         lastSnapshot = null;
@@ -606,7 +613,19 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     }
 
     @Override public void onVoiceStatus(String status) {
-        main.post(() -> publishVoiceStatus(status, true));
+        main.post(() -> {
+            if (unloading) return;
+            lastStatus = status == null ? "" : status;
+            Ui target = ui;
+            if (target != null && target.isUsable()) {
+                String transcript = lastTranscript;
+                if ((transcript == null || transcript.isEmpty()) && !lastGenerating) {
+                    transcript = FlatTranscriptFormatter.EMPTY_TRANSCRIPT;
+                }
+                target.onChat(transcript, lastStatus, lastGenerating);
+            }
+            publishVoiceStatus(status, true);
+        });
     }
 
     private void publishVoiceStatus(String status, boolean allowStatusText) {
