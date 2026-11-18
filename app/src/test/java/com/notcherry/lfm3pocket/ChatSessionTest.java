@@ -447,6 +447,7 @@ public class ChatSessionTest {
         assertTrue(session.requestCompact(128));
         assertEquals("Compacting conversation…",status[0]);
         worker.drain();ui.drain();
+        worker.drain(); // persistence save scheduled on worker after UI apply
 
         assertTrue(session.hasSummary());
         assertEquals("Rolling summary of earlier conversation.",session.rollingSummary());
