@@ -34,7 +34,8 @@ public final class RuntimePreferences {
 
     public RuntimePreferences(Context context) {
         // attachBaseContext may run before Application is bound; fall back to the base context.
-        Context store = context.getApplicationContext();
+        Context store = null;
+        try { store = context == null ? null : context.getApplicationContext(); } catch (RuntimeException ignored) {}
         if (store == null) store = context;
         prefs = store.getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
@@ -86,6 +87,12 @@ public final class RuntimePreferences {
     public String cactusWhistleModelPath() {
         return prefs.getString("cactus_whistle_model", "");
     }
+
+    /** Target calendar for write tools; empty means no calendar picked (writes blocked). */
+    public String calendarWriteId() { return prefs.getString("calendar_write_id", ""); }
+
+    /** Optional human-readable label for the picked calendar (Settings display only). */
+    public String calendarWriteLabel() { return prefs.getString("calendar_write_label", ""); }
 
     /**
      * App-level interface size multiplier (0.80–1.30). Applied via densityDpi so typography and
@@ -140,5 +147,13 @@ public final class RuntimePreferences {
 
     public void setCactusWhistleModelPath(String path) {
         prefs.edit().putString("cactus_whistle_model", path == null ? "" : path.trim()).apply();
+    }
+
+    public void setCalendarWriteTarget(String id, String label) {
+        prefs.edit()
+                .putString("calendar_write_id", id == null ? "" : id)
+                .putString("calendar_write_label", label == null ? "" : label)
+                .apply();
+    }
     }
 }

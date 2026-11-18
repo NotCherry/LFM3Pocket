@@ -8,6 +8,17 @@ public final class ToolCoordinator {
     public enum Source { USER_ACTION,MODEL_PROPOSAL,IMAGE,WEB_SEARCH,DOCUMENT,BACKGROUND,UNKNOWN }
     public enum Risk { SAFE,CONFIRM }
     public interface Handler { AndroidActionExecutor.ActionResult execute(ToolRegistry.Request request); }
+    public interface PermissionPolicy {
+        boolean allowed(ToolRegistry.Request request);
+        String denialMessage(ToolRegistry.Request request);
+
+        static PermissionPolicy fromPredicate(Predicate<ToolRegistry.Request> permission) {
+            return new PermissionPolicy() {
+                @Override public boolean allowed(ToolRegistry.Request request) { return permission.test(request); }
+                @Override public String denialMessage(ToolRegistry.Request request) { return null; }
+            };
+        }
+    }
     public static final class Proposal {
         public final String id;public final ToolRegistry.Request request;public final Risk risk;public final Source source;
         private final long expires;
@@ -17,10 +28,13 @@ public final class ToolCoordinator {
         public final String status;public final Proposal proposal;public final AndroidActionExecutor.ActionResult result;
         private Outcome(String status,Proposal proposal,AndroidActionExecutor.ActionResult result){this.status=status;this.proposal=proposal;this.result=result;}
     }
-    private final Handler handler;private final Predicate<ToolRegistry.Request> permission;private final LongSupplier clock;
+    private final Handler handler;private final PermissionPolicy permission;private final LongSupplier clock;
     private final Map<String,Proposal> pending=new LinkedHashMap<>();
     private final Map<String,Outcome> completed=new LinkedHashMap<>();
-    public ToolCoordinator(Handler handler,Predicate<ToolRegistry.Request> permission,LongSupplier clock){this.handler=handler;this.permission=permission;this.clock=clock;}
+    public ToolCoordinator(Handler handler,Predicate<ToolRegistry.Request> permission,LongSupplier clock){
+        this(handler, PermissionPolicy.fromPredicate(permission), clock);
+    }
+    public ToolCoordinator(Handler handler,PermissionPolicy permission,LongSupplier clock){this.handler=handler;this.permission=permission;this.clock=clock;}
     public static Risk risk(ToolRegistry.Request request){
         if(request==null)return Risk.CONFIRM;
         switch(request.tool){
@@ -58,7 +72,7 @@ public final class ToolCoordinator {
         if(p==null)return denied(completed.containsKey(id)?"ALREADY_RESOLVED":"UNKNOWN_PROPOSAL","Action is no longer pending");
         Outcome result=denied("DECLINED","Action was not executed");remember(id,result);return result;
     }
-    private boolean permitted(ToolRegistry.Request request){try{return permission.test(request);}catch(RuntimeException e){return false;}}
+    private boolean permitted(ToolRegistry.Request request){try{return permission.allowed(request);}catch(RuntimeException e){return false;}}
     private Outcome execute(ToolRegistry.Request request){
         AndroidActionExecutor.ActionResult result;
         try{result=handler.execute(request);if(result==null)throw new IllegalStateException("Missing execution result");}
@@ -66,14 +80,23 @@ public final class ToolCoordinator {
         return new Outcome(result.status,null,result);
     }
     private static Outcome denied(String code,String message){return new Outcome(code,null,new AndroidActionExecutor.ActionResult(false,code,message));}
-    private static Outcome permissionDenied(ToolRegistry.Request request) {
-        String message = "Required permission or policy is unavailable.";
-        if (request != null && request.tool == ToolRegistry.Tool.FLASHLIGHT) {
-            message = "Grant Camera permission in Android app settings to control the flashlight.";
-        } else if (request != null && request.tool == ToolRegistry.Tool.WEATHER) {
-            message = "Enable network tools in Settings before fetching weather.";
-        } else if (request != null && request.tool == ToolRegistry.Tool.LIST_NOTIFICATIONS) {
-            message = "Enable notification access in Settings, choose allowed apps, and grant system notification access.";
+    private Outcome permissionDenied(ToolRegistry.Request request) {
+        String message = null;
+        try { message = permission.denialMessage(request); } catch (RuntimeException ignored) {}
+        if (message == null || message.trim().isEmpty()) {
+            message = "Required permission or policy is unavailable.";
+            if (request != null && request.tool == ToolRegistry.Tool.FLASHLIGHT) {
+                message = "Grant Camera permission in Android app settings to control the flashlight.";
+            } else if (request != null && request.tool == ToolRegistry.Tool.WEATHER) {
+                message = "Enable network tools in Settings before fetching weather.";
+            } else if (request != null && request.tool == ToolRegistry.Tool.LIST_NOTIFICATIONS) {
+                message = "Enable notification access in Settings, choose allowed apps, and grant system notification access.";
+            } else if (request != null && (request.tool == ToolRegistry.Tool.LIST_EVENTS
+                    || request.tool == ToolRegistry.Tool.CREATE_EVENT
+                    || request.tool == ToolRegistry.Tool.UPDATE_EVENT
+                    || request.tool == ToolRegistry.Tool.DELETE_EVENT)) {
+                message = "Calendar permission or a picked calendar is unavailable.";
+            }
         }
         return denied("PERMISSION_DENIED",message);
     }
@@ -90,6 +113,10 @@ public final class ToolCoordinator {
             case UNIT_CONVERT:return "Unit conversion";case WEATHER:return "Weather";
             case LIST_NOTIFICATIONS:return "List notifications";
             case DRAFT_MESSAGE:return "Draft message";case SEND_MESSAGE:return "Send message (open composer)";
+            case LIST_EVENTS:return "List calendar events";
+            case CREATE_EVENT:return "Create calendar event";
+            case UPDATE_EVENT:return "Update calendar event";
+            case DELETE_EVENT:return "Delete calendar event";
             default:return "Android action";
         }
     }
@@ -107,6 +134,40 @@ public final class ToolCoordinator {
             }
             out.append('"');
         }
+        appendCalendarReadback(out, request);
         return out.toString();
+    }
+
+    private static void appendCalendarReadback(StringBuilder out, ToolRegistry.Request request) {
+        if (request == null) return;
+        try {
+            if (request instanceof ToolRegistry.ListEventsRequest) {
+                ToolRegistry.ListEventsRequest r = (ToolRegistry.ListEventsRequest) request;
+                out.append('\n').append("window (local): ").append(formatLocalTime(r.windowStartEpochSec))
+                        .append(" - ").append(formatLocalTime(r.windowEndEpochSec));
+            } else if (request instanceof ToolRegistry.CreateEventRequest) {
+                ToolRegistry.CreateEventRequest r = (ToolRegistry.CreateEventRequest) request;
+                out.append('\n').append("title (local read-back): ").append(r.title);
+                out.append('\n').append("time (local): ").append(formatLocalTime(r.startEpochSec))
+                        .append(" - ").append(formatLocalTime(r.endEpochSec));
+            } else if (request instanceof ToolRegistry.UpdateEventRequest) {
+                ToolRegistry.UpdateEventRequest r = (ToolRegistry.UpdateEventRequest) request;
+                out.append('\n').append("title (local read-back): ").append(r.title);
+                out.append('\n').append("time (local): ").append(formatLocalTime(r.startEpochSec))
+                        .append(" - ").append(formatLocalTime(r.endEpochSec));
+            }
+        } catch (RuntimeException ignored) {
+            // Read-back must not fail proposal display.
+        }
+    }
+
+    private static String formatLocalTime(long epochSec) {
+        try {
+            java.time.ZonedDateTime time = java.time.Instant.ofEpochSecond(epochSec)
+                    .atZone(java.time.ZoneId.systemDefault());
+            return time.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z", Locale.ROOT));
+        } catch (RuntimeException e) {
+            return String.valueOf(epochSec);
+        }
     }
 }

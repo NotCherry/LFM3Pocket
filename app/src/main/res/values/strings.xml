@@ -169,4 +169,14 @@ com.whatsapp</string>
     <string name="settings_crash_log_empty">No crash evidence recorded yet.</string>
     <string name="settings_crash_log_exported">Crash log ready to share from this phone.</string>
     <string name="chat_interrupted_retry">Interrupted — Retry</string>
+
+    <string name="calendar_heading">CALENDAR</string>
+    <string name="calendar_help">Pick one calendar for voice write actions. Reads and writes need Calendar permission and explicit confirmation.</string>
+    <string name="calendar_none_picked">No calendar picked. Writes are blocked until you choose one.</string>
+    <string name="calendar_picked">Picked calendar: %1$s</string>
+    <string name="calendar_pick_button">Pick calendar</string>
+    <string name="calendar_clear_button">Clear calendar</string>
+    <string name="calendar_permission_needed">Calendar permission is needed to list calendars.</string>
+    <string name="calendar_no_calendars">No calendars found on this device.</string>
+    <string name="calendar_pick_title">Pick a calendar</string>
 </resources>

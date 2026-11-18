@@ -169,4 +169,14 @@ com.whatsapp</string>
     <string name="notification_access_save_allowlist">Zapisz listę dozwolonych</string>
     <string name="notification_access_empty_allowlist">Pusta lista dozwolonych: żadne powiadomienia nie zostaną zwrócone.</string>
     <string name="notification_access_allowlist_saved">Zapisano listę dozwolonych powiadomień.</string>
+
+    <string name="calendar_heading">KALENDARZ</string>
+    <string name="calendar_help">Wybierz jeden kalendarz dla głosowych akcji zapisu. Odczyt i zapis wymagają uprawnień Kalendarza i wyraźnego potwierdzenia.</string>
+    <string name="calendar_none_picked">Nie wybrano kalendarza. Zapis jest zablokowany do czasu wyboru.</string>
+    <string name="calendar_picked">Wybrany kalendarz: %1$s</string>
+    <string name="calendar_pick_button">Wybierz kalendarz</string>
+    <string name="calendar_clear_button">Wyczyść kalendarz</string>
+    <string name="calendar_permission_needed">Do wyświetlenia listy kalendarzy potrzebne jest uprawnienie Kalendarza.</string>
+    <string name="calendar_no_calendars">Na tym urządzeniu nie znaleziono kalendarzy.</string>
+    <string name="calendar_pick_title">Wybierz kalendarz</string>
 </resources>
