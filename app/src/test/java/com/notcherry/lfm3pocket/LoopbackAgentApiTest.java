@@ -25,6 +25,24 @@ public final class LoopbackAgentApiTest {
         assertFalse(approve.contains("202"));
     }
 
+    @Test public void jsonPromptUsesRealJsonEscapingAndPreservesUnicode() {
+        AtomicReference<String> seen = new AtomicReference<>();
+        String response = LoopbackAgentApi.handle("POST", "/v1/ask",
+                "{\\"prompt\\":\\"line\\\\nquote: \\\\"x\\\\" — żółć\\"}", prompt -> {
+                    seen.set(prompt);
+                    return true;
+                });
+        assertTrue(response.startsWith("HTTP/1.1 202"));
+        assertTrue("line\\nquote: \\"x\\" — żółć".equals(seen.get()));
+    }
+
+    @Test public void malformedJsonAndNonStringPromptAreRejected() {
+        assertTrue(LoopbackAgentApi.handle("POST", "/v1/ask", "{\\"prompt\\":", prompt -> true)
+                .startsWith("HTTP/1.1 400"));
+        assertTrue(LoopbackAgentApi.handle("POST", "/v1/ask", "{\\"prompt\\":42}", prompt -> true)
+                .startsWith("HTTP/1.1 400"));
+    }
+
     @Test public void blankPromptIsRejected() {
         String response = LoopbackAgentApi.handle("POST", "/v1/ask", "{\"prompt\":\"\"}", prompt -> true);
         assertTrue(response.startsWith("HTTP/1.1 400"));
