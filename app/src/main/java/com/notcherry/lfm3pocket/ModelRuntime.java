@@ -84,6 +84,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private ChatSnapshot lastSnapshot;
     private final AtomicInteger pendingTokens = new AtomicInteger();
     private final AtomicBoolean tokenFlushPosted = new AtomicBoolean();
+    private final AtomicBoolean historyRecoveryScheduled = new AtomicBoolean();
     private final LoopbackAgentApi loopback;
     private final VoiceActionRuntime voiceActions;
     private final SpeechReplyRouter speechRouter;
@@ -377,10 +378,6 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         final int born = sessionEpoch;
         worker.execute(() -> {
             if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
-            try {
-                history.markInterruptedGenerations(System.currentTimeMillis());
-            } catch (Exception ignored) {
-            }
             if (id == null || id.isBlank()) return;
             java.util.List<HistoryRepository.StoredMessage> rows;
             try {
@@ -789,6 +786,19 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private void ensureSession() {
         if (session != null) return;
         if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
+        // Queue one process-start recovery before ChatSession can enqueue a new turn.
+        // The single-thread runtime worker preserves this ordering and prevents a
+        // later Activity resume from globally interrupting an active conversation.
+        if (historyRecoveryScheduled.compareAndSet(false, true)) {
+            worker.execute(() -> {
+                try {
+                    history.markInterruptedGenerations(System.currentTimeMillis());
+                } catch (Exception error) {
+                    app.diagnostics().record(LocalDiagnostics.Kind.HISTORY, 0L,
+                            "startup recovery failed: " + error.getClass().getSimpleName());
+                }
+            });
+        }
         final int born = sessionEpoch;
         ChatSession.Persistence persistence = new ChatSession.Persistence() {
             @Override public void begin(ChatSession.StartedTurn turn) throws Exception {
