@@ -52,7 +52,7 @@ public class NotificationAccessTest {
                 true, setOf("com.allowed.app")));
         RuntimePreferences prefs = new RuntimePreferences(context);
         NotificationListActionExecutor executor = new NotificationListActionExecutor(
-                prefs,
+                () -> prefs,
                 () -> null,
                 () -> true);
         AndroidActionExecutor.ActionResult result = executor.execute("list_notifications",
@@ -64,7 +64,7 @@ public class NotificationAccessTest {
 
     @Test public void disabledAndEmptyAllowlistReturnClearErrors() {
         NotificationListActionExecutor disabled = new NotificationListActionExecutor(
-                new RuntimePreferences(new FakeContext(new FakePreferences(false, Collections.emptySet()))),
+                () -> new RuntimePreferences(new FakeContext(new FakePreferences(false, Collections.emptySet()))),
                 Collections::emptyList,
                 () -> true);
         AndroidActionExecutor.ActionResult disabledResult = disabled.execute("list_notifications",
@@ -73,7 +73,7 @@ public class NotificationAccessTest {
         assertEquals("NOTIFICATION_ACCESS_DISABLED", disabledResult.status);
 
         NotificationListActionExecutor empty = new NotificationListActionExecutor(
-                new RuntimePreferences(new FakeContext(new FakePreferences(true, Collections.emptySet()))),
+                () -> new RuntimePreferences(new FakeContext(new FakePreferences(true, Collections.emptySet()))),
                 Collections::emptyList,
                 () -> true);
         AndroidActionExecutor.ActionResult emptyResult = empty.execute("list_notifications",

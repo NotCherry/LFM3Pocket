@@ -215,9 +215,8 @@ public class Lfm3PocketApplication extends Application {
         AndroidActionExecutor builtins = new BuiltinToolsExecutor(
                 () -> new RuntimePreferences(this).networkToolsEnabled(),
                 OpenMeteoWeather.httpTransport());
-        RuntimePreferences prefs = new RuntimePreferences(this);
         AndroidActionExecutor notifications = new NotificationListActionExecutor(
-                prefs,
+                () -> new RuntimePreferences(this),
                 HanamiNotificationListenerService::snapshotOrNull,
                 () -> HanamiNotificationListenerService.isSystemEnabled(this));
         return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications);

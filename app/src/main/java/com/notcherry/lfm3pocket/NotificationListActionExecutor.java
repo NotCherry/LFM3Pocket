@@ -11,11 +11,11 @@ final class NotificationListActionExecutor implements AndroidActionExecutor {
         List<NotificationAccess.Entry> activeNotifications();
     }
 
-    private final RuntimePreferences preferences;
+    private final java.util.function.Supplier<RuntimePreferences> preferences;
     private final SnapshotProvider snapshotProvider;
     private final java.util.function.BooleanSupplier systemAccessEnabled;
 
-    NotificationListActionExecutor(RuntimePreferences preferences,
+    NotificationListActionExecutor(java.util.function.Supplier<RuntimePreferences> preferences,
                                    SnapshotProvider snapshotProvider,
                                    java.util.function.BooleanSupplier systemAccessEnabled) {
         if (preferences == null || snapshotProvider == null || systemAccessEnabled == null) {
@@ -30,11 +30,21 @@ final class NotificationListActionExecutor implements AndroidActionExecutor {
         if (!"list_notifications".equals(approvedToolName)) {
             return new ActionResult(false, "UNKNOWN_TOOL", "This Android action is not enabled.");
         }
-        if (!preferences.notificationAccessEnabled()) {
+        RuntimePreferences prefs;
+        try {
+            prefs = preferences.get();
+        } catch (RuntimeException e) {
+            prefs = null;
+        }
+        if (prefs == null) {
+            return new ActionResult(false, "NOTIFICATION_ACCESS_UNAVAILABLE",
+                    "Notification access settings are unavailable.");
+        }
+        if (!prefs.notificationAccessEnabled()) {
             return new ActionResult(false, "NOTIFICATION_ACCESS_DISABLED",
                     "Notification access is off. Enable it in Settings and grant system notification access.");
         }
-        Set<String> allowlist = preferences.notificationAllowlist();
+        Set<String> allowlist = prefs.notificationAllowlist();
         if (allowlist.isEmpty()) {
             return new ActionResult(false, "NOTIFICATION_ALLOWLIST_EMPTY",
                     "No apps are allowed for notification access. Add at least one app in Settings.");
