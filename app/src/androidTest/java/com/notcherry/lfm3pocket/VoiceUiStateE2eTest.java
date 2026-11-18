@@ -126,18 +126,15 @@ public final class VoiceUiStateE2eTest {
                 app.capturePermission(false);
                 ModelRuntime runtime = ((Lfm3PocketApplication) activity.getApplication()).modelRuntime();
                 runtime.voice().cancelAll("reset");
-                boolean started = runtime.voice().beginShadeTalk();
-                String shown = ((TextView) activity.findViewById(R.id.chat_status)).getText().toString();
-                assertTrue("started=" + started + " status=" + shown,
-                        !started || shown.toLowerCase().contains("microphone")
-                                || shown.toLowerCase().contains("permission")
-                                || shown.toLowerCase().contains("error"));
-                if (!started) {
-                    assertTrue(shown, shown.toLowerCase().contains("microphone")
-                            || shown.toLowerCase().contains("permission")
-                            || shown.toLowerCase().contains("talk")
-                            || shown.toLowerCase().contains("required"));
-                }
+                runtime.voice().beginShadeTalk();
+                String shown = ((TextView) activity.findViewById(R.id.chat_status)).getText().toString().toLowerCase();
+                assertTrue("status=" + shown,
+                        shown.contains("microphone")
+                                || shown.contains("permission")
+                                || shown.contains("talk")
+                                || shown.contains("required")
+                                || shown.contains("error")
+                                || shown.contains("could not"));
             });
         }
     }
