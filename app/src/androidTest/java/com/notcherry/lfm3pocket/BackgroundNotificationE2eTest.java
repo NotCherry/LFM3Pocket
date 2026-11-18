@@ -61,6 +61,13 @@ public final class BackgroundNotificationE2eTest {
             if (captureShots) shootShade("notification_idle.png");
 
             UiObject2 settings = device.wait(Until.findObject(By.res(pkg, "settings_open").enabled(true)), WAIT);
+            if (settings == null) {
+                UiObject2 back = device.findObject(By.res(pkg, "settings_back"));
+                if (back != null) {
+                    back.click();
+                    settings = device.wait(Until.findObject(By.res(pkg, "settings_open").enabled(true)), WAIT);
+                }
+            }
             assertNotNull(settings);
             settings.click();
             try {
