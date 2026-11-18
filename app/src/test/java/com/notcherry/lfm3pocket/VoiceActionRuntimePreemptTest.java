@@ -263,7 +263,10 @@ public final class VoiceActionRuntimePreemptTest {
                 @Override public long loadModel(String modelPath, String projectorPath) { return 1L; }
                 @Override public void unloadModel(long handle) { }
                 @Override public String generate(long handle, String prompt, String mediaPath, int maxTokens,
-                        TokenSink sink) { return null; }
+                        TokenSink sink) {
+                    if (sink != null && !inferenceOutput.isEmpty()) sink.onToken(inferenceOutput);
+                    return inferenceError;
+                }
                 @Override public boolean supportsVoiceAudioIn(long handle) { return true; }
                 @Override public void stop() { }
                 @Override public void resetStop() { }
