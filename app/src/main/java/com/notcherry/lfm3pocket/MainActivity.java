@@ -2425,9 +2425,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         runtime.setConversation(id, historyTitle);
         runtime.clearConversation();
         setSettingsOpen(false);
-        status.setText(fromSystemAssist
+        String freshStatus = fromSystemAssist
                 ? getString(R.string.fresh_chat_from_assist)
-                : getString(R.string.new_chat_ready));
+                : getString(R.string.new_chat_ready);
+        status.setText(freshStatus);
+        if (chatPanel != null) {
+            chatPanel.render(FlatTranscriptFormatter.EMPTY_TRANSCRIPT, freshStatus);
+        }
         updateControls();
     }
 
