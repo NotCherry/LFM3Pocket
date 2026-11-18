@@ -277,23 +277,27 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
                     return;
                 }
                 if (!result.isOk()) {
-                    err = result.message == null || result.message.isEmpty() ? "stt failed" : result.message;
-                    decision = VoiceConfirmLexicon.Decision.AMBIGUOUS;
-                } else {
-                    decision = VoiceConfirmLexicon.matchTranscript(result.text);
+                    String message = result.message == null || result.message.isEmpty() ? "stt failed" : result.message;
+                    rejectPendingConfirm();
+                    callbacks.onVoiceStatus().accept(message);
+                    return;
                 }
+                decision = VoiceConfirmLexicon.matchTranscript(result.text);
             } else {
                 StringBuilder recognized = new StringBuilder();
                 callbacks.engine().resetStop();
                 err = callbacks.engine().generateWithMedia(callbacks.modelHandle(),
                         VoiceToolPromptCard.confirmAsrPrompt(), new String[] { wav.getAbsolutePath() },
                         64, recognized::append);
-                String transcript = ThinkingSanitizer.clean(recognized.toString()).answer;
                 // Authorization must fail closed: partial output from a failed/cancelled decode
                 // is not a valid confirmation, even if it happens to contain "yes" or "tak".
-                decision = err == null
-                        ? VoiceConfirmLexicon.matchTranscript(transcript)
-                        : VoiceConfirmLexicon.Decision.AMBIGUOUS;
+                if (err != null && !err.isBlank()) {
+                    rejectPendingConfirm();
+                    callbacks.onVoiceStatus().accept(err);
+                    return;
+                }
+                String transcript = ThinkingSanitizer.clean(recognized.toString()).answer;
+                decision = VoiceConfirmLexicon.matchTranscript(transcript);
             }
             String id = pendingConfirmId;
             pendingConfirmId = null;
