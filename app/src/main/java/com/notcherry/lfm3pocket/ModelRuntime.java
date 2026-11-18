@@ -145,23 +145,32 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         return app.getResources().getConfiguration().getLocales().get(0);
     }
     @Override public void policyListenStarted() {
-        apply(policy.onListenStarted("Listening…"));
-        publishVoiceStatus("Listening…", false);
+        main.post(() -> {
+            apply(policy.onListenStarted("Listening…"));
+            publishVoiceStatus("Listening…", false);
+        });
     }
     @Override public void policyListenFinished() {
-        apply(policy.onListenFinished(SystemClock.elapsedRealtime()));
-        publishVoiceStatus(null, true);
+        main.post(() -> {
+            apply(policy.onListenFinished(SystemClock.elapsedRealtime()));
+            publishVoiceStatus(null, true);
+        });
     }
     @Override public void policyVoiceThinking() {
-        apply(policy.onGenerationStarted("Voice command", 512, SystemClock.elapsedRealtime()));
+        main.post(() -> apply(policy.onGenerationStarted("Voice command", 512,
+                SystemClock.elapsedRealtime())));
     }
-    @Override public void policySpeechStarted() { apply(policy.onSpeechStarted()); }
-    @Override public void policyPlaybackStarted() { apply(policy.onPlaybackStarted()); }
+    @Override public void policySpeechStarted() {
+        main.post(() -> apply(policy.onSpeechStarted()));
+    }
+    @Override public void policyPlaybackStarted() {
+        main.post(() -> apply(policy.onPlaybackStarted()));
+    }
     @Override public void policySpeechFinished() {
-        apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+        main.post(() -> apply(policy.onSpeechFinished(SystemClock.elapsedRealtime())));
     }
     @Override public void policyGenerationFinished() {
-        apply(policy.onGenerationFinished(SystemClock.elapsedRealtime()));
+        main.post(() -> apply(policy.onGenerationFinished(SystemClock.elapsedRealtime())));
     }
     public String loadedPath() { return loadedPath == null ? "" : loadedPath; }
     public boolean keepLoaded() { return preferences.keepLoaded(); }
@@ -465,11 +474,11 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     }
 
     @Override public void showConsent(String id, String text, boolean safe) {
-        apply(policy.onConsent(id, text, safe));
+        main.post(() -> apply(policy.onConsent(id, text, safe)));
     }
 
     @Override public void clearConsent() {
-        apply(policy.onConsentCleared(SystemClock.elapsedRealtime()));
+        main.post(() -> apply(policy.onConsentCleared(SystemClock.elapsedRealtime())));
     }
 
     public void onAppBackgrounded() {
