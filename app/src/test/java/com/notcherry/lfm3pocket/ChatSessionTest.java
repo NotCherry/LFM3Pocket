@@ -501,7 +501,7 @@ public class ChatSessionTest {
     @Test public void restorePreservesRollingSummaryInPromptWindow() {
         Queue worker=new Queue(),ui=new Queue();CompactEngine engine=new CompactEngine();
         ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
-                turn->{},(text,s,g)->{},snap->{});
+                turn->{},path->{},(text,s,g)->{},snap->{});
         List<ChatSession.RestoredMessage> restored=new ArrayList<>();
         for(int i=1;i<=6;i++) {
             restored.add(new ChatSession.RestoredMessage("user","Question "+i,null,"COMPLETED",null));
