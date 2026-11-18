@@ -57,7 +57,7 @@ if(NOT EXISTS "${LLAMA_DIR}/CMakeLists.txt")
 endif()
 add_subdirectory("${LLAMA_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/llama-build" EXCLUDE_FROM_ALL)
 
-add_library(lfm3pocket SHARED native.cpp speculative_decode.cpp)
+add_library(lfm3pocket SHARED native.cpp speculative_decode.cpp cactus_whistle_jni.cpp)
 target_compile_options(lfm3pocket PRIVATE "$<$<CONFIG:Debug>:-O3>" "$<$<CONFIG:Release>:-O3>")
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     target_compile_options(lfm3pocket PRIVATE -march=armv8.2-a+dotprod)
@@ -73,4 +73,22 @@ target_include_directories(lfm3pocket PRIVATE
     "${LLAMA_DIR}/include"
     "${LLAMA_DIR}/vendor"
 )
+
+# Optional: Cactus Whistle STT runtime (Android native artifacts from Cactus release).
+# Provide headers/lib at third_party/cactus/<abi>/cactus.h and libcactus.a (or set CACTUS_WHISTLE_DIR).
+set(CACTUS_WHISTLE_DIR "" CACHE PATH "Directory containing cactus.h and libcactus.a for the target ABI")
+if(CACTUS_WHISTLE_DIR STREQUAL "" AND DEFINED ANDROID_ABI)
+    if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/cactus/${ANDROID_ABI}/cactus.h")
+        get_filename_component(CACTUS_WHISTLE_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/cactus/${ANDROID_ABI}" ABSOLUTE)
+    elseif(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/cactus/android-${ANDROID_ABI}/cactus.h")
+        get_filename_component(CACTUS_WHISTLE_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/cactus/android-${ANDROID_ABI}" ABSOLUTE)
+    endif()
+endif()
+if(NOT CACTUS_WHISTLE_DIR STREQUAL "" AND EXISTS "${CACTUS_WHISTLE_DIR}/cactus.h" AND EXISTS "${CACTUS_WHISTLE_DIR}/libcactus.a")
+    message(STATUS "Hanami: enabling Cactus Whistle STT runtime from ${CACTUS_WHISTLE_DIR}")
+    target_compile_definitions(lfm3pocket PRIVATE HANAMI_CACTUS_WHISTLE=1)
+    target_include_directories(lfm3pocket PRIVATE "${CACTUS_WHISTLE_DIR}" "${CMAKE_CURRENT_LIST_DIR}/cactus_whistle")
+    target_link_libraries(lfm3pocket PRIVATE "${CACTUS_WHISTLE_DIR}/libcactus.a")
+endif()
+
 target_link_libraries(lfm3pocket PRIVATE llama llama-common mtmd android log)

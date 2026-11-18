@@ -77,6 +77,16 @@ public final class RuntimePreferences {
         return java.util.Collections.unmodifiableSet(copy);
     }
 
+    /** Speech input backend. Defaults to the existing LFM3-Omni audio-in path. */
+    public SpeechInputMode speechInputMode() {
+        return SpeechInputMode.fromWire(prefs.getString("speech_input_mode", SpeechInputMode.OMNI_AUDIO.wireName));
+    }
+
+    /** Local Cactus Whistle model path (.cact) for optional STT. Empty means unconfigured. */
+    public String cactusWhistleModelPath() {
+        return prefs.getString("cactus_whistle_model", "");
+    }
+
     /**
      * App-level interface size multiplier (0.80–1.30). Applied via densityDpi so typography and
      * spacing scale together on top of the system font scale. Default is {@link InterfaceSize#DEFAULT}.
@@ -121,5 +131,14 @@ public final class RuntimePreferences {
             }
         }
         prefs.edit().putStringSet("notification_allowlist", copy).apply();
+    }
+
+    public void setSpeechInputMode(SpeechInputMode mode) {
+        SpeechInputMode value = mode == null ? SpeechInputMode.OMNI_AUDIO : mode;
+        prefs.edit().putString("speech_input_mode", value.wireName).apply();
+    }
+
+    public void setCactusWhistleModelPath(String path) {
+        prefs.edit().putString("cactus_whistle_model", path == null ? "" : path.trim()).apply();
     }
 }
