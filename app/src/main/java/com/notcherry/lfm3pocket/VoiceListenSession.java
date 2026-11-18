@@ -57,7 +57,11 @@ public final class VoiceListenSession implements AutoCloseable {
         if (closed || state == State.LISTENING) return false;
         cancelTimeout();
         set(State.LISTENING, "Listening…");
-        return controller.start();
+        if (!controller.start()) {
+            set(State.ERROR, "Could not start microphone");
+            return false;
+        }
+        return true;
     }
 
     public synchronized void stopPtt() {
@@ -84,6 +88,7 @@ public final class VoiceListenSession implements AutoCloseable {
         ScheduledFuture<?> task = timeoutExecutor.schedule(() -> {
             synchronized (VoiceListenSession.this) {
                 if (state != State.LISTENING) return;
+                state = State.TIMEOUT;
                 controller.stop();
                 listener.changed(State.TIMEOUT, "Listen timed out");
             }
@@ -103,20 +108,32 @@ public final class VoiceListenSession implements AutoCloseable {
                 return;
             }
             if (recState == RecordingController.State.RECORDING) {
-                set(State.LISTENING, message);
+                if (state != State.TIMEOUT && state != State.CANCELLED) set(State.LISTENING, message);
                 return;
             }
             if (recState == RecordingController.State.STOPPING) {
-                listener.changed(State.LISTENING, message);
+                if (state == State.LISTENING) listener.changed(State.LISTENING, message);
                 return;
             }
             if (recState == RecordingController.State.ERROR) {
                 cancelTimeout();
-                set(State.ERROR, message);
+                if (completed != null) completed.delete();
+                if (state != State.TIMEOUT && state != State.CANCELLED) set(State.ERROR, message);
                 return;
             }
             if (recState == RecordingController.State.IDLE && completed != null && completed.isFile()) {
                 cancelTimeout();
+                if (state == State.TIMEOUT) {
+                    completed.delete();
+                    listener.changed(State.TIMEOUT, "Listen timed out");
+                    state = State.IDLE;
+                    return;
+                }
+                if (state == State.CANCELLED) {
+                    completed.delete();
+                    state = State.IDLE;
+                    return;
+                }
                 state = State.READY;
                 listener.wavReady(completed);
                 listener.changed(State.READY, "Capture ready");
@@ -126,6 +143,12 @@ public final class VoiceListenSession implements AutoCloseable {
             }
             if (recState == RecordingController.State.IDLE) {
                 cancelTimeout();
+                if (completed != null) completed.delete();
+                if (state == State.TIMEOUT) {
+                    listener.changed(State.TIMEOUT, "Listen timed out");
+                    state = State.IDLE;
+                    return;
+                }
                 if (state == State.LISTENING) set(State.CANCELLED, message);
             }
         }

@@ -581,7 +581,8 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private void publishVoiceStatus(String status, boolean allowStatusText) {
         Ui attached = ui;
         if (attached == null || !attached.isUsable()) return;
-        boolean blocked = isGenerating() || currentNotice().kind == RuntimeNotice.Kind.APPROVAL;
+        boolean listening = voiceActions != null && voiceActions.isListening();
+        boolean blocked = (isGenerating() || currentNotice().kind == RuntimeNotice.Kind.APPROVAL) && !listening;
         if (!allowStatusText || blocked) {
             attached.onVoiceStatus(null);
             return;

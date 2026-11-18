@@ -95,12 +95,15 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
     public void beginShadeTalk() {
         if (callbacks.modelHandle() == 0L || callbacks.isGenerating()) return;
         if (!((Lfm3PocketApplication) callbacks.app()).hasMicrophonePermission()) {
-            spoken.speakExact(callbacks.app().getString(R.string.voice_mic_required),
-                    callbacks.userLocale(), null);
+            String message = callbacks.app().getString(R.string.voice_mic_required);
+            callbacks.onVoiceStatus().accept(message);
+            spoken.speakExact(message, callbacks.userLocale(), null);
             return;
         }
         if (!isEnabled()) {
-            spoken.speakExact(disabledReason(), callbacks.userLocale(), null);
+            String message = disabledReason();
+            callbacks.onVoiceStatus().accept(message);
+            spoken.speakExact(message, callbacks.userLocale(), null);
             return;
         }
         preemptForNewCommand("shade talk");
