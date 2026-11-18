@@ -21,7 +21,8 @@ public final class AndroidCalendarGateway implements CalendarGateway {
 
     public AndroidCalendarGateway(Context context, Supplier<String> pickedCalendarId) {
         if (context == null || pickedCalendarId == null) throw new IllegalArgumentException("Missing calendar dependencies");
-        Context app = context.getApplicationContext();
+        Context app = null;
+        try { app = context.getApplicationContext(); } catch (RuntimeException ignored) {}
         this.context = app == null ? context : app;
         this.pickedCalendarId = pickedCalendarId;
     }
