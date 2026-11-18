@@ -76,8 +76,14 @@ public final class VoiceUiStateE2eTest {
 
     private interface Condition { boolean ok() throws Exception; }
 
-    @Test public void pttPressShowsListeningStateAndTalkbackUpdate() {
+    @Test public void pttPressShowsListeningStateAndTalkbackUpdate() throws Exception {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            waitFor("voice actions enabled", () -> {
+                final boolean[] enabled = { false };
+                scenario.onActivity(activity -> enabled[0] =
+                        ((Lfm3PocketApplication) activity.getApplication()).modelRuntime().voice().isEnabled());
+                return enabled[0];
+            });
             scenario.onActivity(activity -> {
                 ModelRuntime runtime = ((Lfm3PocketApplication) activity.getApplication()).modelRuntime();
                 assertTrue(runtime.voice().isEnabled());
@@ -96,6 +102,12 @@ public final class VoiceUiStateE2eTest {
 
     @Test public void timedTalkCancellationTimeoutAndMicErrorProduceVisibleStates() throws Exception {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            waitFor("voice actions enabled", () -> {
+                final boolean[] enabled = { false };
+                scenario.onActivity(activity -> enabled[0] =
+                        ((Lfm3PocketApplication) activity.getApplication()).modelRuntime().voice().isEnabled());
+                return enabled[0];
+            });
             scenario.onActivity(activity -> {
                 ModelRuntime runtime = ((Lfm3PocketApplication) activity.getApplication()).modelRuntime();
                 assertTrue(runtime.voice().isEnabled());
@@ -112,11 +124,11 @@ public final class VoiceUiStateE2eTest {
                 assertTrue(runtime.voice().listenSessionForTests().startTimed(60));
             });
             waitFor("timeout visible", () -> {
-                final String[] text = { "" };
+                final String[] statusText = { "" };
                 scenario.onActivity(activity ->
-                        text[0] = ((TextView) activity.findViewById(R.id.chat_status)).getText().toString());
-                timeoutStatus.set(text[0]);
-                String s = text[0].toLowerCase();
+                        statusText[0] = ((TextView) activity.findViewById(R.id.chat_status)).getText().toString());
+                timeoutStatus.set(statusText[0]);
+                String s = statusText[0].toLowerCase();
                 return s.contains("timed out") || s.contains("timeout");
             });
             assertTrue(timeoutStatus.get(), timeoutStatus.get().toLowerCase().contains("timed out")
@@ -127,14 +139,14 @@ public final class VoiceUiStateE2eTest {
                 ModelRuntime runtime = ((Lfm3PocketApplication) activity.getApplication()).modelRuntime();
                 runtime.voice().cancelAll("reset");
                 runtime.voice().beginShadeTalk();
-                String shown = ((TextView) activity.findViewById(R.id.chat_status)).getText().toString().toLowerCase();
-                assertTrue("status=" + shown,
-                        shown.contains("microphone")
-                                || shown.contains("permission")
-                                || shown.contains("talk")
-                                || shown.contains("required")
-                                || shown.contains("error")
-                                || shown.contains("could not"));
+            });
+            waitFor("microphone error visible", () -> {
+                final String[] shown = { "" };
+                scenario.onActivity(activity ->
+                        shown[0] = ((TextView) activity.findViewById(R.id.chat_status)).getText().toString().toLowerCase());
+                String s = shown[0];
+                return s.contains("microphone") || s.contains("permission") || s.contains("talk")
+                        || s.contains("required") || s.contains("error") || s.contains("could not");
             });
         }
     }
