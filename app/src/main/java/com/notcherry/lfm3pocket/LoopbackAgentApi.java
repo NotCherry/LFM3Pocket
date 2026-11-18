@@ -139,7 +139,7 @@ public final class LoopbackAgentApi {
         }
     }
 
-    private static Request readRequest(InputStream in) throws IOException {
+    static Request readRequest(InputStream in) throws IOException {
         ByteArrayOutputStream header = new ByteArrayOutputStream();
         int matched = 0;
         while (header.size() < MAX_HEADER_BYTES) {
@@ -155,7 +155,8 @@ public final class LoopbackAgentApi {
             }
         }
         if (matched != 4) return null;
-        String[] lines = header.toString(StandardCharsets.ISO_8859_1).split("\\r\\n");
+        String[] lines = header.toString(StandardCharsets.ISO_8859_1).split("\\r\\n", -1);
+        if (lines.length == 0 || lines[0].isEmpty()) return null;
         String[] requestLine = lines[0].split(" ", -1);
         if (requestLine.length != 3 || !("HTTP/1.1".equals(requestLine[2]) || "HTTP/1.0".equals(requestLine[2]))
                 || requestLine[0].isEmpty() || !requestLine[1].startsWith("/")
@@ -222,7 +223,7 @@ public final class LoopbackAgentApi {
                 + "Content-Length: " + bytes.length + "\r\nConnection: close\r\n\r\n" + message;
     }
 
-    private static final class Request {
+    static final class Request {
         final String method;
         final String path;
         final String body;

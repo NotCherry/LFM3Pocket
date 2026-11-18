@@ -48,4 +48,9 @@ public final class LoopbackAgentApiTest {
         String response = LoopbackAgentApi.handle("POST", "/v1/ask", "{\"prompt\":\"\"}", prompt -> true);
         assertTrue(response.startsWith("HTTP/1.1 400"));
     }
+
+    @Test public void readRequestRejectsBareHeaderTerminator() throws Exception {
+        byte[] bytes = "\r\n\r\n".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+        assertEquals(null, LoopbackAgentApi.readRequest(new java.io.ByteArrayInputStream(bytes)));
+    }
 }
