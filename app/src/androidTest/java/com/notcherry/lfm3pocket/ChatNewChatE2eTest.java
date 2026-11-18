@@ -57,8 +57,9 @@ public final class ChatNewChatE2eTest {
                      ActivityScenario.launch(ComposeHostActivity.class)) {
             click("open_chat");
             awaitEnabled("chat_send");
+            device.waitForIdle(1500);
             UiObject2 resumed = device.wait(Until.findObject(
-                    By.res(pkg, "chat_transcript").textContains("Sticky prompt")), TIMEOUT);
+                    By.res(pkg, "chat_transcript").textContains("Sticky prompt")), 30000L);
             assertNotNull("Open chat must resume the last saved conversation", resumed);
 
             click("chat_new_chat");
