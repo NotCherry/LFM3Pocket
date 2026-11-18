@@ -159,7 +159,7 @@ public final class LoopbackAgentApi {
         String[] requestLine = lines[0].split(" ", -1);
         if (requestLine.length != 3 || !("HTTP/1.1".equals(requestLine[2]) || "HTTP/1.0".equals(requestLine[2]))
                 || requestLine[0].isEmpty() || !requestLine[1].startsWith("/")
-                || requestLine[1].contains("#") || requestLine[1].contains("\\\")) return null;
+                || requestLine[1].contains("#") || requestLine[1].indexOf('\\') >= 0) return null;
 
         int contentLength = 0;
         boolean seenLength = false;
@@ -218,8 +218,8 @@ public final class LoopbackAgentApi {
                 : code == 403 ? "Forbidden" : code == 409 ? "Conflict"
                 : code == 503 ? "Service Unavailable" : "Not Found";
         byte[] bytes = message.getBytes(StandardCharsets.UTF_8);
-        return "HTTP/1.1 " + code + " " + reason + "\\r\\nContent-Type: text/plain; charset=utf-8\\r\\n"
-                + "Content-Length: " + bytes.length + "\\r\\nConnection: close\\r\\n\\r\\n" + message;
+        return "HTTP/1.1 " + code + " " + reason + "\r\nContent-Type: text/plain; charset=utf-8\r\n"
+                + "Content-Length: " + bytes.length + "\r\nConnection: close\r\n\r\n" + message;
     }
 
     private static final class Request {
