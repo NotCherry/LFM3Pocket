@@ -166,7 +166,7 @@ public final class LoopbackAgentApi {
         for (int i = 1; i < lines.length; i++) {
             String line = lines[i];
             if (line.isEmpty()) break;
-            if (line.charAt(0) == ' ' || line.charAt(0) == '\\t') return null;
+            if (line.charAt(0) == ' ' || line.charAt(0) == '\t') return null;
             int colon = line.indexOf(':');
             if (colon <= 0) return null;
             String name = line.substring(0, colon).trim().toLowerCase(Locale.ROOT);
