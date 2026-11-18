@@ -412,12 +412,14 @@ Order is dependency order within a phase. Do not block **V1** on new tools — e
 
 | | |
 | --- | --- |
-| **Scope** | `ROLE_ASSISTANT` / `VoiceInteractionService` opens Hanami voice session; consent unchanged |
-| **Deps** | V1 complete; **in-progress quick-wins default-assistant entry** (extend, do not fork); residency #143; SAF picker as load path |
-| **Approach** | Single system entry → resident Omni session; cold start loads GGUF |
-| **Risks** | Play assistant policy; latency without residency |
+| **Scope** | `ROLE_ASSISTANT` / `VoiceInteractionService` opens a Hanami voice session; consent unchanged |
+| **Deps** | V1 complete; **quick-wins default-assistant entry** (extended, not forked); residency #143; SAF picker as load path |
+| **Approach** | Single system entry → resident Omni voice-action session; cold start loads saved GGUF safely before talk |
+| **Risks** | Play assistant policy; latency without residency; device gesture/role behavior varies |
 | **Accept** | Role grant + gesture opens Hanami; tools still confirm; one entry path with quick-wins |
-| **Tests** | Manual arm64; bootstrap intent unit tests |
+| **Tests** | Manual arm64 role grant + gesture; bootstrap intent unit tests |
+
+**Implementation (single entry path, no duplication):** `AssistEntryActivity` remains the ACTION_ASSIST/default-assistant activity entry. `HanamiVoiceInteractionService` and `HanamiVoiceInteractionSessionService` route system assist/keyguard/session callbacks to that same activity. When invoked as the assistant, Hanami opens chat and requests the existing `VoiceActionRuntime` talk flow (same path as shade Talk/PTT): it waits for the resident or cold-loaded audio-capable Omni model, requires microphone permission, and never auto-approves tools. If no model is configured or the loaded model cannot hear audio, the app fails closed with a clear status instead of starting capture. On-device role/gesture validation remains required on arm64.
 
 ### Milestone Voice next — After voice
 

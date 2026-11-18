@@ -21,7 +21,7 @@
     <string name="tiny_voca_status_ready">tiny-voca pack ready</string>
     <string name="tiny_voca_downloading">Downloading %1$s…</string>
     <string name="default_assistant_button">Set as default assistant</string>
-    <string name="default_assistant_help">Opens the system picker so long-press power or Home assist can open Hanami into a fresh chat. Voice is not enabled yet.</string>
+    <string name="default_assistant_help">Opens the system picker so the assistant gesture (for example, long-press power) can open Hanami and start a voice session. Actions from the model still need your confirmation.</string>
     <string name="importing_model">Importing model into private storage…</string>
     <string name="opening_external_model">Opening model from storage…</string>
     <string name="loading_model">Loading model…</string>
@@ -109,6 +109,7 @@
     <string name="notification_action_talk">Talk</string>
     <string name="voice_listening">Listening…</string>
     <string name="voice_thinking">Thinking…</string>
+    <string name="assistant_voice_needs_model">Load an LFM3-Omni model with its projector to use the assistant voice session.</string>
     <string name="voice_no_audio_model">This model cannot hear audio — load LFM3-Omni with a matching mmproj projector.</string>
     <string name="voice_system_tts_fallback">System voice (labelled TTS)</string>
     <string name="voice_mic_required">Microphone permission is required for Talk.</string>

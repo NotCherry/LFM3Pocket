@@ -45,6 +45,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     public static final String EXTRA_FRESH_CHAT = "fresh_chat";
     /** Home and other in-app shortcuts that must share {@link #requestNewChat(boolean)}. */
     public static final String EXTRA_REQUEST_NEW_CHAT = "request_new_chat";
+    /** System assistant gesture: open the single entry path and start a Hanami voice session. */
+    public static final String EXTRA_ASSISTANT_VOICE_SESSION = "assistant_voice_session";
     public static final String EXTRA_SHARED_IMAGE = "shared_image_uri";
     private static final int PICK_MODEL = 42;
     private static final int PICK_MMPROJ = 43;
@@ -104,6 +106,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private String pendingImagePath = "";
     private String pendingAudioPath = "";
     private String lastAssistantReply = "";
+    private boolean pendingAssistantVoiceSession;
 
     private TextView status;
     private TextView brandTitle;
@@ -246,6 +249,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         syncInlineSettingsFields();
         syncBackgroundControls();
         final boolean launchNewChat = shouldDeferNewChat(getIntent());
+        consumeAssistantVoiceSessionIntent(getIntent());
         final boolean modelInMemory = runtime.handle() != 0L
                 && (previous.equals(runtime.loadedPath()) || isContentUri(previous));
         if (modelInMemory) {
@@ -260,6 +264,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             mainHandler.post(() -> handlePendingNewChatRequests(getIntent()));
         }
         if (pendingSwitchId != null) confirmSwitchConversation();
+        maybeStartPendingAssistantVoiceSession();
     }
 
     private String pendingSwitchId;
@@ -1533,9 +1538,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         }
         if (requestCode == REQUEST_AUDIO && microphoneRequested) {
             microphoneRequested = false;
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (granted && pendingAssistantVoiceSession) {
+                maybeStartPendingAssistantVoiceSession();
+                return;
+            }
+            if (granted
                     && foreground && !destroyed && !busy) recordingController.start();
             else status.setText("Microphone access is needed for voice input.");
+            if (!granted) pendingAssistantVoiceSession = false;
         }
     }
 
@@ -1645,7 +1656,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 if (imported != null) imported.delete();
                 importCancellation = null;
                 runOnUiThread(() -> {
-                    if (!destroyed) { busy = false; updateControls(); }
+                    if (!destroyed) {
+                        busy = false;
+                        updateControls();
+                        maybeStartPendingAssistantVoiceSession();
+                    }
                 });
             }
         });
@@ -1699,7 +1714,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 });
             } finally {
                 runOnUiThread(() -> {
-                    if (!destroyed) { busy = false; updateControls(); }
+                    if (!destroyed) {
+                        busy = false;
+                        updateControls();
+                        maybeStartPendingAssistantVoiceSession();
+                    }
                 });
             }
         });
@@ -1744,7 +1763,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     });
                 } finally {
                     runOnUiThread(() -> {
-                        if (!destroyed) { busy = false; updateControls(); }
+                        if (!destroyed) {
+                            busy = false;
+                            updateControls();
+                            maybeStartPendingAssistantVoiceSession();
+                        }
                     });
                 }
             });
@@ -1762,6 +1785,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             busy = false;
             status.setText(statusText);
             updateControls();
+            maybeStartPendingAssistantVoiceSession();
         });
     }
 
@@ -1785,6 +1809,42 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             requestNewChat(true);
             intent.removeExtra(EXTRA_FRESH_CHAT);
         }
+    }
+
+    private void consumeAssistantVoiceSessionIntent(Intent intent) {
+        if (intent == null) return;
+        if (intent.getBooleanExtra(EXTRA_ASSISTANT_VOICE_SESSION, false)) {
+            pendingAssistantVoiceSession = true;
+            intent.removeExtra(EXTRA_ASSISTANT_VOICE_SESSION);
+        }
+    }
+
+    private void maybeStartPendingAssistantVoiceSession() {
+        if (!pendingAssistantVoiceSession || destroyed) return;
+        if (runtime == null || runtime.isGenerating()) return;
+        if (runtime.handle() == 0L) {
+            String model = pocketPreferences().getString("model", "");
+            if (!busy && (model == null || model.isEmpty())) {
+                pendingAssistantVoiceSession = false;
+                status.setText(getString(R.string.assistant_voice_needs_model));
+                updateControls();
+            }
+            return;
+        }
+        if (!runtime.voice().isEnabled()) {
+            pendingAssistantVoiceSession = false;
+            status.setText(runtime.voice().disabledReason());
+            updateControls();
+            return;
+        }
+        if (!((Lfm3PocketApplication) getApplication()).hasMicrophonePermission()) {
+            microphoneRequested = true;
+            requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQUEST_AUDIO);
+            return;
+        }
+        pendingAssistantVoiceSession = false;
+        runtime.voice().beginShadeTalk();
+        updateControls();
     }
 
     private void requestNewChat(boolean fromSystemAssist) {
@@ -2062,8 +2122,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         adoptConversation(intent);
         if (pendingSwitchId != null) confirmSwitchConversation();
         if (intent != null && intent.getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) setSettingsOpen(true);
+        consumeAssistantVoiceSessionIntent(intent);
         handlePendingNewChatRequests(intent);
         applyDraft(intent);
+        maybeStartPendingAssistantVoiceSession();
     }
 
     @Override protected void onDestroy() {
