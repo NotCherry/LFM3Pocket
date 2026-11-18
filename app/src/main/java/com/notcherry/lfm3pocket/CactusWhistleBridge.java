@@ -107,7 +107,7 @@ public final class CactusWhistleBridge {
             try {
                 // Implemented in liblfm3pocket when built with HANAMI_CACTUS_WHISTLE.
                 nativeAvailable = nativeProbe();
-            } catch (UnsatisfiedLinkError | Throwable ignored) {
+            } catch (Throwable ignored) {
                 nativeAvailable = false;
             }
         }
