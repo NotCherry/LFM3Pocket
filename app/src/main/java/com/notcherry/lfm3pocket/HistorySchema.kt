@@ -6,13 +6,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity(tableName="conversations")
-data class HistoryConversation(
+data class HistoryConversation @JvmOverloads constructor(
     @PrimaryKey val id:String,
     val title:String,
     val createdAt:Long,
     val updatedAt:Long,
+    val summary:String? = null,
+    val summarizedMessageCount:Long = 0,
 ) {
-    init { require(id.isNotBlank() && createdAt>=0 && updatedAt>=0) }
+    init { require(id.isNotBlank() && createdAt>=0 && updatedAt>=0 && summarizedMessageCount>=0) }
 }
 
 @Entity(tableName="messages",foreignKeys=[ForeignKey(entity=HistoryConversation::class,
@@ -59,6 +61,8 @@ interface HistoryDao {
     @Insert fun insertConversation(value:HistoryConversation)
     @Query("SELECT * FROM conversations WHERE id=:id LIMIT 1") fun conversation(id:String):HistoryConversation?
     @Query("UPDATE conversations SET updatedAt=MAX(updatedAt,:time) WHERE id=:id") fun touchConversation(id:String,time:Long)
+    @Query("UPDATE conversations SET summary=:summary, summarizedMessageCount=:count, updatedAt=MAX(updatedAt,:time) WHERE id=:id")
+    fun updateSummary(id:String,summary:String?,count:Long,time:Long):Int
     @Insert fun insertMessage(value:HistoryMessage)
     @Query("SELECT MAX(sequence) FROM messages WHERE conversationId=:id") fun lastSequence(id:String):Long?
     @Query("SELECT * FROM messages WHERE turnId=:id LIMIT 1") fun messageForTurn(id:String):HistoryMessage?
@@ -83,7 +87,7 @@ interface HistoryDao {
     fun toolOutcomes(id:String):List<HistoryToolOutcome>
 }
 
-@Database(entities=[HistoryConversation::class,HistoryMessage::class,HistoryToolOutcome::class],version=5,exportSchema=true)
+@Database(entities=[HistoryConversation::class,HistoryMessage::class,HistoryToolOutcome::class],version=6,exportSchema=true)
 abstract class HistoryDatabase:RoomDatabase() {
     abstract fun history():HistoryDao
     companion object {
@@ -113,9 +117,15 @@ abstract class HistoryDatabase:RoomDatabase() {
                 db.execSQL("ALTER TABLE `messages` ADD COLUMN `mediaRef` TEXT")
             }
         }
+        @JvmField val MIGRATION_5_6:Migration=object:Migration(5,6){
+            override fun migrate(db:SupportSQLiteDatabase){
+                db.execSQL("ALTER TABLE `conversations` ADD COLUMN `summary` TEXT")
+                db.execSQL("ALTER TABLE `conversations` ADD COLUMN `summarizedMessageCount` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
         @JvmStatic fun get(context:Context):HistoryDatabase=instance ?: synchronized(this){
             instance ?: Room.databaseBuilder(context.applicationContext,HistoryDatabase::class.java,NAME)
-                .addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5).build().also { instance=it }
+                .addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5,MIGRATION_5_6).build().also { instance=it }
         }
     }
 }

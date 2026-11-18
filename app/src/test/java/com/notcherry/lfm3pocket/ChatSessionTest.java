@@ -403,6 +403,127 @@ public class ChatSessionTest {
         assertFalse(ChatSession.escapePromptContent(sources.get(0).url).contains("</tool_call>"));
     }
 
+    static final class CompactEngine extends Engine {
+        String summaryText="Rolling summary of earlier conversation.";
+        String summaryError;
+        boolean summaryEmpty;
+        @Override public String generateWithMedia(long h,String p,String[] media,int max,TokenSink sink){
+            calls++;prompt=p;prompts.add(p);
+            mediaByCall.add(new ArrayList<>(Arrays.asList(media)));
+            if(p.contains("Summarize this conversation")) {
+                if(!stopped && summaryText!=null && !summaryEmpty) sink.onToken(summaryText);
+                return summaryError;
+            }
+            if(!stopped) {
+                if(p.contains("Perform ASR.")) { if(asrTranscript!=null)sink.onToken(asrTranscript); }
+                else if(assistantToken!=null) sink.onToken(assistantToken);
+                else sink.onToken("Answer "+(++answerCalls));
+            }
+            return p.contains("Perform ASR.")?asrError:null;
+        }
+    }
+    static final class SummaryPersistence implements ChatSession.Persistence {
+        final List<String> summaries=new ArrayList<>();
+        final List<Integer> counts=new ArrayList<>();
+        @Override public void saveCompactSummary(String summary,int summarizedMessageCount,long atMs){
+            summaries.add(summary);counts.add(summarizedMessageCount);
+        }
+        @Override public void save(ChatSession.CompletedTurn turn){}
+    }
+
+    @Test public void compactReducesPromptTokenEstimateAndKeepsFullTranscript() {
+        Queue worker=new Queue(),ui=new Queue();CompactEngine engine=new CompactEngine();
+        SummaryPersistence persistence=new SummaryPersistence();
+        String[] status={""};
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                persistence,path->{},(text,s,g)->status[0]=s,snap->{});
+        for(int i=1;i<=6;i++) {
+            assertTrue(session.submit("User question "+i+" with some detail","","",false,"",32));
+            worker.drain();ui.drain();
+        }
+        int turnsBefore=session.snapshot().turns.size();
+        int estimateBefore=session.estimatedPromptTokens("Next question",0);
+        assertTrue("need history to compact",estimateBefore>0);
+        assertTrue(session.requestCompact(128));
+        assertEquals("Compacting conversation…",status[0]);
+        worker.drain();ui.drain();
+
+        assertTrue(session.hasSummary());
+        assertEquals("Rolling summary of earlier conversation.",session.rollingSummary());
+        assertTrue(session.summarizedMessageCount()>0);
+        assertEquals(1,persistence.summaries.size());
+        assertEquals(session.rollingSummary(),persistence.summaries.get(0));
+        assertEquals(Integer.valueOf(session.summarizedMessageCount()),persistence.counts.get(0));
+        assertEquals("full transcript stays in live session",turnsBefore,session.snapshot().turns.size());
+        assertTrue(status[0].contains("summary applied"));
+        int estimateAfter=session.estimatedPromptTokens("Next question",0);
+        assertTrue("compact must reduce prompt token estimate",estimateAfter<estimateBefore);
+
+        assertTrue(session.submit("Next question","","",false,"",32));
+        worker.drain();ui.drain();
+        String prompt=engine.prompts.get(engine.prompts.size()-1);
+        assertTrue(prompt.contains("Earlier conversation summary"));
+        assertTrue(prompt.contains("Rolling summary of earlier conversation."));
+        assertFalse(prompt.contains("User question 1 with some detail"));
+        assertTrue(prompt.contains("Next question"));
+    }
+
+    @Test public void compactFailsClosedWhenSummaryFailsOrEmpty() {
+        Queue worker=new Queue(),ui=new Queue();CompactEngine engine=new CompactEngine();
+        engine.summaryError="decoder unavailable";
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                turn->{},(text,s,g)->{},snap->{});
+        for(int i=1;i<=6;i++) {
+            assertTrue(session.submit("Question "+i,"","",false,"",32));
+            worker.drain();ui.drain();
+        }
+        int before=session.estimatedPromptTokens("Next",0);
+        assertTrue(session.requestCompact(128));
+        worker.drain();ui.drain();
+        assertFalse(session.hasSummary());
+        assertEquals(0,session.summarizedMessageCount());
+        assertTrue(session.snapshot().status.contains("Could not compact conversation"));
+        assertEquals(before,session.estimatedPromptTokens("Next",0));
+
+        engine.summaryError=null;engine.summaryEmpty=true;
+        assertTrue(session.requestCompact(128));
+        worker.drain();ui.drain();
+        assertFalse(session.hasSummary());
+        assertTrue(session.snapshot().status.contains("Could not compact conversation"));
+
+        engine.summaryEmpty=false;engine.summaryText="Now works";
+        assertTrue(session.requestCompact(128));
+        worker.drain();ui.drain();
+        assertTrue(session.hasSummary());
+        assertEquals("Now works",session.rollingSummary());
+    }
+
+    @Test public void restorePreservesRollingSummaryInPromptWindow() {
+        Queue worker=new Queue(),ui=new Queue();CompactEngine engine=new CompactEngine();
+        ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
+                turn->{},(text,s,g)->{},snap->{});
+        List<ChatSession.RestoredMessage> restored=new ArrayList<>();
+        for(int i=1;i<=6;i++) {
+            restored.add(new ChatSession.RestoredMessage("user","Question "+i,null,"COMPLETED",null));
+            restored.add(new ChatSession.RestoredMessage("assistant","Answer "+i,"turn-"+i,"COMPLETED",null));
+        }
+        session.restore(restored,"Summary of older turns",4);
+        assertTrue(session.hasSummary());
+        assertEquals("Summary of older turns",session.rollingSummary());
+        assertEquals(4,session.summarizedMessageCount());
+        assertTrue(session.snapshot().status.contains("summary applied"));
+        assertEquals(12,session.snapshot().turns.size());
+
+        assertTrue(session.submit("Follow up","","",false,"",32));
+        worker.drain();ui.drain();
+        String prompt=engine.prompts.get(engine.prompts.size()-1);
+        assertTrue(prompt.contains("Earlier conversation summary"));
+        assertTrue(prompt.contains("Summary of older turns"));
+        assertFalse(prompt.contains("Question 1"));
+        assertTrue(prompt.contains("Follow up"));
+    }
+    }
+
     private static int occurrences(String value,String token){
         return value.split(java.util.regex.Pattern.quote(token),-1).length-1;
     }

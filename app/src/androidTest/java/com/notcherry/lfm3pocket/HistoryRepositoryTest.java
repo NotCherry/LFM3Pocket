@@ -146,4 +146,21 @@ public final class HistoryRepositoryTest {
         assertEquals("COMPLETED",done.get(1).getTurnStatus());
         assertEquals("A cat on a sofa",done.get(1).getText());
     }
+
+    @Test public void conversationSummaryPersistsWithoutDroppingMessages() {
+        db=Room.inMemoryDatabaseBuilder(context,HistoryDatabase.class).build();
+        HistoryRepository repository=new HistoryRepository(db);
+        repository.beginTurn(new HistoryRepository.TurnStart("turn-1","conversation-1","Voice","First",100,null));
+        repository.completeTurn(new HistoryRepository.Turn("turn-1","conversation-1","Voice","First","Answer 1",null,
+                HistoryRepository.Status.COMPLETED,120,null,null,null));
+        repository.beginTurn(new HistoryRepository.TurnStart("turn-2","conversation-1","Voice","Second",130,null));
+        repository.completeTurn(new HistoryRepository.Turn("turn-2","conversation-1","Voice","Second","Answer 2",null,
+                HistoryRepository.Status.COMPLETED,140,null,null,null));
+        assertTrue(repository.updateConversationSummary("conversation-1","Voice","Older turns summarized",2L,150L));
+        HistoryRepository.ConversationSummary summary=repository.conversationSummary("conversation-1");
+        assertNotNull(summary);
+        assertEquals("Older turns summarized",summary.getSummary());
+        assertEquals(2L,summary.getSummarizedMessageCount());
+        assertEquals("Full transcript must remain in Room",4,repository.messages("conversation-1").size());
+    }
 }

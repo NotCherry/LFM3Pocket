@@ -72,6 +72,11 @@ class HistoryRepository(private val database: HistoryDatabase) {
         val speechTranscriptStatus: String?,
     )
 
+    data class ConversationSummary(
+        val summary: String,
+        val summarizedMessageCount: Long,
+    )
+
     companion object {
         const val INTERRUPTED_PLACEHOLDER = "Interrupted — tap Retry to send again."
     }
@@ -178,6 +183,18 @@ class HistoryRepository(private val database: HistoryDatabase) {
             )
         }
 
+    fun conversationSummary(conversationId: String): ConversationSummary? =
+        database.history().conversation(conversationId)?.let {
+            ConversationSummary(it.summary.orEmpty(), it.summarizedMessageCount)
+        }
+
+    fun updateConversationSummary(conversationId: String, title: String, summary: String?, summarizedCount: Long, at: Long): Boolean =
+        database.runInTransaction(Callable {
+            val dao = database.history()
+            ensureConversation(dao, conversationId, title, at)
+            dao.updateSummary(conversationId, summary?.takeIf { it.isNotBlank() }, summarizedCount.coerceAtLeast(0L), at) > 0
+        })
+
     /** Records an action outcome after consent/execution, attaching it to the latest reply when available. */
     fun appendToolOutcome(conversationId: String, title: String, execution: ToolExecution): Boolean =
         database.runInTransaction(Callable {
@@ -200,7 +217,8 @@ class HistoryRepository(private val database: HistoryDatabase) {
         })
 
     private fun ensureConversation(dao: HistoryDao, id: String, title: String, at: Long) {
-        if (dao.conversation(id) == null) {
+        val existing = dao.conversation(id)
+        if (existing == null) {
             dao.insertConversation(HistoryConversation(id, title, at, at))
         } else {
             dao.touchConversation(id, at)

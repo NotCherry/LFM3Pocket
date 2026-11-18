@@ -873,7 +873,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 busy = true;
                 updateControls();
             }
-        });
+        }, this::requestCompact);
         chatRoot.addView(chatPanel, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         LinearLayout mediaHost = new LinearLayout(this);
@@ -998,9 +998,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 : (playbackActive() || speaking) ? getString(R.string.stop_speech) : getString(R.string.speak_reply));
         speakButton.setEnabled((!busy || playbackActive() || speaking) && (playbackActive() || speaking
                 || (modelHandle() != 0L && settingsLoaded && !lastAssistantReply.isBlank())));
+        boolean canCompact = !busy && !speaking && !recordingActive() && !playbackActive()
+                && importCancellation == null && modelHandle() != 0L && settingsLoaded;
         chatPanel.updateControls(!busy && modelHandle() != 0L && settingsLoaded,
                 generating || speaking || recordingActive() || playbackActive() || transcribingVoiceInput || importCancellation != null,
-                !busy || generating || transcribingVoiceInput);
+                !busy || generating || transcribingVoiceInput,
+                canCompact);
 
         if (modelManager != null) {
             modelManager.showSettings(settingsLoaded ? inferenceSettings.summary() : "Loading inference settings...");
@@ -1011,6 +1014,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     model.isEmpty() ? "" : pocketPreferences().getString("model_name", new File(model).getName()),
                     projector.isEmpty() ? "" : pocketPreferences().getString("projector_name", new File(projector).getName()),
                     busy, modelHandle() != 0, description.startsWith("Model error") || description.startsWith("Import failed"));
+        }
+    }
+
+    private void requestCompact() {
+        if (busy || generating || speaking || recordingActive() || playbackActive() || modelHandle() == 0L || !settingsLoaded) {
+            if (modelHandle() == 0L) status.setText(getString(R.string.no_model_loaded));
+            return;
+        }
+        session = runtime.session();
+        boolean started = runtime.requestCompact();
+        if (!started && session != null) {
+            // Session emits a specific status when it cannot compact yet.
+            status.setText(session.snapshot() == null ? status.getText() : session.snapshot().status);
+        } else if (started) {
+            busy = true;
+            updateControls();
         }
     }
 
