@@ -15,7 +15,7 @@ final class DocumentChunker {
         if (text == null) return Collections.emptyList();
         String normalized = text.replace("\r\n", "\n").replace('\r', '\n').trim();
         if (normalized.isEmpty()) return Collections.emptyList();
-        int chunkLimit = Math.max(200, maxChunkChars);
+        int chunkLimit = Math.max(50, maxChunkChars);
         int totalLimit = Math.max(chunkLimit, maxTotalChars);
         if (normalized.length() > totalLimit) {
             normalized = normalized.substring(0, totalLimit).trim();
