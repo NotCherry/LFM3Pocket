@@ -3,31 +3,54 @@
 Created from the execution plan in [`voice-actions.md`](voice-actions.md).
 
 **Epic:** [#167 Voice actions](https://github.com/NotCherry/LFM3Pocket/issues/167)
+**Plan PR:** [#149 Plan: voice actions (Omni audio-in + first tool set)](https://github.com/NotCherry/LFM3Pocket/pull/149) (merged 2026-11-18)
+**V1 implementation PR:** [#180 Voice V1: hands-free loop (listen, Omni audio-in, speech, confirm)](https://github.com/NotCherry/LFM3Pocket/pull/180) (merged 2026-11-17)
 
-| # | Title | Phase |
-| --- | --- | --- |
-| [153](https://github.com/NotCherry/LFM3Pocket/issues/153) | Mic FGS listen session (PTT + shade Talk) | V1 |
-| [154](https://github.com/NotCherry/LFM3Pocket/issues/154) | One-pass Omni audio-in + no-audio disable | V1 |
-| [155](https://github.com/NotCherry/LFM3Pocket/issues/155) | Spoken output: Omni speech + Polish system TTS fallback | V1 |
-| [156](https://github.com/NotCherry/LFM3Pocket/issues/156) | Voice confirmation (exact read-back + tak/nie) | V1 |
-| [157](https://github.com/NotCherry/LFM3Pocket/issues/157) | Voice tool prompt card + pl/en strings | V1 |
-| [158](https://github.com/NotCherry/LFM3Pocket/issues/158) | Arm64 voice-loop device checklist | V1 |
-| [159](https://github.com/NotCherry/LFM3Pocket/issues/159) | set_reminder via notification + WorkManager | V2 |
-| [160](https://github.com/NotCherry/LFM3Pocket/issues/160) | draft_message + send_message (intent path) | V3 |
-| [161](https://github.com/NotCherry/LFM3Pocket/issues/161) | Calendar read/write tools + calendar picker | V4 |
-| [162](https://github.com/NotCherry/LFM3Pocket/issues/162) | Notification listener + list_notifications | V5 |
-| [163](https://github.com/NotCherry/LFM3Pocket/issues/163) | Default Android assistant role (coordinate, do not duplicate) | V6 |
-| [164](https://github.com/NotCherry/LFM3Pocket/issues/164) | GPU/NPU acceleration spike (Vulkan first) | next |
-| [165](https://github.com/NotCherry/LFM3Pocket/issues/165) | Rolling memory summarization | next |
-| [166](https://github.com/NotCherry/LFM3Pocket/issues/166) | Local document chat (SAF, untrusted) | next |
+## Audit snapshot (2026-11-18, branch `ao/voice-epic/root`)
 
-## Owner follow-ups (bot 403)
+| # | Title | Phase | State | Notes |
+| --- | --- | --- | --- | --- |
+| [167](https://github.com/NotCherry/LFM3Pocket/issues/167) | Voice actions | epic | OPEN | Tracking issue. Owner follow-ups still required: labels/milestones could not be created/applied by bot (HTTP 403). |
+| [153](https://github.com/NotCherry/LFM3Pocket/issues/153) | Mic FGS listen session (PTT + shade Talk) | V1 | CLOSED | Delivered in [#180](https://github.com/NotCherry/LFM3Pocket/pull/180). |
+| [154](https://github.com/NotCherry/LFM3Pocket/issues/154) | One-pass Omni audio-in + no-audio disable | V1 | CLOSED | Delivered in [#180](https://github.com/NotCherry/LFM3Pocket/pull/180). |
+| [155](https://github.com/NotCherry/LFM3Pocket/issues/155) | Spoken output: Omni speech + Polish system TTS fallback | V1 | CLOSED | Delivered in [#180](https://github.com/NotCherry/LFM3Pocket/pull/180). |
+| [156](https://github.com/NotCherry/LFM3Pocket/issues/156) | Voice confirmation (exact read-back + tak/nie) | V1 | CLOSED | Delivered in [#180](https://github.com/NotCherry/LFM3Pocket/pull/180). |
+| [157](https://github.com/NotCherry/LFM3Pocket/issues/157) | Voice tool prompt card + pl/en strings | V1 | CLOSED | Delivered in [#180](https://github.com/NotCherry/LFM3Pocket/pull/180). |
+| [158](https://github.com/NotCherry/LFM3Pocket/issues/158) | Arm64 voice-loop device checklist | V1 | CLOSED | Checklist/template landed ([`docs/VOICE_LOOP_CHECKLIST.md`](../VOICE_LOOP_CHECKLIST.md)); **no arm64 PASS/FAIL/NOT_RUN evidence recorded yet** (device identity/APK SHA/outcomes still needed). |
+| [159](https://github.com/NotCherry/LFM3Pocket/issues/159) | set_reminder via notification + WorkManager | V2 | OPEN | No PR found. Depends on existing timer/alarm tools and V1 confirm path. |
+| [160](https://github.com/NotCherry/LFM3Pocket/issues/160) | draft_message + send_message (intent path) | V3 | OPEN | No PR found. |
+| [161](https://github.com/NotCherry/LFM3Pocket/issues/161) | Calendar read/write tools + calendar picker | V4 | OPEN | No PR found. |
+| [162](https://github.com/NotCherry/LFM3Pocket/issues/162) | Notification listener + list_notifications | V5 | OPEN | No PR found. |
+| [163](https://github.com/NotCherry/LFM3Pocket/issues/163) | Default Android assistant role (coordinate, do not duplicate) | V6 | OPEN | No PR found. Coordinate with existing/in-progress assistant-entry quick-wins; do not duplicate. |
+| [164](https://github.com/NotCherry/LFM3Pocket/issues/164) | GPU/NPU acceleration spike (Vulkan first) | next | OPEN | No PR found. |
+| [165](https://github.com/NotCherry/LFM3Pocket/issues/165) | Rolling memory summarization | next | OPEN | No PR found. |
+| [166](https://github.com/NotCherry/LFM3Pocket/issues/166) | Local document chat (SAF, untrusted) | next | OPEN | No PR found. |
+| [150](https://github.com/NotCherry/LFM3Pocket/issues/150) | test-permission-probe-do-not-keep | probe | CLOSED | Safe to keep closed. |
+| [151](https://github.com/NotCherry/LFM3Pocket/issues/151) | [Voice] permission check — ignore | probe | CLOSED | Safe to keep closed. |
+| [152](https://github.com/NotCherry/LFM3Pocket/issues/152) | [Voice] label-on-create probe | probe | CLOSED | Safe to keep closed. |
 
-This agent could **create issues** (`enhancement` on create) but could **not** create labels, milestones, or update/close issues (HTTP 403).
+## Related open work (not epic child PRs)
 
-Please:
+These open PRs touch voice/runtime reliability and may affect V1 behavior or follow-on voice work; review/merge/close as appropriate before relying on V1 in production:
 
-1. Create labels: `voice`, `epic`, `phase-1` … `phase-6`, `phase-next`, `android`, `needs-device-test`
-2. Create milestones named in the plan (Voice V1–V6, Voice next)
-3. Apply labels/milestones to #167 and #153–#166
-4. Close permission probes **#150**, **#151**, **#152**
+- [#204 Fix critical voice authorization and runtime lifecycle issues](https://github.com/NotCherry/LFM3Pocket/pull/204) (draft) — mentions #190/#191/#192/#193/#196/#200/#201.
+- [#206 Reject voice confirmation when inference fails](https://github.com/NotCherry/LFM3Pocket/pull/206) — references #192.
+- [#207 fix(voice): make system TTS cleanup session-aware](https://github.com/NotCherry/LFM3Pocket/pull/207) — references #203.
+- [#208 fix(voice): clean abandoned voice-action recordings on startup](https://github.com/NotCherry/LFM3Pocket/pull/208) — references #197.
+
+No open PRs were found targeting child issues #159–#166 at audit time.
+
+## Owner follow-ups still required (bot 403)
+
+1. Create labels: `voice`, `epic`, `phase-1` … `phase-6`, `phase-next`, `android`, `needs-device-test` (some `voice`/`phase-*` labels exist on issues; verify full set and milestones).
+2. Create milestones named in the plan (Voice V1–V6, Voice next) and apply them to #167 and #153–#166.
+3. Apply/normalize labels on #167 and #153–#166 as needed.
+4. Record real arm64 device evidence for [#158](https://github.com/NotCherry/LFM3Pocket/issues/158) / [`docs/VOICE_LOOP_CHECKLIST.md`](../VOICE_LOOP_CHECKLIST.md), or explicitly track remaining NOT_RUN cases on the epic.
+
+## What remains to close epic #167
+
+- Complete, review, and merge child work for #159–#166 (V2 reminders, V3 messages, V4 calendar, V5 notifications, V6 default assistant, and next-phase items #164–#166 as scoped).
+- Resolve/land related voice correctness/reliability fixes (e.g. #204/#206/#207/#208 and linked audit issues) so shipped V1 behavior matches safety expectations.
+- Produce arm64 on-device evidence for VL-01–VL-06 (currently unrecorded) and update checklist/epic with outcomes.
+- Apply owner-managed labels/milestones and keep this index/epic task list synchronized with issue/PR reality.
+
