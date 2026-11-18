@@ -235,10 +235,13 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
             maybeTrim(wav);
             StringBuilder recognized = new StringBuilder();
             callbacks.engine().resetStop();
-            callbacks.engine().generateWithMedia(callbacks.modelHandle(), VoiceToolPromptCard.confirmAsrPrompt(),
-                    new String[] { wav.getAbsolutePath() }, 64, recognized::append);
-            VoiceConfirmLexicon.Decision decision = VoiceConfirmLexicon.matchTranscript(
-                    ThinkingSanitizer.clean(recognized.toString()).answer);
+            String err = callbacks.engine().generateWithMedia(callbacks.modelHandle(),
+                    VoiceToolPromptCard.confirmAsrPrompt(), new String[] { wav.getAbsolutePath() },
+                    64, recognized::append);
+            String transcript = ThinkingSanitizer.clean(recognized.toString()).answer;
+            VoiceConfirmLexicon.Decision decision = err == null
+                    ? VoiceConfirmLexicon.matchTranscript(transcript)
+                    : VoiceConfirmLexicon.Decision.AMBIGUOUS;
             String id = pendingConfirmId;
             pendingConfirmId = null;
             pendingConfirmDescribe = null;
@@ -249,8 +252,12 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
                         ? "Zatwierdzono." : "Approved.", callbacks.userLocale(), null);
             } else {
                 callbacks.resolveConsent(id, false);
-                spoken.speakExact(callbacks.userLocale().getLanguage().startsWith("pl")
-                        ? "Anulowano." : "Cancelled.", callbacks.userLocale(), null);
+                spoken.speakExact(err != null
+                        ? (callbacks.userLocale().getLanguage().startsWith("pl")
+                                ? "Nie udało się potwierdzić." : "Confirmation failed.")
+                        : (callbacks.userLocale().getLanguage().startsWith("pl")
+                                ? "Anulowano." : "Cancelled."),
+                        callbacks.userLocale(), null);
             }
             callbacks.clearConsent();
         } finally {

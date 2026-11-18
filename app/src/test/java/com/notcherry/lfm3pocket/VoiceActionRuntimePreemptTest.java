@@ -89,6 +89,130 @@ public final class VoiceActionRuntimePreemptTest {
         return (String) pending.get(runtime);
     }
 
+    @Test public void failedConfirmationInferenceCannotApproveTranscript() throws Exception {
+        File dir = new File(System.getProperty("java.io.tmpdir"), "voice-confirm-fail");
+        dir.mkdirs();
+        File wav = new File(dir, "confirm.wav");
+        java.nio.file.Files.write(wav.toPath(), new byte[] { 0, 1, 2, 3 });
+        AtomicInteger approved = new AtomicInteger();
+        AtomicInteger rejected = new AtomicInteger();
+        AtomicInteger cleared = new AtomicInteger();
+        ConfirmCallbacks callbacks = new ConfirmCallbacks(approved, rejected, cleared, "tak", "inference error");
+        VoiceActionRuntime runtime = new VoiceActionRuntime(callbacks, dir, () -> true,
+                Runnable::run, Runnable::run, silentFactory());
+        setPendingConfirm(runtime, "proposal-err");
+        setPendingWav(runtime, wav);
+        invokeRunConfirmPass(runtime);
+        assertEquals(0, approved.get());
+        assertEquals(1, rejected.get());
+        assertEquals(1, cleared.get());
+        assertNull(pendingConfirm(runtime));
+        assertTrue(!wav.exists());
+        runtime.listenSessionForTests().close();
+    }
+
+    @Test public void successfulYesTranscriptApproves() throws Exception {
+        File dir = new File(System.getProperty("java.io.tmpdir"), "voice-confirm-ok");
+        dir.mkdirs();
+        File wav = new File(dir, "confirm.wav");
+        java.nio.file.Files.write(wav.toPath(), new byte[] { 0, 1, 2, 3 });
+        AtomicInteger approved = new AtomicInteger();
+        AtomicInteger rejected = new AtomicInteger();
+        AtomicInteger cleared = new AtomicInteger();
+        ConfirmCallbacks callbacks = new ConfirmCallbacks(approved, rejected, cleared, "yes", null);
+        VoiceActionRuntime runtime = new VoiceActionRuntime(callbacks, dir, () -> true,
+                Runnable::run, Runnable::run, silentFactory());
+        setPendingConfirm(runtime, "proposal-ok");
+        setPendingWav(runtime, wav);
+        invokeRunConfirmPass(runtime);
+        assertEquals(1, approved.get());
+        assertEquals(0, rejected.get());
+        assertEquals(1, cleared.get());
+        runtime.listenSessionForTests().close();
+    }
+
+    private static void invokeRunConfirmPass(VoiceActionRuntime runtime) throws Exception {
+        java.lang.reflect.Method m = VoiceActionRuntime.class.getDeclaredMethod("runConfirmPass");
+        m.setAccessible(true);
+        m.invoke(runtime);
+    }
+
+    private static void setPendingWav(VoiceActionRuntime runtime, File wav) throws Exception {
+        java.lang.reflect.Field f = VoiceActionRuntime.class.getDeclaredField("pendingWav");
+        f.setAccessible(true);
+        f.set(runtime, wav);
+    }
+
+    private static RecordingController.Factory silentFactory() {
+        return () -> new RecordingController.Source() {
+            @Override public void start() { }
+            @Override public int read(short[] buffer) { return 0; }
+            @Override public void close() { }
+        };
+    }
+
+    private static final class ConfirmCallbacks implements VoiceActionRuntime.Callbacks {
+        private final AtomicInteger approved;
+        private final AtomicInteger rejected;
+        private final AtomicInteger cleared;
+        private final String transcript;
+        private final String error;
+
+        ConfirmCallbacks(AtomicInteger approved, AtomicInteger rejected, AtomicInteger cleared,
+                         String transcript, String error) {
+            this.approved = approved;
+            this.rejected = rejected;
+            this.cleared = cleared;
+            this.transcript = transcript;
+            this.error = error;
+        }
+
+        @Override public long modelHandle() { return 1L; }
+        @Override public InferenceEngine engine() {
+            return new InferenceEngine() {
+                @Override public long loadModel(String modelPath, String projectorPath) { return 1L; }
+                @Override public void unloadModel(long handle) { }
+                @Override public String generate(long handle, String prompt, String mediaPath, int maxTokens,
+                        TokenSink sink) { return null; }
+                @Override public String generateWithMedia(long handle, String prompt, String[] mediaPaths,
+                        int maxTokens, TokenSink sink) {
+                    if (transcript != null && !transcript.isEmpty()) sink.onToken(transcript);
+                    return error;
+                }
+                @Override public boolean supportsVoiceAudioIn(long handle) { return true; }
+                @Override public void stop() { }
+                @Override public void resetStop() { }
+            };
+        }
+        @Override public PlaybackController playback() {
+            return new PlaybackController(() -> { throw new UnsupportedOperationException(); },
+                    () -> true, () -> { }, Runnable::run, Runnable::run, (s, m) -> { });
+        }
+        @Override public java.util.concurrent.ExecutorService worker() {
+            return java.util.concurrent.Executors.newSingleThreadExecutor();
+        }
+        @Override public android.os.Handler main() { return null; }
+        @Override public android.content.Context app() { return null; }
+        @Override public SharedPreferences modelPrefs() { return null; }
+        @Override public ToolCoordinator toolCoordinator() { return null; }
+        @Override public boolean isGenerating() { return false; }
+        @Override public void showConsent(String proposalId, String describe, boolean safe) { }
+        @Override public void clearConsent() { cleared.incrementAndGet(); }
+        @Override public void resolveConsent(String proposalId, boolean approve) {
+            if (approve) approved.incrementAndGet(); else rejected.incrementAndGet();
+        }
+        @Override public void stopTurn() { }
+        @Override public Locale userLocale() { return Locale.US; }
+        @Override public Consumer<String> onVoiceStatus() { return s -> { }; }
+        @Override public void policyListenStarted() { }
+        @Override public void policyListenFinished() { }
+        @Override public void policyVoiceThinking() { }
+        @Override public void policySpeechStarted() { }
+        @Override public void policyPlaybackStarted() { }
+        @Override public void policySpeechFinished() { }
+        @Override public void policyGenerationFinished() { }
+    }
+
     private static final class StubCallbacks implements VoiceActionRuntime.Callbacks {
         private final AtomicInteger rejected;
 
