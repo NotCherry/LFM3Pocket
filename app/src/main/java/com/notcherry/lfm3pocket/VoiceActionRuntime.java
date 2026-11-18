@@ -289,6 +289,8 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
                         VoiceToolPromptCard.confirmAsrPrompt(), new String[] { wav.getAbsolutePath() },
                         64, recognized::append);
                 String transcript = ThinkingSanitizer.clean(recognized.toString()).answer;
+                // Authorization must fail closed: partial output from a failed/cancelled decode
+                // is not a valid confirmation, even if it happens to contain "yes" or "tak".
                 decision = err == null
                         ? VoiceConfirmLexicon.matchTranscript(transcript)
                         : VoiceConfirmLexicon.Decision.AMBIGUOUS;
