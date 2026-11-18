@@ -27,6 +27,7 @@ public final class ToolCoordinator {
             case FLASHLIGHT:case TIMER:case SHOW_ALARMS:case APPLICATION:case SETTINGS:
             case CURRENT_TIME:case CALCULATOR:case UNIT_CONVERT:case WEATHER:return Risk.SAFE;
             case VOLUME:return request instanceof ToolRegistry.VolumeRequest && ((ToolRegistry.VolumeRequest)request).stream.equals("music")?Risk.SAFE:Risk.CONFIRM;
+            case LIST_NOTIFICATIONS:return Risk.CONFIRM;
             default:return Risk.CONFIRM;
         }
     }
@@ -71,6 +72,8 @@ public final class ToolCoordinator {
             message = "Grant Camera permission in Android app settings to control the flashlight.";
         } else if (request != null && request.tool == ToolRegistry.Tool.WEATHER) {
             message = "Enable network tools in Settings before fetching weather.";
+        } else if (request != null && request.tool == ToolRegistry.Tool.LIST_NOTIFICATIONS) {
+            message = "Enable notification access in Settings, choose allowed apps, and grant system notification access.";
         }
         return denied("PERMISSION_DENIED",message);
     }
@@ -84,6 +87,7 @@ public final class ToolCoordinator {
             case COPY:return "Copy text";case SHARE:return "Share text";
             case CURRENT_TIME:return "Current time";case CALCULATOR:return "Calculator";
             case UNIT_CONVERT:return "Unit conversion";case WEATHER:return "Weather";
+            case LIST_NOTIFICATIONS:return "List notifications";
             default:return "Android action";
         }
     }

@@ -130,4 +130,16 @@
     <string name="settings_crash_log_empty">Brak zapisanych informacji o awarii.</string>
     <string name="settings_crash_log_exported">Dziennik awarii gotowy do udostępnienia z tego telefonu.</string>
     <string name="chat_interrupted_retry">Przerwano — Ponów</string>
+
+    <string name="notification_listener_label">Dostęp Hanami do powiadomień</string>
+    <string name="notification_access_heading">DOSTĘP DO POWIADOMIEŃ</string>
+    <string name="notification_access_enabled">Zezwól na streszczenia powiadomień (opcjonalnie)</string>
+    <string name="notification_access_help">Domyślnie wyłączone. Po włączeniu Hanami może odczytywać listę powiadomień tylko z dozwolonych aplikacji, gdy w ustawieniach systemu włączysz dostęp do powiadomień dla Hanami. Treść powiadomień jest traktowana jako niezaufane dane i nie może autoryzować działań.</string>
+    <string name="notification_access_open_settings">Otwórz systemowy dostęp do powiadomień</string>
+    <string name="notification_access_allowlist_label">Dozwolone pakiety aplikacji (jeden w wierszu)</string>
+    <string name="notification_access_allowlist_hint">com.example.app
+com.whatsapp</string>
+    <string name="notification_access_save_allowlist">Zapisz listę dozwolonych</string>
+    <string name="notification_access_empty_allowlist">Pusta lista dozwolonych: żadne powiadomienia nie zostaną zwrócone.</string>
+    <string name="notification_access_allowlist_saved">Zapisano listę dozwolonych powiadomień.</string>
 </resources>

@@ -23,10 +23,13 @@ A model proposes one JSON object, for example:
 | `calculator` | `expression`: safe arithmetic, at most 200 characters | — |
 | `unit_convert` | `value`: number; `from` / `to`: common length/mass/temperature/volume/speed units | — |
 | `weather` | `location` **or** `latitude`+`longitude` | — |
+| `list_notifications` | `limit`: integer 1–50; `package`: package identifier or empty string | — |
 
 Timers, alarms, and show-alarms use `android.provider.AlarmClock` intents (`ACTION_SET_TIMER` / `ACTION_SET_ALARM` / `ACTION_SHOW_ALARMS`) with the normal `com.android.alarm.permission.SET_ALARM` permission. Consent UI reads the exact action back before firing. Missing clock apps return `CLOCK_APP_UNAVAILABLE`.
 
 `weather` is gated by the Settings **network tools** toggle (default off) and calls Open-Meteo over HTTPS with no API key. Offline or toggle-off failures stay non-success. Built-in tool messages are prefixed `UNTRUSTED_*` so callers treat them as untrusted data.
+
+`list_notifications` is opt-in and default off. It requires the in-app notification access master toggle, a non-empty per-app allowlist (empty deny-all), and system notification listener access for Hanami. Results include only allowed packages, are prefixed `UNTRUSTED_NOTIFICATION_DATA`, and must be treated as untrusted: notification bodies/titles may contain prompt-injection text and cannot authorize tool proposals or actions. No tap/dismiss actions are exposed by this tool.
 
 Unknown keys, type coercions, non-integer numeric literals for integer fields, missing arguments and out-of-range values are rejected. Text cannot contain NUL; labels cannot contain control characters.
 

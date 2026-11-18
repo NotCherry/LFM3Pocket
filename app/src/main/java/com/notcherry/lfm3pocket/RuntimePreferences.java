@@ -59,6 +59,24 @@ public final class RuntimePreferences {
     /** English-only tiny-voca TTS for Speak reply (off by default). */
     public boolean tinyVocaEnglishTtsEnabled() { return prefs.getBoolean("tiny_voca_english_tts", false); }
 
+    /** Opt-in notification access for summarize-on-request. Default off. */
+    public boolean notificationAccessEnabled() { return prefs.getBoolean("notification_access_enabled", false); }
+
+    /** Per-app allowlist for notification access. Empty means deny all. */
+    public java.util.Set<String> notificationAllowlist() {
+        java.util.Set<String> stored = prefs.getStringSet("notification_allowlist", java.util.Collections.emptySet());
+        java.util.LinkedHashSet<String> copy = new java.util.LinkedHashSet<>();
+        if (stored != null) {
+            for (String value : stored) {
+                if (value != null) {
+                    String trimmed = value.trim();
+                    if (!trimmed.isEmpty()) copy.add(trimmed);
+                }
+            }
+        }
+        return java.util.Collections.unmodifiableSet(copy);
+    }
+
     /**
      * App-level interface size multiplier (0.80–1.30). Applied via densityDpi so typography and
      * spacing scale together on top of the system font scale. Default is {@link InterfaceSize#DEFAULT}.
@@ -87,5 +105,21 @@ public final class RuntimePreferences {
 
     public void setTinyVocaEnglishTtsEnabled(boolean value) {
         prefs.edit().putBoolean("tiny_voca_english_tts", value).apply();
+    }
+
+    public void setNotificationAccessEnabled(boolean value) {
+        prefs.edit().putBoolean("notification_access_enabled", value).apply();
+    }
+
+    public void setNotificationAllowlist(java.util.Set<String> packages) {
+        java.util.LinkedHashSet<String> copy = new java.util.LinkedHashSet<>();
+        if (packages != null) {
+            for (String value : packages) {
+                if (value == null) continue;
+                String trimmed = value.trim();
+                if (!trimmed.isEmpty()) copy.add(trimmed);
+            }
+        }
+        prefs.edit().putStringSet("notification_allowlist", copy).apply();
     }
 }

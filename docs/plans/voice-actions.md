@@ -406,6 +406,8 @@ Order is dependency order within a phase. Do not block **V1** on new tools — e
 | **Accept** | Default off; allowlist filter; injection regression green |
 | **Tests** | JVM allowlist + injection; unbound service error |
 
+**Implementation status (this PR):** opt-in `HanamiNotificationListenerService` (system-bound, requires user grant in Android notification access settings) + app-level master toggle and package allowlist in Settings (default off, empty deny-all). `list_notifications` tool added with bounded `limit`/`package` args, CONFIRM risk, and `UNTRUSTED_NOTIFICATION_DATA` results. System enable flow exposed from Settings. On-device validation remains required for bound listener behavior/redaction/runtime UX.
+
 ### Milestone Voice V6 — Default assistant
 
 #### [#163](https://github.com/NotCherry/LFM3Pocket/issues/163) Default Android assistant role (coordinate, do not duplicate)
