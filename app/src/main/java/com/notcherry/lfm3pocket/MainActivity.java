@@ -1907,6 +1907,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 ExternalModelStore.Opened opened = store.open(uri);
                 String modelPath;
                 String projectorPath;
+                String nextModelUri = projector ? previousModel : uri.toString();
+                String nextProjectorUri = projector ? uri.toString() : "";
                 if (projector) {
                     modelPath = resolveLoadPath(previousModel, store);
                     projectorPath = opened.path;
@@ -1916,15 +1918,25 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 }
                 GgufSelection.validate(new File(modelPath),
                         projectorPath.isEmpty() ? null : new File(projectorPath));
-                if (runtime.loadBlocking(modelPath, projectorPath, statusText -> runOnUiThread(() -> {
+                boolean loaded = runtime.loadBlocking(modelPath, projectorPath, statusText -> runOnUiThread(() -> {
                     if (!destroyed) status.setText(statusText);
-                }))) {
+                }));
+                if (loaded) {
                     pocketPreferences().edit()
-                            .putString("model", projector ? previousModel : uri.toString())
-                            .putString("mmproj", projector ? uri.toString() : "")
+                            .putString("model", nextModelUri)
+                            .putString("mmproj", nextProjectorUri)
                             .putString(projector ? "projector_name" : "model_name", displayName)
                             .apply();
                     if (!projector) pocketPreferences().edit().remove("projector_name").apply();
+                    java.util.HashSet<String> active = new java.util.HashSet<>();
+                    if (isContentUri(nextModelUri)) active.add(nextModelUri);
+                    if (isContentUri(nextProjectorUri)) active.add(nextProjectorUri);
+                    store.releaseExcept(active);
+                } else {
+                    java.util.HashSet<String> active = new java.util.HashSet<>();
+                    if (isContentUri(previousModel)) active.add(previousModel);
+                    if (isContentUri(previousProjector)) active.add(previousProjector);
+                    store.releaseExcept(active);
                 }
             } catch (Exception e) {
                 runOnUiThread(() -> {
@@ -1956,22 +1968,51 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private void loadSelectedModel(String model, String projector) {
         if (isContentUri(model) || isContentUri(projector)) {
+            final String targetModel = model;
+            final String targetProjector = projector == null ? "" : projector;
             busy = true;
             updateControls();
             status.setText(getString(R.string.opening_external_model));
             worker.execute(() -> {
                 try {
                     ExternalModelStore store = ((Lfm3PocketApplication) getApplication()).externalModels();
-                    String modelPath = resolveLoadPath(model, store);
-                    String projectorPath = projector == null || projector.isEmpty()
-                            ? "" : resolveLoadPath(projector, store);
+                    String modelPath = resolveLoadPath(targetModel, store);
+                    String projectorPath = targetProjector.isEmpty()
+                            ? "" : resolveLoadPath(targetProjector, store);
                     boolean ok = runtime.loadBlocking(modelPath, projectorPath, statusText -> runOnUiThread(() -> {
                         if (!destroyed) status.setText(statusText);
                     }));
-                    if (!ok && !destroyed) {
-                        runOnUiThread(() -> status.setText("Could not load the selected storage model."));
+                    if (ok) {
+                        java.util.HashSet<String> active = new java.util.HashSet<>();
+                        if (isContentUri(targetModel)) active.add(targetModel);
+                        if (isContentUri(targetProjector)) active.add(targetProjector);
+                        store.releaseExcept(active);
+                    } else {
+                        String currentModel = pocketPreferences().getString("model", "");
+                        String currentProjector = pocketPreferences().getString("mmproj", "");
+                        java.util.HashSet<String> active = new java.util.HashSet<>();
+                        if (isContentUri(currentModel)) active.add(currentModel);
+                        if (isContentUri(currentProjector)) active.add(currentProjector);
+                        // Keep current model usable; release only candidate descriptors not needed by it.
+                        // If the failed target differs from current, drop its descriptors.
+                        if (isContentUri(targetModel) && !active.contains(targetModel)) store.release(targetModel);
+                        if (isContentUri(targetProjector) && !active.contains(targetProjector)) store.release(targetProjector);
+                        // Defensive: do not retain unrelated stale leases beyond current selection.
+                        store.releaseExcept(active);
+                        if (!destroyed) {
+                            runOnUiThread(() -> status.setText("Could not load the selected storage model."));
+                        }
                     }
                 } catch (Exception e) {
+                    ExternalModelStore store = ((Lfm3PocketApplication) getApplication()).externalModels();
+                    String currentModel = pocketPreferences().getString("model", "");
+                    String currentProjector = pocketPreferences().getString("mmproj", "");
+                    java.util.HashSet<String> active = new java.util.HashSet<>();
+                    if (isContentUri(currentModel)) active.add(currentModel);
+                    if (isContentUri(currentProjector)) active.add(currentProjector);
+                    if (isContentUri(targetModel) && !active.contains(targetModel)) store.release(targetModel);
+                    if (isContentUri(targetProjector) && !active.contains(targetProjector)) store.release(targetProjector);
+                    store.releaseExcept(active);
                     runOnUiThread(() -> {
                         if (!destroyed) status.setText("Could not open storage model: " + e.getMessage());
                     });

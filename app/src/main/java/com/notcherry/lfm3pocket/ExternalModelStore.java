@@ -48,10 +48,6 @@ public final class ExternalModelStore {
             this.uri = uri;
             this.descriptor = descriptor;
         }
-
-        public void closeQuietly() {
-            try { descriptor.close(); } catch (Exception ignored) { }
-        }
     }
 
     private final Context context;
@@ -128,6 +124,19 @@ public final class ExternalModelStore {
         ParcelFileDescriptor descriptor = openDescriptors.remove(uri);
         if (descriptor != null) {
             try { descriptor.close(); } catch (Exception ignored) { }
+        }
+    }
+
+    /** Releases every open descriptor whose URI is not in {@code keepUris}. */
+    public synchronized void releaseExcept(java.util.Set<String> keepUris) {
+        java.util.Set<String> keep = keepUris == null ? java.util.Collections.emptySet() : keepUris;
+        java.util.Iterator<java.util.Map.Entry<String, ParcelFileDescriptor>> it =
+                openDescriptors.entrySet().iterator();
+        while (it.hasNext()) {
+            java.util.Map.Entry<String, ParcelFileDescriptor> entry = it.next();
+            if (keep.contains(entry.getKey())) continue;
+            it.remove();
+            try { entry.getValue().close(); } catch (Exception ignored) { }
         }
     }
 
