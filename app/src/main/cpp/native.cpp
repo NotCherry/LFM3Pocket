@@ -252,8 +252,23 @@ Java_com_notcherry_lfm3pocket_NativeBridge_loadModel(
     // Hanami intentionally skips mlock so the LMK can reclaim idle weight pages
     // (see docs/plans/background-mode.md).
     params.load_mode = LLAMA_LOAD_MODE_AUTO;
+#ifdef HANAMI_ENABLE_VULKAN_OFFLOAD
+    // Spike #164: opt-in Vulkan/GPU offload attempt with clean CPU fallback.
+    // If the backend/device cannot offload, or GPU load fails, retry CPU-only below.
+    if (llama_supports_gpu_offload()) {
+        params.n_gpu_layers = -1; // all layers
+    }
+#endif
     auto state = std::make_shared<ModelHandle>();
     state->model = llama_model_load_from_file(filename.c_str(), params);
+#ifdef HANAMI_ENABLE_VULKAN_OFFLOAD
+    if (!state->model && params.n_gpu_layers != 0) {
+        llama_model_params cpu_params = llama_model_default_params();
+        cpu_params.n_gpu_layers = 0;
+        cpu_params.load_mode = LLAMA_LOAD_MODE_AUTO;
+        state->model = llama_model_load_from_file(filename.c_str(), cpu_params);
+    }
+#endif
     if (!state->model) {
         return 0;
     }
@@ -345,10 +360,15 @@ Java_com_notcherry_lfm3pocket_NativeBridge_nativeBuildInfo(JNIEnv * env, jclass)
 #else
     const char * arch = "unknown";
 #endif
+#ifdef HANAMI_ENABLE_VULKAN_OFFLOAD
+    const char * gpu = " | gpu_offload=vulkan-optin(cpu-fallback)";
+#else
+    const char * gpu = " | gpu_offload=cpu-only";
+#endif
     std::string info = std::string("Hanami native | ") + arch +
             " | -O3 | GGML_NATIVE=OFF | GGML_OPENMP=OFF | GGML_CPU_KLEIDIAI=OFF"
             " | flash_attn=auto | n_batch<=1024 | KV reuse=on"
-            " | ngram-mod prompt lookup (llama.cpp v0.8.0)";
+            " | ngram-mod prompt lookup (llama.cpp v0.8.0)" + gpu;
     return make_string(env, info);
 }
 
