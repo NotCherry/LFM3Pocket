@@ -142,7 +142,9 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
         @Override public void configure(InferenceSettings settings) { configured=settings; }
         public InferenceSettings configuredSettings() { return configured; }
         private volatile boolean failLoad;
+        private volatile boolean supportsVoiceAudioIn;
         public void failNextLoad() { failLoad = true; }
+        public void setSupportsVoiceAudioIn(boolean value) { supportsVoiceAudioIn = value; }
         public void setAssistantTokenOverride(String token) { assistantTokenOverride = token; }
         private volatile String lastPrompt;
         private volatile String lastAsrPrompt;
@@ -172,6 +174,7 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
             stopRequested = false;
             loadedPath = null;
             failLoad = false;
+            supportsVoiceAudioIn = false;
             lastPrompt = null;
             lastAsrPrompt = null;
             lastMediaPath = null;
@@ -269,6 +272,10 @@ public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
             sink.onAudioPcm(pcm);
             sink.onAudioComplete();
             return null;
+        }
+
+        @Override public boolean supportsVoiceAudioIn(long handle) {
+            return supportsVoiceAudioIn;
         }
 
         @Override public void stop() {

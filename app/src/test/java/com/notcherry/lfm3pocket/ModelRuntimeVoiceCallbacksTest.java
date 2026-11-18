@@ -64,6 +64,7 @@ public final class ModelRuntimeVoiceCallbacksTest {
         @Override public void resolveConsent(String proposalId, boolean approve) { }
         @Override public void stopTurn() { }
         @Override public Locale userLocale() { return Locale.US; }
+        @Override public void onVoiceStatus(String status) { }
         @Override public void policyListenStarted() { }
         @Override public void policyListenFinished() { }
         @Override public void policyVoiceThinking() { }

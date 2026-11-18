@@ -30,6 +30,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         void onPlayback(String message);
         void onSpeech(boolean speaking, String status);
         void onToolOutcome(ToolRegistry.Request request, ToolCoordinator.Outcome outcome);
+        void onVoiceStatus(String status);
         boolean isUsable();
     }
 
@@ -143,9 +144,13 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     @Override public java.util.Locale userLocale() {
         return app.getResources().getConfiguration().getLocales().get(0);
     }
-    @Override public void policyListenStarted() { apply(policy.onListenStarted("Listening…")); }
+    @Override public void policyListenStarted() {
+        apply(policy.onListenStarted("Listening…"));
+        publishVoiceStatus("Listening…", false);
+    }
     @Override public void policyListenFinished() {
         apply(policy.onListenFinished(SystemClock.elapsedRealtime()));
+        publishVoiceStatus(null, true);
     }
     @Override public void policyVoiceThinking() {
         apply(policy.onGenerationStarted("Voice command", 512, SystemClock.elapsedRealtime()));
@@ -206,6 +211,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         if (!lastTranscript.isEmpty() || lastGenerating || !lastStatus.isEmpty())
             next.onChat(lastTranscript, lastStatus, lastGenerating);
         if (!lastAssistant.isEmpty()) next.onAssistantReply(lastAssistant);
+        next.onVoiceStatus("");
     }
 
     public void detach(Ui previous) {
@@ -566,6 +572,21 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
         if (service != null) service.stopNow();
         releaseWake();
+    }
+
+    @Override public void onVoiceStatus(String status) {
+        main.post(() -> publishVoiceStatus(status, true));
+    }
+
+    private void publishVoiceStatus(String status, boolean allowStatusText) {
+        Ui attached = ui;
+        if (attached == null || !attached.isUsable()) return;
+        boolean blocked = isGenerating() || currentNotice().kind == RuntimeNotice.Kind.APPROVAL;
+        if (!allowStatusText || blocked) {
+            attached.onVoiceStatus(null);
+            return;
+        }
+        attached.onVoiceStatus(status == null ? "" : status);
     }
 
     @Override public void resolveConsent(String proposalId, boolean approve) {

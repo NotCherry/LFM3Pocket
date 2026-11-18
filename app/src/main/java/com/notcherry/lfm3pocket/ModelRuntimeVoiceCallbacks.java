@@ -24,6 +24,7 @@ final class ModelRuntimeVoiceCallbacks implements VoiceActionRuntime.Callbacks {
         void resolveConsent(String proposalId, boolean approve);
         void stopTurn();
         Locale userLocale();
+        void onVoiceStatus(String status);
         void policyListenStarted();
         void policyListenFinished();
         void policyVoiceThinking();
@@ -53,7 +54,7 @@ final class ModelRuntimeVoiceCallbacks implements VoiceActionRuntime.Callbacks {
     @Override public void resolveConsent(String proposalId, boolean approve) { host.resolveConsent(proposalId, approve); }
     @Override public void stopTurn() { host.stopTurn(); }
     @Override public Locale userLocale() { return host.userLocale(); }
-    @Override public Consumer<String> onVoiceStatus() { return status -> { }; }
+    @Override public Consumer<String> onVoiceStatus() { return host::onVoiceStatus; }
     @Override public void policyListenStarted() { host.policyListenStarted(); }
     @Override public void policyListenFinished() { host.policyListenFinished(); }
     @Override public void policyVoiceThinking() { host.policyVoiceThinking(); }
