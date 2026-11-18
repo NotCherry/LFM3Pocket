@@ -14,6 +14,7 @@ A model proposes one JSON object, for example:
 | `set_volume` | `stream`: music/alarm/ring/notification; `percent`: integer 0–100 | — |
 | `set_timer` | `seconds`: integer 1–86400 | `label`: single-line text, at most 100 UTF-16 units; default empty |
 | `set_alarm` | `hour`: integer 0–23; `minute`: integer 0–59 | `label`: same as timer; `days`: unique Calendar weekdays 1–7 |
+| `set_reminder` | `when_epoch_sec`: integer epoch seconds in `now+60s..now+366 days`; `title`: 0–100 UTF-16 units, one line, no HTML; `body`: 0–500 UTF-16 units, no HTML | — |
 | `show_alarms` | — | — |
 | `open_application` | `package`: package identifier, at most 255 characters | — |
 | `open_settings` | `page`: wifi/bluetooth/sound/display/application | — |
@@ -27,6 +28,8 @@ A model proposes one JSON object, for example:
 
 Timers, alarms, and show-alarms use `android.provider.AlarmClock` intents (`ACTION_SET_TIMER` / `ACTION_SET_ALARM` / `ACTION_SHOW_ALARMS`) with the normal `com.android.alarm.permission.SET_ALARM` permission. Consent UI reads the exact action back before firing. Missing clock apps return `CLOCK_APP_UNAVAILABLE`.
 
+`set_reminder` schedules a local notification reminder via inexact `WorkManager` (persisted across process death/restart). Posting requires `POST_NOTIFICATIONS` on Android 13+. No exact alarm permission is requested.
+
 `weather` is gated by the Settings **network tools** toggle (default off) and calls Open-Meteo over HTTPS with no API key. Offline or toggle-off failures stay non-success. Built-in tool messages are prefixed `UNTRUSTED_*` so callers treat them as untrusted data.
 
 `list_notifications` is opt-in and default off. It requires the in-app notification access master toggle, a non-empty per-app allowlist (empty deny-all), and system notification listener access for Hanami. Results include only allowed packages, are prefixed `UNTRUSTED_NOTIFICATION_DATA`, and must be treated as untrusted: notification bodies/titles may contain prompt-injection text and cannot authorize tool proposals or actions. No tap/dismiss actions are exposed by this tool.
@@ -39,6 +42,6 @@ The JSON reader accepts standard JSON only: no comments, single-quoted/unquoted 
 
 `ToolCoordinator` accepts only immutable validated requests. App code supplies origin separately; JSON cannot claim user authority. An explicit app control with the exact arguments is `USER_ACTION`; ordinary model/chat output is `MODEL_PROPOSAL` and always needs approval. Image, web-search, document, background and unknown sources cannot authorize actions.
 
-Flashlight, timer creation **request**, show-alarms, installed-app launch, fixed settings pages, music volume, current time, calculator, unit conversion and weather are SAFE. Alarm, non-music volume, clipboard and sharing require confirmation; unknown risk defaults to confirmation. Individual handlers still enforce Android permissions, availability and policy. The coordinator checks permission/policy both before proposing and immediately before executing.
+Flashlight, timer creation **request**, show-alarms, installed-app launch, fixed settings pages, music volume, current time, calculator, unit conversion and weather are SAFE. Alarm, reminder, non-music volume, clipboard and sharing require confirmation; unknown risk defaults to confirmation. Individual handlers still enforce Android permissions, availability and policy. The coordinator checks permission/policy both before proposing and immediately before executing.
 
 Pending proposals expire after 60 seconds using a monotonic clock and have random IDs; at most 32 may be pending. Internal, non-exported `ToolConfirmationActivity` receives only an ID and displays the stored action and exact arguments, escaping control/bidi text. Approve consumes the proposal before execution; rejection, timeout, permission revocation and replay produce no new side effect.

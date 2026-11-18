@@ -94,6 +94,7 @@ public class Lfm3PocketApplication extends Application {
                     !(request instanceof ToolRegistry.VolumeRequest) &&
                     !(request instanceof ToolRegistry.TimerRequest) &&
                     !(request instanceof ToolRegistry.AlarmRequest) &&
+                    !(request instanceof ToolRegistry.ReminderRequest) &&
                     !(request instanceof ToolRegistry.ShowAlarmsRequest) &&
                     !(request instanceof ToolRegistry.ApplicationRequest) &&
                     !(request instanceof ToolRegistry.SettingsRequest) &&
@@ -139,6 +140,13 @@ public class Lfm3PocketApplication extends Application {
             }
             if (request.tool == ToolRegistry.Tool.LIST_NOTIFICATIONS) {
                 // Policy is enforced in the executor so callers get specific, testable error states.
+                return true;
+            }
+            if (request.tool == ToolRegistry.Tool.REMINDER) {
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    return checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                            == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                }
                 return true;
             }
             return true;
@@ -206,6 +214,7 @@ public class Lfm3PocketApplication extends Application {
         AndroidActionExecutor volume = new VolumeActionExecutor(new VolumeController(new AndroidAudioVolume(this)));
         AndroidActionExecutor timer = new TimerActionExecutor(new TimerController(new AndroidClockTimer(this)));
         AndroidActionExecutor alarm = new AlarmActionExecutor(new AlarmController(new AndroidClockAlarm(this)));
+        AndroidActionExecutor reminder = new ReminderActionExecutor(new WorkManagerReminderScheduler(this));
         AndroidActionExecutor application = new ApplicationActionExecutor(
                 new InstalledAppController(new AndroidInstalledAppLauncher(this)));
         AndroidActionExecutor settings = new SettingsActionExecutor(new SettingsPageController(new AndroidSettingsLauncher(this)));
@@ -219,6 +228,7 @@ public class Lfm3PocketApplication extends Application {
                 () -> new RuntimePreferences(this),
                 HanamiNotificationListenerService::snapshotOrNull,
                 () -> HanamiNotificationListenerService.isSystemEnabled(this));
-        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications);
+        AndroidActionExecutor reminder = new ReminderActionExecutor(new WorkManagerReminderScheduler(this));
+        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, reminder);
     }
 }
