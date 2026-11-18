@@ -846,7 +846,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (voiceMic) {
             String description = (voiceUiStatus != null && !voiceUiStatus.isEmpty())
                     ? voiceUiStatus
-                    : getString(R.string.voice_record_talkback);
+                    : (voiceListening ? getString(R.string.voice_listening)
+                            : getString(R.string.voice_record_talkback));
+            if (voiceListening && !description.toLowerCase(java.util.Locale.ROOT).contains("listen")) {
+                description = getString(R.string.voice_listening);
+            }
             recordButton.setContentDescription(description);
             if (!description.equals(recordButton.getTag(R.id.voice_record))) {
                 recordButton.setTag(R.id.voice_record, description);

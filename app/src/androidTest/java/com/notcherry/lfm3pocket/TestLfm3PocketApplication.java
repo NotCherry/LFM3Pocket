@@ -12,8 +12,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Isolated instrumentation-only application. No model files or JNI are used for UI E2E. */
 public final class TestLfm3PocketApplication extends Lfm3PocketApplication {
     private volatile boolean capturePermission;
-    public void capturePermission(boolean value){capturePermission=value;}
-    @Override public boolean hasMicrophonePermission(){return capturePermission || super.hasMicrophonePermission();}
+    private volatile boolean forceDenyMicrophone;
+    public void capturePermission(boolean value){capturePermission=value; forceDenyMicrophone=!value;}
+    public void forceMicrophonePermission(boolean granted){capturePermission=granted; forceDenyMicrophone=!granted;}
+    @Override public boolean hasMicrophonePermission(){
+        if (forceDenyMicrophone) return false;
+        return capturePermission || super.hasMicrophonePermission();
+    }
     private final AtomicInteger captureOpened=new AtomicInteger(),captureClosed=new AtomicInteger();
     private volatile boolean shortCapture;
     private volatile CountDownLatch captured=new CountDownLatch(1),captureReleased=new CountDownLatch(1);

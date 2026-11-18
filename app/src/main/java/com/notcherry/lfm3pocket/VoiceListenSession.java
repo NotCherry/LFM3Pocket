@@ -108,11 +108,11 @@ public final class VoiceListenSession implements AutoCloseable {
                 return;
             }
             if (recState == RecordingController.State.RECORDING) {
-                if (state != State.TIMEOUT && state != State.CANCELLED) set(State.LISTENING, message);
+                if (state != State.TIMEOUT && state != State.CANCELLED) set(State.LISTENING, "Listening…");
                 return;
             }
             if (recState == RecordingController.State.STOPPING) {
-                if (state == State.LISTENING) listener.changed(State.LISTENING, message);
+                if (state == State.LISTENING) listener.changed(State.LISTENING, "Finishing listening…");
                 return;
             }
             if (recState == RecordingController.State.ERROR) {
