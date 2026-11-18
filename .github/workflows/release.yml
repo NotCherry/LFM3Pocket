@@ -46,6 +46,38 @@ jobs:
           # Need a token that can push the auto-release tag.
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Wait for Android Stage 1 CI on this exact commit
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/workflows/build-apk.yml/runs?head_sha=${GITHUB_SHA}&per_page=20"
+          for attempt in $(seq 1 180); do
+            response="$(curl --fail --silent --show-error \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${api}")"
+            run="$(printf '%s' "${response}" | jq -c --arg sha "${GITHUB_SHA}" \
+              '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.created_at) | last // empty')"
+            if [ -n "${run}" ]; then
+              status="$(printf '%s' "${run}" | jq -r '.status')"
+              conclusion="$(printf '%s' "${run}" | jq -r '.conclusion // empty')"
+              run_url="$(printf '%s' "${run}" | jq -r '.html_url')"
+              echo "Android Stage 1 CI: ${status}/${conclusion} (${run_url})"
+              if [ "${status}" = "completed" ]; then
+                if [ "${conclusion}" = "success" ]; then exit 0; fi
+                echo "Refusing to release: Android Stage 1 CI did not succeed for ${GITHUB_SHA}." >&2
+                exit 1
+              fi
+            else
+              echo "Waiting for Android Stage 1 CI to register ${GITHUB_SHA}..."
+            fi
+            sleep 30
+          done
+          echo "Timed out waiting for Android Stage 1 CI for ${GITHUB_SHA}." >&2
+          exit 1
+
       - name: Prove version bump logic
         run: python3 .github/scripts/next-hanami-version.py --self-test
 
