@@ -18,7 +18,13 @@ final class WorkManagerReminderScheduler implements ReminderScheduler {
     }
 
     WorkManagerReminderScheduler(Context context, java.util.function.LongSupplier nowEpochSec) {
-        this.context = context == null ? null : context.getApplicationContext();
+        Context applicationContext = null;
+        try {
+            if (context != null) applicationContext = context.getApplicationContext();
+        } catch (RuntimeException ignored) {
+            // A contract test may construct an unattached Application.
+        }
+        this.context = applicationContext == null ? context : applicationContext;
         this.nowEpochSec = nowEpochSec == null ? () -> System.currentTimeMillis() / 1000L : nowEpochSec;
     }
 
