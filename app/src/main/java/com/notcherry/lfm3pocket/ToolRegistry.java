@@ -132,7 +132,10 @@ public final class ToolRegistry {
                 case VOLUME:keys(args,"stream","percent");choice(args,"stream","music","alarm","ring","notification");integer(args,"percent",0,100);break;
                 case TIMER:keys(args,"seconds","label");integer(args,"seconds",1,86400);label(args);break;
                 case ALARM:keys(args,"hour","minute","label","days");integer(args,"hour",0,23);integer(args,"minute",0,59);label(args);days(args);break;
-                case REMINDER:keys(args,"when_epoch_sec","title","body");reminder(args,nowEpochSec.getAsLong());break;
+                case REMINDER:keys(args,"when_epoch_sec","title","body");
+                    if(!args.containsKey("when_epoch_sec") || !args.containsKey("title") || !args.containsKey("body"))
+                        bad("Expected exactly when_epoch_sec, title, and body");
+                    reminder(args,nowEpochSec.getAsLong());break;
                 case SHOW_ALARMS:keys(args);break;
                 case APPLICATION:keys(args,"package");String name=text(args,"package",1,255);
                     if(!name.matches("(?:[A-Za-z][A-Za-z0-9_]*\\.)+[A-Za-z][A-Za-z0-9_]*"))bad("Expected an installed package identifier");break;
