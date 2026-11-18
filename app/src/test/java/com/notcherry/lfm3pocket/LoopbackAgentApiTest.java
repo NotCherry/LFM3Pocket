@@ -1,5 +1,6 @@
 package com.notcherry.lfm3pocket;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -16,7 +17,7 @@ public final class LoopbackAgentApiTest {
         };
         String ask = LoopbackAgentApi.handle("POST", "/v1/ask", "{\"prompt\":\"tide height\"}", handler);
         assertTrue(ask.startsWith("HTTP/1.1 202"));
-        assertTrue("tide height".equals(seen.get()));
+        assertEquals("tide height", seen.get());
 
         String approve = LoopbackAgentApi.handle("POST", "/v1/approve",
                 "{\"proposal_id\":\"anything\"}", handler);
@@ -27,19 +28,19 @@ public final class LoopbackAgentApiTest {
 
     @Test public void jsonPromptUsesRealJsonEscapingAndPreservesUnicode() {
         AtomicReference<String> seen = new AtomicReference<>();
-        String response = LoopbackAgentApi.handle("POST", "/v1/ask",
-                "{\\"prompt\\":\\"line\\\\nquote: \\\\"x\\\\" — żółć\\"}", prompt -> {
-                    seen.set(prompt);
-                    return true;
-                });
+        String json = "{\"prompt\":\"line\\nquote: \\\"x\\\" — żółć\"}";
+        String response = LoopbackAgentApi.handle("POST", "/v1/ask", json, prompt -> {
+            seen.set(prompt);
+            return true;
+        });
         assertTrue(response.startsWith("HTTP/1.1 202"));
-        assertTrue("line\\nquote: \\"x\\" — żółć".equals(seen.get()));
+        assertEquals("line\nquote: \"x\" — żółć", seen.get());
     }
 
     @Test public void malformedJsonAndNonStringPromptAreRejected() {
-        assertTrue(LoopbackAgentApi.handle("POST", "/v1/ask", "{\\"prompt\\":", prompt -> true)
+        assertTrue(LoopbackAgentApi.handle("POST", "/v1/ask", "{\"prompt\":", prompt -> true)
                 .startsWith("HTTP/1.1 400"));
-        assertTrue(LoopbackAgentApi.handle("POST", "/v1/ask", "{\\"prompt\\":42}", prompt -> true)
+        assertTrue(LoopbackAgentApi.handle("POST", "/v1/ask", "{\"prompt\":42}", prompt -> true)
                 .startsWith("HTTP/1.1 400"));
     }
 
