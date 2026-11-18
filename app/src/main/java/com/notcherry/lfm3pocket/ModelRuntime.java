@@ -211,7 +211,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         if (!lastTranscript.isEmpty() || lastGenerating || !lastStatus.isEmpty())
             next.onChat(lastTranscript, lastStatus, lastGenerating);
         if (!lastAssistant.isEmpty()) next.onAssistantReply(lastAssistant);
-        next.onVoiceStatus("");
+        next.onVoiceStatus(null);
     }
 
     public void detach(Ui previous) {
@@ -995,6 +995,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         @Override public String generateSpeech(long model, String prompt, SpeechOptions options, AudioSink sink) {
             return delegate.generateSpeech(model, prompt, options, sink);
         }
+        @Override public boolean supportsVoiceAudioIn(long handle) { return delegate.supportsVoiceAudioIn(handle); }
         @Override public void stop() { delegate.stop(); }
         @Override public void resetStop() { delegate.resetStop(); }
     }
