@@ -82,6 +82,11 @@ public class Lfm3PocketApplication extends Application {
     private InferenceEngine inferenceEngine;
     private AndroidActionExecutor actionExecutor;
     private ToolCoordinator toolCoordinator;
+    private MessageDraftStore messageDraftStore;
+    public final synchronized MessageDraftStore messageDraftStore() {
+        if (messageDraftStore == null) messageDraftStore = new MessageDraftStore();
+        return messageDraftStore;
+    }
     public final synchronized ToolCoordinator toolCoordinator() {
         if (toolCoordinator == null) toolCoordinator = new ToolCoordinator(
                 createToolHandler(), createToolPermissionCheck(), createToolClock());
@@ -103,7 +108,9 @@ public class Lfm3PocketApplication extends Application {
                     !(request instanceof ToolRegistry.CalculatorRequest) &&
                     !(request instanceof ToolRegistry.UnitConvertRequest) &&
                     !(request instanceof ToolRegistry.WeatherRequest) &&
-                    !(request instanceof ToolRegistry.ListNotificationsRequest)) {
+                    !(request instanceof ToolRegistry.ListNotificationsRequest) &&
+                    !(request instanceof ToolRegistry.DraftMessageRequest) &&
+                    !(request instanceof ToolRegistry.SendMessageRequest)) {
                 return new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
                         "This Android tool is not enabled yet");
             }
@@ -228,6 +235,8 @@ public class Lfm3PocketApplication extends Application {
                 () -> new RuntimePreferences(this),
                 HanamiNotificationListenerService::snapshotOrNull,
                 () -> HanamiNotificationListenerService.isSystemEnabled(this));
-        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, reminder);
+        MessageActionController mc = new MessageActionController(messageDraftStore(), new AndroidMessageActions(this));
+        MessageActionExecutor message = new MessageActionExecutor(mc);
+        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, reminder, message);
     }
 }

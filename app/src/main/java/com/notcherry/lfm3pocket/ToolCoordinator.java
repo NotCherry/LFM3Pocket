@@ -89,6 +89,7 @@ public final class ToolCoordinator {
             case CURRENT_TIME:return "Current time";case CALCULATOR:return "Calculator";
             case UNIT_CONVERT:return "Unit conversion";case WEATHER:return "Weather";
             case LIST_NOTIFICATIONS:return "List notifications";
+            case DRAFT_MESSAGE:return "Draft message";case SEND_MESSAGE:return "Send message (open composer)";
             default:return "Android action";
         }
     }
