@@ -294,6 +294,9 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         }
         unloading = true;
         speechCancel = true;
+        // Voice capture/confirmation owns a separate recorder and can outlive a chat turn.
+        // Stop it before retiring the model handle so no late WAV callback can infer on it.
+        voiceActions.cancelAll("Model unloading");
         if (session != null) session.stop();
         engine.stop();
         playback.stop();
