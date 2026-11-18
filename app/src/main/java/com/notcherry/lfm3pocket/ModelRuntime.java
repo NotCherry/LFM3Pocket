@@ -794,7 +794,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 try {
                     history.markInterruptedGenerations(System.currentTimeMillis());
                 } catch (Exception error) {
-                    app.diagnostics().record(LocalDiagnostics.Kind.HISTORY, 0L,
+                    app.diagnostics().record(LocalDiagnostics.Kind.STRESS, 0L,
                             "startup recovery failed: " + error.getClass().getSimpleName());
                 }
             });
