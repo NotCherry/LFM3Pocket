@@ -72,7 +72,13 @@ public final class BackgroundNotificationE2eTest {
             UiObject2 keep = device.wait(Until.findObject(By.res(pkg, "settings_keep_loaded")), WAIT);
             assertNotNull(keep);
             assertTrue(keep.isChecked());
-            assertNotNull(device.findObject(By.res(pkg, "settings_idle_unload")));
+            try {
+                UiScrollable scroll = new UiScrollable(new UiSelector().resourceId(pkg + ":id/model_configuration_scroll"));
+                scroll.setAsVerticalList();
+                scroll.scrollIntoView(new UiSelector().resourceId(pkg + ":id/settings_idle_unload"));
+            } catch (Exception ignored) {
+            }
+            assertNotNull(device.wait(Until.findObject(By.res(pkg, "settings_idle_unload")), WAIT));
             assertNotNull(device.findObject(By.res(pkg, "settings_lock_preview")));
             if (captureShots) shoot("settings_background.png");
 
