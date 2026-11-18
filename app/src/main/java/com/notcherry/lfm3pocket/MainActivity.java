@@ -1019,7 +1019,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private void requestCompact() {
         if (busy || generating || speaking || recordingActive() || playbackActive() || modelHandle() == 0L || !settingsLoaded) {
-            if (modelHandle() == 0L) status.setText(getString(R.string.no_model_loaded));
+            if (modelHandle() == 0L) status.setText("No model loaded.");
             return;
         }
         session = runtime.session();
