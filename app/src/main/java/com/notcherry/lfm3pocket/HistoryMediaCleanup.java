@@ -19,20 +19,34 @@ public final class HistoryMediaCleanup {
 
     /** Removes transient media left after inference, cancellation, or process death. */
     public static boolean deleteTemporaryAttachments(Context context) {
+        return deleteTemporaryAttachments(context.getCacheDir());
+    }
+
+    static boolean deleteTemporaryAttachments(File cache) {
         boolean success=true;
-        File cache=context.getCacheDir();
+        if (cache == null) return false;
         File[] cached=cache.listFiles();
         if(cached!=null)for(File file:cached) {
             if(isPhoto(file))success=delete(file)&&success;
         }
-        File recordings=new File(cache,"recordings");
-        File[] audio=recordings.listFiles();
-        if(audio!=null)for(File file:audio) {
-            if(file.isFile() && (file.getName().startsWith("voice-") || file.getName().endsWith(".partial")))
-                success=delete(file)&&success;
+        success = deleteVoiceDir(new File(cache, "recordings")) && success;
+        success = deleteVoiceDir(new File(cache, "voice-actions")) && success;
+        return success;
+    }
+
+    private static boolean deleteVoiceDir(File dir) {
+        boolean success = true;
+        File[] audio = dir.listFiles();
+        if (audio != null) for (File file : audio) {
+            if (file.isFile() && (file.getName().startsWith("voice-") || file.getName().endsWith(".partial")
+                    || file.getName().endsWith(".wav"))) {
+                success = delete(file) && success;
+            }
         }
-        if(recordings.isDirectory() && recordings.list()!=null && recordings.list().length==0)
-            success=delete(recordings)&&success;
+        if (dir.isDirectory()) {
+            String[] remaining = dir.list();
+            if (remaining != null && remaining.length == 0) success = delete(dir) && success;
+        }
         return success;
     }
 
