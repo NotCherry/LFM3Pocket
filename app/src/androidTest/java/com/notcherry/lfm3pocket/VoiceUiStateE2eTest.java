@@ -151,11 +151,16 @@ public final class VoiceUiStateE2eTest {
                 runtime.voice().beginShadeTalk();
             });
             waitFor("microphone error visible", () -> {
-                final String[] shown = { "" };
-                scenario.onActivity(activity ->
-                        shown[0] = ((TextView) activity.findViewById(R.id.chat_status)).getText().toString().toLowerCase());
+                final String[] shown = { "", "" };
+                scenario.onActivity(activity -> {
+                    shown[0] = ((TextView) activity.findViewById(R.id.chat_status)).getText().toString().toLowerCase();
+                    shown[1] = activity.getString(R.string.voice_mic_required).toLowerCase();
+                });
                 String s = shown[0];
-                return s.contains("microphone") || s.contains("permission") || s.contains("talk")
+                String expected = shown[1];
+                return (expected != null && !expected.isEmpty() && s.contains(expected))
+                        || s.contains("microphone") || s.contains("permission") || s.contains("talk")
+                        || s.contains("mów") || s.contains("mikrofon") || s.contains("uprawn")
                         || s.contains("required") || s.contains("error") || s.contains("could not");
             });
         }
