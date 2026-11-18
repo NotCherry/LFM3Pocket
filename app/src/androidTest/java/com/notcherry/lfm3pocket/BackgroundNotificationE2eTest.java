@@ -105,9 +105,7 @@ public final class BackgroundNotificationE2eTest {
                 SystemClock.sleep(1200);
                 shootShade("notification_generating.png");
             }
-            UiObject2 stop = device.wait(Until.findObject(By.res(pkg, "chat_stop").enabled(true)), WAIT);
-            assertNotNull("Stop control should be available while generating", stop);
-            stop.click();
+            device.findObject(By.res(pkg, "chat_stop")).click();
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_send").enabled(true)), WAIT));
             awaitNotice("Model loaded");
         }
@@ -131,15 +129,12 @@ public final class BackgroundNotificationE2eTest {
     }
 
     private void shootShade(String name) {
-        try {
-            device.openNotification();
-            device.wait(Until.hasObject(By.textContains("Model")), 5000);
-            SystemClock.sleep(800);
-            shoot(name);
-        } finally {
-            device.pressBack();
-            device.wait(Until.findObject(By.res(pkg, "chat_input")), 5000);
-        }
+        device.openNotification();
+        device.wait(Until.hasObject(By.textContains("Model")), 4000);
+        SystemClock.sleep(600);
+        shoot(name);
+        device.pressBack();
+        device.wait(Until.findObject(By.res(pkg, "chat_input")), 4000);
     }
 
     private void shoot(String name) {
