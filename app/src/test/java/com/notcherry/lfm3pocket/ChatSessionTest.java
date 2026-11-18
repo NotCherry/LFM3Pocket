@@ -472,7 +472,7 @@ public class ChatSessionTest {
         Queue worker=new Queue(),ui=new Queue();CompactEngine engine=new CompactEngine();
         engine.summaryError="decoder unavailable";
         ChatSession session=new ChatSession(engine,worker,ui,()->1,(endpoint,question)->Collections.emptyList(),
-                turn->{},(text,s,g)->{},snap->{});
+                turn->{},path->{},(text,s,g)->{},snap->{});
         for(int i=1;i<=6;i++) {
             assertTrue(session.submit("Question "+i,"","",false,"",32));
             worker.drain();ui.drain();
