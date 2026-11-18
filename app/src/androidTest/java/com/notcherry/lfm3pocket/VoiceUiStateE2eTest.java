@@ -88,12 +88,18 @@ public final class VoiceUiStateE2eTest {
                 ModelRuntime runtime = ((Lfm3PocketApplication) activity.getApplication()).modelRuntime();
                 assertTrue(runtime.voice().isEnabled());
                 assertTrue(runtime.voice().pttPressed());
-                Button record = activity.findViewById(R.id.voice_record);
-                TextView status = activity.findViewById(R.id.chat_status);
-                assertEquals(activity.getString(R.string.voice_listening), record.getText().toString());
-                assertEquals(activity.getString(R.string.voice_listening),
-                        String.valueOf(record.getContentDescription()));
-                assertTrue(String.valueOf(status.getText()).contains("Listening"));
+            });
+            waitFor("listening UI visible", () -> {
+                final String[] values = { "", "", "" };
+                scenario.onActivity(activity -> {
+                    Button record = activity.findViewById(R.id.voice_record);
+                    TextView status = activity.findViewById(R.id.chat_status);
+                    values[0] = String.valueOf(record.getText());
+                    values[1] = String.valueOf(record.getContentDescription());
+                    values[2] = String.valueOf(status.getText());
+                });
+                return values[0].contains("Listening") && values[1].contains("Listening")
+                        && values[2].contains("Listening");
             });
             scenario.onActivity(activity ->
                     ((Lfm3PocketApplication) activity.getApplication()).modelRuntime().voice().cancelAll("Stopped"));
@@ -113,8 +119,12 @@ public final class VoiceUiStateE2eTest {
                 assertTrue(runtime.voice().isEnabled());
                 assertTrue(runtime.voice().pttPressed());
                 runtime.voice().cancelAll("Stopped");
-                String shown = ((TextView) activity.findViewById(R.id.chat_status)).getText().toString();
-                assertTrue(shown, shown.contains("Stopped") || shown.contains("Cancelled"));
+            });
+            waitFor("cancel visible", () -> {
+                final String[] shown = { "" };
+                scenario.onActivity(activity ->
+                        shown[0] = ((TextView) activity.findViewById(R.id.chat_status)).getText().toString());
+                return shown[0].contains("Stopped") || shown[0].contains("Cancelled");
             });
 
             final AtomicReference<String> timeoutStatus = new AtomicReference<>("");
