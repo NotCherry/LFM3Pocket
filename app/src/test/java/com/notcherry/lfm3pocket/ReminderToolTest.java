@@ -105,11 +105,6 @@ public final class ReminderToolTest {
         coordinator.reject(rejected.proposal.id);
         assertEquals(1, scheduler.calls);
 
-        ToolCoordinator expiredCoordinator = new ToolCoordinator(request -> {
-            effects.incrementAndGet();
-            return new ReminderActionExecutor(scheduler).execute(request.tool.wireName, toStringArgs(request));
-        }, request -> true, new java.util.concurrent.atomic.AtomicLong(0)::getAndAdd);
-        // clock returns 0 on propose (expiry check/proposal creation context) then large on approve; simpler: custom clock
         final long[] clock = {0L};
         ToolCoordinator c2 = new ToolCoordinator(request -> new ReminderActionExecutor(scheduler).execute(request.tool.wireName, toStringArgs(request)),
                 request -> true, () -> clock[0]);
@@ -117,7 +112,7 @@ public final class ReminderToolTest {
         clock[0] = 60001L;
         assertEquals("EXPIRED", c2.approve(exp.proposal.id).status);
         assertEquals(1, scheduler.calls);
-        assertEquals(2, effects.get()); // only first approve executed in first coordinator
+        assertEquals(1, effects.get()); // only first approve executed in first coordinator
     }
 
     @Test public void voiceInjectedConfirmTakNieDrivesReminderApproveReject() {
