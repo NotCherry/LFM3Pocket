@@ -29,11 +29,17 @@ public final class VoiceSpokenOutput {
         final String text;
         final Locale locale;
         final Runnable onComplete;
+        final String uiStatus;
 
         QueuedSpeak(String text, Locale locale, Runnable onComplete) {
+            this(text, locale, onComplete, null);
+        }
+
+        QueuedSpeak(String text, Locale locale, Runnable onComplete, String uiStatus) {
             this.text = text;
             this.locale = locale;
             this.onComplete = onComplete;
+            this.uiStatus = uiStatus;
         }
     }
 
@@ -86,24 +92,32 @@ public final class VoiceSpokenOutput {
     }
 
     public void speakExact(String exactText, Locale locale, Runnable onComplete) {
+        speakExact(exactText, locale, onComplete, null);
+    }
+
+    public void speakExact(String exactText, Locale locale, Runnable onComplete, String uiStatus) {
         if (exactText == null || exactText.isBlank()) {
             if (onComplete != null) onComplete.run();
             return;
         }
         if (!busy.compareAndSet(false, true)) {
-            speakQueue.offer(new QueuedSpeak(exactText, locale, onComplete));
+            speakQueue.offer(new QueuedSpeak(exactText, locale, onComplete, uiStatus));
             return;
         }
-        beginSpeak(exactText, locale, onComplete);
+        beginSpeak(exactText, locale, onComplete, uiStatus);
     }
 
     private void beginSpeak(String exactText, Locale locale, Runnable onComplete) {
+        beginSpeak(exactText, locale, onComplete, null);
+    }
+
+    private void beginSpeak(String exactText, Locale locale, Runnable onComplete, String uiStatus) {
         activeUtteranceGeneration = speechGeneration.get();
         String language = locale == null ? "en" : locale.getLanguage();
         String voice = "female";
         String spoken = SpeechPrompt.spokenText(exactText);
         host.policySpeechStarted();
-        host.onSpeechUi(true, "Generating spoken response locally…");
+        host.onSpeechUi(true, uiStatus != null ? uiStatus : "Generating spoken response locally…");
         host.worker().execute(() -> generateOmni(spoken, language, voice, onComplete));
     }
 
@@ -234,7 +248,7 @@ public final class VoiceSpokenOutput {
                 busy.set(false);
                 return;
             }
-            beginSpeak(claimed.text, claimed.locale, claimed.onComplete);
+            beginSpeak(claimed.text, claimed.locale, claimed.onComplete, claimed.uiStatus);
             return;
         }
     }
