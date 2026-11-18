@@ -107,6 +107,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private String pendingAudioPath = "";
     private String lastAssistantReply = "";
     private boolean pendingAssistantVoiceSession;
+    boolean assistantVoiceSessionLaunchRequested;
+    boolean freshChatRequestedFromAssist;
 
     private TextView status;
     private TextView brandTitle;
@@ -1806,6 +1808,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             return;
         }
         if (intent.getBooleanExtra(EXTRA_FRESH_CHAT, false)) {
+            freshChatRequestedFromAssist = true;
             requestNewChat(true);
             intent.removeExtra(EXTRA_FRESH_CHAT);
         }
@@ -1814,6 +1817,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void consumeAssistantVoiceSessionIntent(Intent intent) {
         if (intent == null) return;
         if (intent.getBooleanExtra(EXTRA_ASSISTANT_VOICE_SESSION, false)) {
+            assistantVoiceSessionLaunchRequested = true;
             pendingAssistantVoiceSession = true;
             intent.removeExtra(EXTRA_ASSISTANT_VOICE_SESSION);
         }
