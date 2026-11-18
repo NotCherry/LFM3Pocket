@@ -29,6 +29,7 @@ public final class HistoryMediaStoreTest {
         File dir = Files.createTempDirectory("history-media-empty").toFile();
         File source = new File(dir, "empty.img");
         File destination = new File(dir, "destination.img");
+        assertTrue(source.createNewFile());
         Files.write(destination.toPath(), new byte[] { 1, 2, 3 });
 
         HistoryMediaStore.copyFile(source, destination);
