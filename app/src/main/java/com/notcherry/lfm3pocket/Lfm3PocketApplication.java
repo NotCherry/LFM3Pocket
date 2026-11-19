@@ -228,7 +228,6 @@ public class Lfm3PocketApplication extends Application {
                 () -> new RuntimePreferences(this),
                 HanamiNotificationListenerService::snapshotOrNull,
                 () -> HanamiNotificationListenerService.isSystemEnabled(this));
-        AndroidActionExecutor reminder = new ReminderActionExecutor(new WorkManagerReminderScheduler(this));
         return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, reminder);
     }
 }
