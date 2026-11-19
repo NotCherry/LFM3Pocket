@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (Voice V1).
+Accepted (Voice V1). Implemented and merged in [#180](https://github.com/NotCherry/LFM3Pocket/pull/180) (2026-11-17). Epic tracking continues in [#167](https://github.com/NotCherry/LFM3Pocket/issues/167); see [`docs/plans/voice-actions-issues.md`](../plans/voice-actions-issues.md) for the 2026-11-18 audit snapshot.
 
 ## Context
 
@@ -20,7 +20,7 @@ Hands-free voice actions must reuse the existing `specialUse` model residency, `
 
 - Notification actions add **Talk**; manifest declares microphone FGS type.
 - `MainActivity` stays thin: touch forwarding only when voice actions are enabled.
-- Device checklist and ARM64 Omni evidence remain manual ([issue #158](https://github.com/NotCherry/LFM3Pocket/issues/158)).
+- Device checklist and ARM64 Omni evidence remain manual ([issue #158](https://github.com/NotCherry/LFM3Pocket/issues/158), [`docs/VOICE_LOOP_CHECKLIST.md`](../VOICE_LOOP_CHECKLIST.md)); as of 2026-11-18 no arm64 VL-01–VL-06 run is recorded in-repo.
 
 ## References
 

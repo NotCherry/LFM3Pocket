@@ -1,8 +1,31 @@
 # Voice actions
 
-Status: **planning + tracked execution**. Design record and ordered work breakdown. No app code in the planning PR. Builds on [`background-mode.md`](background-mode.md) and [`ANDROID_TOOLS.md`](../ANDROID_TOOLS.md).
+Status: **V1 shipped on `main`; V2–V6 and next work remain open**. Plan PR [#149](https://github.com/NotCherry/LFM3Pocket/pull/149) merged 2026-11-18; V1 implementation PR [#180](https://github.com/NotCherry/LFM3Pocket/pull/180) merged 2026-11-17 (closes #153–#158). Design record and ordered work breakdown below remain the reference for remaining phases. Builds on [`background-mode.md`](background-mode.md) and [`ANDROID_TOOLS.md`](../ANDROID_TOOLS.md).
 
-**Epic:** [#167 Voice actions](https://github.com/NotCherry/LFM3Pocket/issues/167)
+**Epic:** [#167 Voice actions](https://github.com/NotCherry/LFM3Pocket/issues/167)  
+**Issue index / audit snapshot:** [`voice-actions-issues.md`](voice-actions-issues.md)
+
+
+
+## Audit status (2026-11-18)
+
+Snapshot from repository state on branch `ao/voice-epic/root` and GitHub issue/PR state:
+
+| Item | State | Evidence / notes |
+| --- | --- | --- |
+| Epic [#167](https://github.com/NotCherry/LFM3Pocket/issues/167) | OPEN | Tracking remains open until child work and evidence are complete. |
+| Plan PR [#149](https://github.com/NotCherry/LFM3Pocket/pull/149) | MERGED (2026-11-18) | Planning/docs PR. |
+| V1 implementation [#180](https://github.com/NotCherry/LFM3Pocket/pull/180) | MERGED (2026-11-17) | Closes #153–#158; ADR [0006](../adr/0006-voice-actions-loop.md), [`VOICE_LOOP_CHECKLIST.md`](../VOICE_LOOP_CHECKLIST.md), and voice runtime/tests/docs landed on `main`. |
+| #153–#157 | CLOSED | V1 listen/audio-in/speech/confirm/tool-card+strings delivered per #180. |
+| #158 | CLOSED (tracking) | Checklist template exists, but **arm64 device runs are not recorded** in-repo (VL-01–VL-06 need device identity, APK/SHA, and PASS/FAIL/NOT_RUN outcomes). Treat as remaining evidence gap for epic closure confidence. |
+| #159–#166 | OPEN | No implementation PRs found at audit time. |
+| Probe issues #150–#152 | CLOSED | Permission/label probes closed. |
+| Labels/milestones | PARTIAL / owner action | Epic notes HTTP 403 prevented bot label/milestone creation/application; owner must verify/apply full `voice`/`phase-*`/`needs-device-test` labels and Voice V1–V6/Voice next milestones. |
+
+Related open work touching voice/runtime (not child implementation PRs for #159–#166): [#204](https://github.com/NotCherry/LFM3Pocket/pull/204), [#206](https://github.com/NotCherry/LFM3Pocket/pull/206), [#207](https://github.com/NotCherry/LFM3Pocket/pull/207), [#208](https://github.com/NotCherry/LFM3Pocket/pull/208). Review these alongside V1 reliability before declaring the loop production-ready.
+
+**Remaining to close #167:** deliver and merge #159–#166; resolve voice correctness/reliability follow-ups; record real arm64 VL-01–VL-06 evidence; complete owner label/milestone bookkeeping and keep epic/index in sync.
+
 
 Hanami (`dev.notcherry.hanami`) already keeps LFM3 resident via a `specialUse` foreground service, posts Stop / Unload / Open (plus RemoteInput Ask) on the ongoing notification, bridges model text into `ToolCoordinator` proposals with shade + consent-sheet approval, accepts share/ASK intents, and exposes an opt-in loopback API that cannot call `approve`. **Untrusted text never authorizes an action.** Voice must reuse that path: spoken audio is another user turn into the loaded multimodal model, and spoken confirm resolves a pending proposal id. It is not a second authorization channel.
 
@@ -284,7 +307,7 @@ Order is dependency order within a phase. Do not block **V1** on new tools — e
 
 **External dependencies (do not duplicate):** timer/alarm tools ([#37](https://github.com/NotCherry/LFM3Pocket/issues/37), [#38](https://github.com/NotCherry/LFM3Pocket/issues/38)), tool bridge / built-in tools ([#147](https://github.com/NotCherry/LFM3Pocket/pull/147)), SAF GGUF import/picker ([#15](https://github.com/NotCherry/LFM3Pocket/issues/15) + any in-progress quick-wins picker), default-assistant entry quick-wins (coordinate in [#163](https://github.com/NotCherry/LFM3Pocket/issues/163)).
 
-### Milestone Voice V1 — Voice loop
+### Milestone Voice V1 — Voice loop — **SHIPPED (#180, 2026-11-17)**
 
 #### [#153](https://github.com/NotCherry/LFM3Pocket/issues/153) Mic FGS listen session (PTT + shade Talk)
 
@@ -341,7 +364,7 @@ Order is dependency order within a phase. Do not block **V1** on new tools — e
 | **Accept** | Locale switch shows pl/en; StrictToolJson unchanged |
 | **Tests** | Resource key presence; prompt unit assert |
 
-#### [#158](https://github.com/NotCherry/LFM3Pocket/issues/158) Arm64 voice-loop device checklist
+#### [#158](https://github.com/NotCherry/LFM3Pocket/issues/158) Arm64 voice-loop device checklist — **tracking closed; device evidence still unrecorded**
 
 | | |
 | --- | --- |
@@ -354,7 +377,7 @@ Order is dependency order within a phase. Do not block **V1** on new tools — e
 
 **V1 done when:** screen off + Omni loaded → Polish Talk → reply; confirm tak/nie; text-only GGUF disables Talk clearly.
 
-### Milestone Voice V2 — Reminders
+### Milestone Voice V2 — Reminders — **OPEN**
 
 #### [#159](https://github.com/NotCherry/LFM3Pocket/issues/159) `set_reminder` via notification + WorkManager
 
@@ -367,7 +390,7 @@ Order is dependency order within a phase. Do not block **V1** on new tools — e
 | **Accept** | Approve schedules exact title; reject/expiry none; fires after force-stop |
 | **Tests** | JVM schema + fake WM; injected voice confirm |
 
-### Milestone Voice V3 — Messages
+### Milestone Voice V3 — Messages — **OPEN**
 
 #### [#160](https://github.com/NotCherry/LFM3Pocket/issues/160) `draft_message` + `send_message` (intent path)
 
@@ -380,7 +403,7 @@ Order is dependency order within a phase. Do not block **V1** on new tools — e
 | **Accept** | Intent extras correct; injection cannot authorize; no `SEND_SMS` from this work |
 | **Tests** | Schema/allowlist; fake intents; injection fixture |
 
-### Milestone Voice V4 — Calendar
+### Milestone Voice V4 — Calendar — **OPEN**
 
 #### [#161](https://github.com/NotCherry/LFM3Pocket/issues/161) Calendar read/write tools + calendar picker
 
@@ -393,7 +416,7 @@ Order is dependency order within a phase. Do not block **V1** on new tools — e
 | **Accept** | No write without pick+permission; stale id fails; revoke → PERMISSION_DENIED |
 | **Tests** | Fake ContentResolver; validators; optional device smoke |
 
-### Milestone Voice V5 — Notifications
+### Milestone Voice V5 — Notifications — **OPEN**
 
 #### [#162](https://github.com/NotCherry/LFM3Pocket/issues/162) Notification listener + `list_notifications`
 
@@ -406,9 +429,9 @@ Order is dependency order within a phase. Do not block **V1** on new tools — e
 | **Accept** | Default off; allowlist filter; injection regression green |
 | **Tests** | JVM allowlist + injection; unbound service error |
 
-**Implementation status (this PR):** opt-in `HanamiNotificationListenerService` (system-bound, requires user grant in Android notification access settings) + app-level master toggle and package allowlist in Settings (default off, empty deny-all). `list_notifications` tool added with bounded `limit`/`package` args, CONFIRM risk, and `UNTRUSTED_NOTIFICATION_DATA` results. System enable flow exposed from Settings. On-device validation remains required for bound listener behavior/redaction/runtime UX.
+**Implementation status (landed on `main`):** opt-in `HanamiNotificationListenerService` (system-bound, requires user grant in Android notification access settings) + app-level master toggle and package allowlist in Settings (default off, empty deny-all). `list_notifications` tool added with bounded `limit`/`package` args, CONFIRM risk, and `UNTRUSTED_NOTIFICATION_DATA` results. System enable flow exposed from Settings. On-device validation remains required for bound listener behavior/redaction/runtime UX.
 
-### Milestone Voice V6 — Default assistant
+### Milestone Voice V6 — Default assistant — **OPEN**
 
 #### [#163](https://github.com/NotCherry/LFM3Pocket/issues/163) Default Android assistant role (coordinate, do not duplicate)
 
@@ -423,7 +446,7 @@ Order is dependency order within a phase. Do not block **V1** on new tools — e
 
 **Implementation (single entry path, no duplication):** `AssistEntryActivity` remains the ACTION_ASSIST/default-assistant activity entry. `HanamiVoiceInteractionService` and `HanamiVoiceInteractionSessionService` route system assist/keyguard/session callbacks to that same activity. When invoked as the assistant, Hanami opens chat and requests the existing `VoiceActionRuntime` talk flow (same path as shade Talk/PTT): it waits for the resident or cold-loaded audio-capable Omni model, requires microphone permission, and never auto-approves tools. If no model is configured or the loaded model cannot hear audio, the app fails closed with a clear status instead of starting capture. On-device role/gesture validation remains required on arm64.
 
-### Milestone Voice next — After voice
+### Milestone Voice next — After voice — **OPEN**
 
 #### [#164](https://github.com/NotCherry/LFM3Pocket/issues/164) GPU/NPU acceleration spike (Vulkan first)
 
@@ -456,7 +479,7 @@ Record device, APK SHA, Omni+mmproj SHA, then:
 
 ### Labels and milestones (owner)
 
-Issue create works for this agent; **creating labels and milestones returned HTTP 403**. Please create labels `voice`, `epic`, `phase-1`…`phase-6`, `phase-next`, `android`, `needs-device-test` and the Voice V1–V6 / Voice next milestones, then apply them to [#167](https://github.com/NotCherry/LFM3Pocket/issues/167) and [#153](https://github.com/NotCherry/LFM3Pocket/issues/153)–[#166](https://github.com/NotCherry/LFM3Pocket/issues/166). Also close permission-probe issues #150–#152.
+Issue create works for this agent; **creating labels and milestones returned HTTP 403**. Please create labels `voice`, `epic`, `phase-1`…`phase-6`, `phase-next`, `android`, `needs-device-test` and the Voice V1–V6 / Voice next milestones, then apply them to [#167](https://github.com/NotCherry/LFM3Pocket/issues/167) and [#153](https://github.com/NotCherry/LFM3Pocket/issues/153)–[#166](https://github.com/NotCherry/LFM3Pocket/issues/166). Probe issues #150–#152 are closed (verified 2026-11-18).
 
 ## Out of scope (explicit)
 
