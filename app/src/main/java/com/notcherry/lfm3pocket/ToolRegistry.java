@@ -416,7 +416,6 @@ public final class ToolRegistry {
             if(Character.isISOControl(c) || c=='\u2028' || c=='\u2029')bad(key+" is invalid");
         }
     }
-    }
     private static void choice(Map<String,Object> args,String key,String... values){
         if(!Arrays.asList(values).contains(args.get(key)))bad(key+" is unsupported");
     }
