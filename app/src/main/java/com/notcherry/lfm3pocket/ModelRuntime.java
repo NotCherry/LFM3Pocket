@@ -415,9 +415,10 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 lastTranscript = FlatTranscript.format(lastSnapshot);
                 lastStatus = lastSnapshot == null ? "" : lastSnapshot.status;
                 lastGenerating = session.isGenerating();
-                if (ui != null && ui.isUsable()) {
-                    ui.onSnapshot(lastSnapshot);
-                    ui.onChat(lastTranscript, lastStatus, lastGenerating);
+                Ui target = ui;
+                if (target != null && target.isUsable()) {
+                    if (lastSnapshot != null) target.onSnapshot(lastSnapshot);
+                    target.onChat(lastTranscript, lastStatus, lastGenerating);
                 }
             });
         });
