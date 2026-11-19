@@ -155,4 +155,15 @@ public final class RuntimePreferences {
                 .putString("calendar_write_label", label == null ? "" : label)
                 .apply();
     }
+
+    /** Per-install secret required by the opt-in localhost prompt API. Never logged. */
+    public synchronized String loopbackToken() {
+        String token = prefs.getString("loopback_token", "");
+        if (token != null && !token.isEmpty()) return token;
+        byte[] bytes = new byte[24];
+        new java.security.SecureRandom().nextBytes(bytes);
+        token = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        prefs.edit().putString("loopback_token", token).apply();
+        return token;
+    }
 }

@@ -85,6 +85,11 @@
     <string name="idle_60">60 min</string>
     <string name="lock_screen_preview">Show the reply on the lock screen</string>
     <string name="loopback_prompts">Allow prompts from 127.0.0.1 (cannot approve tools)</string>
+    <string name="loopback_show_token">Show loopback token</string>
+    <string name="loopback_token_title">Loopback integration</string>
+    <string name="loopback_token_message">Endpoint: http://127.0.0.1:%1$d\nAuthorization: Bearer %2$s\n\nThis per-install secret is required for every request while loopback is enabled. Keep it private.</string>
+    <string name="loopback_token_copied">Loopback token copied</string>
+    <string name="copy">Copy</string>
     <string name="photo">Photo</string>
     <string name="camera">Camera</string>
     <string name="voice_input">Voice input</string>

@@ -33,9 +33,14 @@ public final class LoopbackAgentApi {
         boolean submit(String prompt);
     }
 
+    public interface TokenSupplier {
+        String token();
+    }
+
     private final AtomicBoolean enabled = new AtomicBoolean(false);
     private final PromptHandler prompts;
     private final Consumer<String> log;
+    private final TokenSupplier tokenSupplier;
     private final ThreadPoolExecutor acceptors = new ThreadPoolExecutor(
             1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
     private final ThreadPoolExecutor clients = new ThreadPoolExecutor(
@@ -49,8 +54,13 @@ public final class LoopbackAgentApi {
     private volatile int port = DEFAULT_PORT;
 
     public LoopbackAgentApi(PromptHandler prompts, Consumer<String> log) {
+        this(prompts, log, () -> "");
+    }
+
+    public LoopbackAgentApi(PromptHandler prompts, Consumer<String> log, TokenSupplier tokenSupplier) {
         this.prompts = prompts;
         this.log = log == null ? message -> {} : log;
+        this.tokenSupplier = tokenSupplier == null ? () -> "" : tokenSupplier;
     }
 
     public synchronized boolean isRunning() {
@@ -87,7 +97,7 @@ public final class LoopbackAgentApi {
         }
     }
 
-    /** Pure routing used by tests and by the bounded socket handler. */
+    /** Pure routing used by tests and by the bounded socket handler for authorized requests. */
     static String handle(String method, String path, String body, PromptHandler prompts) {
         String verb = method == null ? "" : method.toUpperCase(Locale.ROOT);
         String route = path == null ? "" : path;
@@ -128,10 +138,16 @@ public final class LoopbackAgentApi {
             client.setSoTimeout(SOCKET_TIMEOUT_MS);
             InputStream in = client.getInputStream();
             OutputStream out = client.getOutputStream();
-            Request request = readRequest(in);
-            String response = request == null
-                    ? text(400, "Malformed or oversized request")
-                    : handle(request.method, request.path, request.body, prompts);
+            String expected = tokenSupplier.token();
+            Request request = readRequest(in, expected);
+            String response;
+            if (request == null) {
+                response = text(400, "Malformed or oversized request");
+            } else if (!request.authorized) {
+                response = text(401, "Unauthorized");
+            } else {
+                response = handle(request.method, request.path, request.body, prompts);
+            }
             out.write(response.getBytes(StandardCharsets.UTF_8));
             out.flush();
         } catch (IOException ignored) {
@@ -140,6 +156,10 @@ public final class LoopbackAgentApi {
     }
 
     static Request readRequest(InputStream in) throws IOException {
+        return readRequest(in, "");
+    }
+
+    static Request readRequest(InputStream in, String expectedToken) throws IOException {
         ByteArrayOutputStream header = new ByteArrayOutputStream();
         int matched = 0;
         while (header.size() < MAX_HEADER_BYTES) {
@@ -164,6 +184,8 @@ public final class LoopbackAgentApi {
 
         int contentLength = 0;
         boolean seenLength = false;
+        boolean authorized = false;
+        String required = expectedToken == null ? "" : expectedToken;
         for (int i = 1; i < lines.length; i++) {
             String line = lines[i];
             if (line.isEmpty()) break;
@@ -179,6 +201,8 @@ public final class LoopbackAgentApi {
                 try { contentLength = Integer.parseInt(value); }
                 catch (NumberFormatException invalid) { return null; }
                 if (contentLength < 0 || contentLength > MAX_BODY_BYTES) return null;
+            } else if ("authorization".equals(name)) {
+                authorized = !required.isEmpty() && ("Bearer " + required).equals(value);
             }
         }
         byte[] bodyBytes = new byte[contentLength];
@@ -188,7 +212,7 @@ public final class LoopbackAgentApi {
             if (count < 0) return null;
             offset += count;
         }
-        return new Request(requestLine[0], requestLine[1], new String(bodyBytes, StandardCharsets.UTF_8));
+        return new Request(requestLine[0], requestLine[1], new String(bodyBytes, StandardCharsets.UTF_8), authorized);
     }
 
     private static void writeErrorAndClose(Socket socket, int status, String message) {
@@ -216,8 +240,8 @@ public final class LoopbackAgentApi {
 
     private static String text(int code, String message) {
         String reason = code == 200 ? "OK" : code == 202 ? "Accepted" : code == 400 ? "Bad Request"
-                : code == 403 ? "Forbidden" : code == 409 ? "Conflict"
-                : code == 503 ? "Service Unavailable" : "Not Found";
+                : code == 401 ? "Unauthorized" : code == 403 ? "Forbidden"
+                : code == 409 ? "Conflict" : code == 503 ? "Service Unavailable" : "Not Found";
         byte[] bytes = message.getBytes(StandardCharsets.UTF_8);
         return "HTTP/1.1 " + code + " " + reason + "\r\nContent-Type: text/plain; charset=utf-8\r\n"
                 + "Content-Length: " + bytes.length + "\r\nConnection: close\r\n\r\n" + message;
@@ -227,10 +251,15 @@ public final class LoopbackAgentApi {
         final String method;
         final String path;
         final String body;
+        final boolean authorized;
         Request(String method, String path, String body) {
+            this(method, path, body, false);
+        }
+        Request(String method, String path, String body, boolean authorized) {
             this.method = method;
             this.path = path;
             this.body = body;
+            this.authorized = authorized;
         }
     }
 }

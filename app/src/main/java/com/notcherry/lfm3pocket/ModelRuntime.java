@@ -104,7 +104,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         this.playbackFocus = new AndroidPlaybackFocus(app);
         this.playback = new PlaybackController(app.newPlaybackTrackFactory(), playbackFocus::request,
                 playbackFocus::abandon, audioWorker, main::post, (state, message) -> onPlayback(state, message));
-        this.loopback = new LoopbackAgentApi(this::submitFromLoopback, message -> {});
+        this.loopback = new LoopbackAgentApi(this::submitFromLoopback, message -> {}, preferences::loopbackToken);
         this.voiceActions = new VoiceActionRuntime(new ModelRuntimeVoiceCallbacks(this),
                 new File(app.getCacheDir(), "voice-actions"), app::hasMicrophonePermission,
                 audioWorker, main::post);
@@ -231,6 +231,9 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
     }
+
+    public String loopbackToken() { return preferences.loopbackToken(); }
+    public int loopbackPort() { return loopback.port(); }
 
     public void load(String path, String projector, LoadCallback callback) {
         apply(policy.onLoading(path == null ? "" : new File(path).getName()));

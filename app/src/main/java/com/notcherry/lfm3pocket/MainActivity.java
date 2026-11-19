@@ -618,6 +618,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         StillwaterUi.styleCheck(loopbackBox);
         loopbackBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
         configuration.addView(loopbackBox);
+        Button loopbackTokenButton = button(getString(R.string.loopback_show_token));
+        loopbackTokenButton.setId(R.id.settings_loopback_token);
+        StillwaterUi.quiet(loopbackTokenButton);
+        loopbackTokenButton.setOnClickListener(v -> showLoopbackToken());
+        StillwaterReadable.addFlexibleFullWidth(configuration, loopbackTokenButton, 44);
 
         TextView toolsHeading = label(getString(R.string.tools_heading), 11, inkMuted);
         toolsHeading.setTypeface(StillwaterUi.sansMedium(this));
@@ -2620,6 +2625,26 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         boolean loopback = loopbackBox != null && loopbackBox.isChecked();
         runtime.updateBackgroundSettings(keepLoadedBox.isChecked(), idle, lockPreviewBox.isChecked(), loopback);
         paintIdle(idle);
+    }
+
+    private void showLoopbackToken() {
+        if (runtime == null) return;
+        String token = runtime.loopbackToken();
+        int port = runtime.loopbackPort();
+        String message = getString(R.string.loopback_token_message, port, token);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.loopback_token_title)
+                .setMessage(message)
+                .setPositiveButton(R.string.copy, (dialog, which) -> {
+                    android.content.ClipboardManager clipboard =
+                            (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (clipboard != null) {
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Hanami loopback token", token));
+                        if (status != null) status.setText(R.string.loopback_token_copied);
+                    }
+                })
+                .setNegativeButton(android.R.string.close, null)
+                .show();
     }
 
     private void applyDraft(Intent intent) {
