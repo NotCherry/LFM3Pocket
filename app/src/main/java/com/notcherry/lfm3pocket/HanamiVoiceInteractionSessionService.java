@@ -5,7 +5,7 @@ import android.os.Bundle;
 import android.service.voice.VoiceInteractionSession;
 import android.service.voice.VoiceInteractionSessionService;
 
-/** Opens a fresh Hanami chat when the system asks for an assist session. */
+/** Routes the system assist session into Hanami's single assistant entry path. */
 public final class HanamiVoiceInteractionSessionService extends VoiceInteractionSessionService {
     @Override public VoiceInteractionSession onNewSession(Bundle args) {
         return new VoiceInteractionSession(this) {

@@ -6,8 +6,9 @@ import android.content.Intent;
 import android.os.Bundle;
 
 /**
- * Default-assistant / ACTION_ASSIST entry. Opens chat on a fresh conversation
- * without authorizing tools. Voice interaction is not implemented yet.
+ * Default-assistant / ACTION_ASSIST entry. Routes the system assistant gesture
+ * into Hanami's single chat entry and requests a voice session without
+ * authorizing tools. Consent/confirmation stays in the existing tool flow.
  */
 public final class AssistEntryActivity extends Activity {
     private float attachedInterfaceScale = InterfaceSize.DEFAULT;
@@ -26,6 +27,7 @@ public final class AssistEntryActivity extends Activity {
         super.onCreate(savedInstanceState);
         startActivity(new Intent(this, MainActivity.class)
                 .putExtra(MainActivity.EXTRA_FRESH_CHAT, true)
+                .putExtra(MainActivity.EXTRA_ASSISTANT_VOICE_SESSION, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                         | Intent.FLAG_ACTIVITY_CLEAR_TOP
                         | Intent.FLAG_ACTIVITY_SINGLE_TOP));
