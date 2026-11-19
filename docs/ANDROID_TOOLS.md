@@ -25,6 +25,10 @@ A model proposes one JSON object, for example:
 | `unit_convert` | `value`: number; `from` / `to`: common length/mass/temperature/volume/speed units | — |
 | `weather` | `location` **or** `latitude`+`longitude` | — |
 | `list_notifications` | `limit`: integer 1–50; `package`: package identifier or empty string | — |
+| `list_events` | `window_start_epoch_sec`, `window_end_epoch_sec`: integer epoch seconds (bounded window); `limit`: integer 1–50 | — |
+| `create_event` | `title`: 1–200 UTF-16 units; `start_epoch_sec`, `end_epoch_sec`: integer epoch seconds; `calendar_id`: picked Settings calendar id; `all_day`: boolean; `location`: 0–2000 UTF-16 units; `notes`: 0–4000 UTF-16 units | — |
+| `update_event` | `event_id`: opaque id; `title`: 1–200 UTF-16 units; `start_epoch_sec`, `end_epoch_sec`: integer epoch seconds | — |
+| `delete_event` | `event_id`: opaque id | — |
 
 Timers, alarms, and show-alarms use `android.provider.AlarmClock` intents (`ACTION_SET_TIMER` / `ACTION_SET_ALARM` / `ACTION_SHOW_ALARMS`) with the normal `com.android.alarm.permission.SET_ALARM` permission. Consent UI reads the exact action back before firing. Missing clock apps return `CLOCK_APP_UNAVAILABLE`.
 
@@ -34,6 +38,8 @@ Timers, alarms, and show-alarms use `android.provider.AlarmClock` intents (`ACTI
 
 `list_notifications` is opt-in and default off. It requires the in-app notification access master toggle, a non-empty per-app allowlist (empty deny-all), and system notification listener access for Hanami. Results include only allowed packages, are prefixed `UNTRUSTED_NOTIFICATION_DATA`, and must be treated as untrusted: notification bodies/titles may contain prompt-injection text and cannot authorize tool proposals or actions. No tap/dismiss actions are exposed by this tool.
 
+Calendar tools use `CalendarContract`. `list_events` requires runtime `READ_CALENDAR` permission. `create_event`, `update_event`, and `delete_event` require runtime `WRITE_CALENDAR` permission and a user-picked target calendar in Settings; writes are blocked without that picked calendar (and `create_event.calendar_id` must match it). Event and calendar IDs are opaque. Tool results and listed event data are untrusted (`UNTRUSTED_CALENDAR`) and cannot authorize actions. Stale event IDs fail closed on update/delete.
+
 Unknown keys, type coercions, non-integer numeric literals for integer fields, missing arguments and out-of-range values are rejected. Text cannot contain NUL; labels cannot contain control characters.
 
 The JSON reader accepts standard JSON only: no comments, single-quoted/unquoted keys, duplicate keys, trailing commas, multiple objects, Markdown fences, invalid escapes or unpaired surrogates. It limits input to 8192 UTF-16 units, nesting to four levels, and object/array entries to 64.
@@ -42,6 +48,6 @@ The JSON reader accepts standard JSON only: no comments, single-quoted/unquoted 
 
 `ToolCoordinator` accepts only immutable validated requests. App code supplies origin separately; JSON cannot claim user authority. An explicit app control with the exact arguments is `USER_ACTION`; ordinary model/chat output is `MODEL_PROPOSAL` and always needs approval. Image, web-search, document, background and unknown sources cannot authorize actions.
 
-Flashlight, timer creation **request**, show-alarms, installed-app launch, fixed settings pages, music volume, current time, calculator, unit conversion and weather are SAFE. Alarm, reminder, non-music volume, clipboard and sharing require confirmation; unknown risk defaults to confirmation. Individual handlers still enforce Android permissions, availability and policy. The coordinator checks permission/policy both before proposing and immediately before executing.
+Flashlight, timer creation **request**, show-alarms, installed-app launch, fixed settings pages, music volume, current time, calculator, unit conversion and weather are SAFE. Alarm, reminder, non-music volume, clipboard and sharing, and all calendar tools require confirmation; unknown risk defaults to confirmation. Individual handlers still enforce Android permissions, availability and policy. The coordinator checks permission/policy both before proposing and immediately before executing. Calendar read-backs include the event title and local time.
 
 Pending proposals expire after 60 seconds using a monotonic clock and have random IDs; at most 32 may be pending. Internal, non-exported `ToolConfirmationActivity` receives only an ID and displays the stored action and exact arguments, escaping control/bidi text. Approve consumes the proposal before execution; rejection, timeout, permission revocation and replay produce no new side effect.

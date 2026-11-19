@@ -58,6 +58,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final int PICK_DOCUMENT = 49;
     private static final int OPEN_MMPROJ_URI = 49;
     private static final int PICK_WHISTLE_MODEL = 50;
+    private static final int REQUEST_READ_CALENDAR = 51;
 
 
     private ExecutorService worker;
@@ -90,6 +91,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private CheckBox networkToolsBox;
     private CheckBox notificationAccessBox;
     private EditText notificationAllowlistField;
+    private TextView calendarStatusText;
+    private Button calendarPickButton;
+    private Button calendarClearButton;
     private CheckBox tinyVocaTtsBox;
     private TextView tinyVocaStatus;
     private Button tinyVocaDownloadButton;
@@ -686,6 +690,32 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         StillwaterReadable.prepareWrappingLabel(notificationAllowlistHelp);
         configuration.addView(notificationAllowlistHelp);
 
+        TextView calendarHeading = label(getString(R.string.calendar_heading), 11, inkMuted);
+        calendarHeading.setTypeface(StillwaterUi.sansMedium(this));
+        calendarHeading.setLetterSpacing(0.12f);
+        calendarHeading.setPadding(0, dp(16), 0, dp(4));
+        configuration.addView(calendarHeading);
+        TextView calendarHelp = label(getString(R.string.calendar_help), 12, inkMuted);
+        StillwaterReadable.prepareWrappingLabel(calendarHelp);
+        configuration.addView(calendarHelp);
+        calendarStatusText = label(getString(R.string.calendar_none_picked), 13, ink);
+        calendarStatusText.setId(R.id.settings_calendar_status);
+        StillwaterReadable.prepareWrappingLabel(calendarStatusText);
+        configuration.addView(calendarStatusText);
+        calendarPickButton = button(getString(R.string.calendar_pick_button));
+        calendarPickButton.setId(R.id.settings_calendar_pick);
+        StillwaterUi.quiet(calendarPickButton);
+        calendarPickButton.setOnClickListener(v -> pickCalendarTarget());
+        StillwaterReadable.addFlexibleFullWidth(configuration, calendarPickButton, 44);
+        calendarClearButton = button(getString(R.string.calendar_clear_button));
+        calendarClearButton.setId(R.id.settings_calendar_clear);
+        StillwaterUi.quiet(calendarClearButton);
+        calendarClearButton.setOnClickListener(v -> {
+            new RuntimePreferences(this).setCalendarWriteTarget("", "");
+            refreshCalendarPickerStatus();
+        });
+        StillwaterReadable.addFlexibleFullWidth(configuration, calendarClearButton, 44);
+
         TextView speechHeading = label(getString(R.string.speech_heading), 11, inkMuted);
         speechHeading.setTypeface(StillwaterUi.sansMedium(this));
         speechHeading.setLetterSpacing(0.12f);
@@ -1134,6 +1164,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             paintSpeechInputControls();
             bindingBackground = false;
         }
+        refreshCalendarPickerStatus();
     }
 
     private void saveInlineInferenceSettings() {
@@ -1937,6 +1968,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     && foreground && !destroyed && !busy) recordingController.start();
             else status.setText("Microphone access is needed for voice input.");
             if (!granted) pendingAssistantVoiceSession = false;
+            return;
+        }
+        if (requestCode == REQUEST_READ_CALENDAR) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                showCalendarPickerDialog();
+            } else if (status != null) {
+                status.setText(getString(R.string.calendar_permission_needed));
+            }
+            refreshCalendarPickerStatus();
         }
     }
 
@@ -2698,6 +2738,86 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         handlePendingNewChatRequests(intent);
         applyDraft(intent);
         maybeStartPendingAssistantVoiceSession();
+    }
+
+    private void pickCalendarTarget() {
+        if (checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] { android.Manifest.permission.READ_CALENDAR }, REQUEST_READ_CALENDAR);
+            return;
+        }
+        showCalendarPickerDialog();
+    }
+
+    private void showCalendarPickerDialog() {
+        if (checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            if (status != null) status.setText(getString(R.string.calendar_permission_needed));
+            return;
+        }
+        final java.util.ArrayList<String> ids = new java.util.ArrayList<>();
+        final java.util.ArrayList<String> labels = new java.util.ArrayList<>();
+        String[] projection = {
+                android.provider.CalendarContract.Calendars._ID,
+                android.provider.CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+                android.provider.CalendarContract.Calendars.ACCOUNT_NAME
+        };
+        try (android.database.Cursor cursor = getContentResolver().query(
+                android.provider.CalendarContract.Calendars.CONTENT_URI,
+                projection, null, null,
+                android.provider.CalendarContract.Calendars.CALENDAR_DISPLAY_NAME + " ASC")) {
+            if (cursor != null) {
+                int idIdx = cursor.getColumnIndex(android.provider.CalendarContract.Calendars._ID);
+                int nameIdx = cursor.getColumnIndex(android.provider.CalendarContract.Calendars.CALENDAR_DISPLAY_NAME);
+                int accountIdx = cursor.getColumnIndex(android.provider.CalendarContract.Calendars.ACCOUNT_NAME);
+                while (cursor.moveToNext()) {
+                    String id = idIdx >= 0 ? cursor.getString(idIdx) : null;
+                    if (id == null || id.trim().isEmpty()) continue;
+                    String name = nameIdx >= 0 ? cursor.getString(nameIdx) : null;
+                    String account = accountIdx >= 0 ? cursor.getString(accountIdx) : null;
+                    String label = (name == null || name.trim().isEmpty()) ? id : name.trim();
+                    if (account != null && !account.trim().isEmpty() && !account.equals(name)) {
+                        label = label + " (" + account.trim() + ")";
+                    }
+                    ids.add(id.trim());
+                    labels.add(label);
+                }
+            }
+        } catch (SecurityException e) {
+            if (status != null) status.setText(getString(R.string.calendar_permission_needed));
+            refreshCalendarPickerStatus();
+            return;
+        } catch (Exception ignored) {
+            // Fall through to empty-state dialog.
+        }
+        if (ids.isEmpty()) {
+            if (status != null) status.setText(getString(R.string.calendar_no_calendars));
+            return;
+        }
+        CharSequence[] items = labels.toArray(new CharSequence[0]);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(R.string.calendar_pick_title)
+                .setItems(items, (dialog, which) -> {
+                    if (which < 0 || which >= ids.size()) return;
+                    new RuntimePreferences(this).setCalendarWriteTarget(ids.get(which), labels.get(which));
+                    refreshCalendarPickerStatus();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void refreshCalendarPickerStatus() {
+        if (calendarStatusText == null) return;
+        RuntimePreferences prefs = new RuntimePreferences(this);
+        String id = prefs.calendarWriteId();
+        if (id == null || id.trim().isEmpty()) {
+            calendarStatusText.setText(getString(R.string.calendar_none_picked));
+            return;
+        }
+        String label = prefs.calendarWriteLabel();
+        if (label == null || label.trim().isEmpty()) label = id.trim();
+        else label = label.trim() + " (id " + id.trim() + ")";
+        calendarStatusText.setText(getString(R.string.calendar_picked, label));
     }
 
     @Override protected void onDestroy() {

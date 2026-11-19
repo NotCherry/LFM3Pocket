@@ -22,10 +22,14 @@ public class ToolRegistryTest {
             "{\"tool\":\"calculator\",\"arguments\":{\"expression\":\"(2+3)*4\"}}",
             "{\"tool\":\"unit_convert\",\"arguments\":{\"value\":1,\"from\":\"km\",\"to\":\"m\"}}",
             "{\"tool\":\"weather\",\"arguments\":{\"location\":\"Warsaw\"}}",
-            "{\"tool\":\"list_notifications\",\"arguments\":{\"limit\":20,\"package\":\"\"}}"};
+            "{\"tool\":\"list_notifications\",\"arguments\":{\"limit\":20,\"package\":\"\"}}",
+            "{\"tool\":\"list_events\",\"arguments\":{\"window_start_epoch_sec\":1731700000,\"window_end_epoch_sec\":1731786400,\"limit\":20}}",
+            "{\"tool\":\"create_event\",\"arguments\":{\"title\":\"Standup\",\"start_epoch_sec\":1731744000,\"end_epoch_sec\":1731745800,\"calendar_id\":\"3\",\"all_day\":false,\"location\":\"\",\"notes\":\"\"}}",
+            "{\"tool\":\"update_event\",\"arguments\":{\"event_id\":\"42\",\"title\":\"Standup moved\",\"start_epoch_sec\":1731745800,\"end_epoch_sec\":1731747600}}",
+            "{\"tool\":\"delete_event\",\"arguments\":{\"event_id\":\"42\"}}"};
         Set<ToolRegistry.Tool> tools=new HashSet<>();
-        for(String call:calls){ToolRegistry.Parsed p=registry.parse(call);assertTrue(p.status,p.isValid());tools.add(p.request.tool);}
-        assertEquals(16,tools.size());
+        for(String call:calls){ToolRegistry.Parsed p=registry.parse(call);assertTrue(p.status+": "+p.message,p.isValid());tools.add(p.request.tool);}
+        assertEquals(20,tools.size());
         assertEquals(60,((ToolRegistry.TimerRequest)registry.parse("{\"tool\":\"set_timer\",\"arguments\":{\"seconds\":60,\"label\":\"Tea\"}}").request).seconds);
         assertEquals("",registry.parse("{\"tool\":\"set_alarm\",\"arguments\":{\"hour\":7,\"minute\":30}}").request.arguments.get("label"));
         ToolRegistry.AlarmRequest alarm=(ToolRegistry.AlarmRequest)registry.parse(
@@ -34,6 +38,22 @@ public class ToolRegistryTest {
         assertFalse(registry.parse("{\"tool\":\"set_alarm\",\"arguments\":{\"hour\":7,\"minute\":0,\"days\":[0]}}").isValid());
         assertFalse(registry.parse("{\"tool\":\"weather\",\"arguments\":{}}").isValid());
         assertFalse(registry.parse("{\"tool\":\"unit_convert\",\"arguments\":{\"value\":1,\"from\":\"km\",\"to\":\"celsius\"}}").isValid());
+    }
+
+    @Test public void calendarToolsRejectInvalidWindowsIdsAndBounds(){
+        assertTrue(registry.parse("{\"tool\":\"list_events\",\"arguments\":{\"window_start_epoch_sec\":0,\"window_end_epoch_sec\":0,\"limit\":1}}").isValid());
+        assertFalse(registry.parse("{\"tool\":\"list_events\",\"arguments\":{\"window_start_epoch_sec\":10,\"window_end_epoch_sec\":9,\"limit\":1}}").isValid());
+        assertFalse(registry.parse("{\"tool\":\"list_events\",\"arguments\":{\"window_start_epoch_sec\":0,\"window_end_epoch_sec\":32000000,\"limit\":1}}").isValid());
+        assertFalse(registry.parse("{\"tool\":\"list_events\",\"arguments\":{\"window_start_epoch_sec\":0,\"window_end_epoch_sec\":60,\"limit\":0}}").isValid());
+        assertFalse(registry.parse("{\"tool\":\"list_events\",\"arguments\":{\"window_start_epoch_sec\":0,\"window_end_epoch_sec\":60,\"limit\":51}}").isValid());
+        String create="{\"tool\":\"create_event\",\"arguments\":{\"title\":\"T\",\"start_epoch_sec\":1,\"end_epoch_sec\":2,\"calendar_id\":\"cal\",\"all_day\":false,\"location\":\"\",\"notes\":\"\"}}";
+        assertTrue(registry.parse(create).isValid());
+        assertFalse(registry.parse(create.replace("\"calendar_id\":\"cal\"","\"calendar_id\":\"\"")).isValid());
+        assertFalse(registry.parse(create.replace("\"all_day\":false","\"all_day\":\"false\"")).isValid());
+        assertFalse(registry.parse("{\"tool\":\"create_event\",\"arguments\":{\"title\":\"T\",\"start_epoch_sec\":5,\"end_epoch_sec\":4,\"calendar_id\":\"1\",\"all_day\":false,\"location\":\"\",\"notes\":\"\"}}").isValid());
+        assertFalse(registry.parse("{\"tool\":\"update_event\",\"arguments\":{\"event_id\":\"\",\"title\":\"T\",\"start_epoch_sec\":1,\"end_epoch_sec\":2}}").isValid());
+        assertFalse(registry.parse("{\"tool\":\"delete_event\",\"arguments\":{\"event_id\":\"\\n\"}}").isValid());
+        assertFalse(registry.parse("{\"tool\":\"update_event\",\"arguments\":{\"event_id\":\"1\",\"title\":\"\",\"start_epoch_sec\":1,\"end_epoch_sec\":2}}").isValid());
     }
     @Test public void unknownToolsAndMalformedJsonReturnNoExecutableRequest(){
         String[] bad={"",null,"rm -rf /","```json {} ```","[]","{}",

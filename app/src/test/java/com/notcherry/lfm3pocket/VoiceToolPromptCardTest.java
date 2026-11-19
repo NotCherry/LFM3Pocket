@@ -11,6 +11,8 @@ public final class VoiceToolPromptCardTest {
         String prompt = VoiceToolPromptCard.onePassAudioPrompt(Locale.US);
         assertTrue(prompt.contains("<__media__>"));
         assertTrue(VoiceToolPromptCard.containsToolNames(prompt));
+        assertTrue(prompt.contains("list_events"));
+        assertTrue(prompt.contains("create_event"));
     }
 
     @Test public void textPromptIncludesUserTextWithoutAudioMarker() {

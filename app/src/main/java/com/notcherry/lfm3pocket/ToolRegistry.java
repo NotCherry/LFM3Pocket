@@ -8,7 +8,9 @@ public final class ToolRegistry {
         FLASHLIGHT("toggle_flashlight"),VOLUME("set_volume"),TIMER("set_timer"),ALARM("set_alarm"),
         REMINDER("set_reminder"),SHOW_ALARMS("show_alarms"),APPLICATION("open_application"),SETTINGS("open_settings"),
         COPY("copy_text"),SHARE("share_text"),CURRENT_TIME("current_time"),CALCULATOR("calculator"),
-        UNIT_CONVERT("unit_convert"),WEATHER("weather"),LIST_NOTIFICATIONS("list_notifications"),DRAFT_MESSAGE("draft_message"),SEND_MESSAGE("send_message");
+        UNIT_CONVERT("unit_convert"),WEATHER("weather"),LIST_NOTIFICATIONS("list_notifications"),
+        DRAFT_MESSAGE("draft_message"),SEND_MESSAGE("send_message"),
+        LIST_EVENTS("list_events"),CREATE_EVENT("create_event"),UPDATE_EVENT("update_event"),DELETE_EVENT("delete_event");
         public final String wireName;Tool(String name){wireName=name;}
     }
     public static abstract class Request {
@@ -102,6 +104,43 @@ public final class ToolRegistry {
         public final String draftId;
         private SendMessageRequest(Map<String,Object> a){super(Tool.SEND_MESSAGE,a);draftId=(String)a.get("draft_id");}
     }
+    public static final class ListEventsRequest extends Request {
+        public final long windowStartEpochSec,windowEndEpochSec;public final int limit;
+        private ListEventsRequest(Map<String,Object> a){
+            super(Tool.LIST_EVENTS,a);
+            windowStartEpochSec=((Number)a.get("window_start_epoch_sec")).longValue();
+            windowEndEpochSec=((Number)a.get("window_end_epoch_sec")).longValue();
+            limit=((Number)a.get("limit")).intValue();
+        }
+    }
+    public static final class CreateEventRequest extends Request {
+        public final String title,calendarId,location,notes;
+        public final long startEpochSec,endEpochSec;public final boolean allDay;
+        private CreateEventRequest(Map<String,Object> a){
+            super(Tool.CREATE_EVENT,a);
+            title=(String)a.get("title");
+            startEpochSec=((Number)a.get("start_epoch_sec")).longValue();
+            endEpochSec=((Number)a.get("end_epoch_sec")).longValue();
+            calendarId=(String)a.get("calendar_id");
+            allDay=(Boolean)a.get("all_day");
+            location=(String)a.get("location");
+            notes=(String)a.get("notes");
+        }
+    }
+    public static final class UpdateEventRequest extends Request {
+        public final String eventId,title;public final long startEpochSec,endEpochSec;
+        private UpdateEventRequest(Map<String,Object> a){
+            super(Tool.UPDATE_EVENT,a);
+            eventId=(String)a.get("event_id");
+            title=(String)a.get("title");
+            startEpochSec=((Number)a.get("start_epoch_sec")).longValue();
+            endEpochSec=((Number)a.get("end_epoch_sec")).longValue();
+        }
+    }
+    public static final class DeleteEventRequest extends Request {
+        public final String eventId;
+        private DeleteEventRequest(Map<String,Object> a){super(Tool.DELETE_EVENT,a);eventId=(String)a.get("event_id");}
+    }
     private static Request request(Tool tool,Map<String,Object> args){
         switch(tool){
             case FLASHLIGHT:return new FlashlightRequest(args);case VOLUME:return new VolumeRequest(args);
@@ -116,6 +155,10 @@ public final class ToolRegistry {
             case LIST_NOTIFICATIONS:return new ListNotificationsRequest(args);
             case DRAFT_MESSAGE:return new DraftMessageRequest(args);
             case SEND_MESSAGE:return new SendMessageRequest(args);
+            case LIST_EVENTS:return new ListEventsRequest(args);
+            case CREATE_EVENT:return new CreateEventRequest(args);
+            case UPDATE_EVENT:return new UpdateEventRequest(args);
+            case DELETE_EVENT:return new DeleteEventRequest(args);
             default:throw new IllegalArgumentException("Unregistered tool");
         }
     }
@@ -197,7 +240,19 @@ public final class ToolRegistry {
                     text(args,"draft_id",1,128);
                     break;
                 }
-
+                case LIST_EVENTS:keys(args,"window_start_epoch_sec","window_end_epoch_sec","limit");
+                    epochSec(args,"window_start_epoch_sec");epochSec(args,"window_end_epoch_sec");integer(args,"limit",1,50);
+                    eventWindow(args,"window_start_epoch_sec","window_end_epoch_sec");break;
+                case CREATE_EVENT:keys(args,"title","start_epoch_sec","end_epoch_sec","calendar_id","all_day","location","notes");
+                    textBounded(args,"title",1,200,true);
+                    epochSec(args,"start_epoch_sec");epochSec(args,"end_epoch_sec");eventRange(args,"start_epoch_sec","end_epoch_sec");
+                    calendarId(args,"calendar_id");
+                    if(!(args.get("all_day") instanceof Boolean))bad("all_day must be boolean");
+                    textBounded(args,"location",0,2000,false);textBounded(args,"notes",0,4000,false);break;
+                case UPDATE_EVENT:keys(args,"event_id","title","start_epoch_sec","end_epoch_sec");
+                    eventId(args,"event_id");textBounded(args,"title",1,200,true);
+                    epochSec(args,"start_epoch_sec");epochSec(args,"end_epoch_sec");eventRange(args,"start_epoch_sec","end_epoch_sec");break;
+                case DELETE_EVENT:keys(args,"event_id");eventId(args,"event_id");break;
             }
         }catch(IllegalArgumentException e){return reject("INVALID_ARGUMENTS",e.getMessage());}
         return new Parsed(request(selected,args),"VALIDATED","Arguments validated; authorization still required");
@@ -313,6 +368,53 @@ public final class ToolRegistry {
         String name=text(args,"package",0,255);
         if(name.isEmpty()) return;
         if(!name.matches("(?:[A-Za-z][A-Za-z0-9_]*\\.)+[A-Za-z][A-Za-z0-9_]*")) bad("Expected an installed package identifier");
+    }
+    private static void epochSec(Map<String,Object> args,String key){
+        Object v=args.get(key);
+        if(!(v instanceof Long))bad(key+" must be an integer epoch seconds");
+        long t=(Long)v;
+        if(t<0 || t>4102444800L)bad(key+" is out of range");
+        args.put(key,t);
+    }
+    private static void eventWindow(Map<String,Object> args,String startKey,String endKey){
+        long start=((Number)args.get(startKey)).longValue();
+        long end=((Number)args.get(endKey)).longValue();
+        if(end<start)bad("window_end_epoch_sec must be >= window_start_epoch_sec");
+        if(end-start>366L*24*60*60)bad("Event window is too large");
+    }
+    private static void eventRange(Map<String,Object> args,String startKey,String endKey){
+        long start=((Number)args.get(startKey)).longValue();
+        long end=((Number)args.get(endKey)).longValue();
+        if(end<start)bad("end_epoch_sec must be >= start_epoch_sec");
+        if(end-start>366L*24*60*60)bad("Event duration is too large");
+    }
+    private static void textBounded(Map<String,Object> args,String key,int min,int max,boolean singleLine){
+        String value=text(args,key,min,max);
+        if(singleLine){
+            for(int i=0;i<value.length();i++){
+                char c=value.charAt(i);
+                if(Character.isISOControl(c) || c=='\u2028' || c=='\u2029')bad(key+" must be one line");
+            }
+        }else{
+            for(int i=0;i<value.length();i++){
+                char c=value.charAt(i);
+                if(c=='\0' || (Character.isISOControl(c) && c!='\n' && c!='\r' && c!='\t'))bad(key+" contains invalid characters");
+            }
+        }
+    }
+    private static void eventId(Map<String,Object> args,String key){
+        String id=text(args,key,1,128);
+        for(int i=0;i<id.length();i++){
+            char c=id.charAt(i);
+            if(Character.isISOControl(c) || c=='\u2028' || c=='\u2029')bad(key+" is invalid");
+        }
+    }
+    private static void calendarId(Map<String,Object> args,String key){
+        String id=text(args,key,1,128);
+        for(int i=0;i<id.length();i++){
+            char c=id.charAt(i);
+            if(Character.isISOControl(c) || c=='\u2028' || c=='\u2029')bad(key+" is invalid");
+        }
     }
     private static void choice(Map<String,Object> args,String key,String... values){
         if(!Arrays.asList(values).contains(args.get(key)))bad(key+" is unsupported");
