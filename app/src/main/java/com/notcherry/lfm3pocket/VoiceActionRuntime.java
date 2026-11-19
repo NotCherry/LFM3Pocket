@@ -7,11 +7,12 @@ import java.nio.file.Files;
 import java.util.Locale;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
- * Voice-action loop: listen → one-pass Omni audio-in → optional tool proposal → spoken confirm.
+ * Voice-action loop: listen → one-pass Omni audio-in or STT text → optional tool proposal → spoken confirm.
  * Heavy logic stays out of {@link MainActivity}.
  */
 public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
@@ -44,6 +45,7 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
     private final VoiceSpokenOutput spoken;
     private final VoiceListenSession listen;
     private final ScheduledExecutorService listenTimeout = Executors.newSingleThreadScheduledExecutor();
+    private final AtomicBoolean transcriptionCancelled = new AtomicBoolean();
     private volatile Mode mode = Mode.IDLE;
     private volatile String pendingConfirmId;
     private volatile String pendingConfirmDescribe;
@@ -85,7 +87,11 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
     }
 
     public boolean isEnabled() {
-        return VoiceAudioCapability.voiceActionsEnabled(callbacks.engine(), callbacks.modelHandle());
+        android.content.Context app = callbacks.app();
+        if (app == null) {
+            return VoiceAudioCapability.voiceActionsEnabled(callbacks.engine(), callbacks.modelHandle());
+        }
+        return VoiceAudioCapability.voiceActionsEnabled(app, callbacks.engine(), callbacks.modelHandle());
     }
 
     public boolean isListening() {
@@ -129,6 +135,7 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
     }
 
     public void cancelAll(String reason) {
+        transcriptionCancelled.set(true);
         spoken.stop();
         listen.cancel(reason);
         if (mode == Mode.CONFIRM) rejectPendingConfirm();
@@ -141,6 +148,7 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
     }
 
     private void preemptForNewCommand(String reason) {
+        transcriptionCancelled.set(true);
         String id = pendingConfirmId;
         pendingConfirmId = null;
         pendingConfirmDescribe = null;
@@ -151,6 +159,7 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
         spoken.stop();
         listen.cancel(reason);
         deletePending();
+        transcriptionCancelled.set(false);
     }
 
     private void rejectPendingConfirm() {
@@ -173,7 +182,11 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
             callbacks.worker().execute(this::runConfirmPass);
         } else {
             callbacks.policyVoiceThinking();
-            callbacks.onVoiceStatus().accept("Thinking…");
+            callbacks.onVoiceStatus().accept(callbacks.app() == null
+                    ? "Thinking…"
+                    : callbacks.app().getString(usesSttInput()
+                        ? R.string.speech_input_transcribing
+                        : R.string.voice_thinking));
             callbacks.worker().execute(this::runCommandPass);
         }
     }
@@ -184,28 +197,49 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
         if (wav == null) return;
         try {
             maybeTrim(wav);
+            if (usesSttInput()) {
+                runSttCommandPass(wav);
+                return;
+            }
             String prompt = VoiceToolPromptCard.onePassAudioPrompt(callbacks.userLocale());
             StringBuilder reply = new StringBuilder();
             callbacks.engine().resetStop();
             String err = callbacks.engine().generateWithMedia(callbacks.modelHandle(), prompt,
                     new String[] { wav.getAbsolutePath() }, 512, reply::append);
-            String assistant = ThinkingSanitizer.clean(reply.toString()).answer;
-            if (err != null && assistant.isEmpty()) {
-                speakStatus(err);
-                return;
-            }
-            ToolCoordinator.Outcome outcome = ModelToolBridge.proposeFromAssistant(
-                    new ToolRegistry(), callbacks.toolCoordinator(), assistant);
-            if (outcome != null && "PENDING_CONFIRMATION".equals(outcome.status) && outcome.proposal != null) {
-                beginVoiceConfirm(outcome.proposal);
-                return;
-            }
-            String toSpeak = assistant.isEmpty() ? (err != null ? err : "No reply.") : assistant;
-            spoken.speakExact(toSpeak, callbacks.userLocale(), null);
+            handleAssistantReply(reply.toString(), err);
         } finally {
             wav.delete();
             callbacks.main().post(callbacks::policyGenerationFinished);
         }
+    }
+
+    private void runSttCommandPass(File wav) {
+        SttResult result = transcribeWav(wav);
+        if (!result.isOk()) {
+            surfaceSttFailure(result);
+            return;
+        }
+        String prompt = VoiceToolPromptCard.onePassTextPrompt(callbacks.userLocale(), result.text);
+        StringBuilder reply = new StringBuilder();
+        callbacks.engine().resetStop();
+        String err = callbacks.engine().generate(callbacks.modelHandle(), prompt, null, 512, reply::append);
+        handleAssistantReply(reply.toString(), err);
+    }
+
+    private void handleAssistantReply(String rawAssistant, String err) {
+        String assistant = ThinkingSanitizer.clean(rawAssistant).answer;
+        if (err != null && assistant.isEmpty()) {
+            speakStatus(err);
+            return;
+        }
+        ToolCoordinator.Outcome outcome = ModelToolBridge.proposeFromAssistant(
+                new ToolRegistry(), callbacks.toolCoordinator(), assistant);
+        if (outcome != null && "PENDING_CONFIRMATION".equals(outcome.status) && outcome.proposal != null) {
+            beginVoiceConfirm(outcome.proposal);
+            return;
+        }
+        String toSpeak = assistant.isEmpty() ? (err != null ? err : "No reply.") : assistant;
+        spoken.speakExact(toSpeak, callbacks.userLocale(), null);
     }
 
     private void beginVoiceConfirm(ToolCoordinator.Proposal proposal) {
@@ -234,15 +268,31 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
         try {
             spoken.invalidateDeferredCompletions();
             maybeTrim(wav);
-            StringBuilder recognized = new StringBuilder();
-            callbacks.engine().resetStop();
-            String err = callbacks.engine().generateWithMedia(callbacks.modelHandle(),
-                    VoiceToolPromptCard.confirmAsrPrompt(), new String[] { wav.getAbsolutePath() },
-                    64, recognized::append);
-            String transcript = ThinkingSanitizer.clean(recognized.toString()).answer;
-            VoiceConfirmLexicon.Decision decision = err == null
-                    ? VoiceConfirmLexicon.matchTranscript(transcript)
-                    : VoiceConfirmLexicon.Decision.AMBIGUOUS;
+            String err = null;
+            VoiceConfirmLexicon.Decision decision;
+            if (usesSttInput()) {
+                SttResult result = transcribeWav(wav);
+                if (result.status == SttResult.Status.CANCELLED) {
+                    rejectPendingConfirm();
+                    return;
+                }
+                if (!result.isOk()) {
+                    err = result.message == null || result.message.isEmpty() ? "stt failed" : result.message;
+                    decision = VoiceConfirmLexicon.Decision.AMBIGUOUS;
+                } else {
+                    decision = VoiceConfirmLexicon.matchTranscript(result.text);
+                }
+            } else {
+                StringBuilder recognized = new StringBuilder();
+                callbacks.engine().resetStop();
+                err = callbacks.engine().generateWithMedia(callbacks.modelHandle(),
+                        VoiceToolPromptCard.confirmAsrPrompt(), new String[] { wav.getAbsolutePath() },
+                        64, recognized::append);
+                String transcript = ThinkingSanitizer.clean(recognized.toString()).answer;
+                decision = err == null
+                        ? VoiceConfirmLexicon.matchTranscript(transcript)
+                        : VoiceConfirmLexicon.Decision.AMBIGUOUS;
+            }
             String id = pendingConfirmId;
             pendingConfirmId = null;
             pendingConfirmDescribe = null;
@@ -267,6 +317,42 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
         }
     }
 
+    private SttResult transcribeWav(File wav) {
+        android.content.Context app = callbacks.app();
+        if (app == null) return SttResult.unavailable("Speech input is unavailable");
+        transcriptionCancelled.set(false);
+        return SpeechInputProviders.current(app).transcribe(app, wav, transcriptionCancelled);
+    }
+
+    private void surfaceSttFailure(SttResult result) {
+        android.content.Context app = callbacks.app();
+        if (app == null) {
+            speakStatus(result == null ? "Speech transcription failed" : result.message);
+            return;
+        }
+        String message;
+        if (result == null) {
+            message = app.getString(R.string.speech_input_transcript_failed, "unknown error");
+        } else if (result.status == SttResult.Status.EMPTY) {
+            message = result.message == null || result.message.isEmpty()
+                    ? app.getString(R.string.speech_input_transcript_empty)
+                    : result.message;
+        } else if (result.status == SttResult.Status.CANCELLED) {
+            return;
+        } else {
+            String detail = result.message == null || result.message.isEmpty() ? "unknown error" : result.message;
+            message = app.getString(R.string.speech_input_transcript_failed, detail);
+        }
+        callbacks.onVoiceStatus().accept(message);
+        speakStatus(message);
+    }
+
+    boolean usesSttInput() {
+        android.content.Context app = callbacks.app();
+        return app != null
+                && new RuntimePreferences(app).speechInputMode() == SpeechInputMode.CACTUS_WHISTLE_STT;
+    }
+
     private void maybeTrim(File wav) {
         try {
             byte[] raw = Files.readAllBytes(wav.toPath());
@@ -283,7 +369,12 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
 
     String disabledReason() {
         if (callbacks.modelHandle() == 0L) return "Load a model first.";
-        return callbacks.app().getString(R.string.voice_no_audio_model);
+        android.content.Context app = callbacks.app();
+        if (app != null) {
+            String reason = VoiceAudioCapability.disabledReason(app, callbacks.engine(), callbacks.modelHandle());
+            if (reason != null && !reason.isEmpty()) return reason;
+        }
+        return callbacks.app() == null ? "This model cannot hear audio" : callbacks.app().getString(R.string.voice_no_audio_model);
     }
 
     private void deletePending() {

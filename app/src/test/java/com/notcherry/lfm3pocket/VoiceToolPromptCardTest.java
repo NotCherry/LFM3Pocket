@@ -12,4 +12,11 @@ public final class VoiceToolPromptCardTest {
         assertTrue(prompt.contains("<__media__>"));
         assertTrue(VoiceToolPromptCard.containsToolNames(prompt));
     }
+
+    @Test public void textPromptIncludesUserTextWithoutAudioMarker() {
+        String prompt = VoiceToolPromptCard.onePassTextPrompt(Locale.US, "set a timer for tea");
+        assertTrue(prompt.contains("set a timer for tea"));
+        assertTrue(!prompt.contains("<__media__>"));
+        assertTrue(VoiceToolPromptCard.containsToolNames(prompt));
+    }
 }

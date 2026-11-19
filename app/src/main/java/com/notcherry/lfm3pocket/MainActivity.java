@@ -57,6 +57,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final int OPEN_MODEL_URI = 48;
     private static final int PICK_DOCUMENT = 49;
     private static final int OPEN_MMPROJ_URI = 49;
+    private static final int PICK_WHISTLE_MODEL = 50;
 
 
     private ExecutorService worker;
@@ -77,6 +78,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private final ExecutorService audioWorker = Executors.newSingleThreadExecutor();
     private RecordingController recordingController;
     private VoicePttCoordinator voicePtt;
+    private final java.util.concurrent.atomic.AtomicBoolean voiceSttCancelled = new java.util.concurrent.atomic.AtomicBoolean();
+    private volatile boolean transcribingVoiceInput;
     private PlaybackController playbackController;
     private CheckBox keepLoadedBox;
     private Button idleOffButton;
@@ -91,6 +94,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private TextView tinyVocaStatus;
     private Button tinyVocaDownloadButton;
     private Button tinyVocaRemoveButton;
+    private Button speechInputOmniButton, speechInputWhistleButton;
+    private TextView speechInputCactusStatus;
+    private Button speechInputCactusPickButton, speechInputCactusClearButton;
     private Button interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton;
     private SeekBar interfaceSizeSlider;
     private TextView interfaceSizeValue;
@@ -223,6 +229,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 () -> ((Lfm3PocketApplication)getApplication()).hasMicrophonePermission(),
                 audioWorker, task -> mainHandler.post(task), (captureState, message, completed) -> {
                     if (destroyed) { if (completed != null) completed.delete(); return; }
+                    if (completed != null && SpeechInputProviders.usesSttTextPipeline(this)) {
+                        handleCompletedRecordingAsStt(completed);
+                        return;
+                    }
                     busy = recordingActive() || playbackActive() || speaking || generating;
                     status.setText(message);
                     if (completed != null) {
@@ -681,6 +691,53 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         speechHeading.setLetterSpacing(0.12f);
         speechHeading.setPadding(0, dp(16), 0, dp(4));
         configuration.addView(speechHeading);
+
+        TextView speechInputHeading = label(getString(R.string.speech_input_heading), 11, inkMuted);
+        speechInputHeading.setTypeface(StillwaterUi.sansMedium(this));
+        speechInputHeading.setLetterSpacing(0.08f);
+        speechInputHeading.setPadding(0, dp(8), 0, dp(2));
+        configuration.addView(speechInputHeading);
+        TextView speechInputLabel = label(getString(R.string.speech_input_mode_label), 14, ink);
+        speechInputLabel.setTypeface(StillwaterUi.sansMedium(this));
+        StillwaterReadable.prepareWrappingLabel(speechInputLabel);
+        configuration.addView(speechInputLabel);
+        TextView speechInputHelp = label(getString(R.string.speech_input_mode_help), 12, inkMuted);
+        StillwaterReadable.prepareWrappingLabel(speechInputHelp);
+        configuration.addView(speechInputHelp);
+        speechInputOmniButton = button(getString(R.string.speech_input_omni));
+        speechInputWhistleButton = button(getString(R.string.speech_input_cactus_whistle));
+        speechInputOmniButton.setOnClickListener(v -> {
+            new RuntimePreferences(this).setSpeechInputMode(SpeechInputMode.OMNI_AUDIO);
+            paintSpeechInputControls();
+            updateControls();
+        });
+        speechInputWhistleButton.setOnClickListener(v -> {
+            new RuntimePreferences(this).setSpeechInputMode(SpeechInputMode.CACTUS_WHISTLE_STT);
+            paintSpeechInputControls();
+            updateControls();
+        });
+        LinearLayout speechModeRow = StillwaterReadable.addFlexibleButtonRow(configuration, this, 44,
+                speechInputOmniButton, speechInputWhistleButton);
+        speechModeRow.setPadding(0, dp(4), 0, dp(4));
+        speechInputCactusStatus = label(getString(R.string.speech_input_cactus_status_missing), 13, ink);
+        StillwaterReadable.prepareWrappingLabel(speechInputCactusStatus);
+        configuration.addView(speechInputCactusStatus);
+        speechInputCactusPickButton = button(getString(R.string.speech_input_cactus_pick));
+        StillwaterUi.quiet(speechInputCactusPickButton);
+        speechInputCactusPickButton.setOnClickListener(v -> pickWhistleModel());
+        configuration.addView(speechInputCactusPickButton, new LinearLayout.LayoutParams(-1, dp(44)));
+        speechInputCactusClearButton = button(getString(R.string.speech_input_cactus_clear));
+        StillwaterUi.quiet(speechInputCactusClearButton);
+        speechInputCactusClearButton.setOnClickListener(v -> {
+            new RuntimePreferences(this).setCactusWhistleModelPath("");
+            paintSpeechInputControls();
+            updateControls();
+        });
+        configuration.addView(speechInputCactusClearButton, new LinearLayout.LayoutParams(-1, dp(44)));
+        TextView speechCactusHelp = label(getString(R.string.speech_input_cactus_help), 12, inkMuted);
+        StillwaterReadable.prepareWrappingLabel(speechCactusHelp);
+        configuration.addView(speechCactusHelp);
+
         tinyVocaTtsBox = new CheckBox(this);
         tinyVocaTtsBox.setId(R.id.settings_tiny_voca_tts);
         tinyVocaTtsBox.setText(R.string.tiny_voca_tts_label);
@@ -793,6 +850,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         LinearLayout chatRoot = new LinearLayout(this);
         chatRoot.setOrientation(LinearLayout.VERTICAL);
         chatPanel = new ChatPanel(this, this::send, this::stopActiveWork, () -> {
+            voiceSttCancelled.set(true);
             HistoryMediaCleanup.deleteAttachment(this,pendingImagePath);
             HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
             pendingImagePath = "";
@@ -941,8 +999,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         speakButton.setEnabled((!busy || playbackActive() || speaking) && (playbackActive() || speaking
                 || (modelHandle() != 0L && settingsLoaded && !lastAssistantReply.isBlank())));
         chatPanel.updateControls(!busy && modelHandle() != 0L && settingsLoaded,
-                generating || speaking || recordingActive() || playbackActive() || importCancellation != null,
-                !busy || generating);
+                generating || speaking || recordingActive() || playbackActive() || transcribingVoiceInput || importCancellation != null,
+                !busy || generating || transcribingVoiceInput);
 
         if (modelManager != null) {
             modelManager.showSettings(settingsLoaded ? inferenceSettings.summary() : "Loading inference settings...");
@@ -1054,6 +1112,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             RuntimePreferences prefs = new RuntimePreferences(this);
             if (tinyVocaTtsBox != null) tinyVocaTtsBox.setChecked(prefs.tinyVocaEnglishTtsEnabled());
             paintTinyVocaPackStatus();
+            paintSpeechInputControls();
             bindingBackground = false;
         }
     }
@@ -1773,7 +1832,55 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQUEST_AUDIO);
             return;
         }
+        voiceSttCancelled.set(false);
         recordingController.start();
+    }
+
+    private void handleCompletedRecordingAsStt(File wav) {
+        if (wav == null || !wav.isFile()) return;
+        final File recording = wav;
+        voiceSttCancelled.set(false);
+        transcribingVoiceInput = true;
+        busy = true;
+        if (status != null) status.setText(getString(R.string.speech_input_transcribing));
+        updateControls();
+        audioWorker.execute(() -> {
+            SttResult result;
+            try {
+                result = SpeechInputProviders.current(this).transcribe(this, recording, voiceSttCancelled);
+            } catch (Throwable t) {
+                result = SttResult.error(t.getMessage() == null ? t.toString() : t.getMessage());
+            } finally {
+                recording.delete();
+            }
+            final SttResult stt = result;
+            mainHandler.post(() -> {
+                transcribingVoiceInput = false;
+                if (destroyed) return;
+                busy = recordingActive() || playbackActive() || speaking || generating;
+                if (stt == null || stt.status == SttResult.Status.CANCELLED || voiceSttCancelled.get()) {
+                    status.setText("Speech transcription cancelled.");
+                    updateControls();
+                    return;
+                }
+                if (!stt.isOk()) {
+                    if (stt.status == SttResult.Status.EMPTY) {
+                        String msg = stt.message == null || stt.message.isEmpty()
+                                ? getString(R.string.speech_input_transcript_empty)
+                                : stt.message;
+                        status.setText(msg);
+                    } else {
+                        String detail = stt.message == null || stt.message.isEmpty() ? "unknown error" : stt.message;
+                        status.setText(getString(R.string.speech_input_transcript_failed, detail));
+                    }
+                    updateControls();
+                    return;
+                }
+                updateControls();
+                // Route recognized text into the existing text/inference pipeline (same as typed text).
+                send(stt.text);
+            });
+        });
     }
 
     private void toggleSpokenReply() {
@@ -1818,6 +1925,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     @Override protected void onStop() {
         foreground = false;
+        voiceSttCancelled.set(true);
         if (recordingController != null && recordingActive()) recordingController.cancel();
         super.onStop();
     }
@@ -1847,6 +1955,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         startActivityForResult(pick, requestCode);
     }
 
+    private void pickWhistleModel() {
+        if (busy) return;
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.setType("*/*");
+        startActivityForResult(pick, PICK_WHISTLE_MODEL);
+    }
+
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
         if (code == PICK_PHOTO && result == RESULT_OK && data != null && data.getData() != null) {
@@ -1866,6 +1982,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if ((code == OPEN_MODEL_URI || code == OPEN_MMPROJ_URI)
                 && result == RESULT_OK && data != null && data.getData() != null) {
             openExternalDocument(data.getData(), code == OPEN_MMPROJ_URI);
+            return;
+        }
+        if (code == PICK_WHISTLE_MODEL && result == RESULT_OK && data != null && data.getData() != null) {
+            importWhistleModel(data.getData());
             return;
         }
         if ((code != PICK_MODEL && code != PICK_MMPROJ) || result != RESULT_OK || data == null || data.getData() == null) return;
@@ -2003,6 +2123,63 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         File file = new File(path);
         if (new File(getFilesDir(), "models").equals(file.getParentFile())) file.delete();
     }
+
+    private void importWhistleModel(Uri uri) {
+        busy = true;
+        updateControls();
+        status.setText(getString(R.string.opening_external_model));
+        worker.execute(() -> {
+            File dest = null;
+            try {
+                String name = "whistle.cact";
+                try (Cursor cursor = getContentResolver().query(uri,
+                        new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+                    if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) {
+                        String display = cursor.getString(0);
+                        if (display != null && !display.trim().isEmpty()) name = new File(display.trim()).getName();
+                    }
+                } catch (Exception ignored) { }
+                if (!name.toLowerCase().endsWith(".cact")) {
+                    // Keep original name but accept; provider will validate availability/load.
+                }
+                File dir = new File(getFilesDir(), "cactus");
+                if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("Cannot create Cactus model directory");
+                dest = new File(dir, name);
+                File temp = new File(dir, name + ".partial");
+                try (InputStream in = getContentResolver().openInputStream(uri);
+                     FileOutputStream out = new FileOutputStream(temp)) {
+                    if (in == null) throw new IOException("Cannot read the selected document");
+                    byte[] buffer = new byte[1024 * 64];
+                    int read;
+                    while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
+                    out.getFD().sync();
+                }
+                java.nio.file.Files.move(temp.toPath(), dest.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                File saved = dest;
+                runOnUiThread(() -> {
+                    if (destroyed) return;
+                    new RuntimePreferences(this).setCactusWhistleModelPath(saved.getAbsolutePath());
+                    paintSpeechInputControls();
+                    busy = false;
+                    status.setText(saved.getName() + " selected for Cactus Whistle STT.");
+                    updateControls();
+                });
+                return;
+            } catch (Exception e) {
+                if (dest != null) dest.delete();
+                final String message = e.getMessage() == null ? e.toString() : e.getMessage();
+                runOnUiThread(() -> {
+                    if (destroyed) return;
+                    busy = false;
+                    status.setText("Could not import Whistle model: " + message);
+                    updateControls();
+                });
+            }
+        });
+    }
+
 
     private void loadSelectedModel(String model, String projector) {
         if (isContentUri(model) || isContentUri(projector)) {
@@ -2171,10 +2348,19 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void stopActiveWork() {
-        if (recordingActive()) recordingController.stop();
-        else if (playbackActive()) playbackController.stop();
-        else if (speaking) runtime.speak(lastAssistantReply);
-        else if (importCancellation != null) {
+        if (transcribingVoiceInput) {
+            voiceSttCancelled.set(true);
+            transcribingVoiceInput = false;
+            busy = false;
+            status.setText("Speech transcription cancelled.");
+            updateControls();
+        } else if (recordingActive()) {
+            recordingController.stop();
+        } else if (playbackActive()) {
+            playbackController.stop();
+        } else if (speaking) {
+            runtime.speak(lastAssistantReply);
+        } else if (importCancellation != null) {
             importCancellation.set(true);
             status.setText("Cancelling import...");
         } else {
@@ -2237,6 +2423,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         }
         if (tinyVocaTtsBox != null) tinyVocaTtsBox.setChecked(prefs.tinyVocaEnglishTtsEnabled());
         paintTinyVocaPackStatus();
+        paintSpeechInputControls();
         paintIdle(prefs.idleMinutes());
         bindingBackground = false;
     }
@@ -2261,6 +2448,36 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 : getString(R.string.tiny_voca_status_missing));
         if (tinyVocaDownloadButton != null) tinyVocaDownloadButton.setEnabled(!ready);
         if (tinyVocaRemoveButton != null) tinyVocaRemoveButton.setEnabled(ready);
+    }
+
+    private void paintSpeechInputControls() {
+        RuntimePreferences prefs = new RuntimePreferences(this);
+        SpeechInputMode mode = prefs.speechInputMode();
+        if (speechInputOmniButton != null) {
+            speechInputOmniButton.setSelected(mode == SpeechInputMode.OMNI_AUDIO);
+            speechInputOmniButton.setAlpha(mode == SpeechInputMode.OMNI_AUDIO ? 1f : 0.7f);
+        }
+        if (speechInputWhistleButton != null) {
+            speechInputWhistleButton.setSelected(mode == SpeechInputMode.CACTUS_WHISTLE_STT);
+            speechInputWhistleButton.setAlpha(mode == SpeechInputMode.CACTUS_WHISTLE_STT ? 1f : 0.7f);
+        }
+        if (speechInputCactusStatus != null) {
+            String path = prefs.cactusWhistleModelPath();
+            SttAvailability availability = CactusWhistleBridge.availability(path);
+            String label;
+            if (path == null || path.trim().isEmpty()) {
+                label = getString(R.string.speech_input_cactus_model_none);
+            } else {
+                label = new File(path).getName() + " · " + (availability.available
+                        ? getString(R.string.speech_input_cactus_status_ready)
+                        : availability.message);
+            }
+            speechInputCactusStatus.setText(label);
+        }
+        if (speechInputCactusClearButton != null) {
+            String path = prefs.cactusWhistleModelPath();
+            speechInputCactusClearButton.setEnabled(path != null && !path.trim().isEmpty());
+        }
     }
 
     private void downloadTinyVocaPack() {

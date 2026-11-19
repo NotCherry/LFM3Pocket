@@ -26,6 +26,21 @@ public final class VoiceToolPromptCard {
                 + "<|im_start|>assistant\n";
     }
 
+    /** Text-only voice-action prompt for STT-transcribed input (no media attachment). */
+    public static String onePassTextPrompt(Locale locale, String userText) {
+        String languageHint = locale != null && "pl".equals(locale.getLanguage())
+                ? "Reply in Polish when appropriate."
+                : "Reply in English when appropriate.";
+        String safeText = userText == null ? "" : userText.trim();
+        return "<|startoftext|><|im_start|>system\n"
+                + "You are Hanami, a concise on-device assistant. "
+                + TOOL_CARD + "\n"
+                + languageHint + " If you need an Android action, emit exactly one JSON tool object and no other prose.\n"
+                + "<|im_end|>\n"
+                + "<|im_start|>user\n" + safeText + "<|im_end|>\n"
+                + "<|im_start|>assistant\n";
+    }
+
     /** Transcript-only confirm listen (Omni ASR pass on a short clip). */
     public static String confirmAsrPrompt() {
         return "<|startoftext|><|im_start|>system\nPerform ASR.\n<|im_end|>\n"
