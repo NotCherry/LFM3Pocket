@@ -75,8 +75,8 @@ interface HistoryDao {
     fun updateTurnText(turnId:String,text:String):Int
     @Query("UPDATE messages SET speechTranscript=:transcript, speechTranscriptStatus=:speechStatus WHERE id=:id")
     fun updateSpeech(id:String,transcript:String?,speechStatus:String?):Int
-    @Query("UPDATE messages SET turnStatus='INTERRUPTED', text=CASE WHEN length(trim(text))=0 THEN :placeholder ELSE text END WHERE role='assistant' AND turnStatus='GENERATING'")
-    fun markGeneratingInterrupted(placeholder:String):Int
+    @Query("UPDATE messages SET turnStatus='INTERRUPTED', text=CASE WHEN length(trim(text))=0 THEN :placeholder ELSE text END WHERE role='assistant' AND turnStatus='GENERATING' AND createdAt < :cutoffAt")
+    fun markGeneratingInterrupted(placeholder:String, cutoffAt:Long):Int
     @Insert fun insertToolOutcome(value:HistoryToolOutcome)
     @Query("SELECT * FROM tool_outcomes WHERE requestId=:id LIMIT 1") fun toolOutcome(id:String):HistoryToolOutcome?
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC,id ASC") fun conversations():List<HistoryConversation>
