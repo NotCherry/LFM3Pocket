@@ -79,12 +79,14 @@ class ChatPanel(
         val reject: Runnable?,
     )
     private data class Attachment(val path: String, val caption: String, val onRemove: Runnable)
+    private data class DocumentAttachment(val name: String, val onRemove: Runnable)
 
     private var snapshot by mutableStateOf(ChatSnapshot(emptyList(), "", false))
     private var liveStatus by mutableStateOf("")
     private var idleMode by mutableStateOf("Mode · Local / offline")
     private var toolCard by mutableStateOf<ToolCardState?>(null)
     private var attachment by mutableStateOf<Attachment?>(null)
+    private var documentAttachments by mutableStateOf<List<DocumentAttachment>>(emptyList())
     private var controls by mutableStateOf(Controls())
     private var pendingDraft by mutableStateOf<String?>(null)
 
@@ -160,6 +162,19 @@ class ChatPanel(
 
     fun clearImageAttachment() {
         attachment = null
+    }
+
+    fun setDocumentAttachments(names: List<String>, onRemoveAt: Consumer<Int>) {
+        val list = ArrayList<DocumentAttachment>(names.size)
+        for (i in names.indices) {
+            val index = i
+            list.add(DocumentAttachment(names[i]) { onRemoveAt.accept(index) })
+        }
+        documentAttachments = list
+    }
+
+    fun clearDocumentAttachments() {
+        documentAttachments = emptyList()
     }
 
     /** Prefills the composer. Share targets and typed ASK intents use this. */
@@ -276,6 +291,46 @@ class ChatPanel(
                     onSuggest = { input = it },
                     onRetryInterrupted = { turnId -> retryInterrupted.accept(turnId) },
                 )
+                if (documentAttachments.isNotEmpty()) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = space.space4, vertical = space.space1)
+                            .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
+                            .padding(space.space3)
+                            .testTag(tag("document_attachments")),
+                    ) {
+                        Text(
+                            "Documents attached",
+                            style = type.label,
+                            color = atlas.inkMuted,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        documentAttachments.forEachIndexed { index, doc ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    doc.name,
+                                    style = type.bodySmall,
+                                    color = atlas.ink,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag(tag("document_attachment_$index")),
+                                )
+                                TextButton(
+                                    onClick = { doc.onRemove.run() },
+                                    modifier = Modifier.testTag(tag("document_remove_$index")),
+                                    colors = StillwaterControls.textButtonColors(),
+                                ) { Text("Remove") }
+                            }
+                        }
+                    }
+                }
                 attachment?.let { image ->
                     Column(
                         Modifier

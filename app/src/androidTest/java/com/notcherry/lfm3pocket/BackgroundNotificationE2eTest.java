@@ -63,17 +63,32 @@ public final class BackgroundNotificationE2eTest {
             UiObject2 settings = device.wait(Until.findObject(By.res(pkg, "settings_open").enabled(true)), WAIT);
             assertNotNull(settings);
             settings.click();
+            assertNotNull("Settings did not open", device.wait(Until.hasObject(By.res(pkg, "settings_back")), WAIT));
+            try {
+                UiScrollable scroll = new UiScrollable(new UiSelector().resourceId(pkg + ":id/model_configuration_scroll"));
+                scroll.setAsVerticalList();
+                scroll.scrollIntoView(new UiSelector().resourceId(pkg + ":id/settings_keep_loaded"));
+            } catch (Exception ignored) {
+            }
+            UiObject2 keep = device.wait(Until.findObject(By.res(pkg, "settings_keep_loaded")), WAIT);
+            assertNotNull("Keep-loaded control missing in settings", keep);
+            assertTrue(keep.isChecked());
+            try {
+                UiScrollable scroll = new UiScrollable(new UiSelector().resourceId(pkg + ":id/model_configuration_scroll"));
+                scroll.setAsVerticalList();
+                scroll.scrollIntoView(new UiSelector().resourceId(pkg + ":id/settings_idle_unload"));
+            } catch (Exception ignored) {
+            }
+            assertNotNull("Idle unload control missing in settings",
+                    device.wait(Until.findObject(By.res(pkg, "settings_idle_unload")), WAIT));
             try {
                 UiScrollable scroll = new UiScrollable(new UiSelector().resourceId(pkg + ":id/model_configuration_scroll"));
                 scroll.setAsVerticalList();
                 scroll.scrollIntoView(new UiSelector().resourceId(pkg + ":id/settings_lock_preview"));
             } catch (Exception ignored) {
             }
-            UiObject2 keep = device.wait(Until.findObject(By.res(pkg, "settings_keep_loaded")), WAIT);
-            assertNotNull(keep);
-            assertTrue(keep.isChecked());
-            assertNotNull(device.findObject(By.res(pkg, "settings_idle_unload")));
-            assertNotNull(device.findObject(By.res(pkg, "settings_lock_preview")));
+            assertNotNull("Lock preview control missing in settings",
+                    device.wait(Until.findObject(By.res(pkg, "settings_lock_preview")), WAIT));
             if (captureShots) shoot("settings_background.png");
 
             device.findObject(By.res(pkg, "settings_back")).click();

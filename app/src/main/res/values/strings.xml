@@ -39,6 +39,14 @@
     <string name="importing_photo">Importing photo…</string>
     <string name="preparing_photo">Preparing photo for vision…</string>
     <string name="photo_attached_status">photo attached. Add a question and press Send.</string>
+    <string name="attach_document">Document</string>
+    <string name="attach_document_talkback">Attach document files</string>
+    <string name="document_attached">Document attached</string>
+    <string name="document_remove">Remove document</string>
+    <string name="documents_attached_status">%1$d document(s) attached. Add a question and press Send.</string>
+    <string name="importing_document">Reading document…</string>
+    <string name="document_too_large">This file is too large to attach.</string>
+    <string name="document_unsupported">Unsupported file type. Attach a plain text file.</string>
     <string name="back_to_chat">Back to chat</string>
     <string name="settings_title">Settings</string>
     <string name="save">Save</string>

@@ -38,6 +38,14 @@
     <string name="importing_photo">Importowanie zdjęcia…</string>
     <string name="preparing_photo">Przygotowywanie zdjęcia dla wizji…</string>
     <string name="photo_attached_status">zdjęcie załączone. Dodaj pytanie i naciśnij Wyślij.</string>
+    <string name="attach_document">Dokument</string>
+    <string name="attach_document_talkback">Załącz pliki dokumentów</string>
+    <string name="document_attached">Załączono dokument</string>
+    <string name="document_remove">Usuń dokument</string>
+    <string name="documents_attached_status">Załączono dokumenty: %1$d. Dodaj pytanie i naciśnij Wyślij.</string>
+    <string name="importing_document">Czytanie dokumentu…</string>
+    <string name="document_too_large">Ten plik jest za duży, aby go załączyć.</string>
+    <string name="document_unsupported">Nieobsługiwany typ pliku. Załącz plik tekstowy.</string>
     <string name="back_to_chat">Wróć do czatu</string>
     <string name="settings_title">Ustawienia</string>
     <string name="save">Zapisz</string>
