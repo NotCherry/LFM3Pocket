@@ -310,6 +310,9 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             app.diagnostics().record(LocalDiagnostics.Kind.MODEL_LOAD, 0L, "unload=" + why);
             main.post(() -> {
                 unloading = false;
+                if (handle == 0L) {
+                    try { app.externalModels().releaseAll(); } catch (Exception ignored) { }
+                }
                 publish(last);
                 if (done != null) done.run();
             });
