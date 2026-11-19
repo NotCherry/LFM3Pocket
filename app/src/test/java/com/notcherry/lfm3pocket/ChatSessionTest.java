@@ -523,7 +523,6 @@ public class ChatSessionTest {
         assertFalse(prompt.contains("Question 1"));
         assertTrue(prompt.contains("Follow up"));
     }
-    }
 
     private static int occurrences(String value,String token){
         return value.split(java.util.regex.Pattern.quote(token),-1).length-1;
