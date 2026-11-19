@@ -292,6 +292,23 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         }
         if (launchNewChat) {
             mainHandler.post(() -> handlePendingNewChatRequests(getIntent()));
+        } else {
+            // Resume path: re-apply persisted history if async restore raced with startup/model load.
+            final String resumeId = historyConversationId;
+            mainHandler.postDelayed(() -> {
+                if (destroyed || runtime == null) return;
+                if (resumeId == null || resumeId.isEmpty()) return;
+                if (!resumeId.equals(runtime.conversationId())) return;
+                if (runtime.isGenerating()) return;
+                runtime.restoreOpenConversation();
+            }, 1200);
+            mainHandler.postDelayed(() -> {
+                if (destroyed || runtime == null) return;
+                if (resumeId == null || resumeId.isEmpty()) return;
+                if (!resumeId.equals(runtime.conversationId())) return;
+                if (runtime.isGenerating()) return;
+                runtime.restoreOpenConversation();
+            }, 3500);
         }
         if (pendingSwitchId != null) confirmSwitchConversation();
         maybeStartPendingAssistantVoiceSession();

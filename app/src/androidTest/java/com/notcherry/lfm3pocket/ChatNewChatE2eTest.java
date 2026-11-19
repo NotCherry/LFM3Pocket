@@ -212,6 +212,25 @@ public final class ChatNewChatE2eTest {
         awaitEnabled("chat_stop");
     }
 
+    private UiObject2 awaitResumedTranscript() {
+        UiObject2 resumed = device.wait(Until.findObject(
+                By.res(pkg, "chat_transcript").textContains("Sticky prompt")), 30000L);
+        if (resumed == null) {
+            resumed = device.wait(Until.findObject(
+                    By.res(pkg, "chat_transcript").descContains("Sticky prompt")), 5000L);
+        }
+        if (resumed == null) {
+            // Allow async history restore to repopulate the transcript on slower CI runs.
+            resumed = device.wait(Until.findObject(
+                    By.res(pkg, "chat_transcript").textContains("Sticky answer")), 5000L);
+        }
+        if (resumed == null) {
+            resumed = device.wait(Until.findObject(
+                    By.res(pkg, "chat_transcript").descContains("Sticky answer")), 5000L);
+        }
+        return resumed;
+    }
+
     private boolean runtimeGenerating() {
         return ((TestLfm3PocketApplication) context.getApplicationContext())
                 .modelRuntime().isGenerating();
