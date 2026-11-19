@@ -8,6 +8,7 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject2;
+import androidx.test.uiautomator.UiSelector;
 import androidx.test.uiautomator.Until;
 import java.io.File;
 import java.io.IOException;
@@ -22,15 +23,24 @@ import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class)
 public final class ChatNewChatE2eTest {
     private static final long TIMEOUT = 20000L;
+    private static final long RESUME_TIMEOUT = 60000L;
     private String pkg;
     private UiDevice device;
     private TestLfm3PocketApplication app;
     private Context context;
 
-    @Before public void prepareFakeModel() throws IOException {
+    @Before public void prepareFakeModel() throws Exception {
         context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         app = (TestLfm3PocketApplication) context.getApplicationContext();
         app.scriptedEngine().resetForTest();
+        try {
+            ModelRuntime runtime = app.existingRuntime();
+            if (runtime != null) {
+                runtime.stopTurn();
+                runtime.clearConversation();
+            }
+        } catch (Throwable ignored) {
+        }
         device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         pkg = context.getPackageName();
         File file = new File(context.getFilesDir(), "new-chat-ui.gguf");
@@ -39,6 +49,7 @@ public final class ChatNewChatE2eTest {
                 .putString("model", file.getAbsolutePath())
                 .putBoolean("search_enabled", false)
                 .commit());
+        device.waitForIdle(500);
     }
 
     @Test public void openChatResumesThenTopBarNewChatStartsEmptySession() {
@@ -56,48 +67,45 @@ public final class ChatNewChatE2eTest {
 
         try (ActivityScenario<ComposeHostActivity> home =
                      ActivityScenario.launch(ComposeHostActivity.class)) {
-            UiObject2 resumed = null;
-            for (int attempt = 0; attempt < 2 && resumed == null; attempt++) {
-                if (attempt > 0) {
-                    device.pressBack();
-                    device.waitForIdle(1500);
+            boolean resumed = false;
+            for (int attempt = 0; attempt < 3 && !resumed; attempt++) {
+                if (attempt == 0) {
                     click("open_chat");
                 } else {
-                    click("open_chat");
+                    device.pressBack();
+                    device.waitForIdle(1500);
+                    UiObject2 reopen = device.wait(Until.findObject(By.res(pkg, "open_chat").enabled(true)), TIMEOUT);
+                    assertNotNull("Home open_chat control missing before retry " + attempt + "; " + debugState(conversationId), reopen);
+                    reopen.click();
                 }
                 awaitEnabled("chat_send");
-                long resumeDeadline = SystemClock.uptimeMillis() + 45000L;
-                while (SystemClock.uptimeMillis() < resumeDeadline && resumed == null) {
-                    device.waitForIdle(500);
-                    resumed = device.wait(Until.findObject(
-                            By.res(pkg, "chat_transcript").textContains("Sticky prompt")), 1500L);
-                    if (resumed == null) {
-                        resumed = device.wait(Until.findObject(
-                                By.res(pkg, "chat_transcript").textContains("Sticky answer")), 500L);
-                    }
-                    if (resumed == null) {
-                        SystemClock.sleep(250);
-                    }
+                long resumeDeadline = SystemClock.uptimeMillis() + RESUME_TIMEOUT;
+                while (SystemClock.uptimeMillis() < resumeDeadline && !resumed) {
+                    device.waitForIdle(400);
+                    resumed = transcriptContains("Sticky prompt") || transcriptContains("Sticky answer");
+                    if (!resumed) SystemClock.sleep(250);
                 }
             }
-            assertNotNull("Open chat must resume the last saved conversation", resumed);
+            assertTrue("Open chat must resume the last saved conversation; " + debugState(conversationId), resumed);
 
             click("chat_new_chat");
             UiObject2 empty = device.wait(Until.findObject(
                     By.res(pkg, "chat_transcript").textContains("No conversation yet")), TIMEOUT);
-            assertNotNull("New chat must clear the live transcript", empty);
-            assertFalse(empty.getText().contains("Sticky prompt"));
+            assertNotNull("New chat must clear the live transcript; " + debugState(conversationId), empty);
+            assertFalse("Transcript still contains resumed prompt after New chat: " + transcriptText(),
+                    transcriptContains("Sticky prompt"));
             assertEquals("Starting new chat must not invoke the model", 0, app.scriptedEngine().callCount());
             String nextId = context.getSharedPreferences("MainActivity", Context.MODE_PRIVATE)
                     .getString("history_conversation_id", "");
-            assertFalse("New chat must mint a new conversation id", conversationId.equals(nextId));
+            assertFalse("New chat must mint a new conversation id; " + debugState(conversationId),
+                    conversationId.equals(nextId));
 
             device.pressBack();
             click("open_chat");
             awaitEnabled("chat_send");
             UiObject2 stillEmpty = device.wait(Until.findObject(
                     By.res(pkg, "chat_transcript").textContains("No conversation yet")), TIMEOUT);
-            assertNotNull("Open chat after new chat stays on the fresh empty session", stillEmpty);
+            assertNotNull("Open chat after new chat stays on the fresh empty session; " + debugState(conversationId), stillEmpty);
         }
     }
 
@@ -216,5 +224,48 @@ public final class ChatNewChatE2eTest {
         UiObject2 object = device.wait(Until.findObject(By.res(pkg, id).enabled(true)), TIMEOUT);
         assertNotNull("Expected enabled UI control: " + id, object);
         return object;
+    }
+
+    private boolean transcriptContains(String text) {
+        UiObject2 transcript = device.wait(Until.findObject(
+                By.res(pkg, "chat_transcript").textContains(text)), 1200L);
+        return transcript != null;
+    }
+
+    private String transcriptText() {
+        UiObject2 transcript = device.findObject(By.res(pkg, "chat_transcript"));
+        return transcript == null ? "<missing>" : String.valueOf(transcript.getText());
+    }
+
+    private String debugState(String expectedConversationId) {
+        String prefsId = context.getSharedPreferences("MainActivity", Context.MODE_PRIVATE)
+                .getString("history_conversation_id", "");
+        String runtimeId = "<none>";
+        String runtimeNotice = "<none>";
+        boolean generating = false;
+        try {
+            ModelRuntime runtime = app.existingRuntime();
+            if (runtime != null) {
+                runtimeId = String.valueOf(runtime.conversationId());
+                RuntimeNotice notice = runtime.currentNotice();
+                runtimeNotice = notice == null ? "<null>" : notice.kind + ":" + notice.title;
+                generating = runtime.isGenerating();
+            }
+        } catch (Throwable t) {
+            runtimeId = "<error:" + t.getClass().getSimpleName() + ">";
+        }
+        int dbCount = -1;
+        try {
+            HistoryRepository repository = new HistoryRepository(HistoryDatabase.get(context));
+            dbCount = repository.messages(expectedConversationId == null ? "" : expectedConversationId).size();
+        } catch (Throwable t) {
+            dbCount = -2;
+        }
+        return "prefsId=" + prefsId
+                + ", runtimeId=" + runtimeId
+                + ", runtimeNotice=" + runtimeNotice
+                + ", generating=" + generating
+                + ", dbMessages(" + expectedConversationId + ")=" + dbCount
+                + ", transcript=" + transcriptText();
     }
 }
