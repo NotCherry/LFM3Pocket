@@ -155,5 +155,4 @@ public final class RuntimePreferences {
                 .putString("calendar_write_label", label == null ? "" : label)
                 .apply();
     }
-    }
 }
