@@ -16,6 +16,19 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         "$<$<CONFIG:RelWithDebInfo>:-O3>")
 endif()
 
+# Experimental spike (#164): opt-in Vulkan backend for llama.cpp/ggml.
+# Default OFF so CI and universal builds remain CPU-safe. Requires a Vulkan-capable
+# Android/NDK toolchain environment and shader generation deps (glslc, etc.) when ON.
+option(HANAMI_GGML_VULKAN "Enable experimental ggml Vulkan backend (spike #164, off by default)" OFF)
+if(HANAMI_GGML_VULKAN)
+    set(GGML_VULKAN ON CACHE BOOL "" FORCE)
+else()
+    # Preserve explicit GGML_VULKAN=ON from caller if provided; otherwise force OFF.
+    if(NOT GGML_VULKAN)
+        set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
+    endif()
+endif()
+
 set(LLAMA_BUILD_COMMON ON CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -49,6 +62,10 @@ target_compile_options(lfm3pocket PRIVATE "$<$<CONFIG:Debug>:-O3>" "$<$<CONFIG:R
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     target_compile_options(lfm3pocket PRIVATE -march=armv8.2-a+dotprod)
     target_compile_definitions(lfm3pocket PRIVATE HANAMI_ARM_DOTPROD=1)
+endif()
+if(GGML_VULKAN)
+    target_compile_definitions(lfm3pocket PRIVATE HANAMI_ENABLE_VULKAN_OFFLOAD=1)
+    message(STATUS "Hanami: experimental GGML_VULKAN enabled (spike #164); runtime will attempt GPU offload with CPU fallback")
 endif()
 # NDK Gradle does not always propagate llama-common INTERFACE includes to JNI sources.
 target_include_directories(lfm3pocket PRIVATE

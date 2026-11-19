@@ -12,6 +12,11 @@ def hanamiStorePassword = System.getenv('HANAMI_STORE_PASSWORD')
 def hanamiKeyAlias = System.getenv('HANAMI_KEY_ALIAS')
 def hanamiKeyPassword = System.getenv('HANAMI_KEY_PASSWORD')
 def hanamiSigningReady = hanamiKeystore && hanamiStorePassword && hanamiKeyAlias && hanamiKeyPassword
+// Experimental spike (#164): opt-in Vulkan backend build. Requires Vulkan SDK/glslc
+// and a host shader-gen toolchain for Android cross-build; CI/universal builds stay OFF.
+def hanamiGgmlVulkan = (project.findProperty('hanami.ggmlVulkan')
+        ?: System.getenv('HANAMI_GGML_VULKAN')
+        ?: 'OFF').toString()
 
 android {
     // Source package stays put so the Java/Kotlin tree does not move.
@@ -47,7 +52,8 @@ android {
                           '-DGGML_CPU_KLEIDIAI=OFF',
                           '-DLLAMA_BUILD_TESTS=OFF',
                           '-DLLAMA_BUILD_EXAMPLES=OFF',
-                          '-DLLAMA_BUILD_SERVER=OFF'
+                          '-DLLAMA_BUILD_SERVER=OFF',
+                          "-DHANAMI_GGML_VULKAN=${hanamiGgmlVulkan}"
                 cppFlags '-std=c++17'
             }
         }

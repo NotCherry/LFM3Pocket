@@ -427,6 +427,8 @@ Order is dependency order within a phase. Do not block **V1** on new tools — e
 
 CPU-only today (`n_gpu_layers = 0`). Spike **Vulkan** first for Omni PTT TTFT; then OpenCL notes; Hexagon/QNN as SoC-only experiment. Clean CPU fallback. Report devices, deltas, recommendation. Depends on stable V1 workload.
 
+- **Spike report:** [`docs/VOICE_GPU_NPU_SPIKE_164.md`](../VOICE_GPU_NPU_SPIKE_164.md) (opt-in build/runtime hooks, fallback path, limitations, recommendation)
+
 #### [#165](https://github.com/NotCherry/LFM3Pocket/issues/165) Rolling memory summarization
 
 User-visible summarize-and-compact for long voice sessions; Room keeps full transcript; keep trim/thermal unload. Fail closed if summary fails.
