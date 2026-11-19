@@ -83,6 +83,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private CheckBox lockPreviewBox;
     private CheckBox loopbackBox;
     private CheckBox networkToolsBox;
+    private CheckBox notificationAccessBox;
+    private EditText notificationAllowlistField;
     private CheckBox tinyVocaTtsBox;
     private TextView tinyVocaStatus;
     private Button tinyVocaDownloadButton;
@@ -603,6 +605,59 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         TextView networkToolsHelp = label(getString(R.string.network_tools_help), 12, inkMuted);
         StillwaterReadable.prepareWrappingLabel(networkToolsHelp);
         configuration.addView(networkToolsHelp);
+
+        TextView notificationAccessHeading = label(getString(R.string.notification_access_heading), 11, inkMuted);
+        notificationAccessHeading.setTypeface(StillwaterUi.sansMedium(this));
+        notificationAccessHeading.setLetterSpacing(0.12f);
+        notificationAccessHeading.setPadding(0, dp(16), 0, dp(4));
+        configuration.addView(notificationAccessHeading);
+        notificationAccessBox = new CheckBox(this);
+        notificationAccessBox.setId(R.id.settings_notification_access);
+        notificationAccessBox.setText(R.string.notification_access_enabled);
+        StillwaterUi.styleCheck(notificationAccessBox);
+        notificationAccessBox.setOnCheckedChangeListener((button, checked) -> {
+            if (bindingBackground) return;
+            new RuntimePreferences(this).setNotificationAccessEnabled(checked);
+        });
+        configuration.addView(notificationAccessBox);
+        TextView notificationAccessHelp = label(getString(R.string.notification_access_help), 12, inkMuted);
+        StillwaterReadable.prepareWrappingLabel(notificationAccessHelp);
+        configuration.addView(notificationAccessHelp);
+        Button openNotificationAccessSettings = button(getString(R.string.notification_access_open_settings));
+        openNotificationAccessSettings.setId(R.id.settings_notification_open_system);
+        StillwaterUi.quiet(openNotificationAccessSettings);
+        openNotificationAccessSettings.setOnClickListener(v -> {
+            try {
+                startActivity(new Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+            } catch (Exception e) {
+                status.setText("Could not open notification access settings.");
+            }
+        });
+        StillwaterReadable.addFlexibleFullWidth(configuration, openNotificationAccessSettings, 44);
+        TextView notificationAllowlistLabel = label(getString(R.string.notification_access_allowlist_label), 14, ink);
+        StillwaterReadable.prepareWrappingLabel(notificationAllowlistLabel);
+        configuration.addView(notificationAllowlistLabel);
+        notificationAllowlistField = new EditText(this);
+        notificationAllowlistField.setId(R.id.settings_notification_allowlist);
+        notificationAllowlistField.setMinLines(3);
+        notificationAllowlistField.setMaxLines(8);
+        notificationAllowlistField.setGravity(Gravity.TOP | Gravity.START);
+        notificationAllowlistField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        notificationAllowlistField.setHint(getString(R.string.notification_access_allowlist_hint));
+        notificationAllowlistField.setHintTextColor(inkMuted);
+        notificationAllowlistField.setTextColor(ink);
+        notificationAllowlistField.setTypeface(StillwaterUi.mono(this));
+        notificationAllowlistField.setBackgroundColor(Color.TRANSPARENT);
+        StillwaterUi.styleInput(notificationAllowlistField);
+        configuration.addView(notificationAllowlistField);
+        Button saveNotificationAllowlist = button(getString(R.string.notification_access_save_allowlist));
+        saveNotificationAllowlist.setId(R.id.settings_notification_save_allowlist);
+        StillwaterUi.quiet(saveNotificationAllowlist);
+        saveNotificationAllowlist.setOnClickListener(v -> saveNotificationAllowlist());
+        StillwaterReadable.addFlexibleFullWidth(configuration, saveNotificationAllowlist, 44);
+        TextView notificationAllowlistHelp = label(getString(R.string.notification_access_empty_allowlist), 12, inkMuted);
+        StillwaterReadable.prepareWrappingLabel(notificationAllowlistHelp);
+        configuration.addView(notificationAllowlistHelp);
 
         TextView speechHeading = label(getString(R.string.speech_heading), 11, inkMuted);
         speechHeading.setTypeface(StillwaterUi.sansMedium(this));
@@ -2078,10 +2133,32 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         lockPreviewBox.setChecked(prefs.lockPreview());
         if (loopbackBox != null) loopbackBox.setChecked(prefs.loopbackEnabled());
         if (networkToolsBox != null) networkToolsBox.setChecked(prefs.networkToolsEnabled());
+        if (notificationAccessBox != null) notificationAccessBox.setChecked(prefs.notificationAccessEnabled());
+        if (notificationAllowlistField != null) {
+            StringBuilder allowlistText = new StringBuilder();
+            for (String pkg : prefs.notificationAllowlist()) {
+                if (allowlistText.length() > 0) allowlistText.append('\n');
+                allowlistText.append(pkg);
+            }
+            notificationAllowlistField.setText(allowlistText.toString());
+        }
         if (tinyVocaTtsBox != null) tinyVocaTtsBox.setChecked(prefs.tinyVocaEnglishTtsEnabled());
         paintTinyVocaPackStatus();
         paintIdle(prefs.idleMinutes());
         bindingBackground = false;
+    }
+
+    private void saveNotificationAllowlist() {
+        if (notificationAllowlistField == null) return;
+        String raw = notificationAllowlistField.getText() == null ? "" : notificationAllowlistField.getText().toString();
+        java.util.LinkedHashSet<String> packages = new java.util.LinkedHashSet<>();
+        for (String line : raw.split("[\n,]+")) {
+            if (line == null) continue;
+            String trimmed = line.trim();
+            if (!trimmed.isEmpty()) packages.add(trimmed);
+        }
+        new RuntimePreferences(this).setNotificationAllowlist(packages);
+        if (status != null) status.setText(getString(R.string.notification_access_allowlist_saved));
     }
 
     private void paintTinyVocaPackStatus() {

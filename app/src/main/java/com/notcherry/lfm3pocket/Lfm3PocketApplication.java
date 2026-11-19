@@ -101,7 +101,8 @@ public class Lfm3PocketApplication extends Application {
                     !(request instanceof ToolRegistry.CurrentTimeRequest) &&
                     !(request instanceof ToolRegistry.CalculatorRequest) &&
                     !(request instanceof ToolRegistry.UnitConvertRequest) &&
-                    !(request instanceof ToolRegistry.WeatherRequest)) {
+                    !(request instanceof ToolRegistry.WeatherRequest) &&
+                    !(request instanceof ToolRegistry.ListNotificationsRequest)) {
                 return new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
                         "This Android tool is not enabled yet");
             }
@@ -135,6 +136,10 @@ public class Lfm3PocketApplication extends Application {
             }
             if (request.tool == ToolRegistry.Tool.WEATHER) {
                 return new RuntimePreferences(this).networkToolsEnabled();
+            }
+            if (request.tool == ToolRegistry.Tool.LIST_NOTIFICATIONS) {
+                // Policy is enforced in the executor so callers get specific, testable error states.
+                return true;
             }
             return true;
         };
@@ -210,6 +215,10 @@ public class Lfm3PocketApplication extends Application {
         AndroidActionExecutor builtins = new BuiltinToolsExecutor(
                 () -> new RuntimePreferences(this).networkToolsEnabled(),
                 OpenMeteoWeather.httpTransport());
-        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text, builtins);
+        AndroidActionExecutor notifications = new NotificationListActionExecutor(
+                () -> new RuntimePreferences(this),
+                HanamiNotificationListenerService::snapshotOrNull,
+                () -> HanamiNotificationListenerService.isSystemEnabled(this));
+        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications);
     }
 }

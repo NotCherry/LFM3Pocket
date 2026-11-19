@@ -115,6 +115,17 @@
     <string name="notification_action_open">Open</string>
     <string name="notification_action_ask">Ask</string>
     <string name="notification_action_talk">Talk</string>
+    <string name="notification_listener_label">Hanami notification access</string>
+    <string name="notification_access_heading">NOTIFICATION ACCESS</string>
+    <string name="notification_access_enabled">Allow notification summaries (opt-in)</string>
+    <string name="notification_access_help">Off by default. When on, Hanami can list notifications only from apps you allow, after you enable system notification access for Hanami. Notification text is treated as untrusted data and cannot authorize actions.</string>
+    <string name="notification_access_open_settings">Open system notification access</string>
+    <string name="notification_access_allowlist_label">Allowed app packages (one per line)</string>
+    <string name="notification_access_allowlist_hint">com.example.app
+com.whatsapp</string>
+    <string name="notification_access_save_allowlist">Save allowlist</string>
+    <string name="notification_access_empty_allowlist">Empty allowlist: no notifications will be returned.</string>
+    <string name="notification_access_allowlist_saved">Notification allowlist saved.</string>
     <string name="voice_listening">Listening…</string>
     <string name="voice_thinking">Thinking…</string>
     <string name="voice_no_audio_model">This model cannot hear audio — load LFM3-Omni with a matching mmproj projector.</string>

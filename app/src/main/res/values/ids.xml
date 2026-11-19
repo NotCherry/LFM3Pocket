@@ -62,6 +62,10 @@
     <item name="settings_crash_log_text" type="id"/>
     <item name="chat_retry_interrupted" type="id"/>
     <item name="settings_network_tools" type="id"/>
+    <item name="settings_notification_access" type="id"/>
+    <item name="settings_notification_open_system" type="id"/>
+    <item name="settings_notification_allowlist" type="id"/>
+    <item name="settings_notification_save_allowlist" type="id"/>
     <item name="settings_tiny_voca_tts" type="id"/>
     <item name="settings_tiny_voca_download" type="id"/>
     <item name="settings_tiny_voca_remove" type="id"/>

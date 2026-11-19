@@ -8,7 +8,7 @@ public final class ToolRegistry {
         FLASHLIGHT("toggle_flashlight"),VOLUME("set_volume"),TIMER("set_timer"),ALARM("set_alarm"),
         SHOW_ALARMS("show_alarms"),APPLICATION("open_application"),SETTINGS("open_settings"),
         COPY("copy_text"),SHARE("share_text"),CURRENT_TIME("current_time"),CALCULATOR("calculator"),
-        UNIT_CONVERT("unit_convert"),WEATHER("weather");
+        UNIT_CONVERT("unit_convert"),WEATHER("weather"),LIST_NOTIFICATIONS("list_notifications");
         public final String wireName;Tool(String name){wireName=name;}
     }
     public static abstract class Request {
@@ -71,6 +71,14 @@ public final class ToolRegistry {
             longitude=a.containsKey("longitude")?((Number)a.get("longitude")).doubleValue():null;
         }
     }
+    public static final class ListNotificationsRequest extends Request {
+        public final int limit;public final String packageName;
+        private ListNotificationsRequest(Map<String,Object> a){
+            super(Tool.LIST_NOTIFICATIONS,a);
+            limit=(Integer)a.get("limit");
+            packageName=(String)a.get("package");
+        }
+    }
     private static Request request(Tool tool,Map<String,Object> args){
         switch(tool){
             case FLASHLIGHT:return new FlashlightRequest(args);case VOLUME:return new VolumeRequest(args);
@@ -82,6 +90,7 @@ public final class ToolRegistry {
             case CALCULATOR:return new CalculatorRequest(args);
             case UNIT_CONVERT:return new UnitConvertRequest(args);
             case WEATHER:return new WeatherRequest(args);
+            case LIST_NOTIFICATIONS:return new ListNotificationsRequest(args);
             default:throw new IllegalArgumentException("Unregistered tool");
         }
     }
@@ -119,6 +128,7 @@ public final class ToolRegistry {
                 case UNIT_CONVERT:keys(args,"value","from","to");number(args,"value");text(args,"from",1,32);text(args,"to",1,32);
                     UnitConverter.convert(((Number)args.get("value")).doubleValue(),(String)args.get("from"),(String)args.get("to"));break;
                 case WEATHER:keys(args,"location","latitude","longitude");weather(args);break;
+                case LIST_NOTIFICATIONS:keys(args,"limit","package");listNotifications(args);break;
             }
         }catch(IllegalArgumentException e){return reject("INVALID_ARGUMENTS",e.getMessage());}
         return new Parsed(request(selected,args),"VALIDATED","Arguments validated; authorization still required");
@@ -193,6 +203,14 @@ public final class ToolRegistry {
             return;
         }
         bad("Provide location or both latitude and longitude");
+    }
+    private static void listNotifications(Map<String,Object> args){
+        if(!args.containsKey("limit")) args.put("limit",20L);
+        if(!args.containsKey("package")) args.put("package","");
+        integer(args,"limit",1,50);
+        String name=text(args,"package",0,255);
+        if(name.isEmpty()) return;
+        if(!name.matches("(?:[A-Za-z][A-Za-z0-9_]*\\.)+[A-Za-z][A-Za-z0-9_]*")) bad("Expected an installed package identifier");
     }
     private static void choice(Map<String,Object> args,String key,String... values){
         if(!Arrays.asList(values).contains(args.get(key)))bad(key+" is unsupported");
