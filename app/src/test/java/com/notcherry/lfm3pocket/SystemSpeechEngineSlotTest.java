@@ -116,4 +116,46 @@ public class SystemSpeechEngineSlotTest {
         assertNull(slot.currentEngine());
         assertNotSame(created, slot.currentEngine());
     }
+
+    @Test
+    public void lateTeardownOfCancelledSessionDoesNotClearNewSessionSpeakingState() {
+        Queue<Runnable> deferred = new ArrayDeque<>();
+        SystemSpeechEngineSlot<FakeEngine> slot = slotWithDeferredMain(deferred);
+        final long[] currentSession = {1};
+        final boolean[] speaking = {true};
+
+        // Session A starts speaking but is cancelled before preparing an engine.
+        slot.shutdownOnMain(null, 1, () -> {
+            if (currentSession[0] == 1) speaking[0] = false;
+        });
+        assertEquals(1, deferred.size());
+
+        // Session B becomes the active session and starts speaking.
+        FakeEngine engineB = slot.prepareNewEngine(2, new FakeEngine());
+        assertSame(engineB, slot.currentEngine());
+        currentSession[0] = 2;
+        speaking[0] = true;
+
+        // Draining A's late teardown must not clear B's speaking state.
+        drain(deferred);
+        assertTrue("new session must remain speaking after old session teardown", speaking[0]);
+        assertSame(engineB, slot.currentEngine());
+        assertFalse(engineB.shutdownCalled);
+    }
+
+    @Test
+    public void cancellingCurrentSessionStillClearsItsSpeakingState() {
+        Queue<Runnable> deferred = new ArrayDeque<>();
+        SystemSpeechEngineSlot<FakeEngine> slot = slotWithDeferredMain(deferred);
+        FakeEngine engine = slot.prepareNewEngine(4, new FakeEngine());
+        final long[] currentSession = {4};
+        final boolean[] speaking = {true};
+        slot.shutdownOnMain(engine, 4, () -> {
+            if (currentSession[0] == 4) speaking[0] = false;
+        });
+        drain(deferred);
+        assertTrue(engine.shutdownCalled);
+        assertFalse(speaking[0]);
+        assertNull(slot.currentEngine());
+    }
 }

@@ -33,6 +33,7 @@ public final class AndroidSystemSpeechSynthesizer {
 
     private volatile boolean speaking;
     private volatile boolean sessionActive;
+    private volatile long currentSessionId;
     private volatile boolean stopRequested;
 
     public AndroidSystemSpeechSynthesizer(Context context) {
@@ -59,6 +60,7 @@ public final class AndroidSystemSpeechSynthesizer {
     }
 
     private void clearSpeakingForSession(long sessionId) {
+        if (sessionId != currentSessionId) return;
         speaking = false;
         sessionActive = false;
     }
@@ -75,6 +77,7 @@ public final class AndroidSystemSpeechSynthesizer {
         }
         stopRequested = false;
         long sessionId = sessionSeq.incrementAndGet();
+        currentSessionId = sessionId;
         sessionActive = true;
         CountDownLatch ready = new CountDownLatch(1);
         AtomicReference<String> initError = new AtomicReference<>();
