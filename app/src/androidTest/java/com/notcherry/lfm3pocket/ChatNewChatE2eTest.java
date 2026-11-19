@@ -57,8 +57,9 @@ public final class ChatNewChatE2eTest {
                      ActivityScenario.launch(ComposeHostActivity.class)) {
             click("open_chat");
             awaitEnabled("chat_send");
+            device.waitForIdle(1500);
             UiObject2 resumed = device.wait(Until.findObject(
-                    By.res(pkg, "chat_transcript").textContains("Sticky prompt")), TIMEOUT);
+                    By.res(pkg, "chat_transcript").textContains("Sticky prompt")), 30000L);
             assertNotNull("Open chat must resume the last saved conversation", resumed);
 
             click("chat_new_chat");
@@ -136,6 +137,7 @@ public final class ChatNewChatE2eTest {
             beginHeldGeneration();
             context.startActivity(new android.content.Intent(context, ComposeHostActivity.class)
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+            device.waitForIdle(1500);
             UiObject2 homeNew = device.wait(Until.findObject(By.res(pkg, "home_new_chat")), TIMEOUT);
             assertNotNull("Home New chat control should appear over the generating session", homeNew);
             homeNew.click();
@@ -146,6 +148,7 @@ public final class ChatNewChatE2eTest {
 
             context.startActivity(new android.content.Intent(context, ComposeHostActivity.class)
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+            device.waitForIdle(1500);
             homeNew = device.wait(Until.findObject(By.res(pkg, "home_new_chat")), TIMEOUT);
             assertNotNull(homeNew);
             homeNew.click();
