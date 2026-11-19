@@ -8,7 +8,7 @@ public final class ToolRegistry {
         FLASHLIGHT("toggle_flashlight"),VOLUME("set_volume"),TIMER("set_timer"),ALARM("set_alarm"),
         REMINDER("set_reminder"),SHOW_ALARMS("show_alarms"),APPLICATION("open_application"),SETTINGS("open_settings"),
         COPY("copy_text"),SHARE("share_text"),CURRENT_TIME("current_time"),CALCULATOR("calculator"),
-        UNIT_CONVERT("unit_convert"),WEATHER("weather"),LIST_NOTIFICATIONS("list_notifications");
+        UNIT_CONVERT("unit_convert"),WEATHER("weather"),LIST_NOTIFICATIONS("list_notifications"),DRAFT_MESSAGE("draft_message"),SEND_MESSAGE("send_message");
         public final String wireName;Tool(String name){wireName=name;}
     }
     public static abstract class Request {
@@ -88,6 +88,20 @@ public final class ToolRegistry {
             packageName=(String)a.get("package");
         }
     }
+    public static final class DraftMessageRequest extends Request {
+        public final String channel,to,body,packageName;
+        private DraftMessageRequest(Map<String,Object> a){
+            super(Tool.DRAFT_MESSAGE,a);
+            channel=(String)a.get("channel");
+            to=a.containsKey("to")?(String)a.get("to"):"";
+            body=(String)a.get("body");
+            packageName=a.containsKey("package")?(String)a.get("package"):null;
+        }
+    }
+    public static final class SendMessageRequest extends Request {
+        public final String draftId;
+        private SendMessageRequest(Map<String,Object> a){super(Tool.SEND_MESSAGE,a);draftId=(String)a.get("draft_id");}
+    }
     private static Request request(Tool tool,Map<String,Object> args){
         switch(tool){
             case FLASHLIGHT:return new FlashlightRequest(args);case VOLUME:return new VolumeRequest(args);
@@ -100,9 +114,12 @@ public final class ToolRegistry {
             case UNIT_CONVERT:return new UnitConvertRequest(args);
             case WEATHER:return new WeatherRequest(args);
             case LIST_NOTIFICATIONS:return new ListNotificationsRequest(args);
+            case DRAFT_MESSAGE:return new DraftMessageRequest(args);
+            case SEND_MESSAGE:return new SendMessageRequest(args);
             default:throw new IllegalArgumentException("Unregistered tool");
         }
     }
+    private static final Set<String> ALLOWED_SHARE_PKGS = new HashSet<>(Arrays.asList("com.whatsapp","org.telegram.messenger","org.thoughtcrime.securesms"));
     private final java.util.function.LongSupplier nowEpochSec;
     public ToolRegistry(){this(()->System.currentTimeMillis()/1000L);}
     public ToolRegistry(java.util.function.LongSupplier nowEpochSec){
@@ -148,6 +165,39 @@ public final class ToolRegistry {
                     UnitConverter.convert(((Number)args.get("value")).doubleValue(),(String)args.get("from"),(String)args.get("to"));break;
                 case WEATHER:keys(args,"location","latitude","longitude");weather(args);break;
                 case LIST_NOTIFICATIONS:keys(args,"limit","package");listNotifications(args);break;
+                case DRAFT_MESSAGE: {
+                    if(!args.containsKey("channel")) bad("channel is required");
+                    String channel = text(args,"channel",1,10);
+                    if("sms".equals(channel)){
+                        keys(args,"channel","to","body");
+                        String to = text(args,"to",1,64);
+                        for(int i=0;i<to.length();i++){ if(Character.isISOControl(to.charAt(i))) bad("to contains invalid characters"); }
+                        text(args,"body",1,2000);
+                    } else if("share".equals(channel)){
+                        if(!args.containsKey("package")) bad("package is required for share");
+                        if(!args.containsKey("body")) bad("body is required");
+                        String pkg = text(args,"package",1,255);
+                        if(!ALLOWED_SHARE_PKGS.contains(pkg)) bad("share package is not allowlisted");
+                        text(args,"body",1,4000);
+                        if(args.containsKey("to")){
+                            String to = text(args,"to",0,64);
+                            for(int i=0;i<to.length();i++){ if(Character.isISOControl(to.charAt(i))) bad("to contains invalid characters"); }
+                        } else {
+                            args.put("to","");
+                        }
+                        Set<String> allowed = new HashSet<>(Arrays.asList("channel","package","body","to"));
+                        if(!allowed.containsAll(args.keySet())) bad("Unexpected argument");
+                    } else {
+                        bad("channel must be sms or share");
+                    }
+                    break;
+                }
+                case SEND_MESSAGE: {
+                    keys(args,"draft_id");
+                    text(args,"draft_id",1,128);
+                    break;
+                }
+
             }
         }catch(IllegalArgumentException e){return reject("INVALID_ARGUMENTS",e.getMessage());}
         return new Parsed(request(selected,args),"VALIDATED","Arguments validated; authorization still required");

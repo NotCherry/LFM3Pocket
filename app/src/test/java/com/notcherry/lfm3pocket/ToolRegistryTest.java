@@ -16,6 +16,8 @@ public class ToolRegistryTest {
             "{\"tool\":\"open_settings\",\"arguments\":{\"page\":\"wifi\"}}",
             "{\"tool\":\"copy_text\",\"arguments\":{\"text\":\"Zażółć 🐈\\nLocal\"}}",
             "{\"tool\":\"share_text\",\"arguments\":{\"text\":\"Hello\"}}",
+            "{\"tool\":\"draft_message\",\"arguments\":{\"channel\":\"sms\",\"to\":\"+48500111222\",\"body\":\"Hi\"}}",
+            "{\"tool\":\"send_message\",\"arguments\":{\"draft_id\":\"abc-123\"}}",
             "{\"tool\":\"current_time\",\"arguments\":{}}",
             "{\"tool\":\"calculator\",\"arguments\":{\"expression\":\"(2+3)*4\"}}",
             "{\"tool\":\"unit_convert\",\"arguments\":{\"value\":1,\"from\":\"km\",\"to\":\"m\"}}",
@@ -23,9 +25,9 @@ public class ToolRegistryTest {
             "{\"tool\":\"list_notifications\",\"arguments\":{\"limit\":20,\"package\":\"\"}}"};
         Set<ToolRegistry.Tool> tools=new HashSet<>();
         for(String call:calls){ToolRegistry.Parsed p=registry.parse(call);assertTrue(p.status,p.isValid());tools.add(p.request.tool);}
-        assertEquals(14,tools.size());
-        assertEquals(60,((ToolRegistry.TimerRequest)registry.parse(calls[2]).request).seconds);
-        assertEquals("",registry.parse(calls[3]).request.arguments.get("label"));
+        assertEquals(16,tools.size());
+        assertEquals(60,((ToolRegistry.TimerRequest)registry.parse("{\"tool\":\"set_timer\",\"arguments\":{\"seconds\":60,\"label\":\"Tea\"}}").request).seconds);
+        assertEquals("",registry.parse("{\"tool\":\"set_alarm\",\"arguments\":{\"hour\":7,\"minute\":30}}").request.arguments.get("label"));
         ToolRegistry.AlarmRequest alarm=(ToolRegistry.AlarmRequest)registry.parse(
                 "{\"tool\":\"set_alarm\",\"arguments\":{\"hour\":7,\"minute\":0,\"days\":[2,3,4,5,6]}}").request;
         assertEquals(Arrays.asList(2,3,4,5,6),alarm.days);
@@ -67,6 +69,22 @@ public class ToolRegistryTest {
             assertFalse(registry.parse("{\"tool\":\"set_timer\",\"arguments\":{\"seconds\":60,\"label\":\"Tea"+escaped+"hidden\"}}").isValid());
         }
         assertTrue(registry.parse("{\"tool\":\"copy_text\",\"arguments\":{\"text\":\"Line 1\\nLine 2\"}}").isValid());
+    }
+    @Test public void draftMessageSchemaAndAllowlistValidation(){
+        // sms ok
+        assertTrue(registry.parse("{\"tool\":\"draft_message\",\"arguments\":{\"channel\":\"sms\",\"to\":\"+123\",\"body\":\"hi\"}}").isValid());
+        // sms missing to
+        assertFalse(registry.parse("{\"tool\":\"draft_message\",\"arguments\":{\"channel\":\"sms\",\"body\":\"hi\"}}").isValid());
+        // share ok (allowlisted)
+        assertTrue(registry.parse("{\"tool\":\"draft_message\",\"arguments\":{\"channel\":\"share\",\"package\":\"com.whatsapp\",\"body\":\"hi\"}}").isValid());
+        assertTrue(registry.parse("{\"tool\":\"draft_message\",\"arguments\":{\"channel\":\"share\",\"package\":\"org.telegram.messenger\",\"body\":\"hi\",\"to\":\"\"}}").isValid());
+        // share disallowed package
+        assertFalse(registry.parse("{\"tool\":\"draft_message\",\"arguments\":{\"channel\":\"share\",\"package\":\"com.bad.app\",\"body\":\"hi\"}}").isValid());
+        // bad channel
+        assertFalse(registry.parse("{\"tool\":\"draft_message\",\"arguments\":{\"channel\":\"email\",\"to\":\"a\",\"body\":\"hi\"}}").isValid());
+        // send_message needs draft_id
+        assertTrue(registry.parse("{\"tool\":\"send_message\",\"arguments\":{\"draft_id\":\"x\"}}").isValid());
+        assertFalse(registry.parse("{\"tool\":\"send_message\",\"arguments\":{}}").isValid());
     }
     @Test public void oversizedDeepAndRandomHostileInputFailsWithoutThrowing(){
         assertFalse(registry.parse(new String(new char[8193]).replace('\0','x')).isValid());
