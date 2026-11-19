@@ -6,7 +6,7 @@ import java.util.*;
 public final class ToolRegistry {
     public enum Tool {
         FLASHLIGHT("toggle_flashlight"),VOLUME("set_volume"),TIMER("set_timer"),ALARM("set_alarm"),
-        SHOW_ALARMS("show_alarms"),APPLICATION("open_application"),SETTINGS("open_settings"),
+        REMINDER("set_reminder"),SHOW_ALARMS("show_alarms"),APPLICATION("open_application"),SETTINGS("open_settings"),
         COPY("copy_text"),SHARE("share_text"),CURRENT_TIME("current_time"),CALCULATOR("calculator"),
         UNIT_CONVERT("unit_convert"),WEATHER("weather"),LIST_NOTIFICATIONS("list_notifications");
         public final String wireName;Tool(String name){wireName=name;}
@@ -33,6 +33,15 @@ public final class ToolRegistry {
             super(Tool.ALARM,a);hour=(Integer)a.get("hour");minute=(Integer)a.get("minute");label=(String)a.get("label");
             Object raw=a.get("days");
             days=raw instanceof List ? Collections.unmodifiableList(new ArrayList<>((List<Integer>)raw)) : Collections.emptyList();
+        }
+    }
+    public static final class ReminderRequest extends Request {
+        public final long whenEpochSec;public final String title;public final String body;
+        private ReminderRequest(Map<String,Object> a){
+            super(Tool.REMINDER,a);
+            Object w=a.get("when_epoch_sec");
+            whenEpochSec=w instanceof Long ? (Long)w : ((Number)w).longValue();
+            title=(String)a.get("title");body=(String)a.get("body");
         }
     }
     public static final class ShowAlarmsRequest extends Request {
@@ -83,7 +92,7 @@ public final class ToolRegistry {
         switch(tool){
             case FLASHLIGHT:return new FlashlightRequest(args);case VOLUME:return new VolumeRequest(args);
             case TIMER:return new TimerRequest(args);case ALARM:return new AlarmRequest(args);
-            case SHOW_ALARMS:return new ShowAlarmsRequest(args);
+            case REMINDER:return new ReminderRequest(args);case SHOW_ALARMS:return new ShowAlarmsRequest(args);
             case APPLICATION:return new ApplicationRequest(args);case SETTINGS:return new SettingsRequest(args);
             case COPY:case SHARE:return new TextRequest(tool,args);
             case CURRENT_TIME:return new CurrentTimeRequest(args);
@@ -93,6 +102,12 @@ public final class ToolRegistry {
             case LIST_NOTIFICATIONS:return new ListNotificationsRequest(args);
             default:throw new IllegalArgumentException("Unregistered tool");
         }
+    }
+    private final java.util.function.LongSupplier nowEpochSec;
+    public ToolRegistry(){this(()->System.currentTimeMillis()/1000L);}
+    public ToolRegistry(java.util.function.LongSupplier nowEpochSec){
+        if(nowEpochSec==null)throw new IllegalArgumentException("Missing clock");
+        this.nowEpochSec=nowEpochSec;
     }
     public static final class Parsed {
         public final Request request;public final String status,message;
@@ -117,6 +132,10 @@ public final class ToolRegistry {
                 case VOLUME:keys(args,"stream","percent");choice(args,"stream","music","alarm","ring","notification");integer(args,"percent",0,100);break;
                 case TIMER:keys(args,"seconds","label");integer(args,"seconds",1,86400);label(args);break;
                 case ALARM:keys(args,"hour","minute","label","days");integer(args,"hour",0,23);integer(args,"minute",0,59);label(args);days(args);break;
+                case REMINDER:keys(args,"when_epoch_sec","title","body");
+                    if(!args.containsKey("when_epoch_sec") || !args.containsKey("title") || !args.containsKey("body"))
+                        bad("Expected exactly when_epoch_sec, title, and body");
+                    reminder(args,nowEpochSec.getAsLong());break;
                 case SHOW_ALARMS:keys(args);break;
                 case APPLICATION:keys(args,"package");String name=text(args,"package",1,255);
                     if(!name.matches("(?:[A-Za-z][A-Za-z0-9_]*\\.)+[A-Za-z][A-Za-z0-9_]*"))bad("Expected an installed package identifier");break;
@@ -180,6 +199,39 @@ public final class ToolRegistry {
             if(!unique.add(((Long)item).intValue()))bad("days entries must be unique");
         }
         args.put("days",new ArrayList<>(unique));
+    }
+    private static void reminder(Map<String,Object> args,long nowEpochSec){
+        Object w=args.get("when_epoch_sec");
+        if(!(w instanceof Long))bad("when_epoch_sec must be an integer epoch second");
+        long when=(Long)w;
+        long min=nowEpochSec+60L;
+        long max=nowEpochSec+366L*24L*3600L;
+        if(when<nowEpochSec)bad("when_epoch_sec must not be in the past");
+        if(when<min || when>max)bad("when_epoch_sec must be between now+60s and now+366 days");
+        args.put("when_epoch_sec",when);
+        if(!args.containsKey("title"))args.put("title","");
+        if(!args.containsKey("body"))args.put("body","");
+        String title=text(args,"title",0,100);
+        String body=text(args,"body",0,500);
+        oneLine(title,"title");noHtml(title,"title");reminderBody(body);
+    }
+    private static void oneLine(String value,String key){
+        for(int i=0;i<value.length();i++){
+            char c=value.charAt(i);
+            if(Character.isISOControl(c) || c=='\u2028' || c=='\u2029')bad(key+" must be one line");
+        }
+    }
+    private static void reminderBody(String value){
+        for(int i=0;i<value.length();i++){
+            char c=value.charAt(i);
+            if(c=='\0' || ((Character.isISOControl(c) && c!='\n' && c!='\r' && c!='\t')) || c=='\u2028' || c=='\u2029')
+                bad("body contains invalid control characters");
+        }
+        noHtml(value,"body");
+    }
+    private static void noHtml(String value,String key){
+        if(value.indexOf('<')>=0 && value.indexOf('>')>=0 && java.util.regex.Pattern.compile("(?s)<\\s*/?\\s*[A-Za-z!][^>]*>").matcher(value).find())
+            bad(key+" must not contain HTML");
     }
     private static void weather(Map<String,Object> args){
         boolean hasLocation=args.containsKey("location");

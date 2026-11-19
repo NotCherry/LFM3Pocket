@@ -13,22 +13,23 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
     private final AndroidActionExecutor text;
     private final AndroidActionExecutor builtins;
     private final AndroidActionExecutor notifications;
+    private final AndroidActionExecutor reminder;
+
+    private static final AndroidActionExecutor DISABLED =
+            (name, arguments) -> new ActionResult(false, "UNKNOWN_TOOL", "This Android action is not enabled.");
 
     AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
                          AndroidActionExecutor timer, AndroidActionExecutor alarm,
                          AndroidActionExecutor application, AndroidActionExecutor settings,
                          AndroidActionExecutor text) {
-        this(flashlight, volume, timer, alarm, application, settings, text,
-                (name, arguments) -> new ActionResult(false, "UNKNOWN_TOOL", "This Android action is not enabled."),
-                (name, arguments) -> new ActionResult(false, "UNKNOWN_TOOL", "This Android action is not enabled."));
+        this(flashlight, volume, timer, alarm, application, settings, text, DISABLED, DISABLED, DISABLED);
     }
 
     AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
                          AndroidActionExecutor timer, AndroidActionExecutor alarm,
                          AndroidActionExecutor application, AndroidActionExecutor settings,
                          AndroidActionExecutor text, AndroidActionExecutor builtins) {
-        this(flashlight, volume, timer, alarm, application, settings, text, builtins,
-                (name, arguments) -> new ActionResult(false, "UNKNOWN_TOOL", "This Android action is not enabled."));
+        this(flashlight, volume, timer, alarm, application, settings, text, builtins, DISABLED, DISABLED);
     }
 
     AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
@@ -36,9 +37,17 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
                          AndroidActionExecutor application, AndroidActionExecutor settings,
                          AndroidActionExecutor text, AndroidActionExecutor builtins,
                          AndroidActionExecutor notifications) {
+        this(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, DISABLED);
+    }
+
+    AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
+                         AndroidActionExecutor timer, AndroidActionExecutor alarm,
+                         AndroidActionExecutor application, AndroidActionExecutor settings,
+                         AndroidActionExecutor text, AndroidActionExecutor builtins,
+                         AndroidActionExecutor notifications, AndroidActionExecutor reminder) {
         if (flashlight == null || volume == null || timer == null || alarm == null
                 || application == null || settings == null || text == null || builtins == null
-                || notifications == null) {
+                || notifications == null || reminder == null) {
             throw new IllegalArgumentException("Missing action executor");
         }
         this.flashlight = flashlight;
@@ -50,12 +59,14 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
         this.text = text;
         this.builtins = builtins;
         this.notifications = notifications;
+        this.reminder = reminder;
     }
 
     @Override public ActionResult execute(String approvedToolName, Map<String, String> arguments) {
         if ("toggle_flashlight".equals(approvedToolName)) return flashlight.execute(approvedToolName, arguments);
         if ("set_volume".equals(approvedToolName)) return volume.execute(approvedToolName, arguments);
         if ("set_timer".equals(approvedToolName)) return timer.execute(approvedToolName, arguments);
+        if ("set_reminder".equals(approvedToolName)) return reminder.execute(approvedToolName, arguments);
         if ("set_alarm".equals(approvedToolName) || "show_alarms".equals(approvedToolName))
             return alarm.execute(approvedToolName, arguments);
         if ("open_application".equals(approvedToolName)) return application.execute(approvedToolName, arguments);

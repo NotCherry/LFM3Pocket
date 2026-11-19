@@ -85,6 +85,7 @@ public final class ToolCoordinator {
             case ALARM:return "Alarm request";case SHOW_ALARMS:return "Show alarms";
             case APPLICATION:return "Open app";case SETTINGS:return "Open settings";
             case COPY:return "Copy text";case SHARE:return "Share text";
+            case REMINDER:return "Reminder";
             case CURRENT_TIME:return "Current time";case CALCULATOR:return "Calculator";
             case UNIT_CONVERT:return "Unit conversion";case WEATHER:return "Weather";
             case LIST_NOTIFICATIONS:return "List notifications";

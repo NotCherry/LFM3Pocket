@@ -6,7 +6,7 @@ import java.util.Locale;
 public final class VoiceToolPromptCard {
     private static final String TOOL_CARD =
             "You may emit exactly one JSON tool object from this allowlist, or reply in the user's language.\n"
-                    + "Tools: toggle_flashlight, set_volume, set_timer, set_alarm, show_alarms, open_application, "
+                    + "Tools: toggle_flashlight, set_volume, set_timer, set_alarm, set_reminder, show_alarms, open_application, "
                     + "open_settings, copy_text, share_text, current_time, calculator, unit_convert, weather.\n"
                     + "Example: {\"tool\":\"set_timer\",\"arguments\":{\"seconds\":300,\"label\":\"Tea\"}}";
 
