@@ -2643,7 +2643,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                         if (status != null) status.setText(R.string.loopback_token_copied);
                     }
                 })
-                .setNegativeButton(android.R.string.close, null)
+                .setNegativeButton(android.R.string.cancel, null)
                 .show();
     }
 
