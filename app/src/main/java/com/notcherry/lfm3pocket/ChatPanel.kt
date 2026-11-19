@@ -61,14 +61,15 @@ import kotlinx.coroutines.withContext
  * Chat shell: Compose Atlas turns plus a real Android [R.id.chat_transcript] TextView so
  * UiAutomator Stage 1 can read flat transcript text without Compose occlusion/alpha issues.
  */
-class ChatPanel(
+class ChatPanel @JvmOverloads constructor(
     context: Context,
     private val send: Consumer<String>,
     private val stop: Runnable,
     private val clear: Runnable,
     private val retryInterrupted: Consumer<String> = Consumer { },
+    private val compact: Runnable = Runnable { },
 ) : LinearLayout(context) {
-    private data class Controls(val send: Boolean = false, val stop: Boolean = false, val clear: Boolean = true)
+    private data class Controls(val send: Boolean = false, val stop: Boolean = false, val clear: Boolean = true, val compact: Boolean = false)
     private data class ToolCardState(
         val details: String,
         val risk: String,
@@ -149,7 +150,11 @@ class ChatPanel(
     }
 
     fun updateControls(canSend: Boolean, canStop: Boolean, canClear: Boolean) {
-        controls = Controls(canSend, canStop, canClear)
+        updateControls(canSend, canStop, canClear, false)
+    }
+
+    fun updateControls(canSend: Boolean, canStop: Boolean, canClear: Boolean, canCompact: Boolean) {
+        controls = Controls(canSend, canStop, canClear, canCompact)
     }
 
     fun showImageAttachment(path: String, onRemove: Runnable) {
@@ -453,9 +458,17 @@ class ChatPanel(
                     }
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        TextButton(
+                            onClick = { compact.run() },
+                            enabled = controls.compact,
+                            modifier = Modifier.testTag(tag("chat_compact")),
+                            colors = StillwaterControls.textButtonColors(),
+                        ) {
+                            Text(stringResource(R.string.compact_conversation))
+                        }
                         TextButton(
                             onClick = { clear.run() },
                             enabled = controls.clear,

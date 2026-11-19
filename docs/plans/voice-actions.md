@@ -456,7 +456,9 @@ CPU-only today (`n_gpu_layers = 0`). Spike **Vulkan** first for Omni PTT TTFT; t
 
 #### [#165](https://github.com/NotCherry/LFM3Pocket/issues/165) Rolling memory summarization
 
-User-visible summarize-and-compact for long voice sessions; Room keeps full transcript; keep trim/thermal unload. Fail closed if summary fails.
+User-visible summarize-and-compact for long sessions; Room keeps full transcript; keep trim/thermal unload. Fail closed if summary fails.
+
+Implemented: chat exposes an explicit **Compact conversation** action. When invoked, `ChatSession` asks the loaded model to author a rolling summary of older turns and replaces those older turns in the live prompt with that summary (recent turns stay verbatim). Full message rows remain in Room; the conversation summary and summarized message count are persisted on the Room conversation record so restores keep the compacted prompt window. On summary generation failure or empty output, the prior prompt window and summary are unchanged and the UI reports the failure. Prompt token estimate drops after a successful compact. Runtime trim/thermal unload behavior is unchanged.
 
 #### [#166](https://github.com/NotCherry/LFM3Pocket/issues/166) Local document chat (SAF, untrusted)
 

@@ -338,6 +338,14 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         lastGenerating = false;
     }
 
+    /** Explicit, user-visible summarize-and-compact step for the active conversation. */
+    public boolean requestCompact() {
+        ensureSession();
+        if (handle == 0L || session == null || isGenerating()) return false;
+        int tokens = Math.max(128, Math.min(512, pendingMax <= 0 ? 256 : pendingMax));
+        return session.requestCompact(tokens);
+    }
+
     /** Retry the most recent interrupted assistant turn in the live session. */
     public boolean retryInterrupted(String turnId) {
         ensureSession();
@@ -374,16 +382,27 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 restored.add(new ChatSession.RestoredMessage(
                         row.getRole(), row.getText(), row.getTurnId(), row.getTurnStatus(), row.getMediaRef()));
             }
+            HistoryRepository.ConversationSummary summaryState = null;
+            try {
+                summaryState = history.conversationSummary(id);
+            } catch (Exception ignored) {
+            }
+            final String summary = summaryState == null ? "" : summaryState.getSummary();
+            final int summarizedCount = summaryState == null ? 0 : (int) Math.min(Integer.MAX_VALUE, summaryState.getSummarizedMessageCount());
             main.post(() -> {
                 if (born != sessionEpoch || session == null) return;
                 if (session.isGenerating()) return;
                 ChatSnapshot existing = session.snapshot();
                 if (existing != null && !existing.turns.isEmpty()) return;
-                session.restore(restored);
+                session.restore(restored, summary, summarizedCount);
                 lastSnapshot = session.snapshot();
                 lastTranscript = FlatTranscript.format(lastSnapshot);
                 lastStatus = lastSnapshot == null ? "" : lastSnapshot.status;
                 lastGenerating = session.isGenerating();
+                if (ui != null && ui.isUsable()) {
+                    ui.onSnapshot(lastSnapshot);
+                    ui.onChat(lastTranscript, lastStatus, lastGenerating);
+                }
             });
         });
     }
@@ -766,6 +785,13 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             @Override public void updatePartial(String turnId, String assistantText, long atMs) {
                 if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
                 history.updateTurnPartial(turnId, assistantText == null ? "" : assistantText, atMs);
+            }
+            @Override public void saveCompactSummary(String summary, int summarizedMessageCount, long atMs) throws Exception {
+                if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
+                String id = conversationId == null ? "" : conversationId;
+                if (id.isBlank()) return;
+                String title = historyTitle == null || historyTitle.isBlank() ? defaultHistoryTitle() : historyTitle;
+                history.updateConversationSummary(id, title, summary, summarizedMessageCount, atMs);
             }
             @Override public void save(ChatSession.CompletedTurn turn) throws Exception {
                 saveTurn(turn);
