@@ -2069,7 +2069,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                         displayName = cursor.getString(0);
                     }
                 }
-                store.remember(uri, displayName, projector);
+                java.util.HashSet<String> protectedUris = new java.util.HashSet<>();
+                if (isContentUri(previousModel)) protectedUris.add(previousModel);
+                if (isContentUri(previousProjector)) protectedUris.add(previousProjector);
+                store.remember(uri, displayName, projector, protectedUris);
                 ExternalModelStore.Opened opened = store.open(uri);
                 String modelPath;
                 String projectorPath;

@@ -50,19 +50,60 @@ public final class ExternalModelStore {
         }
     }
 
+    interface PermissionGrants {
+        void take(String uriString) throws IOException;
+        void release(String uriString);
+    }
+
     private final Context context;
     private final SharedPreferences prefs;
+    private final PermissionGrants grants;
     private final Map<String, ParcelFileDescriptor> openDescriptors = new LinkedHashMap<>();
 
     public ExternalModelStore(Context context) {
         this.context = context.getApplicationContext();
         this.prefs = this.context.getSharedPreferences("external_models", Context.MODE_PRIVATE);
+        this.grants = androidGrants(this.context);
     }
 
     /** Test seam that avoids Android framework APIs. */
     ExternalModelStore(SharedPreferences prefs) {
+        this(prefs, noOpGrants());
+    }
+
+    ExternalModelStore(SharedPreferences prefs, PermissionGrants grants) {
         this.context = null;
         this.prefs = prefs;
+        this.grants = grants == null ? noOpGrants() : grants;
+    }
+
+    private static PermissionGrants noOpGrants() {
+        return new PermissionGrants() {
+            @Override public void take(String uriString) { }
+            @Override public void release(String uriString) { }
+        };
+    }
+
+    private static PermissionGrants androidGrants(final Context context) {
+        return new PermissionGrants() {
+            @Override public void take(String uriString) throws IOException {
+                try {
+                    context.getContentResolver().takePersistableUriPermission(Uri.parse(uriString),
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (SecurityException e) {
+                    throw new IOException("Could not retain access to the selected document", e);
+                }
+            }
+
+            @Override public void release(String uriString) {
+                try {
+                    context.getContentResolver().releasePersistableUriPermission(Uri.parse(uriString),
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (Exception ignored) {
+                    // Providers may not support persistable permissions or the grant may already be gone.
+                }
+            }
+        };
     }
 
     public synchronized List<Entry> list() {
@@ -81,23 +122,61 @@ public final class ExternalModelStore {
     }
 
     public synchronized void remember(Uri uri, String displayName, boolean projector) throws IOException {
-        if (uri == null) throw new IOException("Missing document URI");
-        if (context != null) {
-            final int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION;
-            try {
-                context.getContentResolver().takePersistableUriPermission(uri, takeFlags);
-            } catch (SecurityException e) {
-                throw new IOException("Could not retain access to the selected document", e);
-            }
-        }
+        remember(uri == null ? null : uri.toString(), displayName, projector, java.util.Collections.emptySet());
+    }
+
+    public synchronized void remember(Uri uri, String displayName, boolean projector,
+                                      java.util.Set<String> protectedUris) throws IOException {
+        remember(uri == null ? null : uri.toString(), displayName, projector, protectedUris);
+    }
+
+    synchronized void remember(String uriString, String displayName, boolean projector,
+                               java.util.Set<String> protectedUris) throws IOException {
+        if (uriString == null || uriString.isEmpty()) throw new IOException("Missing document URI");
+        grants.take(uriString);
         String name = displayName == null || displayName.trim().isEmpty() ? "GGUF" : displayName.trim();
+        List<Entry> previous = list();
         ArrayList<Entry> next = new ArrayList<>();
-        for (Entry entry : list()) {
-            if (!entry.uri.equals(uri.toString())) next.add(entry);
+        for (Entry entry : previous) {
+            if (!entry.uri.equals(uriString)) next.add(entry);
         }
-        next.add(0, new Entry(uri.toString(), name, projector));
+        next.add(0, new Entry(uriString, name, projector));
         while (next.size() > 16) next.remove(next.size() - 1);
         save(next);
+        revokeEvicted(previous, next, protectedUris);
+    }
+
+    /** Removes an entry and revokes its persisted read grant when not protected. */
+    public synchronized void forget(String uri, java.util.Set<String> protectedUris) {
+        if (uri == null || uri.isEmpty()) return;
+        List<Entry> previous = list();
+        ArrayList<Entry> next = new ArrayList<>();
+        for (Entry entry : previous) {
+            if (!entry.uri.equals(uri)) next.add(entry);
+        }
+        if (next.size() == previous.size()) return;
+        save(next);
+        java.util.Set<String> single = java.util.Collections.singleton(uri);
+        // Revoke only this URI (if not protected) now that it is no longer listed.
+        if (protectedUris == null || !protectedUris.contains(uri)) {
+            releasePersistablePermission(uri);
+        }
+        // Also revoke any other entries that might have become inconsistent (defensive no-op here).
+    }
+
+    private void revokeEvicted(List<Entry> previous, List<Entry> next, java.util.Set<String> protectedUris) {
+        java.util.HashSet<String> kept = new java.util.HashSet<>();
+        for (Entry entry : next) kept.add(entry.uri);
+        for (Entry entry : previous) {
+            if (kept.contains(entry.uri)) continue;
+            if (protectedUris != null && protectedUris.contains(entry.uri)) continue;
+            releasePersistablePermission(entry.uri);
+        }
+    }
+
+    private void releasePersistablePermission(String uriString) {
+        if (uriString == null || uriString.isEmpty()) return;
+        grants.release(uriString);
     }
 
     public synchronized Opened open(Uri uri) throws IOException {
