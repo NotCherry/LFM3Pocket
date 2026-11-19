@@ -385,10 +385,6 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         final int born = sessionEpoch;
         worker.execute(() -> {
             if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
-            try {
-                history.markInterruptedGenerations(System.currentTimeMillis());
-            } catch (Exception ignored) {
-            }
             if (id == null || id.isBlank()) return;
             java.util.List<HistoryRepository.StoredMessage> rows;
             try {
