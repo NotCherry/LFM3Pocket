@@ -175,7 +175,7 @@ public final class LoopbackAgentApi {
             }
         }
         if (matched != 4) return null;
-        String[] lines = header.toString(StandardCharsets.ISO_8859_1).split("\\r\\n", -1);
+        String[] lines = new String(header.toByteArray(), StandardCharsets.ISO_8859_1).split("\\r\\n", -1);
         if (lines.length == 0 || lines[0].isEmpty()) return null;
         String[] requestLine = lines[0].split(" ", -1);
         if (requestLine.length != 3 || !("HTTP/1.1".equals(requestLine[2]) || "HTTP/1.0".equals(requestLine[2]))
