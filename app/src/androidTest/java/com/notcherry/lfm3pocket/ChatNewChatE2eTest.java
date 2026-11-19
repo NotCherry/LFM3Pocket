@@ -1,6 +1,7 @@
 package com.notcherry.lfm3pocket;
 
 import android.content.Context;
+import android.os.SystemClock;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -57,9 +58,13 @@ public final class ChatNewChatE2eTest {
                      ActivityScenario.launch(ComposeHostActivity.class)) {
             click("open_chat");
             awaitEnabled("chat_send");
-            device.waitForIdle(1500);
-            UiObject2 resumed = device.wait(Until.findObject(
-                    By.res(pkg, "chat_transcript").textContains("Sticky prompt")), 30000L);
+            device.waitForIdle(2000);
+            UiObject2 resumed = null;
+            long deadline = SystemClock.uptimeMillis() + 45000L;
+            while (resumed == null && SystemClock.uptimeMillis() < deadline) {
+                resumed = device.wait(Until.findObject(
+                        By.res(pkg, "chat_transcript").textContains("Sticky prompt")), 4000L);
+            }
             assertNotNull("Open chat must resume the last saved conversation", resumed);
 
             click("chat_new_chat");

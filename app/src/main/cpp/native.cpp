@@ -566,7 +566,8 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     }
 
     std::vector<llama_token> generated;
-    const bool use_ngram = prompt_lookup && prompt_ready && state->ctx && !has_media && error.empty();
+    bool use_ngram = prompt_lookup && prompt_ready && state->ctx && !has_media && error.empty();
+    bool ngram_fallback_sequential = false;
     if (use_ngram) {
         std::vector<llama_token> prompt_in_kv = tokens;
         hanami::TokenDelivery delivery;
@@ -580,11 +581,21 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         if (!hanami::generate_ngram_mod(state->ctx, vocab, mrope, prompt_in_kv, max_tokens,
                 context_tokens, &state->cancelled, &delivery, generated, &session_tokens, &stats,
                 error)) {
-            if (state->cancelled.load()) error.clear();
+            if (state->cancelled.load()) {
+                error.clear();
+            } else if (error == "Cannot trim KV tail before prompt lookup" ||
+                       error == "Cannot trim last prompt token for prompt lookup (hybrid memory)") {
+                // Hybrid memory cannot support ngram-mod tail trimming; fall back to sequential decode.
+                error.clear();
+                ngram_fallback_sequential = true;
+                use_ngram = false;
+            }
         } else if (error.empty() && !session_tokens.empty()) {
             state->cached_tokens = std::move(session_tokens);
         }
-    } else if (error.empty() && prompt_ready && state->ctx && !state->cancelled.load()) {
+    }
+    if ((!use_ngram || ngram_fallback_sequential) && error.empty() && prompt_ready && state->ctx &&
+        !state->cancelled.load()) {
         llama_sampler * sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
         llama_sampler_chain_add(sampler, llama_sampler_init_top_k(50));
         llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.1f));
@@ -626,7 +637,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     if (state->cancelled.load() || !error.empty()) {
         // Cancel / error mid-turn leaves memory inconsistent with any cache claim.
         state->release_session();
-    } else if (!has_media && state->ctx && !state->media_dirty && use_ngram) {
+    } else if (!has_media && state->ctx && !state->media_dirty && use_ngram && !ngram_fallback_sequential) {
         // cached_tokens already set from verified KV session list in the ngram-mod path.
     } else if (!has_media && state->ctx && !state->media_dirty) {
         state->cached_tokens = tokens;
