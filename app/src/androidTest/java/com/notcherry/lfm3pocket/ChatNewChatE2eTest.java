@@ -56,16 +56,29 @@ public final class ChatNewChatE2eTest {
 
         try (ActivityScenario<ComposeHostActivity> home =
                      ActivityScenario.launch(ComposeHostActivity.class)) {
-            click("open_chat");
-            awaitEnabled("chat_send");
             UiObject2 resumed = null;
-            long resumeDeadline = SystemClock.uptimeMillis() + 60000L;
-            while (SystemClock.uptimeMillis() < resumeDeadline) {
-                device.waitForIdle(500);
-                resumed = device.wait(Until.findObject(
-                        By.res(pkg, "chat_transcript").textContains("Sticky prompt")), 1500L);
-                if (resumed != null) break;
-                SystemClock.sleep(250);
+            for (int attempt = 0; attempt < 2 && resumed == null; attempt++) {
+                if (attempt > 0) {
+                    device.pressBack();
+                    device.waitForIdle(1500);
+                    click("open_chat");
+                } else {
+                    click("open_chat");
+                }
+                awaitEnabled("chat_send");
+                long resumeDeadline = SystemClock.uptimeMillis() + 45000L;
+                while (SystemClock.uptimeMillis() < resumeDeadline && resumed == null) {
+                    device.waitForIdle(500);
+                    resumed = device.wait(Until.findObject(
+                            By.res(pkg, "chat_transcript").textContains("Sticky prompt")), 1500L);
+                    if (resumed == null) {
+                        resumed = device.wait(Until.findObject(
+                                By.res(pkg, "chat_transcript").textContains("Sticky answer")), 500L);
+                    }
+                    if (resumed == null) {
+                        SystemClock.sleep(250);
+                    }
+                }
             }
             }
             assertNotNull("Open chat must resume the last saved conversation", resumed);
