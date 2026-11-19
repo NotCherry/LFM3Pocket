@@ -118,7 +118,7 @@ public final class LoopbackAgentApiTest {
 
     @Test public void realListenerRequiresAuthorizationAndServesAuthorizedRequests() throws Exception {
         AtomicReference<String> seen = new AtomicReference<>();
-        LoopbackAgentApi api = new LoopbackAgentApi(prompt -> { seen.set(prompt); return true; }, msg -> {}, () -> TOKEN);
+        LoopbackAgentApi api = new LoopbackAgentApi(prompt -> { seen.set(prompt); return true; }, msg -> {}, () -> TOKEN, 0);
         api.setEnabled(true);
         try {
             awaitPort(api);
@@ -145,7 +145,7 @@ public final class LoopbackAgentApiTest {
     }
 
     @Test public void realListenerRejectsOversizedBodyAndTimesOutIncompleteClient() throws Exception {
-        LoopbackAgentApi api = new LoopbackAgentApi(prompt -> true, msg -> {}, () -> TOKEN);
+        LoopbackAgentApi api = new LoopbackAgentApi(prompt -> true, msg -> {}, () -> TOKEN, 0);
         api.setEnabled(true);
         try {
             awaitPort(api);

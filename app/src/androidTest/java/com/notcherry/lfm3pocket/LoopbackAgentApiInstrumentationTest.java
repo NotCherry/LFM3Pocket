@@ -25,7 +25,7 @@ public final class LoopbackAgentApiInstrumentationTest {
     @Test
     public void realListenerRequiresAuthorizationAndRejectsUnauthorizedCallers() throws Exception {
         AtomicReference<String> seen = new AtomicReference<>();
-        LoopbackAgentApi api = new LoopbackAgentApi(prompt -> { seen.set(prompt); return true; }, msg -> {}, () -> TOKEN);
+        LoopbackAgentApi api = new LoopbackAgentApi(prompt -> { seen.set(prompt); return true; }, msg -> {}, () -> TOKEN, 0);
         api.setEnabled(true);
         try {
             awaitPort(api);
@@ -57,7 +57,7 @@ public final class LoopbackAgentApiInstrumentationTest {
     @Test
     public void realListenerHandlesUnicodeByteLengthsEscapingAndForbiddenApprove() throws Exception {
         AtomicReference<String> seen = new AtomicReference<>();
-        LoopbackAgentApi api = new LoopbackAgentApi(prompt -> { seen.set(prompt); return true; }, msg -> {}, () -> TOKEN);
+        LoopbackAgentApi api = new LoopbackAgentApi(prompt -> { seen.set(prompt); return true; }, msg -> {}, () -> TOKEN, 0);
         api.setEnabled(true);
         try {
             awaitPort(api);
@@ -91,7 +91,7 @@ public final class LoopbackAgentApiInstrumentationTest {
 
     @Test
     public void realListenerRejectsMalformedOversizedAndStalledRequests() throws Exception {
-        LoopbackAgentApi api = new LoopbackAgentApi(prompt -> true, msg -> {}, () -> TOKEN);
+        LoopbackAgentApi api = new LoopbackAgentApi(prompt -> true, msg -> {}, () -> TOKEN, 0);
         api.setEnabled(true);
         try {
             awaitPort(api);

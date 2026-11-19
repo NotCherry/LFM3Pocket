@@ -41,6 +41,7 @@ public final class LoopbackAgentApi {
     private final PromptHandler prompts;
     private final Consumer<String> log;
     private final TokenSupplier tokenSupplier;
+    private final int requestedPort;
     private final ThreadPoolExecutor acceptors = new ThreadPoolExecutor(
             1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
     private final ThreadPoolExecutor clients = new ThreadPoolExecutor(
@@ -51,16 +52,22 @@ public final class LoopbackAgentApi {
                 return thread;
             }, new ThreadPoolExecutor.AbortPolicy());
     private volatile ServerSocket server;
-    private volatile int port = DEFAULT_PORT;
+    private volatile int port;
 
     public LoopbackAgentApi(PromptHandler prompts, Consumer<String> log) {
-        this(prompts, log, () -> "");
+        this(prompts, log, () -> "", DEFAULT_PORT);
     }
 
     public LoopbackAgentApi(PromptHandler prompts, Consumer<String> log, TokenSupplier tokenSupplier) {
+        this(prompts, log, tokenSupplier, DEFAULT_PORT);
+    }
+
+    public LoopbackAgentApi(PromptHandler prompts, Consumer<String> log, TokenSupplier tokenSupplier, int port) {
         this.prompts = prompts;
         this.log = log == null ? message -> {} : log;
         this.tokenSupplier = tokenSupplier == null ? () -> "" : tokenSupplier;
+        this.requestedPort = port;
+        this.port = port;
     }
 
     public synchronized boolean isRunning() {
@@ -78,13 +85,14 @@ public final class LoopbackAgentApi {
     public synchronized void start() {
         if (!enabled.get() || isRunning()) return;
         try {
-            ServerSocket socket = new ServerSocket(DEFAULT_PORT, 8, InetAddress.getByName("127.0.0.1"));
+            ServerSocket socket = new ServerSocket(requestedPort, 8, InetAddress.getByName("127.0.0.1"));
             server = socket;
             port = socket.getLocalPort();
             acceptors.execute(() -> acceptLoop(socket));
             log.accept("Loopback API listening on 127.0.0.1:" + port);
         } catch (IOException | java.util.concurrent.RejectedExecutionException error) {
             server = null;
+            port = requestedPort;
             log.accept("Loopback API failed to bind: " + error.getMessage());
         }
     }
