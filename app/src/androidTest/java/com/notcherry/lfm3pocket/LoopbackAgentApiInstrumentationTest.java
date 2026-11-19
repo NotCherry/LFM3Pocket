@@ -150,8 +150,10 @@ public final class LoopbackAgentApiInstrumentationTest {
             try {
                 int n;
                 while ((n = in.read(buf)) >= 0) response.write(buf, 0, n);
-            } catch (java.net.SocketTimeoutException ignored) {}
-            return response.toString(StandardCharsets.UTF_8.name());
+            } catch (java.io.IOException ignored) {
+                // Tolerate reset/close races after response bytes are written.
+            }
+            return new String(response.toByteArray(), StandardCharsets.UTF_8);
         }
     }
 
