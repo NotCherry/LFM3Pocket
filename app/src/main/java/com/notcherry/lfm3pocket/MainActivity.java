@@ -143,6 +143,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private String searchEndpoint = "";
     private String mmprojPath = "";
 
+    private String voiceUiStatus = "";
+
     private final ModelRuntime.Ui viewer = new ModelRuntime.Ui() {
         @Override public void onChat(String transcript, String message, boolean running) {
             if (destroyed || chatPanel == null || status == null) return;
@@ -181,6 +183,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         @Override public void onToolOutcome(ToolRegistry.Request request, ToolCoordinator.Outcome outcome) {
             if (destroyed) return;
             presentToolOutcome(request, outcome);
+        }
+        @Override public void onVoiceStatus(String message) {
+            if (destroyed || status == null) return;
+            if (message != null) {
+                voiceUiStatus = message;
+                status.setText(message);
+            }
+            updateControls();
         }
         @Override public boolean isUsable() { return !destroyed && chatPanel != null; }
     };
@@ -893,10 +903,29 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (documentButton != null) documentButton.setEnabled(!busy);
         RecordingController.State capture = recordingController.state();
         boolean voiceMic = runtime.voice().isEnabled();
+        boolean voiceListening = voiceMic && runtime.voice().isListening();
         recordButton.setText(capture == RecordingController.State.STOPPING ? getString(R.string.finishing)
-                : voiceMic && runtime.voice().isListening() ? getString(R.string.voice_listening)
+                : voiceListening ? getString(R.string.voice_listening)
                 : recordingActive() ? getString(R.string.stop_recording) : getString(R.string.voice_input));
-        recordButton.setContentDescription(voiceMic ? getString(R.string.voice_record_talkback) : null);
+        if (voiceMic) {
+            String description = (voiceUiStatus != null && !voiceUiStatus.isEmpty())
+                    ? voiceUiStatus
+                    : (voiceListening ? getString(R.string.voice_listening)
+                            : getString(R.string.voice_record_talkback));
+            if (voiceListening && !description.toLowerCase(java.util.Locale.ROOT).contains("listen")) {
+                description = getString(R.string.voice_listening);
+            }
+            recordButton.setContentDescription(description);
+            if (!description.equals(recordButton.getTag(R.id.voice_record))) {
+                recordButton.setTag(R.id.voice_record, description);
+                if (voiceListening || (voiceUiStatus != null && !voiceUiStatus.isEmpty())) {
+                    recordButton.announceForAccessibility(description);
+                }
+            }
+        } else {
+            recordButton.setContentDescription(null);
+            recordButton.setTag(R.id.voice_record, null);
+        }
         recordButton.setEnabled(capture != RecordingController.State.STOPPING && (!busy || recordingActive() || voiceMic));
         PlaybackController.State playback = playbackController.state();
         speakButton.setText(playback == PlaybackController.State.STOPPING
