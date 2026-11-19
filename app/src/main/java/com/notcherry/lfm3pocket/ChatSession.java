@@ -611,7 +611,7 @@ public final class ChatSession {
                 if(content.isEmpty()) continue;
                 if(content.length()>budget) content=content.substring(0,budget).trim();
                 if(content.isEmpty()) break;
-                String safeName = safeDocumentName(name);
+                String safeName=safeDocumentName(name);
                 out.append("[document: ").append(safeName).append("]\n").append(escapePromptContent(content)).append("\n[/document: ").append(safeName).append("]\n");
                 budget-=content.length();
                 if(budget<=0) break;
@@ -619,8 +619,7 @@ public final class ChatSession {
         }
         out.append("<|im_end|>\n");
         for(int i=Math.max(0,history.size()-8);i<history.size();i++) {
-            Message m=history.get(i);out.append("<|im_start|>").append(m.role).append('\n')
-                    .append(escapePromptContent(m.text));
+            Message m=history.get(i);out.append("<|im_start|>").append(m.role).append('\n').append(escapePromptContent(m.text));
             if(i==history.size()-1)for(int media=0;media<mediaCount;media++)out.append("\n<__media__>");
             out.append("<|im_end|>\n");
         }
@@ -649,6 +648,5 @@ public final class ChatSession {
                 .replace("</tool_response>", "<\u200B/tool_response>");
         escaped = escaped.replace("<__media__>", "<\u200B__media__>");
         return escaped;
-    }
     }
 }
