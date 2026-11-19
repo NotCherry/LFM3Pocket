@@ -80,7 +80,6 @@ public final class ChatNewChatE2eTest {
                     }
                 }
             }
-            }
             assertNotNull("Open chat must resume the last saved conversation", resumed);
 
             click("chat_new_chat");
