@@ -330,6 +330,8 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     }
 
     public void unload(String cause, Runnable done) {
+        // Contract: public unload must stop system speech (see ModelRuntimeSpeechStopContractTest).
+        systemSpeech.stop();
         onPolicyThread(() -> unloadOnPolicyThread(cause, done));
     }
 

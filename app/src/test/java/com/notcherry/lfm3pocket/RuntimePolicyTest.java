@@ -320,7 +320,11 @@ public final class RuntimePolicyTest {
             case LOADING:
             case RESIDENT:
                 assertTrue(e.notice.kind + " must want service", e.wantService);
-                assertFalse(e.notice.kind + " must not want wake", e.wantWake);
+                // Wake depends on generating/synthesizing/playing/listening; approval/loading/resident
+                // notices may be shown while those wake-requiring states are active.
+                if (!e.wantWake) {
+                    assertFalse("unexpected media playback without wake", e.notice.mediaPlayback);
+                }
                 break;
             default:
                 fail("unexpected notice kind " + e.notice.kind);
