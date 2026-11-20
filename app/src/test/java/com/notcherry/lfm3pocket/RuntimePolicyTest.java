@@ -2,7 +2,20 @@ package com.notcherry.lfm3pocket;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.Test;
 
@@ -188,4 +201,138 @@ public final class RuntimePolicyTest {
         assertEquals(RuntimeNotice.Kind.RESIDENT, done.notice.kind);
         assertFalse(done.unloadModel);
     }
+
+
+    @Test public void failsWhenInvokedFromNonOwnerThread() throws Exception {
+        ExecutorService other = Executors.newSingleThreadExecutor(r -> new Thread(r, "policy-off-owner"));
+        try {
+            Future<?> future = other.submit(() -> policy.onLoaded("x.gguf", 0L));
+            try {
+                future.get(5, TimeUnit.SECONDS);
+                fail("expected IllegalStateException for non-owner thread");
+            } catch (java.util.concurrent.ExecutionException e) {
+                assertTrue("expected IllegalStateException but was " + e.getCause(),
+                        e.getCause() instanceof IllegalStateException);
+            }
+        } finally {
+            other.shutdownNow();
+        }
+    }
+
+    @Test public void serializedInterleavingsKeepForegroundAndWakeEffectsConsistent() throws Exception {
+        ExecutorService owner = Executors.newSingleThreadExecutor(r -> new Thread(r, "policy-owner"));
+        ExecutorService producers = Executors.newFixedThreadPool(4);
+        try {
+            RuntimePolicy ownerPolicy = owner.submit(RuntimePolicy::new).get(5, TimeUnit.SECONDS);
+
+            // Deterministic interleaving covering listen, confirmation(consent), playback/speech,
+            // generation, unload/keep-loaded release, idle timeout, and memory pressure/thermal.
+            List<Callable<RuntimePolicy.Effects>> sequence = Arrays.asList(
+                    () -> ownerPolicy.onSettings(true, 15, false, 0L),
+                    () -> ownerPolicy.onLoaded("lfm.gguf", 0L),
+                    () -> ownerPolicy.onVoiceTalkAvailable(true),
+                    () -> ownerPolicy.onListenStarted("Listening…"),
+                    () -> ownerPolicy.onConsent("p1", "Do action", true), // confirmation shown while listening/session active
+                    () -> ownerPolicy.onSpeechStarted(),                   // spoken confirm/speech synthesis
+                    () -> ownerPolicy.onPlaybackStarted(),                 // playback
+                    () -> ownerPolicy.onTrim(false, 1_000L),               // memory pressure while busy
+                    () -> ownerPolicy.onSpeechFinished(2_000L),
+                    () -> ownerPolicy.onConsentCleared(2_100L),
+                    () -> ownerPolicy.onListenFinished(2_200L),
+                    () -> ownerPolicy.onGenerationStarted("q", 64, 3_000L),
+                    () -> ownerPolicy.onTokens(10, 3_500L),
+                    () -> ownerPolicy.onThermal(3, 3_600L),                // severe heat while generating -> defer unload
+                    () -> ownerPolicy.onTrim(false, 3_700L),               // pressure strike while generating
+                    () -> ownerPolicy.onGenerationFinished(4_000L),        // unload-after-turn/heat takes effect
+                    () -> ownerPolicy.onSettings(true, 0, false, 5_000L),
+                    () -> ownerPolicy.onLoaded("lfm.gguf", 5_100L),
+                    () -> ownerPolicy.onClock(20L * 60L * 1000L),          // idle timeout should not unload when idleMinutes==0
+                    () -> ownerPolicy.onSettings(true, 15, false, 20L * 60L * 1000L),
+                    () -> ownerPolicy.onClock(20L * 60L * 1000L + 15L * 60L * 1000L), // idle timeout unload
+                    () -> ownerPolicy.onLoaded("lfm.gguf", 40L * 60L * 1000L),
+                    () -> ownerPolicy.onGenerationStarted("q2", 32, 40L * 60L * 1000L),
+                    () -> ownerPolicy.onTrim(true, 40L * 60L * 1000L + 1L), // complete trim cancels/unloads
+                    () -> ownerPolicy.onSettings(false, 0, false, 41L * 60L * 1000L),
+                    () -> ownerPolicy.onLoaded("lfm.gguf", 41L * 60L * 1000L),
+                    () -> ownerPolicy.onKeepLoadedRelease(41L * 60L * 1000L + 1L),
+                    () -> ownerPolicy.unloadRequested()
+            );
+
+            // Submit from multiple producer threads but execute in this interleaved order on the owner.
+            // This simulates concurrent event sources whose mutations are serialized through one owner.
+            CountDownLatch start = new CountDownLatch(1);
+            @SuppressWarnings("unchecked")
+            Future<RuntimePolicy.Effects>[] futures = new Future[sequence.size()];
+            for (int i = 0; i < sequence.size(); i++) {
+                final int idx = i;
+                futures[i] = producers.submit(() -> {
+                    start.await(5, TimeUnit.SECONDS);
+                    // small stagger to encourage cross-thread submission while preserving deterministic order
+                    if (idx % 3 == 0) Thread.yield();
+                    return owner.submit(sequence.get(idx)).get(5, TimeUnit.SECONDS);
+                });
+            }
+            start.countDown();
+
+            List<RuntimePolicy.Effects> effects = new ArrayList<>();
+            for (Future<RuntimePolicy.Effects> f : futures) {
+                RuntimePolicy.Effects e = f.get(10, TimeUnit.SECONDS);
+                assertNotNull(e);
+                assertNotNull(e.notice);
+                assertConsistentEffects(e);
+                effects.add(e);
+            }
+
+            // Final unloadRequested/drop effect must be fully idle/hidden with no service or wake.
+            RuntimePolicy.Effects last = effects.get(effects.size() - 1);
+            assertTrue(last.unloadModel);
+            assertFalse(last.wantService);
+            assertFalse(last.wantWake);
+            assertEquals(RuntimeNotice.Kind.HIDDEN, last.notice.kind);
+        } finally {
+            producers.shutdownNow();
+            owner.shutdownNow();
+        }
+    }
+
+    private static void assertConsistentEffects(RuntimePolicy.Effects e) {
+        switch (e.notice.kind) {
+            case HIDDEN:
+                assertFalse("hidden notice must not want service", e.wantService);
+                assertFalse("hidden notice must not want wake", e.wantWake);
+                assertFalse("hidden notice must not capture mic", e.notice.microphoneCapture);
+                assertFalse("hidden notice must not be media playback", e.notice.mediaPlayback);
+                break;
+            case LISTENING:
+                assertTrue("listening must want service", e.wantService);
+                assertTrue("listening must want wake", e.wantWake);
+                assertTrue("listening must capture mic", e.notice.microphoneCapture);
+                break;
+            case GENERATING:
+                assertTrue("generating must want service", e.wantService);
+                assertTrue("generating must want wake", e.wantWake);
+                break;
+            case SPEAKING:
+                assertTrue("speaking must want service", e.wantService);
+                assertTrue("speaking must want wake", e.wantWake);
+                break;
+            case APPROVAL:
+            case LOADING:
+            case RESIDENT:
+                assertTrue(e.notice.kind + " must want service", e.wantService);
+                // Wake depends on generating/synthesizing/playing/listening; approval/loading/resident
+                // notices may be shown while those wake-requiring states are active.
+                if (!e.wantWake) {
+                    assertFalse("unexpected media playback without wake", e.notice.mediaPlayback);
+                }
+                break;
+            default:
+                fail("unexpected notice kind " + e.notice.kind);
+        }
+        if (e.unloadModel && e.notice.kind == RuntimeNotice.Kind.HIDDEN) {
+            assertFalse("unload drop must not want service", e.wantService);
+            assertFalse("unload drop must not want wake", e.wantWake);
+        }
+    }
+
 }
