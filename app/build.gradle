@@ -123,7 +123,14 @@ android {
 tasks.register('buildHanamiDizioneJni', Exec) {
     workingDir rootProject.projectDir
     commandLine 'bash', rootProject.file('scripts/build-dizione-jni.sh').absolutePath
-    environment 'HANAMI_BUILD_ALL_ABIS', '1'
+    // Default to all ABIs for compatibility (phone/deviceCheck builds), but allow
+    // CI/emulator jobs to restrict to a single ABI to avoid redundant native work.
+    def hanamiBuildAllAbis = System.getenv('HANAMI_BUILD_ALL_ABIS') ?: '1'
+    environment 'HANAMI_BUILD_ALL_ABIS', hanamiBuildAllAbis
+    def hanamiBuildAbi = System.getenv('HANAMI_BUILD_ABI')
+    if (hanamiBuildAbi) {
+        environment 'HANAMI_BUILD_ABI', hanamiBuildAbi
+    }
     ignoreExitValue true
 }
 

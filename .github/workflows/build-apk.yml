@@ -131,11 +131,18 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
       - name: Set up Rust for dizione JNI
-        run: rustup target add aarch64-linux-android x86_64-linux-android
+        run: rustup target add x86_64-linux-android
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Cache native CMake outputs (smoke x86_64)
+        uses: actions/cache@v4
+        with:
+          path: app/.cxx
+          key: cmake-smoke-x86_64-${{ runner.os }}-ndk27.2.12479018-cmake3.22.1-${{ hashFiles('app/src/main/cpp/**', 'app/build.gradle', 'vendor/LLAMA_CPP_COMMIT', 'gradle.properties') }}
+          restore-keys: |
+            cmake-smoke-x86_64-${{ runner.os }}-ndk27.2.12479018-cmake3.22.1-
       - name: Cache checksum-verified smoke GGUF
         uses: actions/cache@v4
         with:
@@ -158,10 +165,14 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             app/src/main/rust/hanami_dizione/target
-          key: cargo-jni-${{ runner.os }}-${{ hashFiles('app/src/main/rust/hanami_dizione/Cargo.lock', 'app/src/main/rust/hanami_dizione/Cargo.toml', 'vendor/VOCA_COMMIT') }}
+          key: cargo-jni-${{ runner.os }}-x86_64-${{ hashFiles('app/src/main/rust/hanami_dizione/Cargo.lock', 'app/src/main/rust/hanami_dizione/Cargo.toml', 'vendor/VOCA_COMMIT') }}
           restore-keys: |
+            cargo-jni-${{ runner.os }}-x86_64-
             cargo-jni-${{ runner.os }}-
       - name: Assemble emulator app and instrumentation APKs
+        env:
+          HANAMI_BUILD_ALL_ABIS: '0'
+          HANAMI_BUILD_ABI: x86_64
         run: gradle :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
       - name: Enable KVM access for Android emulator
         run: |
