@@ -22,10 +22,18 @@ jobs:
     steps:
       - name: Checkout application
         uses: actions/checkout@v4
+      - name: Cache llama.cpp sources
+        uses: actions/cache@v4
+        with:
+          path: third_party/llama.cpp
+          key: llama-cpp-${{ hashFiles('vendor/LLAMA_CPP_COMMIT') }}
       - name: Fetch llama.cpp (LFM3-capable)
-        run: |
-          mkdir -p third_party
-          git clone --depth 1 --branch v0.8.0 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp
+        run: bash scripts/fetch-llama.sh
+      - name: Cache voca sources
+        uses: actions/cache@v4
+        with:
+          path: vendor/voca
+          key: voca-${{ hashFiles('vendor/VOCA_COMMIT') }}
       - name: Fetch voca phonemizer (tiny-voca)
         run: bash scripts/fetch-voca.sh
       - name: Set up Java
@@ -82,11 +90,20 @@ jobs:
     steps:
       - name: Checkout application
         uses: actions/checkout@v4
+      - name: Cache llama.cpp sources
+        uses: actions/cache@v4
+        with:
+          path: third_party/llama.cpp
+          key: llama-cpp-${{ hashFiles('vendor/LLAMA_CPP_COMMIT') }}
       - name: Fetch llama.cpp (LFM3-capable)
         run: |
-          mkdir -p third_party
-          git clone --depth 1 --branch v0.8.0 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp
+          bash scripts/fetch-llama.sh
           git -C third_party/llama.cpp rev-parse HEAD
+      - name: Cache voca sources
+        uses: actions/cache@v4
+        with:
+          path: vendor/voca
+          key: voca-${{ hashFiles('vendor/VOCA_COMMIT') }}
       - name: Fetch voca phonemizer (tiny-voca)
         run: bash scripts/fetch-voca.sh
       - name: Set up Java
@@ -125,6 +142,17 @@ jobs:
           fi
       - name: Provision SHA256-verified smoke GGUF
         run: bash .github/scripts/provision-smoke-model.sh
+      - name: Cache Cargo (dizione JNI)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            app/src/main/rust/hanami_dizione/target
+          key: cargo-jni-${{ runner.os }}-${{ hashFiles('app/src/main/rust/hanami_dizione/Cargo.lock', 'app/src/main/rust/hanami_dizione/Cargo.toml', 'vendor/VOCA_COMMIT') }}
+          restore-keys: |
+            cargo-jni-${{ runner.os }}-
       - name: Assemble emulator app and instrumentation APKs
         run: gradle :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
       - name: Enable KVM access for Android emulator
@@ -165,10 +193,14 @@ jobs:
     steps:
       - name: Checkout application
         uses: actions/checkout@v4
+      - name: Cache llama.cpp sources
+        uses: actions/cache@v4
+        with:
+          path: third_party/llama.cpp
+          key: llama-cpp-${{ hashFiles('vendor/LLAMA_CPP_COMMIT') }}
       - name: Fetch llama.cpp (LFM3-capable)
         run: |
-          mkdir -p third_party
-          git clone --depth 1 --branch v0.8.0 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp
+          bash scripts/fetch-llama.sh
           git -C third_party/llama.cpp rev-parse HEAD
       - name: Set up Java
         uses: actions/setup-java@v4
