@@ -2,10 +2,22 @@
 # Run on the hosted Android emulator. If a test fails, its nonzero exit status
 # must fail the workflow; logcat and Android test XML remain available.
 #
-# Modes (arg1 or E2E_TIER, default: deep):
-#   smoke - fast PR-required tier: minimal connected proof set including a real
-#           JNI emulator proof, plus one cross-process persistence proof.
-#   deep  - broad/nightly tier: full connected suite and all durability phases.
+# Tier contracts (arg1 or E2E_TIER, default: deep). Connected class sets are
+# sourced from .github/scripts/assert-android-test-results.py so executed tests
+# and gate expectations stay explicit and aligned.
+#
+#   smoke - fast PR-required tier:
+#           * connected: GenerationSmokeTest (real JNI load/generate/stream/
+#             stop/retry emulator proof) + ComposeHostE2eTest (app boot/Compose
+#             host and core chat UI flow on fake engine)
+#           * scripted cross-process persistence proof: verify-settings-restart.sh
+#   deep  - broad/nightly tier:
+#           * connected: full explicit androidTest class contract, including
+#             moved heavy/matrix/stress/native-deep coverage (e.g.
+#             GenerationDeepSmokeTest, TextReadableAtScaleE2eTest,
+#             DiagnosticsStressE2eTest) and all other intended test classes
+#           * scripted cross-process durability proofs: settings, history-restart,
+#             history-journey
 set -Eeuo pipefail
 
 MODE="${1:-${E2E_TIER:-deep}}"
@@ -47,50 +59,47 @@ if [[ -f "$SMOKE_APP_APK" && -f "$SMOKE_TEST_APK" ]]; then
   adb install -r "$SMOKE_TEST_APK"
 fi
 
-if [ "$MODE" = "smoke" ]; then
-  # Minimal high-signal PR gate: real JNI load/generate/stop/retry proof and
-  # core app/Compose host boot. Keep this set explicit and fast.
-  SMOKE_CLASSES="com.notcherry.lfm3pocket.GenerationSmokeTest,com.notcherry.lfm3pocket.ComposeHostE2eTest"
+TIER_CLASSES="$(python3 .github/scripts/assert-android-test-results.py --mode "$MODE" --list-classes)"
+if [ -z "$TIER_CLASSES" ]; then
+  echo "ERROR: empty class list for tier '$MODE'" >&2
+  exit 2
+fi
+
+run_connected() {
+  local timeout_s="$1"
   if [ "$SMOKE_APKS_PREBUILT" = "true" ]; then
-    timeout 30m gradle :app:connectedSmokeDebugAndroidTest \
-      -Pandroid.testInstrumentationRunnerArguments.class="$SMOKE_CLASSES" \
+    timeout "${timeout_s}" gradle :app:connectedSmokeDebugAndroidTest \
+      -Pandroid.testInstrumentationRunnerArguments.class="$TIER_CLASSES" \
       -x :app:assembleSmokeDebug -x :app:assembleSmokeDebugAndroidTest \
       --no-daemon --stacktrace
   else
-    timeout 30m gradle :app:connectedSmokeDebugAndroidTest \
-      -Pandroid.testInstrumentationRunnerArguments.class="$SMOKE_CLASSES" \
+    timeout "${timeout_s}" gradle :app:connectedSmokeDebugAndroidTest \
+      -Pandroid.testInstrumentationRunnerArguments.class="$TIER_CLASSES" \
       --no-daemon --stacktrace
   fi
+}
+
+if [ "$MODE" = "smoke" ]; then
+  run_connected 30m
 
   # Install once for post-run durability proof; reinstall preserves local data.
-  adb install -r app/build/outputs/apk/smoke/debug/app-smoke-debug.apk
-  adb install -r app/build/outputs/apk/androidTest/smoke/debug/app-smoke-debug-androidTest.apk
+  adb install -r "$SMOKE_APP_APK"
+  adb install -r "$SMOKE_TEST_APK"
   export DURABILITY_SKIP_INSTALL=1
 
   # Cross-process persistence proof (DataStore across force-stop/new process).
   bash .github/scripts/verify-settings-restart.sh
 else
-  # Deep tier: full connected suite and all serial durability/journey proofs.
-  if [ "$SMOKE_APKS_PREBUILT" = "true" ]; then
-    timeout 45m gradle :app:connectedSmokeDebugAndroidTest \
-      -x :app:assembleSmokeDebug -x :app:assembleSmokeDebugAndroidTest \
-      --no-daemon --stacktrace
-  else
-    timeout 45m gradle :app:connectedSmokeDebugAndroidTest --no-daemon --stacktrace
-  fi
+  run_connected 45m
 
   # Install once for post-run durability proofs; reinstall preserves local data.
-  adb install -r app/build/outputs/apk/smoke/debug/app-smoke-debug.apk
-  adb install -r app/build/outputs/apk/androidTest/smoke/debug/app-smoke-debug-androidTest.apk
+  adb install -r "$SMOKE_APP_APK"
+  adb install -r "$SMOKE_TEST_APK"
   export DURABILITY_SKIP_INSTALL=1
 
-  # Verify DataStore durability across an actual force-stop/new process.
+  # Cross-process persistence proofs.
   bash .github/scripts/verify-settings-restart.sh
-
-  # Verify completed chat records survive an actual force-stop/new process.
   bash .github/scripts/verify-history-restart.sh
-
-  # Verify speech/tool records are visible after restart and can be deleted end-to-end.
   bash .github/scripts/verify-history-journey.sh
 
   # Issue #194 acceptance evidence: repeat the historically flaky notification and
