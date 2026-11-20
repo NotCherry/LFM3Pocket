@@ -15,7 +15,7 @@ import java.util.function.Consumer;
  * Voice-action loop: listen → one-pass Omni audio-in or STT text → optional tool proposal → spoken confirm.
  * Heavy logic stays out of {@link MainActivity}.
  */
-public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
+public final class VoiceActionRuntime implements VoiceSpokenOutput.Host, AutoCloseable {
     public interface Callbacks {
         long modelHandle();
         InferenceEngine engine();
@@ -388,6 +388,13 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host {
             pendingWav.delete();
             pendingWav = null;
         }
+    }
+
+
+    @Override public void close() {
+        cancelAll("Closed");
+        listen.close();
+        listenTimeout.shutdownNow();
     }
 
     @Override public long modelHandle() { return callbacks.modelHandle(); }
