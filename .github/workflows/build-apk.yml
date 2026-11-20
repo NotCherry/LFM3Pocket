@@ -193,7 +193,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-ubuntu-api30-google_apis-x86_64-v2
+          key: avd-ubuntu-api30-google_apis-x86_64-v3
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
