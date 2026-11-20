@@ -15,21 +15,23 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 DEEP_REQUIRED_CLASSES = (
-    "GenerationSmokeTest", "ChatUiE2eTest", "ComposeHostE2eTest",
-    "ModelImportE2eTest", "ImageAttachmentE2eTest", "NativeLifetimeTest",
-    "ModelManagerE2eTest", "PromptEncodingNativeTest", "InferenceSettingsE2eTest",
-    "NativeSettingsTest", "ToolConsentE2eTest", "ToolChatE2eTest",
-    "AdversarialAndroidActionE2eTest", "ZCameraCaptureE2eTest", "RecordingE2eTest",
-    "HistorySchemaTest", "HistoryRepositoryTest", "HistoryPersistenceE2eTest",
-    "HistoryNavigationE2eTest", "HistoryDeletionE2eTest", "HistoryJourneyE2eTest",
-    "FlashlightCameraManagerTest", "AudioManagerVolumeTest", "AndroidTimerIntentTest",
+    "GenerationSmokeTest", "GenerationDeepSmokeTest", "ChatUiE2eTest",
+    "OfflineTrafficE2eTest", "ComposeHostE2eTest", "ModelImportE2eTest",
+    "ImageAttachmentE2eTest", "NativeLifetimeTest", "ModelManagerE2eTest",
+    "PromptEncodingNativeTest", "InferenceSettingsE2eTest", "NativeSettingsTest",
+    "ToolConsentE2eTest", "ToolChatE2eTest", "AdversarialAndroidActionE2eTest",
+    "ZCameraCaptureE2eTest", "RecordingE2eTest", "HistorySchemaTest",
+    "HistoryRepositoryTest", "HistoryPersistenceE2eTest",
+    "HistoryNavigationE2eTest", "HistoryDeletionE2eTest",
+    "HistoryJourneyE2eTest", "FlashlightCameraManagerTest",
+    "AudioManagerVolumeTest", "AndroidTimerIntentTest",
     "AndroidAlarmIntentTest", "AndroidInstalledAppLauncherTest",
     "AndroidSettingsPageTest", "AndroidTextActionsTest", "VoiceOutputE2eTest",
     "MultimodalConversationE2eTest", "OfflinePrivacyE2eTest",
     "DiagnosticsStressE2eTest", "TextReadableAtScaleE2eTest",
     "ComposeTextReadableTest",
 )
-DEEP_MIN_TESTS = 87
+DEEP_MIN_TESTS = 89
 
 # PR smoke gate: minimal connected proof set. GenerationSmokeTest provides a real
 # JNI load/generate/stop/retry emulator proof; ComposeHostE2eTest covers app

@@ -59,8 +59,8 @@ public final class OfflinePrivacyE2eTest {
         previousAirplane = device.executeShellCommand("settings get global airplane_mode_on").trim();
     }
 
-    @After public void cleanup() throws Exception {
-        app.capturePermission(false);
+    @After public void cleanup() {
+        try { app.capturePermission(false); } catch (Exception ignored) { }
         restoreAirplane();
     }
 
@@ -72,15 +72,17 @@ public final class OfflinePrivacyE2eTest {
         assertEquals(1, Settings.Global.getInt(app.getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0));
     }
 
-    private void restoreAirplane() throws Exception {
+    private void restoreAirplane() {
         String restored = "1".equals(previousAirplane) ? "1" : "0";
-        device.executeShellCommand("settings put global airplane_mode_on " + restored);
-        device.executeShellCommand("am broadcast -a android.intent.action.AIRPLANE_MODE --ez state " +
-                ("1".equals(restored) ? "true" : "false"));
-        if ("0".equals(restored)) {
-            device.executeShellCommand("svc wifi enable");
-            device.executeShellCommand("svc data enable");
-        }
+        try { device.executeShellCommand("settings put global airplane_mode_on " + restored); } catch (Exception ignored) { }
+        try {
+            device.executeShellCommand("am broadcast -a android.intent.action.AIRPLANE_MODE --ez state " +
+                    ("1".equals(restored) ? "true" : "false"));
+        } catch (Exception ignored) { }
+        try {
+            device.executeShellCommand("svc wifi " + ("1".equals(restored) ? "disable" : "enable"));
+            device.executeShellCommand("svc data " + ("1".equals(restored) ? "disable" : "enable"));
+        } catch (Exception ignored) { }
     }
 
     private UiObject2 waitEnabled(String id) {

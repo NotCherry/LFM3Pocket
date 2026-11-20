@@ -77,62 +77,6 @@ public final class GenerationSmokeTest {
             assertTrue("Generation after Stop did not finish", retryFinished.await(30, TimeUnit.SECONDS));
             assertNull("Retry reported an error: " + retryError.get(), retryError.get());
             assertTrue("Generation after Stop produced no output: " + retryError.get(), retry.length() > 0);
-
-            final String[] speechError = new String[1];
-            final int[] speechFormatCalls = new int[1];
-            NativeBridge.resetStop();
-            speechError[0] = NativeBridge.generateSpeech(handle,
-                    SpeechPrompt.tts("Hello from the smoke fixture.", "en", "female"),
-                    SpeechOptions.DEFAULT,
-                    new NativeBridge.AudioSink() {
-                        @Override public void onAudioFormat(int sampleRateHz, int channelCount, int bitsPerSample) {
-                            speechFormatCalls[0]++;
-                        }
-                        @Override public void onAudioPcm(byte[] interleavedLittleEndianPcm) {}
-                        @Override public void onAudioComplete() {}
-                    });
-            assertNotNull("Stories15M smoke model must reject speech generation clearly", speechError[0]);
-            assertTrue("Expected a speech-unavailable error, got: " + speechError[0],
-                    speechError[0].toLowerCase().contains("speech"));
-            assertTrue("Unsupported speech generation must not stream audio", speechFormatCalls[0] == 0);
-            NativeBridge.resetStop();
-            StringBuilder lookupStream = new StringBuilder();
-            AtomicReference<String> lookupError = new AtomicReference<>();
-            CountDownLatch lookupDone = new CountDownLatch(1);
-            InferenceSettings lookupOn = new InferenceSettings(512, 1, 32, true);
-            Thread lookupGen = new Thread(() -> {
-                try {
-                    lookupError.set(NativeBridge.generateWithSettings(handle,
-                            "Once upon a time", null, lookupOn, lookupStream::append));
-                } catch (Throwable t) {
-                    lookupError.set(t.toString());
-                } finally {
-                    lookupDone.countDown();
-                }
-            }, "lfm3-prompt-lookup");
-            lookupGen.start();
-            assertTrue("Prompt lookup generation did not finish", lookupDone.await(45, TimeUnit.SECONDS));
-            assertNull("Prompt lookup error: " + lookupError.get(), lookupError.get());
-            assertTrue("Prompt lookup produced no text", lookupStream.length() > 0);
-
-            NativeBridge.resetStop();
-            StringBuilder cached = new StringBuilder();
-            AtomicReference<String> cacheError = new AtomicReference<>();
-            CountDownLatch cacheDone = new CountDownLatch(1);
-            Thread cacheGen = new Thread(() -> {
-                try {
-                    cacheError.set(NativeBridge.generateWithSettings(handle,
-                            "Once upon a time, a short", null, lookupOn, cached::append));
-                } catch (Throwable t) {
-                    cacheError.set(t.toString());
-                } finally {
-                    cacheDone.countDown();
-                }
-            }, "lfm3-prompt-lookup-cache");
-            cacheGen.start();
-            assertTrue("Second prompt-lookup turn did not finish", cacheDone.await(45, TimeUnit.SECONDS));
-            assertNull("Cached prompt lookup error: " + cacheError.get(), cacheError.get());
-            assertTrue("Cached prompt lookup produced no text", cached.length() > 0);
         } finally {
             NativeBridge.stop();
             NativeBridge.unloadModel(handle);
