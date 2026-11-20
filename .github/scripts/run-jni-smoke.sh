@@ -92,4 +92,10 @@ else
 
   # Verify speech/tool records are visible after restart and can be deleted end-to-end.
   bash .github/scripts/verify-history-journey.sh
+
+  # Issue #194 acceptance evidence: repeat the historically flaky notification and
+  # conversation-resume tests on the same clean emulator run to demonstrate stability.
+  STRESS_RUNS="${E2E_194_STRESS_RUNS:-5}" \
+  STRESS_ARTIFACT_DIR="app/build/ci-artifacts/stress-194" \
+    bash scripts/stress-flaky-e2e-194.sh
 fi

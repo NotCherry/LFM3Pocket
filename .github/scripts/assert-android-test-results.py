@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 
 DEEP_REQUIRED_CLASSES = (
     "GenerationSmokeTest", "GenerationDeepSmokeTest", "ChatUiE2eTest",
+    "BackgroundNotificationE2eTest", "ChatNewChatE2eTest",
     "OfflineTrafficE2eTest", "ComposeHostE2eTest", "ModelImportE2eTest",
     "ImageAttachmentE2eTest", "NativeLifetimeTest", "ModelManagerE2eTest",
     "PromptEncodingNativeTest", "InferenceSettingsE2eTest", "NativeSettingsTest",
