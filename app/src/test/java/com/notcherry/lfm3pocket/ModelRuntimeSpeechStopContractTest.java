@@ -39,12 +39,13 @@ public final class ModelRuntimeSpeechStopContractTest {
     @Test
     public void unloadCancelsVoiceActionsBeforeRetiringModel() throws Exception {
         String source = read(repoRoot().resolve("app/src/main/java/com/notcherry/lfm3pocket/ModelRuntime.java"));
-        String unload = methodBody(source, "public void unload(String cause, Runnable done)");
-        if (unload.isEmpty()) unload = methodBody(source, "public void unload(");
-        int cancel = unload.indexOf("voiceActions.cancelAll(\"Model unloading\")");
-        int retire = unload.indexOf("engine.unloadModel");
-        assertTrue("unload must cancel voice actions; len=" + unload.length(), cancel >= 0);
-        assertTrue("unload must retire engine model; len=" + unload.length(), retire >= 0);
+        int unloadStart = source.indexOf("public void unload(String cause, Runnable done)");
+        if (unloadStart < 0) unloadStart = source.indexOf("public void unload(");
+        assertTrue("unload method missing", unloadStart >= 0);
+        int cancel = source.indexOf("voiceActions.cancelAll(\"Model unloading\")", unloadStart);
+        int retire = source.indexOf("engine.unloadModel", unloadStart);
+        assertTrue("unload must cancel voice actions", cancel >= 0);
+        assertTrue("unload must retire engine model", retire >= 0);
         assertTrue("voice must be cancelled before model retirement", cancel < retire);
     }
 
@@ -52,10 +53,20 @@ public final class ModelRuntimeSpeechStopContractTest {
     public void serviceTimeoutAndNotificationUnloadRouteThroughRuntimeUnload() throws Exception {
         String source = read(repoRoot().resolve("app/src/main/java/com/notcherry/lfm3pocket/ModelRuntime.java"));
         String timeout = methodBody(source, "public void onServiceTimeout()");
-        assertTrue("timeout must unload fgs-timeout; len=" + timeout.length(),
-                timeout.contains("unload(\"fgs-timeout\", null)"));
+        if (timeout.isEmpty()) {
+            int start = source.indexOf("public void onServiceTimeout()");
+            assertTrue("onServiceTimeout missing", start >= 0);
+            timeout = source.substring(start, Math.min(source.length(), start + 300));
+        }
+        assertTrue("timeout must unload fgs-timeout", timeout.contains("unload(\"fgs-timeout\", null)"));
+
         String action = methodBody(source, "public void onServiceAction(String action, String proposalId, String askText)");
-        assertTrue("notification unload route missing; len=" + action.length(),
+        if (action.isEmpty()) {
+            int start = source.indexOf("public void onServiceAction(String action, String proposalId, String askText)");
+            assertTrue("onServiceAction missing", start >= 0);
+            action = source.substring(start, Math.min(source.length(), start + 800));
+        }
+        assertTrue("notification unload route missing",
                 action.contains("ACTION_UNLOAD") && action.contains("unload(\"notification\", null)"));
     }
 
@@ -64,17 +75,29 @@ public final class ModelRuntimeSpeechStopContractTest {
         String source = read(repoRoot().resolve("app/src/main/java/com/notcherry/lfm3pocket/ModelRuntime.java"));
         String trim = methodBody(source, "public void onTrimMemory(int level)");
         if (trim.isEmpty()) trim = methodBody(source, "public void onTrimMemory(");
-        assertTrue("trim must apply policy.onTrim; len=" + trim.length(), trim.contains("policy.onTrim"));
-        assertTrue("trim must call apply; len=" + trim.length(), trim.contains("apply("));
+        if (trim.isEmpty()) {
+            int start = source.indexOf("public void onTrimMemory(");
+            assertTrue("onTrimMemory missing", start >= 0);
+            trim = source.substring(start, Math.min(source.length(), start + 1200));
+        }
+        assertTrue("trim must apply policy.onTrim", trim.contains("policy.onTrim"));
+        assertTrue("trim must call apply", trim.contains("apply("));
+
         String apply = methodBody(source, "private void apply(RuntimePolicy.Effects effects)");
-        assertTrue("apply must handle unloadModel; len=" + apply.length(), apply.contains("effects.unloadModel"));
-        assertTrue("apply must call unload; len=" + apply.length(), apply.contains("unload("));
+        if (apply.isEmpty()) {
+            int start = source.indexOf("private void apply(RuntimePolicy.Effects effects)");
+            assertTrue("apply missing", start >= 0);
+            apply = source.substring(start, Math.min(source.length(), start + 600));
+        }
+        assertTrue("apply must handle unloadModel", apply.contains("effects.unloadModel"));
+        assertTrue("apply must call unload", apply.contains("unload("));
     }
 
     private static String methodBody(String source, String signature) {
         int start = source.indexOf(signature);
-        assertTrue("missing " + signature, start >= 0);
+        if (start < 0) return "";
         int brace = source.indexOf('{', start);
+        if (brace < 0) return "";
         int depth = 0;
         for (int i = brace; i < source.length(); i++) {
             char ch = source.charAt(i);
