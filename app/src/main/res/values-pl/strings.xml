@@ -133,8 +133,10 @@
     <string name="speech_input_cactus_model">Model Whistle (.cact)</string>
     <string name="speech_input_cactus_model_none">Nie wybrano modelu Cactus Whistle</string>
     <string name="speech_input_cactus_pick">Wybierz model Whistle</string>
+    <string name="speech_input_cactus_download">Pobierz model Whistle</string>
     <string name="speech_input_cactus_clear">Usuń model Whistle</string>
-    <string name="speech_input_cactus_help">Opcjonalne STT na urządzeniu (Whistle .cact 16,9 MB, Apache-2.0). Pobierz lub skopiuj model Whistle do pamięci lokalnej i wybierz go tutaj. Wymaga kompilacji z runtime Cactus dla ABI Androida. Początkowa konfiguracja aplikacji jest anglojęzyczna.</string>
+    <string name="speech_input_cactus_downloading">Pobieranie %1$s…</string>
+    <string name="speech_input_cactus_help">Opcjonalne STT na urządzeniu (Whistle .cact ~16,9 MB, Apache-2.0). Naciśnij Pobierz, aby pobrać przypięty model z Hugging Face, albo wybierz własny plik .cact z pamięci lokalnej. Wymaga kompilacji z runtime Cactus dla ABI Androida. Początkowa konfiguracja aplikacji jest anglojęzyczna.</string>
     <string name="speech_input_cactus_unavailable">Cactus Whistle STT niedostępne: %1$s</string>
     <string name="speech_input_transcribing">Lokalna transkrypcja mowy…</string>
     <string name="speech_input_transcript_empty">Nie wykryto mowy. Spróbuj ponownie.</string>

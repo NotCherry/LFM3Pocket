@@ -145,8 +145,10 @@ com.whatsapp</string>
     <string name="speech_input_cactus_model">Whistle model (.cact)</string>
     <string name="speech_input_cactus_model_none">No Cactus Whistle model selected</string>
     <string name="speech_input_cactus_pick">Select Whistle model</string>
+    <string name="speech_input_cactus_download">Download Whistle model</string>
     <string name="speech_input_cactus_clear">Remove Whistle model</string>
-    <string name="speech_input_cactus_help">Optional on-device STT (16.9 MB Whistle .cact, Apache-2.0). Download or copy a Whistle model into local storage and select it here. Requires a build that includes the Cactus runtime for your Android ABI. English-only is the initial app configuration.</string>
+    <string name="speech_input_cactus_downloading">Downloading %1$s…</string>
+    <string name="speech_input_cactus_help">Optional on-device STT (Whistle .cact ~16.9 MB, Apache-2.0). Tap Download to fetch a pinned model from Hugging Face, or select your own .cact file from local storage. Requires a build that includes the Cactus runtime for your Android ABI. English-only is the initial app configuration.</string>
     <string name="speech_input_cactus_unavailable">Cactus Whistle STT is unavailable: %1$s</string>
     <string name="speech_input_transcribing">Transcribing speech locally…</string>
     <string name="speech_input_transcript_empty">No speech detected. Try again.</string>
