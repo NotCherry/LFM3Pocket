@@ -42,6 +42,38 @@ public final class VoiceActionRuntimePreemptTest {
         runtime.listenSessionForTests().close();
     }
 
+    @Test public void failedConfirmationInferenceRejectsEvenWhenPartialOutputSaysYes() throws Exception {
+        File dir = new File(System.getProperty("java.io.tmpdir"), "voice-confirm-failure");
+        dir.mkdirs();
+        File wav = new File(dir, "confirm.wav");
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(wav)) {
+            out.write(new byte[] { 1, 2, 3, 4 });
+        }
+        AtomicInteger rejected = new AtomicInteger();
+        AtomicInteger approved = new AtomicInteger();
+        StubCallbacks callbacks = new StubCallbacks(rejected, approved);
+        callbacks.inferenceOutput = "yes";
+        callbacks.inferenceError = "decode failed";
+        VoiceActionRuntime runtime = new VoiceActionRuntime(callbacks, dir, () -> true,
+                Runnable::run, Runnable::run, () -> new RecordingController.Source() {
+                    @Override public void start() { }
+                    @Override public int read(short[] buffer) { return 0; }
+                    @Override public void close() { }
+                });
+        setPendingConfirm(runtime, "proposal-failed");
+        java.lang.reflect.Field pendingWav = VoiceActionRuntime.class.getDeclaredField("pendingWav");
+        pendingWav.setAccessible(true);
+        pendingWav.set(runtime, wav);
+        java.lang.reflect.Method confirm = VoiceActionRuntime.class.getDeclaredMethod("runConfirmPass");
+        confirm.setAccessible(true);
+        confirm.invoke(runtime);
+        assertEquals(1, rejected.get());
+        assertEquals(0, approved.get());
+        assertNull(pendingConfirm(runtime));
+        assertTrue(!wav.exists());
+        runtime.listenSessionForTests().close();
+    }
+
     private static void drain(LinkedBlockingQueue<Runnable> tasks) {
         while (!tasks.isEmpty()) tasks.poll().run();
     }
@@ -215,8 +247,15 @@ public final class VoiceActionRuntimePreemptTest {
 
     private static final class StubCallbacks implements VoiceActionRuntime.Callbacks {
         private final AtomicInteger rejected;
+        private final AtomicInteger approved;
+        String inferenceError;
+        String inferenceOutput = "";
 
-        StubCallbacks(AtomicInteger rejected) { this.rejected = rejected; }
+        StubCallbacks(AtomicInteger rejected) { this(rejected, new AtomicInteger()); }
+        StubCallbacks(AtomicInteger rejected, AtomicInteger approved) {
+            this.rejected = rejected;
+            this.approved = approved;
+        }
 
         @Override public long modelHandle() { return 1L; }
         @Override public InferenceEngine engine() {
@@ -224,7 +263,10 @@ public final class VoiceActionRuntimePreemptTest {
                 @Override public long loadModel(String modelPath, String projectorPath) { return 1L; }
                 @Override public void unloadModel(long handle) { }
                 @Override public String generate(long handle, String prompt, String mediaPath, int maxTokens,
-                        TokenSink sink) { return null; }
+                        TokenSink sink) {
+                    if (sink != null && !inferenceOutput.isEmpty()) sink.onToken(inferenceOutput);
+                    return inferenceError;
+                }
                 @Override public boolean supportsVoiceAudioIn(long handle) { return true; }
                 @Override public void stop() { }
                 @Override public void resetStop() { }
@@ -245,7 +287,8 @@ public final class VoiceActionRuntimePreemptTest {
         @Override public void showConsent(String proposalId, String describe, boolean safe) { }
         @Override public void clearConsent() { }
         @Override public void resolveConsent(String proposalId, boolean approve) {
-            if (!approve) rejected.incrementAndGet();
+            if (approve) approved.incrementAndGet();
+            else rejected.incrementAndGet();
         }
         @Override public void stopTurn() { }
         @Override public Locale userLocale() { return Locale.US; }

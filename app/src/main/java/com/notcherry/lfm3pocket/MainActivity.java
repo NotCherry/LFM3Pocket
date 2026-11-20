@@ -292,6 +292,23 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         }
         if (launchNewChat) {
             mainHandler.post(() -> handlePendingNewChatRequests(getIntent()));
+        } else {
+            // Resume path: re-apply persisted history if async restore raced with startup/model load.
+            final String resumeId = historyConversationId;
+            mainHandler.postDelayed(() -> {
+                if (destroyed || runtime == null) return;
+                if (resumeId == null || resumeId.isEmpty()) return;
+                if (!resumeId.equals(runtime.conversationId())) return;
+                if (runtime.isGenerating()) return;
+                runtime.restoreOpenConversation();
+            }, 1200);
+            mainHandler.postDelayed(() -> {
+                if (destroyed || runtime == null) return;
+                if (resumeId == null || resumeId.isEmpty()) return;
+                if (!resumeId.equals(runtime.conversationId())) return;
+                if (runtime.isGenerating()) return;
+                runtime.restoreOpenConversation();
+            }, 3500);
         }
         if (pendingSwitchId != null) confirmSwitchConversation();
         maybeStartPendingAssistantVoiceSession();
@@ -2430,9 +2447,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         runtime.setConversation(id, historyTitle);
         runtime.clearConversation();
         setSettingsOpen(false);
-        status.setText(fromSystemAssist
+        String freshStatus = fromSystemAssist
                 ? getString(R.string.fresh_chat_from_assist)
-                : getString(R.string.new_chat_ready));
+                : getString(R.string.new_chat_ready);
+        status.setText(freshStatus);
+        if (chatPanel != null) {
+            chatPanel.render(FlatTranscriptFormatter.EMPTY_TRANSCRIPT, freshStatus);
+        }
         updateControls();
     }
 

@@ -147,6 +147,25 @@ public final class HistoryRepositoryTest {
         assertEquals("A cat on a sofa",done.get(1).getText());
     }
 
+    @Test public void recoveryDoesNotInterruptTurnBegunAfterCutoff(){
+        db=Room.inMemoryDatabaseBuilder(context,HistoryDatabase.class).build();
+        HistoryRepository repository=new HistoryRepository(db);
+        HistoryRepository.TurnStart start=new HistoryRepository.TurnStart(
+                "turn-new","conversation-new","Chat","Hello",2000,"");
+        assertTrue(repository.beginTurn(start));
+        // Recovery cutoff is at/before begin time must not mark this live turn.
+        assertEquals(0,repository.markInterruptedGenerations(2000));
+        List<HistoryMessage> after=db.history().messages("conversation-new");
+        assertEquals("GENERATING",after.get(1).getTurnStatus());
+        HistoryRepository.Turn finished=new HistoryRepository.Turn(
+                "turn-new","conversation-new","Chat","Hello","Hi there",
+                null,HistoryRepository.Status.COMPLETED,2100,null,null,null);
+        assertTrue(repository.completeTurn(finished));
+        List<HistoryMessage> done=db.history().messages("conversation-new");
+        assertEquals("COMPLETED",done.get(1).getTurnStatus());
+        assertEquals("Hi there",done.get(1).getText());
+    }
+
     @Test public void conversationSummaryPersistsWithoutDroppingMessages() {
         db=Room.inMemoryDatabaseBuilder(context,HistoryDatabase.class).build();
         HistoryRepository repository=new HistoryRepository(db);

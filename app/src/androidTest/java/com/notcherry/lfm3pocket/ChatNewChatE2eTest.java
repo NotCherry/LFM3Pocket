@@ -152,9 +152,15 @@ public final class ChatNewChatE2eTest {
             assertTrue("Keeping the reply must leave generation in flight", runtimeGenerating());
 
             click("chat_new_chat");
-            awaitDialogButton(true).click();
+            UiObject2 stop = awaitDialogButton(true);
+            stop.click();
+            device.wait(Until.gone(By.text(context.getString(R.string.reply_still_running_title))), TIMEOUT);
             UiObject2 empty = device.wait(Until.findObject(
                     By.res(pkg, "chat_transcript").textContains("No conversation yet")), TIMEOUT);
+            if (empty == null) {
+                empty = device.wait(Until.findObject(
+                        By.res(pkg, "chat_transcript").descContains("No conversation yet")), TIMEOUT);
+            }
             assertNotNull("Stop and start new must clear the live transcript", empty);
             assertFalse("Held generation must be cancelled", runtimeGenerating());
         }
@@ -180,9 +186,15 @@ public final class ChatNewChatE2eTest {
             homeNew = device.wait(Until.findObject(By.res(pkg, "home_new_chat")), TIMEOUT);
             assertNotNull(homeNew);
             homeNew.click();
-            awaitDialogButton(true).click();
+            UiObject2 stop = awaitDialogButton(true);
+            stop.click();
+            device.wait(Until.gone(By.text(context.getString(R.string.reply_still_running_title))), TIMEOUT);
             UiObject2 empty = device.wait(Until.findObject(
                     By.res(pkg, "chat_transcript").textContains("No conversation yet")), TIMEOUT);
+            if (empty == null) {
+                empty = device.wait(Until.findObject(
+                        By.res(pkg, "chat_transcript").descContains("No conversation yet")), TIMEOUT);
+            }
             assertNotNull(empty);
             assertFalse(runtimeGenerating());
         }
@@ -198,6 +210,25 @@ public final class ChatNewChatE2eTest {
         assertTrue(app.scriptedEngine().awaitGenerationStarted());
         assertTrue("Generation must be active before opening new-chat dialog", runtimeGenerating());
         awaitEnabled("chat_stop");
+    }
+
+    private UiObject2 awaitResumedTranscript() {
+        UiObject2 resumed = device.wait(Until.findObject(
+                By.res(pkg, "chat_transcript").textContains("Sticky prompt")), 30000L);
+        if (resumed == null) {
+            resumed = device.wait(Until.findObject(
+                    By.res(pkg, "chat_transcript").descContains("Sticky prompt")), 5000L);
+        }
+        if (resumed == null) {
+            // Allow async history restore to repopulate the transcript on slower CI runs.
+            resumed = device.wait(Until.findObject(
+                    By.res(pkg, "chat_transcript").textContains("Sticky answer")), 5000L);
+        }
+        if (resumed == null) {
+            resumed = device.wait(Until.findObject(
+                    By.res(pkg, "chat_transcript").descContains("Sticky answer")), 5000L);
+        }
+        return resumed;
     }
 
     private boolean runtimeGenerating() {

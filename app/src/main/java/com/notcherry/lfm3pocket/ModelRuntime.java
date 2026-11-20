@@ -84,6 +84,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private ChatSnapshot lastSnapshot;
     private final AtomicInteger pendingTokens = new AtomicInteger();
     private final AtomicBoolean tokenFlushPosted = new AtomicBoolean();
+    private final AtomicBoolean historyRecoveryScheduled = new AtomicBoolean();
     private final LoopbackAgentApi loopback;
     private final VoiceActionRuntime voiceActions;
     private final SpeechReplyRouter speechRouter;
@@ -145,23 +146,32 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         return app.getResources().getConfiguration().getLocales().get(0);
     }
     @Override public void policyListenStarted() {
-        apply(policy.onListenStarted("Listening…"));
-        publishVoiceStatus("Listening…", false);
+        main.post(() -> {
+            apply(policy.onListenStarted("Listening…"));
+            publishVoiceStatus("Listening…", false);
+        });
     }
     @Override public void policyListenFinished() {
-        apply(policy.onListenFinished(SystemClock.elapsedRealtime()));
-        publishVoiceStatus(null, true);
+        main.post(() -> {
+            apply(policy.onListenFinished(SystemClock.elapsedRealtime()));
+            publishVoiceStatus(null, true);
+        });
     }
     @Override public void policyVoiceThinking() {
-        apply(policy.onGenerationStarted("Voice command", 512, SystemClock.elapsedRealtime()));
+        main.post(() -> apply(policy.onGenerationStarted("Voice command", 512,
+                SystemClock.elapsedRealtime())));
     }
-    @Override public void policySpeechStarted() { apply(policy.onSpeechStarted()); }
-    @Override public void policyPlaybackStarted() { apply(policy.onPlaybackStarted()); }
+    @Override public void policySpeechStarted() {
+        main.post(() -> apply(policy.onSpeechStarted()));
+    }
+    @Override public void policyPlaybackStarted() {
+        main.post(() -> apply(policy.onPlaybackStarted()));
+    }
     @Override public void policySpeechFinished() {
-        apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+        main.post(() -> apply(policy.onSpeechFinished(SystemClock.elapsedRealtime())));
     }
     @Override public void policyGenerationFinished() {
-        apply(policy.onGenerationFinished(SystemClock.elapsedRealtime()));
+        main.post(() -> apply(policy.onGenerationFinished(SystemClock.elapsedRealtime())));
     }
     public String loadedPath() { return loadedPath == null ? "" : loadedPath; }
     public boolean keepLoaded() { return preferences.keepLoaded(); }
@@ -297,6 +307,9 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         }
         unloading = true;
         speechCancel = true;
+        // Voice capture/confirmation owns a separate recorder and can outlive a chat turn.
+        // Stop it before retiring the model handle so no late WAV callback can infer on it.
+        voiceActions.cancelAll("Model unloading");
         if (session != null) session.stop();
         engine.stop();
         playback.stop();
@@ -335,10 +348,17 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     public void clearConversation() {
         if (session != null) session.clear();
         lastAssistant = "";
-        lastTranscript = "";
-        lastStatus = "";
-        lastSnapshot = null;
-        lastGenerating = false;
+        if (session != null) {
+            lastSnapshot = session.snapshot();
+            lastTranscript = FlatTranscript.format(lastSnapshot);
+            lastStatus = lastSnapshot == null ? "" : lastSnapshot.status;
+            lastGenerating = session.isGenerating();
+        } else {
+            lastSnapshot = null;
+            lastTranscript = FlatTranscriptFormatter.EMPTY_TRANSCRIPT;
+            lastStatus = "";
+            lastGenerating = false;
+        }
     }
 
     /** Explicit, user-visible summarize-and-compact step for the active conversation. */
@@ -368,10 +388,6 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         final int born = sessionEpoch;
         worker.execute(() -> {
             if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
-            try {
-                history.markInterruptedGenerations(System.currentTimeMillis());
-            } catch (Exception ignored) {
-            }
             if (id == null || id.isBlank()) return;
             java.util.List<HistoryRepository.StoredMessage> rows;
             try {
@@ -402,9 +418,10 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 lastTranscript = FlatTranscript.format(lastSnapshot);
                 lastStatus = lastSnapshot == null ? "" : lastSnapshot.status;
                 lastGenerating = session.isGenerating();
-                if (ui != null && ui.isUsable()) {
-                    ui.onSnapshot(lastSnapshot);
-                    ui.onChat(lastTranscript, lastStatus, lastGenerating);
+                Ui target = ui;
+                if (target != null && target.isUsable()) {
+                    if (lastSnapshot != null) target.onSnapshot(lastSnapshot);
+                    target.onChat(lastTranscript, lastStatus, lastGenerating);
                 }
             });
         });
@@ -465,11 +482,11 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     }
 
     @Override public void showConsent(String id, String text, boolean safe) {
-        apply(policy.onConsent(id, text, safe));
+        main.post(() -> apply(policy.onConsent(id, text, safe)));
     }
 
     @Override public void clearConsent() {
-        apply(policy.onConsentCleared(SystemClock.elapsedRealtime()));
+        main.post(() -> apply(policy.onConsentCleared(SystemClock.elapsedRealtime())));
     }
 
     public void onAppBackgrounded() {
@@ -581,7 +598,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         handle = 0L;
         loadedPath = "";
         lastAssistant = "";
-        lastTranscript = "";
+        lastTranscript = FlatTranscriptFormatter.EMPTY_TRANSCRIPT;
         lastStatus = "";
         lastGenerating = false;
         lastSnapshot = null;
@@ -600,7 +617,19 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     }
 
     @Override public void onVoiceStatus(String status) {
-        main.post(() -> publishVoiceStatus(status, true));
+        main.post(() -> {
+            if (unloading) return;
+            lastStatus = status == null ? "" : status;
+            Ui target = ui;
+            if (target != null && target.isUsable()) {
+                String transcript = lastTranscript;
+                if ((transcript == null || transcript.isEmpty()) && !lastGenerating) {
+                    transcript = FlatTranscriptFormatter.EMPTY_TRANSCRIPT;
+                }
+                target.onChat(transcript, lastStatus, lastGenerating);
+            }
+            publishVoiceStatus(status, true);
+        });
     }
 
     private void publishVoiceStatus(String status, boolean allowStatusText) {
@@ -780,6 +809,19 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private void ensureSession() {
         if (session != null) return;
         if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
+        // Queue one process-start recovery before ChatSession can enqueue a new turn.
+        // The single-thread runtime worker preserves this ordering and prevents a
+        // later Activity resume from globally interrupting an active conversation.
+        if (historyRecoveryScheduled.compareAndSet(false, true)) {
+            worker.execute(() -> {
+                try {
+                    history.markInterruptedGenerations(System.currentTimeMillis());
+                } catch (Exception error) {
+                    app.diagnostics().record(LocalDiagnostics.Kind.STRESS, 0L,
+                            "startup recovery failed: " + error.getClass().getSimpleName());
+                }
+            });
+        }
         final int born = sessionEpoch;
         ChatSession.Persistence persistence = new ChatSession.Persistence() {
             @Override public void begin(ChatSession.StartedTurn turn) throws Exception {

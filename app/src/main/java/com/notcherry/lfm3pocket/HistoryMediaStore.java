@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 
 /**
@@ -14,6 +15,11 @@ import java.nio.channels.FileChannel;
  */
 public final class HistoryMediaStore {
     private static final String ROOT = "history-media";
+
+    @FunctionalInterface
+    interface FilePublisher {
+        void publish(File tmp, File dest) throws IOException;
+    }
 
     private HistoryMediaStore() {}
 
@@ -44,27 +50,65 @@ public final class HistoryMediaStore {
         return new File(new File(context.getFilesDir(), ROOT), safe);
     }
 
-    private static void copyFile(File source, File dest) throws IOException {
+    static void copyFile(File source, File dest) throws IOException {
+        copyFile(source, dest, HistoryMediaStore::defaultPublish);
+    }
+
+    static void copyFile(File source, File dest, FilePublisher publisher) throws IOException {
         File tmp = new File(dest.getAbsolutePath() + ".partial");
         try (FileChannel in = new FileInputStream(source).getChannel();
              FileChannel out = new FileOutputStream(tmp).getChannel()) {
             long size = in.size();
-            long copied = 0L;
-            while (copied < size) copied += in.transferTo(copied, size - copied, out);
+            transferAll(in, out, size);
+            out.force(true);
         } catch (IOException e) {
             //noinspection ResultOfMethodCallIgnored
             tmp.delete();
             throw e;
         }
-        if (dest.exists() && !dest.delete()) {
+        try {
+            publisher.publish(tmp, dest);
+        } catch (IOException e) {
+            // Preserve the previous destination if publication fails.
             //noinspection ResultOfMethodCallIgnored
             tmp.delete();
-            throw new IOException("Could not replace history media file");
+            throw new IOException("Could not finalize history media file", e);
         }
-        if (!tmp.renameTo(dest)) {
-            //noinspection ResultOfMethodCallIgnored
-            tmp.delete();
-            throw new IOException("Could not finalize history media file");
+    }
+
+    static void transferAll(FileChannel in, FileChannel out, long size) throws IOException {
+        long copied = 0L;
+        ByteBuffer buffer = ByteBuffer.allocate(64 * 1024);
+        while (copied < size) {
+            long transferred = in.transferTo(copied, size - copied, out);
+            if (transferred > 0L) {
+                copied += transferred;
+                continue;
+            }
+            // transferTo is allowed to make zero progress. Fall back to an
+            // explicit positional read/write rather than spinning forever.
+            buffer.clear();
+            buffer.limit((int) Math.min(buffer.capacity(), size - copied));
+            int read = in.read(buffer, copied);
+            if (read <= 0) throw new IOException("Could not make progress copying history media");
+            buffer.flip();
+            while (buffer.hasRemaining()) {
+                int written = out.write(buffer);
+                if (written <= 0) throw new IOException("Could not make progress writing history media");
+            }
+            copied += read;
+        }
+        if (copied != size) throw new IOException("History media copy was incomplete");
+    }
+
+    private static void defaultPublish(File tmp, File dest) throws IOException {
+        try {
+            java.nio.file.Files.move(tmp.toPath(), dest.toPath(),
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+            java.nio.file.Files.move(tmp.toPath(), dest.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         }
     }
 

@@ -163,13 +163,13 @@ class HistoryRepository(private val database: HistoryDatabase) {
         true
     })
 
-    /** Marks in-flight GENERATING assistant rows as INTERRUPTED after process death. */
-    fun markInterruptedGenerations(at: Long): Int = database.runInTransaction(Callable {
+    /** Marks in-flight GENERATING assistant rows created before [cutoffAt] as INTERRUPTED after process death. */
+    fun markInterruptedGenerations(cutoffAt: Long): Int = database.runInTransaction(Callable {
         val dao = database.history()
-        val changed = dao.markGeneratingInterrupted(INTERRUPTED_PLACEHOLDER)
+        val changed = dao.markGeneratingInterrupted(INTERRUPTED_PLACEHOLDER, cutoffAt)
         if (changed > 0) {
             for (conversation in dao.conversations()) {
-                dao.touchConversation(conversation.id, at)
+                dao.touchConversation(conversation.id, cutoffAt)
             }
         }
         changed
