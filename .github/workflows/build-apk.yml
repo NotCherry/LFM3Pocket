@@ -153,6 +153,16 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Cache smoke native/CMake outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            app/.cxx
+            app/build/intermediates/cxx
+            app/build/intermediates/cmake
+          key: smoke-native-${{ runner.os }}-ndk27.2.12479018-cmake3.22.1-bt35.0.0-api35-x86_64-vulkan-off-${{ hashFiles('vendor/LLAMA_CPP_COMMIT', 'vendor/VOCA_COMMIT', 'app/src/main/cpp/**', 'app/build.gradle', 'gradle.properties', 'scripts/build-dizione-jni.sh', 'scripts/fetch-llama.sh', 'scripts/fetch-voca.sh') }}
+          restore-keys: |
+            smoke-native-${{ runner.os }}-ndk27.2.12479018-cmake3.22.1-bt35.0.0-api35-x86_64-vulkan-off-
       - name: Cache checksum-verified smoke GGUF
         uses: actions/cache@v4
         with:
