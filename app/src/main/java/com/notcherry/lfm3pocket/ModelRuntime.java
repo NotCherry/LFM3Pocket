@@ -15,6 +15,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 /**
  * Process-scoped model, conversation, and spoken playback. Activities attach as
@@ -92,10 +93,36 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private final AndroidSystemSpeechSynthesizer systemSpeech;
     private final Runnable idleTick = new Runnable() {
         @Override public void run() {
-            apply(policy.onClock(SystemClock.elapsedRealtime()));
+            dispatchPolicy(() -> policy.onClock(SystemClock.elapsedRealtime()));
             main.postDelayed(this, 15_000L);
         }
     };
+
+
+    private void onPolicyThread(Runnable action) {
+        if (Looper.myLooper() == Looper.getMainLooper()) action.run();
+        else main.post(action);
+    }
+
+    private void dispatchPolicy(Supplier<RuntimePolicy.Effects> event) {
+        onPolicyThread(() -> apply(event.get()));
+    }
+
+    private void runPolicy(Runnable action) {
+        onPolicyThread(action);
+    }
+
+    private <T> T callOnPolicyThread(Supplier<T> supplier) {
+        if (Looper.myLooper() == Looper.getMainLooper()) return supplier.get();
+        java.util.concurrent.FutureTask<T> task = new java.util.concurrent.FutureTask<>(supplier::get);
+        main.post(task);
+        try {
+            return task.get();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
 
     ModelRuntime(Lfm3PocketApplication app) {
         this.app = app;
@@ -112,7 +139,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         this.tinyVocaPack = new TinyVocaPackStore(app);
         this.speechRouter = new SpeechReplyRouter(preferences, tinyVocaPack);
         this.systemSpeech = new AndroidSystemSpeechSynthesizer(app);
-        apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
+        dispatchPolicy(() -> policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
         syncLoopback();
         listenForHeat();
@@ -147,35 +174,35 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     }
     @Override public void policyListenStarted() {
         main.post(() -> {
-            apply(policy.onListenStarted("Listening…"));
+            dispatchPolicy(() -> policy.onListenStarted("Listening…"));
             publishVoiceStatus("Listening…", false);
         });
     }
     @Override public void policyListenFinished() {
         main.post(() -> {
-            apply(policy.onListenFinished(SystemClock.elapsedRealtime()));
+            dispatchPolicy(() -> policy.onListenFinished(SystemClock.elapsedRealtime()));
             publishVoiceStatus(null, true);
         });
     }
     @Override public void policyVoiceThinking() {
-        main.post(() -> apply(policy.onGenerationStarted("Voice command", 512,
-                SystemClock.elapsedRealtime())));
+        dispatchPolicy(() -> policy.onGenerationStarted("Voice command", 512,
+                SystemClock.elapsedRealtime()));
     }
     @Override public void policySpeechStarted() {
-        main.post(() -> apply(policy.onSpeechStarted()));
+        dispatchPolicy(policy::onSpeechStarted);
     }
     @Override public void policyPlaybackStarted() {
-        main.post(() -> apply(policy.onPlaybackStarted()));
+        dispatchPolicy(policy::onPlaybackStarted);
     }
     @Override public void policySpeechFinished() {
-        main.post(() -> apply(policy.onSpeechFinished(SystemClock.elapsedRealtime())));
+        dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
     }
     @Override public void policyGenerationFinished() {
-        main.post(() -> apply(policy.onGenerationFinished(SystemClock.elapsedRealtime())));
+        dispatchPolicy(() -> policy.onGenerationFinished(SystemClock.elapsedRealtime()));
     }
     public String loadedPath() { return loadedPath == null ? "" : loadedPath; }
     public boolean keepLoaded() { return preferences.keepLoaded(); }
-    public boolean acceptsTurn() { return !policy.refuseNewTurns(); }
+    public boolean acceptsTurn() { return callOnPolicyThread(() -> !policy.refuseNewTurns()); }
     public String conversationId() { return conversationId; }
     public String historyTitle() { return historyTitle; }
     public RuntimeNotice currentNotice() { return policyNotice(); }
@@ -238,7 +265,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         preferences.setLockPreview(preview);
         preferences.setLoopbackEnabled(loopback);
         syncLoopback();
-        apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
+        dispatchPolicy(() -> policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
     }
 
@@ -246,7 +273,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     public int loopbackPort() { return loopback.port(); }
 
     public void load(String path, String projector, LoadCallback callback) {
-        apply(policy.onLoading(path == null ? "" : new File(path).getName()));
+        dispatchPolicy(() -> policy.onLoading(path == null ? "" : new File(path).getName()));
         worker.execute(() -> loadBlocking(path, projector, callback));
     }
 
@@ -292,17 +319,23 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 : "Model error: " + failure;
         main.post(() -> {
             if (loaded != 0L) {
-                apply(policy.onLoaded(name, SystemClock.elapsedRealtime()));
-                apply(policy.onVoiceTalkAvailable(voiceActions.isEnabled()));
-            } else apply(policy.onLoadFailed());
+                dispatchPolicy(() -> policy.onLoaded(name, SystemClock.elapsedRealtime()));
+                dispatchPolicy(() -> policy.onVoiceTalkAvailable(voiceActions.isEnabled()));
+            } else {
+                dispatchPolicy(policy::onLoadFailed);
+            }
             if (callback != null) callback.finished(status);
         });
         return loaded != 0L;
     }
 
     public void unload(String cause, Runnable done) {
+        onPolicyThread(() -> unloadOnPolicyThread(cause, done));
+    }
+
+    private void unloadOnPolicyThread(String cause, Runnable done) {
         if (unloading) {
-            if (done != null) main.post(done);
+            if (done != null) done.run();
             return;
         }
         unloading = true;
@@ -324,7 +357,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             }
             loadedPath = "";
             app.diagnostics().record(LocalDiagnostics.Kind.MODEL_LOAD, 0L, "unload=" + why);
-            main.post(() -> {
+            onPolicyThread(() -> {
                 unloading = false;
                 if (handle == 0L) {
                     try { app.externalModels().releaseAll(); } catch (Exception ignored) { }
@@ -342,7 +375,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         engine.stop();
         playback.stop();
         systemSpeech.stop();
-        apply(policy.stopRequested(SystemClock.elapsedRealtime()));
+        dispatchPolicy(() -> policy.stopRequested(SystemClock.elapsedRealtime()));
     }
 
     public void clearConversation() {
@@ -433,7 +466,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             playback.stop();
             systemSpeech.stop();
             engine.stop();
-            apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+            dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
             if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response cancelled.");
             return;
         }
@@ -451,12 +484,12 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             return;
         }
         speechCancel = false;
-        apply(policy.onSpeechStarted());
+        dispatchPolicy(policy::onSpeechStarted);
         final String spoken = reply;
         worker.execute(() -> {
             if (speechCancel) {
                 main.post(() -> {
-                    apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                    dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
                     if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response cancelled.");
                 });
                 return;
@@ -482,11 +515,11 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     }
 
     @Override public void showConsent(String id, String text, boolean safe) {
-        main.post(() -> apply(policy.onConsent(id, text, safe)));
+        dispatchPolicy(() -> policy.onConsent(id, text, safe));
     }
 
     @Override public void clearConsent() {
-        main.post(() -> apply(policy.onConsentCleared(SystemClock.elapsedRealtime())));
+        dispatchPolicy(() -> policy.onConsentCleared(SystemClock.elapsedRealtime()));
     }
 
     public void onAppBackgrounded() {
@@ -518,7 +551,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 app.diagnostics().record(LocalDiagnostics.Kind.MEMORY, 0L, "trim=" + level);
                 return;
             }
-            apply(policy.onTrim(complete, SystemClock.elapsedRealtime()));
+            dispatchPolicy(() -> policy.onTrim(complete, SystemClock.elapsedRealtime()));
         });
     }
 
@@ -553,7 +586,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     public void askFromNotification(String text) {
         if (text == null || text.isBlank()) return;
         if (handle == 0L) {
-            apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
+            dispatchPolicy(() -> policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                     preferences.lockPreview(), SystemClock.elapsedRealtime()));
             return;
         }
@@ -608,9 +641,9 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         if (current != 0L) engine.unloadModel(current);
         playback.stop();
         systemSpeech.stop();
-        policy.reset();
-        apply(policy.onVoiceTalkAvailable(false));
-        apply(policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
+        runPolicy(policy::reset);
+        dispatchPolicy(() -> policy.onVoiceTalkAvailable(false));
+        dispatchPolicy(() -> policy.onSettings(preferences.keepLoaded(), preferences.idleMinutes(),
                 preferences.lockPreview(), SystemClock.elapsedRealtime()));
         if (service != null) service.stopNow();
         releaseWake();
@@ -667,7 +700,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private void generateSystemSpeech(String reply) {
         if (speechCancel) {
             main.post(() -> {
-                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
                 if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response cancelled.");
             });
             return;
@@ -678,13 +711,13 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         systemSpeech.speak(java.util.Locale.US, reply, new AndroidSystemSpeechSynthesizer.Callback() {
             @Override public void onDone() {
                 main.post(() -> {
-                    apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                    dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
                     if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response finished.");
                 });
             }
             @Override public void onError(String message) {
                 main.post(() -> {
-                    apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                    dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
                     if (ui != null && ui.isUsable()) ui.onSpeech(false, message);
                 });
             }
@@ -710,7 +743,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         String error = failure;
         main.post(() -> {
             if (cancelled) {
-                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
                 if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response cancelled.");
                 return;
             }
@@ -724,7 +757,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 return;
             }
             if (!playback.play(pcm, rate, 1, 16)) {
-                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
                 if (ui != null && ui.isUsable()) ui.onSpeech(false, "Could not start spoken playback.");
                 return;
             }
@@ -770,18 +803,18 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         boolean cancelled = speechCancel;
         main.post(() -> {
             if (cancelled) {
-                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
                 if (ui != null && ui.isUsable()) ui.onSpeech(false, "Spoken response cancelled.");
                 return;
             }
             if (failure != null || audio.length == 0) {
-                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
                 if (ui != null && ui.isUsable()) ui.onSpeech(false, failure != null
                         ? "Spoken response failed: " + failure : "Spoken response produced no audio.");
                 return;
             }
             if (!playback.play(audio, format[0], format[1], format[2])) {
-                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
                 if (ui != null && ui.isUsable()) ui.onSpeech(false, "Could not start spoken playback.");
                 return;
             }
@@ -793,13 +826,13 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         if (state == PlaybackController.State.STARTING || state == PlaybackController.State.PLAYING) {
             if (!playbackNoted) {
                 playbackNoted = true;
-                apply(policy.onPlaybackStarted());
+                dispatchPolicy(policy::onPlaybackStarted);
             }
         } else if (state == PlaybackController.State.IDLE || state == PlaybackController.State.ERROR
                 || state == PlaybackController.State.CLOSED) {
             if (playbackNoted) {
                 playbackNoted = false;
-                apply(policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
             }
             voiceActions.onPlaybackIdle();
         }
@@ -922,13 +955,13 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         lastStatus = status == null ? "" : status;
         lastGenerating = running;
         if (started) {
-            apply(policy.onGenerationStarted(pendingQuestion, pendingMax, SystemClock.elapsedRealtime()));
+            dispatchPolicy(() -> policy.onGenerationStarted(pendingQuestion, pendingMax, SystemClock.elapsedRealtime()));
             main.postDelayed(() -> {
-                if (!unloading) apply(policy.refreshRate(SystemClock.elapsedRealtime()));
+                if (!unloading) dispatchPolicy(() -> policy.refreshRate(SystemClock.elapsedRealtime()));
             }, 1100L);
         }
         if (stopped) {
-            apply(policy.onGenerationFinished(SystemClock.elapsedRealtime()));
+            dispatchPolicy(() -> policy.onGenerationFinished(SystemClock.elapsedRealtime()));
             if (app.startedActivityCount() == 0) {
                 RuntimeNotifications.notifyReplyReady(app, conversationId, historyTitle, lastStatus);
             }
@@ -948,7 +981,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             main.post(() -> {
                 tokenFlushPosted.set(false);
                 int n = pendingTokens.getAndSet(0);
-                if (n > 0) apply(policy.onTokens(n, SystemClock.elapsedRealtime()));
+                if (n > 0) dispatchPolicy(() -> policy.onTokens(n, SystemClock.elapsedRealtime()));
             });
         }
     }
@@ -1016,7 +1049,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         PowerManager manager = (PowerManager) app.getSystemService(Context.POWER_SERVICE);
         if (manager == null) return;
         manager.addThermalStatusListener(main::post, status ->
-                apply(policy.onThermal(status, SystemClock.elapsedRealtime())));
+                dispatchPolicy(() -> policy.onThermal(status, SystemClock.elapsedRealtime())));
     }
 
     private void listenForBattery() {
@@ -1025,12 +1058,12 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         filter.addAction(Intent.ACTION_BATTERY_LOW);
         filter.addAction(Intent.ACTION_BATTERY_OKAY);
         Intent sticky = app.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-        if (sticky != null) apply(policy.onBatteryLow(isLow(sticky)));
+        if (sticky != null) dispatchPolicy(() -> policy.onBatteryLow(isLow(sticky)));
         android.content.BroadcastReceiver receiver = new android.content.BroadcastReceiver() {
             @Override public void onReceive(Context context, Intent intent) {
                 boolean low = intent != null && (Intent.ACTION_BATTERY_LOW.equals(intent.getAction()) || isLow(intent));
                 if (intent != null && Intent.ACTION_BATTERY_OKAY.equals(intent.getAction())) low = false;
-                apply(policy.onBatteryLow(low));
+                dispatchPolicy(() -> policy.onBatteryLow(low));
             }
         };
         if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED);

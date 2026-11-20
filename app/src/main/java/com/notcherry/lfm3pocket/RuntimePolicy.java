@@ -4,9 +4,18 @@ import java.util.Locale;
 
 /**
  * Decides the foreground-service notification and the unload/wake side effects.
- * Call from one thread. Android wiring lives in {@link ModelRuntime}.
+ * All methods must be called on the owner thread (the thread that constructed this instance).
+ * Android wiring serializes calls through {@link ModelRuntime}'s main-thread dispatcher.
  */
 public final class RuntimePolicy {
+    private final Thread ownerThread = Thread.currentThread();
+
+    private void checkOwner() {
+        if (Thread.currentThread() != ownerThread) {
+            throw new IllegalStateException(
+                    "RuntimePolicy called off owner thread: " + Thread.currentThread().getName());
+        }
+    }
     public static final class Effects {
         public final RuntimeNotice notice;
         public final boolean wantService;
@@ -51,11 +60,12 @@ public final class RuntimePolicy {
     private long idleDeadlineMs = -1L;
     private boolean voiceTalkAvailable;
 
-    public boolean refuseNewTurns() { return refuseNewTurns; }
-    public boolean modelLoaded() { return modelLoaded; }
-    public boolean generating() { return generating; }
+    public boolean refuseNewTurns() { checkOwner(); return refuseNewTurns; }
+    public boolean modelLoaded() { checkOwner(); return modelLoaded; }
+    public boolean generating() { checkOwner(); return generating; }
 
     public void reset() {
+        checkOwner();
         loading = false;
         modelLoaded = false;
         generating = false;
@@ -82,11 +92,13 @@ public final class RuntimePolicy {
     }
 
     public Effects onVoiceTalkAvailable(boolean available) {
+        checkOwner();
         voiceTalkAvailable = available;
         return view(false, false);
     }
 
     public Effects onSettings(boolean keep, int idle, boolean preview, long nowMs) {
+        checkOwner();
         keepLoaded = keep;
         idleMinutes = idle == 15 || idle == 60 ? idle : 0;
         lockPreview = preview;
@@ -97,12 +109,14 @@ public final class RuntimePolicy {
     }
 
     public Effects onLoading(String name) {
+        checkOwner();
         loading = true;
         if (name != null && !name.isEmpty()) modelName = name;
         return view(false, false);
     }
 
     public Effects onLoaded(String name, long nowMs) {
+        checkOwner();
         loading = false;
         modelLoaded = true;
         if (name != null && !name.isEmpty()) modelName = name;
@@ -111,11 +125,13 @@ public final class RuntimePolicy {
     }
 
     public Effects onLoadFailed() {
+        checkOwner();
         loading = false;
         return view(false, false);
     }
 
     public Effects onGenerationStarted(String asked, int limit, long nowMs) {
+        checkOwner();
         generating = true;
         tokens = 0;
         windowTokens = 0;
@@ -129,6 +145,7 @@ public final class RuntimePolicy {
     }
 
     public Effects refreshRate(long nowMs) {
+        checkOwner();
         if (generating && windowStartMs >= 0) {
             long elapsed = nowMs - windowStartMs;
             if (elapsed >= 1000L && windowTokens > 0) {
@@ -141,6 +158,7 @@ public final class RuntimePolicy {
     }
 
     public Effects onTokens(int count, long nowMs) {
+        checkOwner();
         if (count <= 0 || !generating) return view(false, false);
         tokens += count;
         if (windowStartMs < 0) windowStartMs = nowMs;
@@ -155,6 +173,7 @@ public final class RuntimePolicy {
     }
 
     public Effects onGenerationFinished(long nowMs) {
+        checkOwner();
         boolean was = generating;
         generating = false;
         trimStrikesWhileGenerating = 0;
@@ -163,18 +182,21 @@ public final class RuntimePolicy {
     }
 
     public Effects onSpeechStarted() {
+        checkOwner();
         synthesizing = true;
         idleDeadlineMs = -1L;
         return view(false, false);
     }
 
     public Effects onPlaybackStarted() {
+        checkOwner();
         synthesizing = false;
         playing = true;
         return view(false, false);
     }
 
     public Effects onSpeechFinished(long nowMs) {
+        checkOwner();
         synthesizing = false;
         playing = false;
         if (modelLoaded) armIdle(nowMs);
@@ -182,23 +204,27 @@ public final class RuntimePolicy {
     }
 
     public Effects onListenStarted(String status) {
+        checkOwner();
         listening = true;
         idleDeadlineMs = -1L;
         return view(false, false);
     }
 
     public Effects onListenFinished(long nowMs) {
+        checkOwner();
         listening = false;
         if (modelLoaded && !generating && !busyAudio()) armIdle(nowMs);
         return view(false, false);
     }
 
     public Effects onVoiceThinking() {
+        checkOwner();
         idleDeadlineMs = -1L;
         return view(false, false);
     }
 
     public Effects stopRequested(long nowMs) {
+        checkOwner();
         boolean cancel = generating || synthesizing || playing || listening;
         generating = false;
         synthesizing = false;
@@ -211,10 +237,12 @@ public final class RuntimePolicy {
     }
 
     public Effects unloadRequested() {
+        checkOwner();
         return drop(true);
     }
 
     public Effects onClock(long nowMs) {
+        checkOwner();
         if (idleDeadlineMs >= 0 && nowMs >= idleDeadlineMs && modelLoaded && !generating && !busyAudio()
                 && !listening && !consent)
             return drop(false);
@@ -223,6 +251,7 @@ public final class RuntimePolicy {
 
     /** PowerManager thermal status ordinal: 0 none, 1 light, 2 moderate, 3 severe, 4+ critical. */
     public Effects onThermal(int status, long nowMs) {
+        checkOwner();
         thermal = status;
         if (status < 3) {
             unloadAfterTurn = false;
@@ -240,12 +269,14 @@ public final class RuntimePolicy {
     }
 
     public Effects onBatteryLow(boolean low) {
+        checkOwner();
         batteryLow = low;
         return view(false, false);
     }
 
     /** {@code complete} is TRIM_MEMORY_COMPLETE. Otherwise this is RUNNING_CRITICAL. */
     public Effects onTrim(boolean complete, long nowMs) {
+        checkOwner();
         if (!modelLoaded && !generating && !loading) return view(false, false);
         if (complete) return drop(true);
         if (generating || busyAudio()) {
@@ -258,6 +289,7 @@ public final class RuntimePolicy {
     }
 
     public Effects onConsent(String id, String text, boolean safe) {
+        checkOwner();
         consent = true;
         proposalId = id == null ? "" : id;
         consentText = text == null ? "" : text;
@@ -266,6 +298,7 @@ public final class RuntimePolicy {
     }
 
     public Effects onConsentCleared(long nowMs) {
+        checkOwner();
         consent = false;
         proposalId = "";
         consentText = "";
@@ -275,6 +308,7 @@ public final class RuntimePolicy {
     }
 
     public Effects onKeepLoadedRelease(long nowMs) {
+        checkOwner();
         if (keepLoaded) return view(false, false);
         return drop(true);
     }
