@@ -7,6 +7,9 @@ SERIAL="emulator-${EMULATOR_PORT}"
 BOOT_TIMEOUT_SECONDS="${BOOT_TIMEOUT_SECONDS:-600}"
 EMULATOR_PID=""
 
+# Ensure Android SDK tools are on PATH (platform-tools/adb, emulator).
+export PATH="${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator:${PATH}"
+
 cleanup() {
   local exit_code="${1:-0}"
   if [[ -n "${EMULATOR_PID}" ]] && kill -0 "${EMULATOR_PID}" 2>/dev/null; then
