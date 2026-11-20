@@ -56,6 +56,7 @@
     <item name="settings_idle_60" type="id"/>
     <item name="settings_lock_preview" type="id"/>
     <item name="settings_loopback" type="id"/>
+    <item name="settings_loopback_token" type="id"/>
     <item name="settings_crash_log_view" type="id"/>
     <item name="settings_crash_log_export" type="id"/>
     <item name="settings_crash_log_clear" type="id"/>

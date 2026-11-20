@@ -84,6 +84,11 @@
     <string name="idle_60">60 min</string>
     <string name="lock_screen_preview">Pokaż odpowiedź na ekranie blokady</string>
     <string name="loopback_prompts">Zezwól na monity z 127.0.0.1 (bez zatwierdzania narzędzi)</string>
+    <string name="loopback_show_token">Pokaż token loopback</string>
+    <string name="loopback_token_title">Integracja loopback</string>
+    <string name="loopback_token_message">Adres: http://127.0.0.1:%1$d\nAuthorization: Bearer %2$s\n\nTen sekret instalacji jest wymagany przy każdym żądaniu, gdy loopback jest włączony. Zachowaj go w tajemnicy.</string>
+    <string name="loopback_token_copied">Skopiowano token loopback</string>
+    <string name="copy">Kopiuj</string>
     <string name="photo">Zdjęcie</string>
     <string name="camera">Aparat</string>
     <string name="voice_input">Wejście głosowe</string>
