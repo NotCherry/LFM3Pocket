@@ -260,6 +260,10 @@ public final class ChatNewChatE2eTest {
     private boolean transcriptContains(String text) {
         UiObject2 transcript = device.wait(Until.findObject(
                 By.res(pkg, "chat_transcript").textContains(text)), 1200L);
+        if (transcript == null) {
+            transcript = device.wait(Until.findObject(
+                    By.res(pkg, "chat_transcript").descContains(text)), 1200L);
+        }
         return transcript != null;
     }
 
