@@ -1063,7 +1063,8 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             @Override public void onReceive(Context context, Intent intent) {
                 boolean low = intent != null && (Intent.ACTION_BATTERY_LOW.equals(intent.getAction()) || isLow(intent));
                 if (intent != null && Intent.ACTION_BATTERY_OKAY.equals(intent.getAction())) low = false;
-                dispatchPolicy(() -> policy.onBatteryLow(low));
+                final boolean lowNow = low;
+                dispatchPolicy(() -> policy.onBatteryLow(lowNow));
             }
         };
         if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED);
