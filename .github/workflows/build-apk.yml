@@ -140,7 +140,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-ubuntu-api30-google_apis-x86_64-v1
+          key: avd-ubuntu-api30-google_apis-x86_64-v2
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
@@ -151,7 +151,7 @@ jobs:
           force-avd-creation: false
           emulator-boot-timeout: 600
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: echo "Generated AVD snapshot for caching."
       - name: Execute connected JNI smoke and real UI E2E tests
         uses: reactivecircus/android-emulator-runner@v2
@@ -162,7 +162,7 @@ jobs:
           force-avd-creation: false
           emulator-boot-timeout: 600
           disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: bash .github/scripts/run-jni-smoke.sh
       - name: Assert required tests actually executed and summarize JUnit
         if: always()
