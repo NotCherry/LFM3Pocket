@@ -74,18 +74,24 @@ public final class TextReadableAtScaleE2eTest {
                 .commit());
     }
 
-    @After public void restore() throws Exception {
-        String restore = originalFontScale == null || originalFontScale.isEmpty()
-                || "null".equals(originalFontScale) ? "1.0" : originalFontScale;
-        device.executeShellCommand("settings put system font_scale " + restore);
-        String locales = originalLocales == null || originalLocales.isEmpty()
-                || "null".equals(originalLocales) ? "en-US" : originalLocales;
-        device.executeShellCommand("settings put system system_locales " + locales);
-        if (originalConfig != null) {
-            context.getResources().updateConfiguration(
-                    originalConfig, context.getResources().getDisplayMetrics());
-            Locale.setDefault(originalConfig.getLocales().get(0));
-        }
+    @After public void restore() {
+        try {
+            String restore = originalFontScale == null || originalFontScale.isEmpty()
+                    || "null".equals(originalFontScale) ? "1.0" : originalFontScale;
+            device.executeShellCommand("settings put system font_scale " + restore);
+        } catch (Exception ignored) { }
+        try {
+            String locales = originalLocales == null || originalLocales.isEmpty()
+                    || "null".equals(originalLocales) ? "en-US" : originalLocales;
+            device.executeShellCommand("settings put system system_locales " + locales);
+        } catch (Exception ignored) { }
+        try {
+            if (originalConfig != null) {
+                context.getResources().updateConfiguration(
+                        originalConfig, context.getResources().getDisplayMetrics());
+                Locale.setDefault(originalConfig.getLocales().get(0));
+            }
+        } catch (Exception ignored) { }
     }
 
     @Test public void settingsImportAndOpenButtonsStayFullyVisibleAtAllFontScalesAndLocales()

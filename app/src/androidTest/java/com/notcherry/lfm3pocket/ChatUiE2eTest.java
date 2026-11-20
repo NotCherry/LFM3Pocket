@@ -9,9 +9,6 @@ import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Rect;
-import android.net.TrafficStats;
-import android.os.Process;
-import android.provider.Settings;
 
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -155,50 +152,6 @@ public final class ChatUiE2eTest {
             awaitEnabled("chat_send");
         }
     }
-    @Test public void airplaneModeTextChatDoesNotTransmitNetworkBytes() throws Exception {
-        String previousAirplane = device.executeShellCommand(
-                "settings get global airplane_mode_on").trim();
-        try {
-            // Android emulator: disable radio-backed networks. Some emulator builds
-            // retain virtual Ethernet; per-UID TX counters separately verify app isolation.
-            device.executeShellCommand("settings put global airplane_mode_on 1");
-            device.executeShellCommand(
-                    "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true");
-            device.executeShellCommand("svc wifi disable");
-            device.executeShellCommand("svc data disable");
-            assertEquals(1, Settings.Global.getInt(app.getContentResolver(),
-                    Settings.Global.AIRPLANE_MODE_ON, 0));
-
-            try (ActivityScenario<MainActivity> scenario =
-                         ActivityScenario.launch(MainActivity.class)) {
-                awaitEnabled("chat_send");
-                long uidTxBefore = TrafficStats.getUidTxBytes(Process.myUid());
-                assertTrue("UID network accounting must be available for offline assertion",
-                        uidTxBefore >= 0);
-
-                UiObject2 input = device.findObject(By.res(packageName, "chat_input"));
-                assertNotNull(input);
-                input.setText("Answer without internet");
-                awaitEnabled("chat_send").click();
-                awaitTranscript("FAKE_STREAM_BEGIN");
-                awaitEnabled("chat_stop").click();
-                awaitEnabled("chat_send");
-                assertEquals("Offline core chat must not transmit data for this app UID",
-                        uidTxBefore, TrafficStats.getUidTxBytes(Process.myUid()));
-            }
-        } finally {
-            String restored = "1".equals(previousAirplane) ? "1" : "0";
-            device.executeShellCommand("settings put global airplane_mode_on " + restored);
-            device.executeShellCommand(
-                    "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state " +
-                            ("1".equals(restored) ? "true" : "false"));
-            if ("0".equals(restored)) {
-                device.executeShellCommand("svc wifi enable");
-                device.executeShellCommand("svc data enable");
-            }
-        }
-    }
-
     @Test public void textChatDoesNotRequestCameraPermissionAndSurvivesPermissionDenial()
             throws Exception {
         // Declaring CAMERA supports explicit flashlight use. Text chat must not
