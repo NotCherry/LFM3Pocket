@@ -36,19 +36,43 @@ adb wait-for-device
 test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
 adb logcat -c || true
 
+# When APKs are already assembled (CI pre-assemble step), install them directly
+# and skip redundant assemble tasks to avoid rebuild/configuration work.
+SMOKE_APP_APK="app/build/outputs/apk/smoke/debug/app-smoke-debug.apk"
+SMOKE_TEST_APK="app/build/outputs/apk/androidTest/smoke/debug/app-smoke-debug-androidTest.apk"
+SMOKE_APKS_PREBUILT=false
+if [[ -f "$SMOKE_APP_APK" && -f "$SMOKE_TEST_APK" ]]; then
+  SMOKE_APKS_PREBUILT=true
+  adb install -r "$SMOKE_APP_APK"
+  adb install -r "$SMOKE_TEST_APK"
+fi
+
 if [ "$MODE" = "smoke" ]; then
   # Minimal high-signal PR gate: real JNI load/generate/stop/retry proof and
   # core app/Compose host boot. Keep this set explicit and fast.
   SMOKE_CLASSES="com.notcherry.lfm3pocket.GenerationSmokeTest,com.notcherry.lfm3pocket.ComposeHostE2eTest"
-  timeout 30m gradle :app:connectedSmokeDebugAndroidTest \
-    -Pandroid.testInstrumentationRunnerArguments.class="$SMOKE_CLASSES" \
-    --no-daemon --stacktrace
+  if [ "$SMOKE_APKS_PREBUILT" = "true" ]; then
+    timeout 30m gradle :app:connectedSmokeDebugAndroidTest \
+      -Pandroid.testInstrumentationRunnerArguments.class="$SMOKE_CLASSES" \
+      -x :app:assembleSmokeDebug -x :app:assembleSmokeDebugAndroidTest \
+      --no-daemon --stacktrace
+  else
+    timeout 30m gradle :app:connectedSmokeDebugAndroidTest \
+      -Pandroid.testInstrumentationRunnerArguments.class="$SMOKE_CLASSES" \
+      --no-daemon --stacktrace
+  fi
 
   # Cross-process persistence proof (DataStore across force-stop/new process).
   bash .github/scripts/verify-settings-restart.sh
 else
   # Deep tier: full connected suite and all serial durability/journey proofs.
-  timeout 45m gradle :app:connectedSmokeDebugAndroidTest --no-daemon --stacktrace
+  if [ "$SMOKE_APKS_PREBUILT" = "true" ]; then
+    timeout 45m gradle :app:connectedSmokeDebugAndroidTest \
+      -x :app:assembleSmokeDebug -x :app:assembleSmokeDebugAndroidTest \
+      --no-daemon --stacktrace
+  else
+    timeout 45m gradle :app:connectedSmokeDebugAndroidTest --no-daemon --stacktrace
+  fi
 
   # Verify DataStore durability across an actual force-stop/new process.
   bash .github/scripts/verify-settings-restart.sh
