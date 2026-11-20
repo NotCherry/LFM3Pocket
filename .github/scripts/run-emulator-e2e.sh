@@ -59,5 +59,19 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
+# Core framework services (especially PackageManager) can lag behind boot_completed on
+# CI emulators/snapshots; wait before Gradle/adb install to avoid "Can't find service: package".
+PACKAGE_SERVICE_TIMEOUT_SECONDS="${PACKAGE_SERVICE_TIMEOUT_SECONDS:-300}"
+SECONDS_WAITED=0
+until adb -s "${SERIAL}" shell service check package 2>/dev/null | grep -q "Service package: found"; do
+  if (( SECONDS_WAITED >= PACKAGE_SERVICE_TIMEOUT_SECONDS )); then
+    echo "ERROR: package service not available within ${PACKAGE_SERVICE_TIMEOUT_SECONDS}s" >&2
+    adb -s "${SERIAL}" shell service list 2>&1 | head -120 >&2 || true
+    exit 1
+  fi
+  sleep 2
+  SECONDS_WAITED=$((SECONDS_WAITED + 2))
+done
+
 export ANDROID_SERIAL="${SERIAL}"
 bash .github/scripts/run-jni-smoke.sh
