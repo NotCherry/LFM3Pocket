@@ -25,14 +25,26 @@ fi
 export ANDROID_NDK_HOME="$NDK"
 TARGETS=()
 ABIS=()
-if [[ "${HANAMI_BUILD_ABI:-arm64-v8a}" == *x86_64* ]] || [[ "${HANAMI_BUILD_ALL_ABIS:-}" == "1" ]]; then
+REQ_ABIS="${HANAMI_BUILD_ABIS:-${HANAMI_BUILD_ABI:-}}"
+if [[ -z "$REQ_ABIS" && "${HANAMI_BUILD_ALL_ABIS:-}" == "1" ]]; then
+  REQ_ABIS="arm64-v8a,x86_64"
+fi
+if [[ -z "$REQ_ABIS" ]]; then
+  REQ_ABIS="arm64-v8a"
+fi
+if [[ "$REQ_ABIS" == *x86_64* ]]; then
   TARGETS+=(x86_64-linux-android)
   ABIS+=(x86_64)
 fi
-if [[ "${HANAMI_BUILD_ABI:-arm64-v8a}" == *arm64* ]] || [[ "${HANAMI_BUILD_ALL_ABIS:-}" == "1" ]]; then
+if [[ "$REQ_ABIS" == *arm64* ]]; then
   TARGETS+=(aarch64-linux-android)
   ABIS+=(arm64-v8a)
 fi
+if [[ ${#TARGETS[@]} -eq 0 ]]; then
+  echo "no supported HANAMI_BUILD_ABIS requested: $REQ_ABIS; skipping hanami_dizione JNI"
+  exit 0
+fi
+echo "hanami_dizione JNI ABIs: ${ABIS[*]}"
 HOST_PREBUILT="$(find "$NDK/toolchains/llvm/prebuilt" -maxdepth 1 -mindepth 1 -type d | head -1)"
 clang21() {
   case "$1" in

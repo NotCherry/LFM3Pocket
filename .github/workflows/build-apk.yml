@@ -7,6 +7,17 @@ on:
       - 'docs/**'
       - '**/*.md'
   workflow_dispatch:
+    inputs:
+      e2e_tier:
+        description: 'Emulator E2E tier to run (smoke=fast PR gate, deep=full/nightly)'
+        required: false
+        default: deep
+        type: choice
+        options:
+          - smoke
+          - deep
+  schedule:
+    - cron: '17 3 * * *'
   pull_request:
     branches: [main]
     paths-ignore:
@@ -91,11 +102,17 @@ jobs:
           retention-days: 14
 
   emulator-e2e:
-    name: Android emulator JNI + UI E2E
+    name: Android emulator JNI + UI E2E (${{ github.event_name == 'pull_request' && 'smoke' || (github.event_name == 'workflow_dispatch' && inputs.e2e_tier || 'deep') }})
     needs: unit
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      E2E_TIER: ${{ github.event_name == 'pull_request' && 'smoke' || (github.event_name == 'workflow_dispatch' && inputs.e2e_tier || 'deep') }}
     steps:
+      - name: Select E2E tier
+        run: |
+          echo "E2E_TIER=${E2E_TIER}"
+          echo "e2e_tier=${E2E_TIER}" >> "$GITHUB_OUTPUT"
       - name: Checkout application
         uses: actions/checkout@v4
       - name: Cache llama.cpp sources
@@ -199,10 +216,10 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: bash .github/scripts/run-jni-smoke.sh
+          script: bash .github/scripts/run-jni-smoke.sh "$E2E_TIER"
       - name: Assert required tests actually executed and summarize JUnit
         if: always()
-        run: python3 .github/scripts/assert-android-test-results.py app/build/outputs/androidTest-results/connected/
+        run: python3 .github/scripts/assert-android-test-results.py app/build/outputs/androidTest-results/connected/ --mode "$E2E_TIER"
       - name: Upload emulator JUnit XML, screenshots and logcat
         if: always()
         uses: actions/upload-artifact@v4
