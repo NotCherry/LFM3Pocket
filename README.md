@@ -8,10 +8,10 @@ The install id is `dev.notcherry.hanami`. An existing install of `com.notcherry.
 
 ## Download
 
-Installable ARM64 APKs are published on the [Releases](https://github.com/NotCherry/LFM3Pocket/releases) page:
+Installable ARM64 APKs are published on the [Releases](https://github.com/NotCherry/LFM3Pocket/releases) page only after **Android Stage 1 CI** succeeds for the exact release commit SHA (see [docs/RELEASE.md](docs/RELEASE.md)):
 
-- Numbered **`v*`** tags build a signed `Hanami-v<version>-arm64-v8a.apk` (see [docs/RELEASING.md](docs/RELEASING.md))
-- **Latest CI build** (pre-release) — debug APK refreshed after each green `main` CI run, not the Obtainium asset
+- **Numbered `v*` releases** — `Hanami-v<version>-arm64-v8a.apk`, created/published only with green exact-SHA Android Stage 1 CI (non-doc pushes to `main` auto-bump a versioned release; pushed `v*` tags and tagged workflow dispatches publish that exact tagged commit). Signed when repository signing secrets are configured (see [docs/RELEASING.md](docs/RELEASING.md)).
+- **Latest CI build** (pre-release) — rolling debug `Hanami-latest-arm64-debug.apk` rebuilt by manual workflow dispatch only with green exact-SHA Android Stage 1 CI; not the Obtainium asset.
 
 Model weights are never bundled in the APK. Import LFM3 / LFM3-Omni GGUFs in the app after install.
 

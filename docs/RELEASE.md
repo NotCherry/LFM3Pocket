@@ -40,15 +40,18 @@ Pinned smoke fixture SHA-256 and host provisioning are documented in `docs/TEST_
 
 ## GitHub Releases (downloadable APK)
 
-Workflow **Publish GitHub Release** (`.github/workflows/release.yml`). Tag releases are signed and described in [`RELEASING.md`](RELEASING.md).
+Workflow **Publish GitHub Release** (`.github/workflows/release.yml`) publishes only after **Android Stage 1 CI** (`.github/workflows/build-apk.yml`) succeeds for the exact release commit SHA. Failed, cancelled, skipped, timed out, stale, or non-matching CI results cannot create a version tag or publish an APK. The gate runs before tag creation, so a failed gate never consumes a version number. Tag pushes and workflow dispatches are owner-controlled triggers, but they are not CI-exempt. Tag releases are signed when repository signing secrets are configured and are described in [`RELEASING.md`](RELEASING.md).
 
-| Trigger | Release | Asset |
+| Trigger | Gated release behavior | Asset |
 | --- | --- | --- |
-| Green **Android Stage 1 CI** on `main` | Pre-release tag `latest` (rolling debug) | `Hanami-latest-arm64-debug.apk` |
-| Push tag `v*` (e.g. `v0.1.0`) | Signed versioned release | `Hanami-v0.1.0-arm64-v8a.apk` |
-| Manual **workflow_dispatch** | Rebuild `latest`, or publish a `v*` tag if supplied | same as above |
+| Non-doc push to `main` (exact-SHA CI green) | Auto-bump/create a `v*` tag and publish a versioned release for that commit; marked as latest | `Hanami-v<version>-arm64-v8a.apk` |
+| Push tag `v*` (exact-SHA CI green) | Publish a versioned release for that tagged commit SHA | `Hanami-v<version>-arm64-v8a.apk` |
+| Manual **workflow_dispatch** (exact-SHA CI green) | Rebuild rolling pre-release `latest` debug when no tag is supplied, or publish/rebuild the supplied `v*` tag | `Hanami-latest-arm64-debug.apk` or `Hanami-v<version>-arm64-v8a.apk` |
 
-`v0.1.0` sets versionName `0.1.0` and versionCode `1000`. Action run artifacts still expire; use the [Releases](https://github.com/NotCherry/LFM3Pocket/releases) page for durable downloads.
+Notes:
+- Android Stage 1 CI must have a completed successful run for the exact target SHA. For a pushed `v*` tag, CI must already exist for that commit (for example from its `main` push); if no successful exact-SHA CI run exists, the release workflow rejects publication.
+- Versioned releases create/update the numbered `v*` release (not the rolling `latest` pre-release). `workflow_dispatch` without a tag rebuilds the rolling `latest` debug pre-release.
+- `v0.1.0` sets versionName `0.1.0` and versionCode `1000`. Action run artifacts still expire; use the [Releases](https://github.com/NotCherry/LFM3Pocket/releases) page for durable downloads.
 
 ## Model import expectations
 

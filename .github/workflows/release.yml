@@ -1,11 +1,17 @@
 name: Publish GitHub Release
 
-# Auto-release on every non-docs push to main: bump a v* tag, build the APK,
-# and publish Hanami-v<ver>-arm64-v8a.apk. Tag pushes with GITHUB_TOKEN do not
-# re-trigger workflows, so tagging and publishing stay in this one file.
+# Releases are published only after Android Stage 1 CI (build-apk.yml) succeeds
+# for the exact release commit SHA. Failed, cancelled, skipped, timed out, stale,
+# or non-matching CI results cannot create a version tag or publish any APK/release
+# asset. The gate runs before tag creation so a failed gate never consumes a version.
 #
-# Manual v* tags still publish. workflow_dispatch rebuilds Latest or a named tag.
-# The old workflow_run "Latest" path is removed so a main push does not build twice.
+# Triggers (all owner-controlled, all gated on exact-SHA CI success):
+#   - Non-doc push to main: bump/create a v* tag and publish Hanami-v<ver>-arm64-v8a.apk.
+#   - Push v* tag: publish a versioned release for that exact tagged commit SHA.
+#   - workflow_dispatch: rebuild rolling `latest` debug when no tag is supplied, or
+#     publish/rebuild the supplied v* tag; both use the exact target commit SHA.
+# Tag pushes with GITHUB_TOKEN do not re-trigger workflows, so auto-tagging and
+# publishing stay in this one file.
 #
 # Signing secrets (optional on auto-release):
 #   HANAMI_KEYSTORE_BASE64, HANAMI_STORE_PASSWORD, HANAMI_KEY_ALIAS, HANAMI_KEY_PASSWORD
@@ -46,37 +52,18 @@ jobs:
           # Need a token that can push the auto-release tag.
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Wait for Android Stage 1 CI on this exact commit
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Verify Android Stage 1 CI succeeded for release commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-          api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/workflows/build-apk.yml/runs?head_sha=${GITHUB_SHA}&per_page=20"
-          for attempt in $(seq 1 180); do
-            response="$(curl --fail --silent --show-error \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              "${api}")"
-            run="$(printf '%s' "${response}" | jq -c --arg sha "${GITHUB_SHA}" \
-              '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.created_at) | last // empty')"
-            if [ -n "${run}" ]; then
-              status="$(printf '%s' "${run}" | jq -r '.status')"
-              conclusion="$(printf '%s' "${run}" | jq -r '.conclusion // empty')"
-              run_url="$(printf '%s' "${run}" | jq -r '.html_url')"
-              echo "Android Stage 1 CI: ${status}/${conclusion} (${run_url})"
-              if [ "${status}" = "completed" ]; then
-                if [ "${conclusion}" = "success" ]; then exit 0; fi
-                echo "Refusing to release: Android Stage 1 CI did not succeed for ${GITHUB_SHA}." >&2
-                exit 1
-              fi
-            else
-              echo "Waiting for Android Stage 1 CI to register ${GITHUB_SHA}..."
-            fi
-            sleep 30
-          done
-          echo "Timed out waiting for Android Stage 1 CI for ${GITHUB_SHA}." >&2
-          exit 1
+          python3 .github/scripts/assert-release-ci-gate.py wait \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow build-apk.yml \
+            --sha "$GITHUB_SHA" \
+            --api-url "$GITHUB_API_URL" \
+            --token-env GH_TOKEN \
+            --attempts 180 \
+            --sleep 30
 
       - name: Prove version bump logic
         run: python3 .github/scripts/next-hanami-version.py --self-test
