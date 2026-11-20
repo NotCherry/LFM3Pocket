@@ -35,6 +35,38 @@ public final class ModelRuntimeSpeechStopContractTest {
         assertTrue(selectIndex > workerIndex);
     }
 
+
+    @Test
+    public void unloadCancelsVoiceActionsBeforeRetiringModel() throws Exception {
+        String source = read(repoRoot().resolve("app/src/main/java/com/notcherry/lfm3pocket/ModelRuntime.java"));
+        String unload = methodBody(source, "public void unload(");
+        int cancel = unload.indexOf("voiceActions.cancelAll(\"Model unloading\")");
+        int retire = unload.indexOf("engine.unloadModel");
+        assertTrue("unload must cancel voice actions", cancel >= 0);
+        assertTrue("unload must retire engine model", retire >= 0);
+        assertTrue("voice must be cancelled before model retirement", cancel < retire);
+    }
+
+    @Test
+    public void serviceTimeoutAndNotificationUnloadRouteThroughRuntimeUnload() throws Exception {
+        String source = read(repoRoot().resolve("app/src/main/java/com/notcherry/lfm3pocket/ModelRuntime.java"));
+        String timeout = methodBody(source, "public void onServiceTimeout()");
+        assertTrue(timeout.contains("unload(\"fgs-timeout\", null)"));
+        String action = methodBody(source, "public void onServiceAction(String action, String proposalId, String askText)");
+        assertTrue(action.contains("ACTION_UNLOAD") && action.contains("unload(\"notification\", null)"));
+    }
+
+    @Test
+    public void memoryTrimUnloadRoutesThroughPolicyEffectsToUnload() throws Exception {
+        String source = read(repoRoot().resolve("app/src/main/java/com/notcherry/lfm3pocket/ModelRuntime.java"));
+        String trim = methodBody(source, "public void onTrimMemory(");
+        assertTrue(trim.contains("policy.onTrim"));
+        assertTrue(trim.contains("apply("));
+        String apply = methodBody(source, "private void apply(RuntimePolicy.Effects effects)");
+        assertTrue(apply.contains("effects.unloadModel"));
+        assertTrue(apply.contains("unload("));
+    }
+
     private static String methodBody(String source, String signature) {
         int start = source.indexOf(signature);
         assertTrue("missing " + signature, start >= 0);
