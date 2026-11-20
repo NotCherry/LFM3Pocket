@@ -34,7 +34,7 @@ public final class VoiceUnloadLifecycleTest {
                 assertNull(pendingWav(runtime));
                 assertNoRecordingArtifacts(dir);
                 assertEquals(0, callbacks.listenStarted.get()); // no restart
-                runtime.listenSessionForTests().close();
+                runtime.close();
             } finally {
                 worker.shutdownNow();
                 worker.awaitTermination(2, TimeUnit.SECONDS);
@@ -69,7 +69,7 @@ public final class VoiceUnloadLifecycleTest {
                 assertNoRecordingArtifacts(dir);
                 runtime.cancelAll("Model unloading: " + cause + "-repeat");
                 assertEquals("reject must be once: " + cause, 1, callbacks.rejected.get());
-                runtime.listenSessionForTests().close();
+                runtime.close();
             } finally {
                 worker.shutdownNow();
                 worker.awaitTermination(2, TimeUnit.SECONDS);
@@ -98,7 +98,7 @@ public final class VoiceUnloadLifecycleTest {
             assertEquals(1, callbacks.rejected.get());
             assertEquals(0, callbacks.approved.get());
             assertFalse(wav.exists());
-            runtime.listenSessionForTests().close();
+            runtime.close();
         } finally {
             deleteTree(dir);
         }
