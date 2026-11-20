@@ -3,9 +3,15 @@ name: Android Stage 1 CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   workflow_dispatch:
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -77,6 +83,7 @@ jobs:
 
   emulator-e2e:
     name: Android emulator JNI + UI E2E
+    needs: unit
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -160,6 +167,7 @@ jobs:
 
   apk:
     name: Build ARM64 debug APK
+    needs: unit
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
