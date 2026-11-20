@@ -21,9 +21,10 @@ public final class VoiceUnloadLifecycleTest {
             File dir = Files.createTempDirectory("voice-unload-command-" + cause).toFile();
             ExecutorService worker = Executors.newSingleThreadExecutor();
             VoiceActionRuntime runtime = null;
+            TrackingCallbacks callbacks = null;
             try {
                 BlockingSource source = new BlockingSource();
-                TrackingCallbacks callbacks = new TrackingCallbacks();
+                callbacks = new TrackingCallbacks();
                 runtime = new VoiceActionRuntime(callbacks, dir, () -> true,
                         worker, Runnable::run, () -> source);
                 setMode(runtime, "COMMAND");
@@ -37,6 +38,7 @@ public final class VoiceUnloadLifecycleTest {
                 assertEquals(0, callbacks.listenStarted.get()); // no restart
             } finally {
                 if (runtime != null) runtime.close();
+                if (callbacks != null) callbacks.close();
                 worker.shutdownNow();
                 worker.awaitTermination(2, TimeUnit.SECONDS);
                 deleteTree(dir);
@@ -49,9 +51,10 @@ public final class VoiceUnloadLifecycleTest {
             File dir = Files.createTempDirectory("voice-unload-confirm-" + cause).toFile();
             ExecutorService worker = Executors.newSingleThreadExecutor();
             VoiceActionRuntime runtime = null;
+            TrackingCallbacks callbacks = null;
             try {
                 BlockingSource source = new BlockingSource();
-                TrackingCallbacks callbacks = new TrackingCallbacks();
+                callbacks = new TrackingCallbacks();
                 runtime = new VoiceActionRuntime(callbacks, dir, () -> true,
                         worker, Runnable::run, () -> source);
                 File wav = new File(dir, "pending-confirm.wav");
@@ -73,6 +76,7 @@ public final class VoiceUnloadLifecycleTest {
                 assertEquals("reject must be once: " + cause, 1, callbacks.rejected.get());
             } finally {
                 if (runtime != null) runtime.close();
+                if (callbacks != null) callbacks.close();
                 worker.shutdownNow();
                 worker.awaitTermination(2, TimeUnit.SECONDS);
                 deleteTree(dir);
@@ -83,10 +87,11 @@ public final class VoiceUnloadLifecycleTest {
     @Test public void queuedConfirmPassCannotApproveAfterUnloadCancel() throws Exception {
         File dir = Files.createTempDirectory("voice-unload-queued-confirm").toFile();
         VoiceActionRuntime runtime = null;
+        TrackingCallbacks callbacks = null;
         try {
             File wav = new File(dir, "confirm.wav");
             Files.write(wav.toPath(), new byte[] { 1, 2, 3, 4 });
-            TrackingCallbacks callbacks = new TrackingCallbacks();
+            callbacks = new TrackingCallbacks();
             callbacks.inferenceOutput = "yes";
             runtime = new VoiceActionRuntime(callbacks, dir, () -> true,
                     Runnable::run, Runnable::run, () -> new RecordingController.Source() {
@@ -103,6 +108,7 @@ public final class VoiceUnloadLifecycleTest {
             assertFalse(wav.exists());
         } finally {
             if (runtime != null) runtime.close();
+            if (callbacks != null) callbacks.close();
             deleteTree(dir);
         }
     }
@@ -212,8 +218,20 @@ public final class VoiceUnloadLifecycleTest {
         final AtomicInteger cleared = new AtomicInteger();
         final AtomicInteger listenStarted = new AtomicInteger();
         final AtomicInteger listenFinished = new AtomicInteger();
+        final ExecutorService callbackWorker = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "voice-test-callback");
+            t.setDaemon(true);
+            return t;
+        });
         String inferenceOutput = "";
         String inferenceError;
+
+        void close() {
+            callbackWorker.shutdownNow();
+            try { callbackWorker.awaitTermination(2, TimeUnit.SECONDS); } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+        }
 
         @Override public long modelHandle() { return 1L; }
         @Override public InferenceEngine engine() {
@@ -236,7 +254,7 @@ public final class VoiceUnloadLifecycleTest {
             return new PlaybackController(() -> { throw new UnsupportedOperationException(); },
                     () -> true, () -> { }, Runnable::run, Runnable::run, (s, m) -> { });
         }
-        @Override public java.util.concurrent.ExecutorService worker() { return Executors.newSingleThreadExecutor(); }
+        @Override public java.util.concurrent.ExecutorService worker() { return callbackWorker; }
         @Override public android.os.Handler main() { return null; }
         @Override public android.content.Context app() { return null; }
         @Override public SharedPreferences modelPrefs() { return null; }
