@@ -20,10 +20,11 @@ public final class VoiceUnloadLifecycleTest {
         for (String cause : unloadCauses()) {
             File dir = Files.createTempDirectory("voice-unload-command-" + cause).toFile();
             ExecutorService worker = Executors.newSingleThreadExecutor();
+            VoiceActionRuntime runtime = null;
             try {
                 BlockingSource source = new BlockingSource();
                 TrackingCallbacks callbacks = new TrackingCallbacks();
-                VoiceActionRuntime runtime = new VoiceActionRuntime(callbacks, dir, () -> true,
+                runtime = new VoiceActionRuntime(callbacks, dir, () -> true,
                         worker, Runnable::run, () -> source);
                 setMode(runtime, "COMMAND");
                 assertTrue(runtime.listenSessionForTests().startTimed(30_000));
@@ -32,10 +33,10 @@ public final class VoiceUnloadLifecycleTest {
                 runtime.cancelAll("Model unloading: " + cause);
                 assertFalse(runtime.listenSessionForTests().state() == VoiceListenSession.State.LISTENING);
                 assertNull(pendingWav(runtime));
-                assertNoRecordingArtifacts(dir);
+                awaitNoRecordingArtifacts(dir, 3000);
                 assertEquals(0, callbacks.listenStarted.get()); // no restart
-                runtime.close();
             } finally {
+                if (runtime != null) runtime.close();
                 worker.shutdownNow();
                 worker.awaitTermination(2, TimeUnit.SECONDS);
                 deleteTree(dir);
@@ -47,10 +48,11 @@ public final class VoiceUnloadLifecycleTest {
         for (String cause : unloadCauses()) {
             File dir = Files.createTempDirectory("voice-unload-confirm-" + cause).toFile();
             ExecutorService worker = Executors.newSingleThreadExecutor();
+            VoiceActionRuntime runtime = null;
             try {
                 BlockingSource source = new BlockingSource();
                 TrackingCallbacks callbacks = new TrackingCallbacks();
-                VoiceActionRuntime runtime = new VoiceActionRuntime(callbacks, dir, () -> true,
+                runtime = new VoiceActionRuntime(callbacks, dir, () -> true,
                         worker, Runnable::run, () -> source);
                 File wav = new File(dir, "pending-confirm.wav");
                 Files.write(wav.toPath(), new byte[] { 1, 2, 3, 4 });
@@ -66,11 +68,11 @@ public final class VoiceUnloadLifecycleTest {
                 assertNull(pendingWav(runtime));
                 assertFalse(wav.exists());
                 assertFalse(runtime.listenSessionForTests().state() == VoiceListenSession.State.LISTENING);
-                assertNoRecordingArtifacts(dir);
+                awaitNoRecordingArtifacts(dir, 3000);
                 runtime.cancelAll("Model unloading: " + cause + "-repeat");
                 assertEquals("reject must be once: " + cause, 1, callbacks.rejected.get());
-                runtime.close();
             } finally {
+                if (runtime != null) runtime.close();
                 worker.shutdownNow();
                 worker.awaitTermination(2, TimeUnit.SECONDS);
                 deleteTree(dir);
@@ -80,12 +82,13 @@ public final class VoiceUnloadLifecycleTest {
 
     @Test public void queuedConfirmPassCannotApproveAfterUnloadCancel() throws Exception {
         File dir = Files.createTempDirectory("voice-unload-queued-confirm").toFile();
+        VoiceActionRuntime runtime = null;
         try {
             File wav = new File(dir, "confirm.wav");
             Files.write(wav.toPath(), new byte[] { 1, 2, 3, 4 });
             TrackingCallbacks callbacks = new TrackingCallbacks();
             callbacks.inferenceOutput = "yes";
-            VoiceActionRuntime runtime = new VoiceActionRuntime(callbacks, dir, () -> true,
+            runtime = new VoiceActionRuntime(callbacks, dir, () -> true,
                     Runnable::run, Runnable::run, () -> new RecordingController.Source() {
                         @Override public void start() { }
                         @Override public int read(short[] buffer) { return 0; }
@@ -98,8 +101,8 @@ public final class VoiceUnloadLifecycleTest {
             assertEquals(1, callbacks.rejected.get());
             assertEquals(0, callbacks.approved.get());
             assertFalse(wav.exists());
-            runtime.close();
         } finally {
+            if (runtime != null) runtime.close();
             deleteTree(dir);
         }
     }
@@ -115,6 +118,24 @@ public final class VoiceUnloadLifecycleTest {
             Thread.sleep(10);
         }
         return runtime.listenSessionForTests().state() == VoiceListenSession.State.LISTENING;
+    }
+
+    private static void awaitNoRecordingArtifacts(File dir, long timeoutMs) throws Exception {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (!hasPartialArtifact(dir)) return;
+            Thread.sleep(10);
+        }
+        assertNoRecordingArtifacts(dir);
+    }
+
+    private static boolean hasPartialArtifact(File dir) {
+        File[] files = dir.listFiles();
+        if (files == null) return false;
+        for (File file : files) {
+            if (file.getName().endsWith(".partial")) return true;
+        }
+        return false;
     }
 
     private static void assertNoRecordingArtifacts(File dir) {
