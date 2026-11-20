@@ -2,8 +2,13 @@
 """Fail CI if connected Android tests failed, were skipped, or never executed.
 
 Modes define explicit, tier-specific gate contracts:
-- smoke: fast PR-required subset with real JNI emulator proof in connected run.
-- deep: broad/nightly required suite (historical full gate).
+- smoke: fast PR-required connected subset. Must include a real JNI emulator
+  proof (GenerationSmokeTest) and core app/Compose+chat UI proof
+  (ComposeHostE2eTest). A cross-process persistence proof runs as a separate
+  scripted instrumentation phase and is asserted by its own result gate.
+- deep: broad/nightly connected suite. Includes the full intended androidTest
+  class set (moved heavy/matrix/stress/native-deep coverage) so nothing is
+  silently executed or required outside this explicit contract.
 """
 from __future__ import annotations
 
@@ -14,35 +19,68 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
-DEEP_REQUIRED_CLASSES = (
-    "GenerationSmokeTest", "GenerationDeepSmokeTest", "ChatUiE2eTest",
-    "BackgroundNotificationE2eTest", "ChatNewChatE2eTest",
-    "OfflineTrafficE2eTest", "ComposeHostE2eTest", "ModelImportE2eTest",
-    "ImageAttachmentE2eTest", "NativeLifetimeTest", "ModelManagerE2eTest",
-    "PromptEncodingNativeTest", "InferenceSettingsE2eTest", "NativeSettingsTest",
-    "ToolConsentE2eTest", "ToolChatE2eTest", "AdversarialAndroidActionE2eTest",
-    "ZCameraCaptureE2eTest", "RecordingE2eTest", "HistorySchemaTest",
-    "HistoryRepositoryTest", "HistoryPersistenceE2eTest",
-    "HistoryNavigationE2eTest", "HistoryDeletionE2eTest",
-    "HistoryJourneyE2eTest", "FlashlightCameraManagerTest",
-    "AudioManagerVolumeTest", "AndroidTimerIntentTest",
-    "AndroidAlarmIntentTest", "AndroidInstalledAppLauncherTest",
-    "AndroidSettingsPageTest", "AndroidTextActionsTest", "VoiceOutputE2eTest",
-    "MultimodalConversationE2eTest", "OfflinePrivacyE2eTest",
-    "DiagnosticsStressE2eTest", "TextReadableAtScaleE2eTest",
-    "ComposeTextReadableTest",
-)
-DEEP_MIN_TESTS = 89
-
-# PR smoke gate: minimal connected proof set. GenerationSmokeTest provides a real
-# JNI load/generate/stop/retry emulator proof; ComposeHostE2eTest covers app
-# boot/Compose host. A cross-process persistence proof runs as a separate scripted
-# instrumentation phase and is asserted by its own result gate.
+# PR smoke gate: minimal high-signal connected proof set.
+# GenerationSmokeTest: real JNI load/generate/stream/stop/retry emulator proof.
+# ComposeHostE2eTest: app boot + Compose host + core chat/UI flow on fake engine.
 SMOKE_REQUIRED_CLASSES = (
     "GenerationSmokeTest",
     "ComposeHostE2eTest",
 )
-SMOKE_MIN_TESTS = 2
+SMOKE_MIN_TESTS = len(SMOKE_REQUIRED_CLASSES)
+
+# Deep/nightly gate: explicit broad connected suite contract. This is the full
+# intended instrumented test-class set for the emulator E2E job (all androidTest
+# classes except non-test harness/helpers), including moved heavy/deep coverage
+# (GenerationDeepSmokeTest, TextReadableAtScaleE2eTest, DiagnosticsStressE2eTest,
+# matrices and stress/contract tests). Keep in sync with run-jni-smoke.sh.
+DEEP_REQUIRED_CLASSES = (
+    "AdversarialAndroidActionE2eTest",
+    "AndroidAlarmIntentTest",
+    "AndroidInstalledAppLauncherTest",
+    "AndroidSettingsPageTest",
+    "AndroidTextActionsTest",
+    "AndroidTimerIntentTest",
+    "AssistantVoiceBootstrapE2eTest",
+    "AudioManagerVolumeTest",
+    "BackgroundNotificationE2eTest",
+    "CactusWhistleSttSmokeTest",
+    "ChatLiveStatusContractTest",
+    "ChatNewChatE2eTest",
+    "ChatUiE2eTest",
+    "ComposeHostE2eTest",
+    "ComposeTextReadableTest",
+    "DependencyContractTest",
+    "DiagnosticsStressE2eTest",
+    "FlashlightCameraManagerTest",
+    "GenerationDeepSmokeTest",
+    "GenerationSmokeTest",
+    "HistoryDeletionE2eTest",
+    "HistoryJourneyE2eTest",
+    "HistoryNavigationE2eTest",
+    "HistoryPersistenceE2eTest",
+    "HistoryRepositoryTest",
+    "HistorySchemaTest",
+    "ImageAttachmentE2eTest",
+    "InferenceSettingsE2eTest",
+    "LoopbackAgentApiInstrumentationTest",
+    "ModelImportE2eTest",
+    "ModelManagerE2eTest",
+    "MultimodalConversationE2eTest",
+    "NativeLifetimeTest",
+    "NativeSettingsTest",
+    "OfflinePrivacyE2eTest",
+    "OfflineTrafficE2eTest",
+    "PromptEncodingNativeTest",
+    "RecordingE2eTest",
+    "TextReadableAtScaleE2eTest",
+    "ToolChatE2eTest",
+    "ToolConsentE2eTest",
+    "VoiceOutputE2eTest",
+    "VoiceUiStateE2eTest",
+    "ZCameraCaptureE2eTest",
+)
+# Historical floor plus headroom; actual executed tests are substantially higher.
+DEEP_MIN_TESTS = 89
 
 MODES = {
     "smoke": (SMOKE_REQUIRED_CLASSES, SMOKE_MIN_TESTS),
@@ -50,6 +88,15 @@ MODES = {
 }
 REQUIRED_CLASSES = DEEP_REQUIRED_CLASSES
 MIN_TESTS = DEEP_MIN_TESTS
+PACKAGE = "com.notcherry.lfm3pocket"
+
+
+def required_class_args(mode: str) -> str:
+    """Return fully-qualified instrumentation class filter for mode."""
+    if mode not in MODES:
+        raise ValueError(f"Unknown Android E2E gate mode: {mode}")
+    required_classes, _ = MODES[mode]
+    return ",".join(f"{PACKAGE}.{name}" for name in required_classes)
 
 
 def verify(directory: Path, mode: str = "deep") -> tuple[int, int, int]:
@@ -95,20 +142,25 @@ def verify(directory: Path, mode: str = "deep") -> tuple[int, int, int]:
 
 def self_test() -> None:
     """Prove this gate rejects failing XML and the silently-empty test case per tier."""
+    assert required_class_args("smoke").count(",") + 1 == len(SMOKE_REQUIRED_CLASSES)
+    assert required_class_args("deep").count(",") + 1 == len(DEEP_REQUIRED_CLASSES)
+    assert "GenerationSmokeTest" in SMOKE_REQUIRED_CLASSES
+    assert "ComposeHostE2eTest" in SMOKE_REQUIRED_CLASSES
+    assert set(SMOKE_REQUIRED_CLASSES).issubset(set(DEEP_REQUIRED_CLASSES))
     with tempfile.TemporaryDirectory() as temp:
         directory = Path(temp)
-        # Deep tier: historical full contract.
+        # Deep tier: explicit broad contract with all required classes present.
         root = ET.Element("testsuite")
         for i in range(DEEP_MIN_TESTS):
             name = DEEP_REQUIRED_CLASSES[i % len(DEEP_REQUIRED_CLASSES)]
-            ET.SubElement(root, "testcase", classname=f"com.notcherry.{name}", name=f"test{i}")
+            ET.SubElement(root, "testcase", classname=f"{PACKAGE}.{name}", name=f"test{i}")
         path = directory / "TEST-deep.xml"
         ET.ElementTree(root).write(path, encoding="utf-8")
         assert verify(directory, mode="deep") == (DEEP_MIN_TESTS, 0, 0)
 
         failing = ET.Element("testsuite")
         for i, name in enumerate(SMOKE_REQUIRED_CLASSES):
-            ET.SubElement(failing, "testcase", classname=f"com.notcherry.{name}", name=f"smoke{i}")
+            ET.SubElement(failing, "testcase", classname=f"{PACKAGE}.{name}", name=f"smoke{i}")
         failing.find("testcase").append(ET.Element("failure", message="intentional regression"))
         smoke_path = directory / "TEST-smoke-fail.xml"
         ET.ElementTree(failing).write(smoke_path, encoding="utf-8")
@@ -124,7 +176,7 @@ def self_test() -> None:
         smoke_ok.mkdir()
         ok_root = ET.Element("testsuite")
         for i, name in enumerate(SMOKE_REQUIRED_CLASSES):
-            ET.SubElement(ok_root, "testcase", classname=f"com.notcherry.{name}", name=f"smoke{i}")
+            ET.SubElement(ok_root, "testcase", classname=f"{PACKAGE}.{name}", name=f"smoke{i}")
         ET.ElementTree(ok_root).write(smoke_ok / "TEST-smoke.xml", encoding="utf-8")
         assert verify(smoke_ok, mode="smoke") == (len(SMOKE_REQUIRED_CLASSES), 0, 0)
 
@@ -132,7 +184,7 @@ def self_test() -> None:
         smoke_missing = Path(temp) / "smoke-missing"
         smoke_missing.mkdir()
         miss_root = ET.Element("testsuite")
-        ET.SubElement(miss_root, "testcase", classname="com.notcherry.ComposeHostE2eTest", name="boot")
+        ET.SubElement(miss_root, "testcase", classname=f"{PACKAGE}.ComposeHostE2eTest", name="boot")
         ET.ElementTree(miss_root).write(smoke_missing / "TEST-smoke.xml", encoding="utf-8")
         try:
             verify(smoke_missing, mode="smoke")
@@ -140,6 +192,22 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Smoke gate accepted run missing required JNI proof")
+
+        # Deep must reject missing required class from explicit broad contract.
+        deep_missing = Path(temp) / "deep-missing"
+        deep_missing.mkdir()
+        deep_root = ET.Element("testsuite")
+        missing_pool = DEEP_REQUIRED_CLASSES[1:]
+        for i in range(DEEP_MIN_TESTS):
+            name = missing_pool[i % len(missing_pool)]
+            ET.SubElement(deep_root, "testcase", classname=f"{PACKAGE}.{name}", name=f"test{i}")
+        ET.ElementTree(deep_root).write(deep_missing / "TEST-deep.xml", encoding="utf-8")
+        try:
+            verify(deep_missing, mode="deep")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Deep gate accepted run missing a required class")
 
         # Empty run rejected.
         empty = Path(temp) / "empty"
@@ -160,9 +228,18 @@ def main() -> None:
     parser.add_argument("--mode", choices=sorted(MODES), default="deep",
                         help="E2E gate tier contract to enforce")
     parser.add_argument("--self-test", action="store_true", help="Run negative controls")
+    parser.add_argument("--list-classes", action="store_true",
+                        help="Print comma-separated fully-qualified test classes for --mode")
     args = parser.parse_args()
     if args.self_test:
         self_test()
+        return
+    if args.list_classes:
+        try:
+            print(required_class_args(args.mode))
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(1)
         return
     directory = Path(args.directory)
     try:
