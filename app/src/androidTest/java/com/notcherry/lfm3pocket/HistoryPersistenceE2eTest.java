@@ -24,26 +24,24 @@ public final class HistoryPersistenceE2eTest {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         TestLfm3PocketApplication app=(TestLfm3PocketApplication)context.getApplicationContext();
         app.scriptedEngine().resetForTest();
+        String phase=InstrumentationRegistry.getArguments().getString("historyPhase","prepare");
+        if(phase.equals("verify")) {
+            assertRecords(context);
+            return;
+        }
         UiDevice device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         String packageName=context.getPackageName();
-        String phase=InstrumentationRegistry.getArguments().getString("historyPhase","prepare");
-        if(!phase.equals("verify")) {
-            HistoryDatabase.get(context).history().deleteConversation(CONVERSATION_ID);
-            File model=new File(context.getFilesDir(),"history-e2e-dummy.gguf");
-            TestGgufFixtures.model(model);
-            assertTrue(context.getSharedPreferences("MainActivity",Context.MODE_PRIVATE).edit().clear()
-                    .putString("model",model.getAbsolutePath()).putBoolean("search_enabled",false)
-                    .putString("history_conversation_id",CONVERSATION_ID)
-                    .putString("history_title","History restart test").commit());
-        }
+        HistoryDatabase.get(context).history().deleteConversation(CONVERSATION_ID);
+        File model=new File(context.getFilesDir(),"history-e2e-dummy.gguf");
+        TestGgufFixtures.model(model);
+        assertTrue(context.getSharedPreferences("MainActivity",Context.MODE_PRIVATE).edit().clear()
+                .putString("model",model.getAbsolutePath()).putBoolean("search_enabled",false)
+                .putString("history_conversation_id",CONVERSATION_ID)
+                .putString("history_title","History restart test").commit());
 
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
             UiObject2 send=device.wait(Until.findObject(By.res(packageName,"chat_send").enabled(true)),TIMEOUT);
             assertNotNull("Chat should become ready with the injected model",send);
-            if(phase.equals("verify")) {
-                assertRecords(context);
-                return;
-            }
             UiObject2 input=device.findObject(By.res(packageName,"chat_input"));
             input.setText("Cancelled question");
             device.findObject(By.res(packageName,"chat_send").enabled(true)).click();

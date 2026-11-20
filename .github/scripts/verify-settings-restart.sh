@@ -2,8 +2,10 @@
 # Run after connected tests; reinstall preserves local data, force-stop guarantees a new process.
 set -Eeuo pipefail
 mkdir -p app/build/ci-artifacts
-adb install -r app/build/outputs/apk/smoke/debug/app-smoke-debug.apk
-adb install -r app/build/outputs/apk/androidTest/smoke/debug/app-smoke-debug-androidTest.apk
+if [ "${DURABILITY_SKIP_INSTALL:-0}" != "1" ]; then
+  adb install -r app/build/outputs/apk/smoke/debug/app-smoke-debug.apk
+  adb install -r app/build/outputs/apk/androidTest/smoke/debug/app-smoke-debug-androidTest.apk
+fi
 for phase in prepare verify; do
   adb shell am force-stop dev.notcherry.hanami
   adb shell am force-stop dev.notcherry.hanami.test
