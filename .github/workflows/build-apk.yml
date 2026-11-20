@@ -129,7 +129,15 @@ jobs:
       - name: Install emulator-build SDK packages
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+          sdkmanager \
+            "platforms;android-30" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools" \
+            "emulator" \
+            "system-images;android-30;google_apis;x86_64" \
+            "ndk;27.2.12479018" \
+            "cmake;3.22.1"
       - name: Set up Rust for dizione JNI
         run: rustup target add x86_64-linux-android
       - name: Set up Gradle
@@ -201,16 +209,9 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: echo "Generated AVD snapshot for caching."
       - name: Execute connected JNI smoke and real UI E2E tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: false
-          emulator-boot-timeout: 600
-          disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: bash .github/scripts/run-jni-smoke.sh
+        run: bash .github/scripts/run-emulator-e2e.sh
+        env:
+          BOOT_TIMEOUT_SECONDS: '600'
       - name: Assert required tests actually executed and summarize JUnit
         if: always()
         run: python3 .github/scripts/assert-android-test-results.py app/build/outputs/androidTest-results/connected/
