@@ -29,7 +29,7 @@ public final class HistoryJourneyE2eTest {
 
     private static void prepare(Context context) {
         HistoryDatabase db=HistoryDatabase.get(context);HistoryDao dao=db.history();
-        dao.deleteAllConversations();
+        dao.deleteConversation(PRIMARY);dao.deleteConversation(SECONDARY);
         HistoryRepository repository=new HistoryRepository(db);
         long now=System.currentTimeMillis();
         assertTrue(repository.completeTurn(new HistoryRepository.Turn("turn-"+SECONDARY,SECONDARY,
@@ -41,7 +41,7 @@ public final class HistoryJourneyE2eTest {
                 "Primary voice and tool transcript","What is on my schedule?","A 45 second timer was created.",
                 "Set a timer for forty five seconds",HistoryRepository.Status.COMPLETED,now,tool)));
         assertExactPrimary(dao);
-        assertEquals(2,dao.conversations().size());
+        assertNotNull(dao.conversation(PRIMARY));assertNotNull(dao.conversation(SECONDARY));
     }
 
     private static void inspectAndDelete(Context context) {

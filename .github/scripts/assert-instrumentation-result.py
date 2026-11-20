@@ -20,6 +20,8 @@ def self_test() -> None:
         path = Path(directory) / "instrumentation.txt"
         path.write_text("OK (1 test)\nINSTRUMENTATION_CODE: -1\n")
         verify(path)
+        path.write_text("OK (2 tests)\nINSTRUMENTATION_CODE: -1\n")
+        verify(path, expected=2)
         for text in ("", "FAILURES!!!", "OK (0 tests)", "OK (1 test)\nProcess crashed", "OK (1 test)\nOK (1 test)"):
             path.write_text(text)
             try:
@@ -27,11 +29,20 @@ def self_test() -> None:
             except ValueError:
                 continue
             raise AssertionError(f"Accepted invalid instrumentation output: {text!r}")
-    print("Instrumentation output gate: positive and five negative controls passed.")
+        path.write_text("OK (1 test)\n")
+        try:
+            verify(path, expected=2)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Accepted wrong test count")
+    print("Instrumentation output gate: positive and negative controls passed.")
 
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--self-test"]:
         self_test()
+    elif len(sys.argv) == 3:
+        verify(Path(sys.argv[1]), expected=int(sys.argv[2]))
     else:
         verify(Path(sys.argv[1]))

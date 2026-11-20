@@ -44,11 +44,21 @@ if [ "$MODE" = "smoke" ]; then
     -Pandroid.testInstrumentationRunnerArguments.class="$SMOKE_CLASSES" \
     --no-daemon --stacktrace
 
+  # Install once for post-run durability proof; reinstall preserves local data.
+  adb install -r app/build/outputs/apk/smoke/debug/app-smoke-debug.apk
+  adb install -r app/build/outputs/apk/androidTest/smoke/debug/app-smoke-debug-androidTest.apk
+  export DURABILITY_SKIP_INSTALL=1
+
   # Cross-process persistence proof (DataStore across force-stop/new process).
   bash .github/scripts/verify-settings-restart.sh
 else
   # Deep tier: full connected suite and all serial durability/journey proofs.
   timeout 45m gradle :app:connectedSmokeDebugAndroidTest --no-daemon --stacktrace
+
+  # Install once for post-run durability proofs; reinstall preserves local data.
+  adb install -r app/build/outputs/apk/smoke/debug/app-smoke-debug.apk
+  adb install -r app/build/outputs/apk/androidTest/smoke/debug/app-smoke-debug-androidTest.apk
+  export DURABILITY_SKIP_INSTALL=1
 
   # Verify DataStore durability across an actual force-stop/new process.
   bash .github/scripts/verify-settings-restart.sh
