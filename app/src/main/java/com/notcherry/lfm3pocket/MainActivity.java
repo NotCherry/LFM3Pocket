@@ -338,7 +338,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             historyTitle = runtime.historyTitle();
             return;
         }
-        if (!runtime.conversationId().isBlank() && !id.equals(runtime.conversationId())) {
+        boolean resumeFromStored = explicit
+                || !prefs.getString("history_conversation_id", "").isBlank();
+        if (!runtime.conversationId().isBlank()
+                && (!id.equals(runtime.conversationId()) || resumeFromStored)) {
             runtime.clearConversation();
             lastAssistantReply = "";
         }
