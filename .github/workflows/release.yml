@@ -206,12 +206,16 @@ jobs:
           echo "$HANAMI_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/hanami-release.keystore"
           test -s "$RUNNER_TEMP/hanami-release.keystore"
 
+      - name: Cache llama.cpp sources
+        if: steps.meta.outputs.source == 'build'
+        uses: actions/cache@v4
+        with:
+          path: third_party/llama.cpp
+          key: llama-cpp-${{ hashFiles('vendor/LLAMA_CPP_COMMIT') }}
       - name: Fetch llama.cpp (LFM3-capable)
         if: steps.meta.outputs.source == 'build'
         run: |
-          mkdir -p third_party
-          git clone --depth 1 --branch v0.8.0 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp
-          git -C third_party/llama.cpp checkout 8642541b255bfb5dc39cd351a178be09013a55d6
+          bash scripts/fetch-llama.sh
           git -C third_party/llama.cpp rev-parse HEAD
 
       - name: Verify runner Android SDK

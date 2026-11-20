@@ -58,7 +58,7 @@ If any of the four secrets is missing, the auto-release (and a versioned tag bui
 
 On each auto-tagged `main` push (and on a manual `v*` tag):
 
-1. Checks out llama.cpp `v0.8.0` at `8642541b255bfb5dc39cd351a178be09013a55d6` and builds the `phone` release flavor (`arm64-v8a` only), native code included.
+1. Checks out the pinned llama.cpp revision from `vendor/LLAMA_CPP_COMMIT` and builds the `phone` release flavor (`arm64-v8a` only), native code included.
 2. Sets `versionName` / `versionCode` from the tag.
 3. Signs the APK when the four secrets are present and checks the signature with `apksigner`. Otherwise attaches an unsigned APK and notes that in the release body.
 4. Writes a changelog from commit subjects since the previous `vMAJOR.MINOR.PATCH` tag (or the latest 30 subjects if there is no previous tag).
@@ -129,7 +129,7 @@ Native code is llama.cpp, built with `GGML_NATIVE=OFF`, `GGML_OPENMP=OFF`, `GGML
 
 These are the reasons a GitHub APK and an F-Droid APK will not be byte-for-byte identical, even before the different signature:
 
-- llama.cpp is not vendored. The build clones tag `v0.8.0` and then checks out commit `8642541b255bfb5dc39cd351a178be09013a55d6`. A moved tag would otherwise change the binary. F-Droid should keep that checkout.
+- llama.cpp is not vendored. The build fetches the commit pinned in `vendor/LLAMA_CPP_COMMIT` (currently `8642541b255bfb5dc39cd351a178be09013a55d6`, from `v0.8.0`) via `scripts/fetch-llama.sh`. A moved tag cannot change the binary. F-Droid should keep that checkout.
 - NDK `27.2.12479018` (r27c) and CMake `3.22.1` are pinned. A different NDK produces different codegen.
 - `GGML_NATIVE=OFF` is required. Leaving it on enables `-march=native` and the APK only runs on the builder's CPU.
 - Release `.so` files still embed a GNU build-id and the builder's absolute paths in debug info unless `-Wl,--build-id=none` and `-ffile-prefix-map` are added. This project does not add those flags yet, so native objects are not reproducible across machines.
