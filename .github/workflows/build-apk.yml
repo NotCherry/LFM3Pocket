@@ -51,6 +51,7 @@ jobs:
           python3 .github/scripts/assert-android-test-results.py --self-test
           python3 .github/scripts/assert-instrumentation-result.py --self-test
           python3 .github/scripts/next-hanami-version.py --self-test
+          python3 .github/scripts/assert-release-ci-gate.py --self-test
       - name: Verify Stage 1 acceptance matrix completeness
         run: python3 .github/scripts/check-acceptance-matrix.py
       - name: Verify ARM64 evidence collector negative controls
