@@ -28,14 +28,11 @@ for i in $(seq 1 "$RUNS"); do
     echo "-- $test"
     out="$(adb shell am instrument -w -r -e class "$test" "$RUNNER" 2>&1 || true)"
     printf '%s\n' "$out"
-    if printf '%s\n' "$out" | grep -qE 'FAILURES!!!|INSTRUMENTATION_STATUS_CODE: -1|Error in '; then
+    if printf '%s\n' "$out" | grep -qE 'FAILURES!!!|Error in '; then
       echo "FAILED on run $i: $test" >&2
       exit 1
     fi
-    if ! printf '%s\n' "$out" | grep -q 'INSTRUMENTATION_STATUS_CODE: -1'; then
-      : # failure patterns above catch most cases
-    fi
-    if ! printf '%s\n' "$out" | grep -q 'OK (' && ! printf '%s\n' "$out" | grep -q 'INSTRUMENTATION_RESULT: stream='; then
+    if ! printf '%s\n' "$out" | grep -q 'OK ('; then
       echo "Could not confirm success for $test on run $i" >&2
       exit 1
     fi
