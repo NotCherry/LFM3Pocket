@@ -39,11 +39,12 @@ public final class ModelRuntimeSpeechStopContractTest {
     @Test
     public void unloadCancelsVoiceActionsBeforeRetiringModel() throws Exception {
         String source = read(repoRoot().resolve("app/src/main/java/com/notcherry/lfm3pocket/ModelRuntime.java"));
-        String unload = methodBody(source, "public void unload(");
+        String unload = methodBody(source, "public void unload(String cause, Runnable done)");
+        if (unload.isEmpty()) unload = methodBody(source, "public void unload(");
         int cancel = unload.indexOf("voiceActions.cancelAll(\"Model unloading\")");
         int retire = unload.indexOf("engine.unloadModel");
-        assertTrue("unload must cancel voice actions", cancel >= 0);
-        assertTrue("unload must retire engine model", retire >= 0);
+        assertTrue("unload must cancel voice actions; len=" + unload.length(), cancel >= 0);
+        assertTrue("unload must retire engine model; len=" + unload.length(), retire >= 0);
         assertTrue("voice must be cancelled before model retirement", cancel < retire);
     }
 
@@ -51,20 +52,23 @@ public final class ModelRuntimeSpeechStopContractTest {
     public void serviceTimeoutAndNotificationUnloadRouteThroughRuntimeUnload() throws Exception {
         String source = read(repoRoot().resolve("app/src/main/java/com/notcherry/lfm3pocket/ModelRuntime.java"));
         String timeout = methodBody(source, "public void onServiceTimeout()");
-        assertTrue(timeout.contains("unload(\"fgs-timeout\", null)"));
+        assertTrue("timeout must unload fgs-timeout; len=" + timeout.length(),
+                timeout.contains("unload(\"fgs-timeout\", null)"));
         String action = methodBody(source, "public void onServiceAction(String action, String proposalId, String askText)");
-        assertTrue(action.contains("ACTION_UNLOAD") && action.contains("unload(\"notification\", null)"));
+        assertTrue("notification unload route missing; len=" + action.length(),
+                action.contains("ACTION_UNLOAD") && action.contains("unload(\"notification\", null)"));
     }
 
     @Test
     public void memoryTrimUnloadRoutesThroughPolicyEffectsToUnload() throws Exception {
         String source = read(repoRoot().resolve("app/src/main/java/com/notcherry/lfm3pocket/ModelRuntime.java"));
-        String trim = methodBody(source, "public void onTrimMemory(");
-        assertTrue(trim.contains("policy.onTrim"));
-        assertTrue(trim.contains("apply("));
+        String trim = methodBody(source, "public void onTrimMemory(int level)");
+        if (trim.isEmpty()) trim = methodBody(source, "public void onTrimMemory(");
+        assertTrue("trim must apply policy.onTrim; len=" + trim.length(), trim.contains("policy.onTrim"));
+        assertTrue("trim must call apply; len=" + trim.length(), trim.contains("apply("));
         String apply = methodBody(source, "private void apply(RuntimePolicy.Effects effects)");
-        assertTrue(apply.contains("effects.unloadModel"));
-        assertTrue(apply.contains("unload("));
+        assertTrue("apply must handle unloadModel; len=" + apply.length(), apply.contains("effects.unloadModel"));
+        assertTrue("apply must call unload; len=" + apply.length(), apply.contains("unload("));
     }
 
     private static String methodBody(String source, String signature) {
