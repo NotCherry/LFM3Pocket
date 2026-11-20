@@ -123,24 +123,20 @@ android {
 tasks.register('buildHanamiDizioneJni', Exec) {
     workingDir rootProject.projectDir
     commandLine 'bash', rootProject.file('scripts/build-dizione-jni.sh').absolutePath
-    doFirst {
-        def requested = gradle.startParameter.taskNames.collect { it.toLowerCase() }
-        def wantsPhone = requested.any { it.contains('phone') }
-        def wantsDeviceCheck = requested.any { it.contains('devicecheck') }
-        def wantsSmoke = requested.any { it.contains('smoke') }
-        // Default to all ABIs for safety/unrecognized task graphs.
-        def abis = 'arm64-v8a,x86_64'
-        if (wantsSmoke && !wantsPhone && !wantsDeviceCheck) {
-            abis = 'x86_64'
-        } else if (wantsPhone && !wantsSmoke && !wantsDeviceCheck) {
-            abis = 'arm64-v8a'
-        } else if (wantsDeviceCheck) {
-            abis = 'arm64-v8a,x86_64'
-        }
-        environment 'HANAMI_BUILD_ABIS', abis
-        // Backward-compatible signal for older scripts/invocations.
-        environment.remove('HANAMI_BUILD_ALL_ABIS')
+    def requestedTasks = gradle.startParameter.taskNames.collect { it.toString() }
+    def wantsDeviceCheck = requestedTasks.any { it ==~ /(?i).*devicecheck.*/ }
+    def wantsSmoke = requestedTasks.any { it ==~ /(?i).*smoke.*/ }
+    def wantsPhone = requestedTasks.any { it ==~ /(?i).*phone.*/ }
+    def jniAbis
+    if (wantsDeviceCheck || (wantsSmoke && wantsPhone) || requestedTasks.isEmpty()
+            || (!wantsDeviceCheck && !wantsSmoke && !wantsPhone)) {
+        jniAbis = 'x86_64,arm64-v8a'
+    } else if (wantsSmoke) {
+        jniAbis = 'x86_64'
+    } else {
+        jniAbis = 'arm64-v8a'
     }
+    environment 'HANAMI_BUILD_ABIS', jniAbis
     ignoreExitValue true
 }
 

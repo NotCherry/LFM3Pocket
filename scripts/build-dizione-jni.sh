@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # Builds libhanami_dizione.so for the active Android ABI(s). Requires voca + rust + NDK.
+#
+# ABI selection (first match wins):
+#   HANAMI_BUILD_ABIS  Comma/space-separated list (x86_64, arm64-v8a, arm64, all/both).
+#   HANAMI_BUILD_ALL_ABIS=1  Build both x86_64 and arm64-v8a (legacy).
+#   HANAMI_BUILD_ABI   ABI hint (x86_64, arm64-v8a, arm64, all/both); defaults to arm64-v8a.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CRATE="$ROOT/app/src/main/rust/hanami_dizione"
@@ -23,28 +28,48 @@ if [[ -z "$NDK" ]]; then
   exit 0
 fi
 export ANDROID_NDK_HOME="$NDK"
+
+abi_wanted() {
+  local want="$1"
+  case "$want" in
+    *x86_64*) return 0 ;;
+    *arm64*|*arm64-v8a*|*aarch64*) return 0 ;;
+    *all*|*both*) return 0 ;;
+  esac
+  return 1
+}
+
+WANT_X86_64=0
+WANT_ARM64=0
+if [[ -n "${HANAMI_BUILD_ABIS:-}" ]]; then
+  WANT_SPEC="${HANAMI_BUILD_ABIS//,/ }"
+elif [[ "${HANAMI_BUILD_ALL_ABIS:-}" == "1" ]]; then
+  WANT_SPEC="all"
+else
+  WANT_SPEC="${HANAMI_BUILD_ABI:-arm64-v8a}"
+fi
+for token in $WANT_SPEC; do
+  case "$token" in
+    x86_64) WANT_X86_64=1 ;;
+    arm64-v8a|arm64|aarch64) WANT_ARM64=1 ;;
+    all|both) WANT_X86_64=1; WANT_ARM64=1 ;;
+  esac
+done
+if [[ "$WANT_X86_64" -eq 0 && "$WANT_ARM64" -eq 0 ]]; then
+  echo "no supported ABI requested via HANAMI_BUILD_ABIS/ABI; skipping hanami_dizione JNI"
+  exit 0
+fi
+
 TARGETS=()
 ABIS=()
-REQ_ABIS="${HANAMI_BUILD_ABIS:-${HANAMI_BUILD_ABI:-}}"
-if [[ -z "$REQ_ABIS" && "${HANAMI_BUILD_ALL_ABIS:-}" == "1" ]]; then
-  REQ_ABIS="arm64-v8a,x86_64"
-fi
-if [[ -z "$REQ_ABIS" ]]; then
-  REQ_ABIS="arm64-v8a"
-fi
-if [[ "$REQ_ABIS" == *x86_64* ]]; then
+if [[ "$WANT_X86_64" -eq 1 ]]; then
   TARGETS+=(x86_64-linux-android)
   ABIS+=(x86_64)
 fi
-if [[ "$REQ_ABIS" == *arm64* ]]; then
+if [[ "$WANT_ARM64" -eq 1 ]]; then
   TARGETS+=(aarch64-linux-android)
   ABIS+=(arm64-v8a)
 fi
-if [[ ${#TARGETS[@]} -eq 0 ]]; then
-  echo "no supported HANAMI_BUILD_ABIS requested: $REQ_ABIS; skipping hanami_dizione JNI"
-  exit 0
-fi
-echo "hanami_dizione JNI ABIs: ${ABIS[*]}"
 HOST_PREBUILT="$(find "$NDK/toolchains/llvm/prebuilt" -maxdepth 1 -mindepth 1 -type d | head -1)"
 clang21() {
   case "$1" in

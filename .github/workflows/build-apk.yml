@@ -148,7 +148,7 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
       - name: Set up Rust for dizione JNI
-        run: rustup target add aarch64-linux-android x86_64-linux-android
+        run: rustup target add x86_64-linux-android
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -203,7 +203,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-ubuntu-api30-google_apis-x86_64-v2
+          key: avd-ubuntu-api30-google_apis-x86_64-v3
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
