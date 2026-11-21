@@ -32,14 +32,17 @@ public final class VoiceActionRuntimePreemptTest {
         };
         VoiceActionRuntime runtime = new VoiceActionRuntime(callbacks, dir, () -> true,
                 workerTasks::offer, Runnable::run, factory);
-        setPendingConfirm(runtime, "proposal-1");
-        assertTrue(runtime.listenSessionForTests().startTimed(3_000));
-        assertEquals(VoiceListenSession.State.LISTENING, runtime.listenSessionForTests().state());
-        assertTrue(runtime.pttPressed());
-        assertEquals(1, rejected.get());
-        assertNull(pendingConfirm(runtime));
-        assertEquals(VoiceListenSession.State.LISTENING, runtime.listenSessionForTests().state());
-        runtime.listenSessionForTests().close();
+        try {
+            setPendingConfirm(runtime, "proposal-1");
+            assertTrue(runtime.listenSessionForTests().startTimed(3_000));
+            assertEquals(VoiceListenSession.State.LISTENING, runtime.listenSessionForTests().state());
+            assertTrue(runtime.pttPressed());
+            assertEquals(1, rejected.get());
+            assertNull(pendingConfirm(runtime));
+            assertEquals(VoiceListenSession.State.LISTENING, runtime.listenSessionForTests().state());
+        } finally {
+            runtime.close();
+        }
     }
 
     @Test public void failedConfirmationInferenceRejectsEvenWhenPartialOutputSaysYes() throws Exception {
@@ -60,18 +63,21 @@ public final class VoiceActionRuntimePreemptTest {
                     @Override public int read(short[] buffer) { return 0; }
                     @Override public void close() { }
                 });
-        setPendingConfirm(runtime, "proposal-failed");
-        java.lang.reflect.Field pendingWav = VoiceActionRuntime.class.getDeclaredField("pendingWav");
-        pendingWav.setAccessible(true);
-        pendingWav.set(runtime, wav);
-        java.lang.reflect.Method confirm = VoiceActionRuntime.class.getDeclaredMethod("runConfirmPass");
-        confirm.setAccessible(true);
-        confirm.invoke(runtime);
-        assertEquals(1, rejected.get());
-        assertEquals(0, approved.get());
-        assertNull(pendingConfirm(runtime));
-        assertTrue(!wav.exists());
-        runtime.listenSessionForTests().close();
+        try {
+            setPendingConfirm(runtime, "proposal-failed");
+            java.lang.reflect.Field pendingWav = VoiceActionRuntime.class.getDeclaredField("pendingWav");
+            pendingWav.setAccessible(true);
+            pendingWav.set(runtime, wav);
+            java.lang.reflect.Method confirm = VoiceActionRuntime.class.getDeclaredMethod("runConfirmPass");
+            confirm.setAccessible(true);
+            confirm.invoke(runtime);
+            assertEquals(1, rejected.get());
+            assertEquals(0, approved.get());
+            assertNull(pendingConfirm(runtime));
+            assertTrue(!wav.exists());
+        } finally {
+            runtime.close();
+        }
     }
 
     private static void drain(LinkedBlockingQueue<Runnable> tasks) {
@@ -88,19 +94,24 @@ public final class VoiceActionRuntimePreemptTest {
             @Override public void close() { }
         };
         LinkedBlockingQueue<Runnable> cancelWorker = new LinkedBlockingQueue<>();
+        java.util.concurrent.ScheduledExecutorService timeoutExec = Executors.newSingleThreadScheduledExecutor();
         VoiceListenSession session = new VoiceListenSession(dir, factory, () -> true, cancelWorker::offer,
-                Runnable::run, Executors.newSingleThreadScheduledExecutor(),
+                Runnable::run, timeoutExec,
                 new VoiceListenSession.Listener() {
                     @Override public void changed(VoiceListenSession.State state, String message) { }
                     @Override public void wavReady(File wav) { }
                 }, VoiceListenLimits.MAX_ACTION_SAMPLES);
-        assertTrue(session.startTimed(2_000));
-        assertEquals(VoiceListenSession.State.LISTENING, session.state());
-        assertEquals(false, session.startPtt());
-        session.cancel("preempt");
-        assertEquals(VoiceListenSession.State.CANCELLED, session.state());
-        assertTrue(session.startPtt());
-        session.close();
+        try {
+            assertTrue(session.startTimed(2_000));
+            assertEquals(VoiceListenSession.State.LISTENING, session.state());
+            assertEquals(false, session.startPtt());
+            session.cancel("preempt");
+            assertEquals(VoiceListenSession.State.CANCELLED, session.state());
+            assertTrue(session.startPtt());
+        } finally {
+            session.close();
+            timeoutExec.shutdownNow();
+        }
     }
 
     private static void setPendingConfirm(VoiceActionRuntime runtime, String id) throws Exception {
@@ -221,7 +232,11 @@ public final class VoiceActionRuntimePreemptTest {
                     () -> true, () -> { }, Runnable::run, Runnable::run, (s, m) -> { });
         }
         @Override public java.util.concurrent.ExecutorService worker() {
-            return java.util.concurrent.Executors.newSingleThreadExecutor();
+            return java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r);
+                t.setDaemon(true);
+                return t;
+            });
         }
         @Override public android.os.Handler main() { return null; }
         @Override public android.content.Context app() { return null; }
@@ -277,7 +292,11 @@ public final class VoiceActionRuntimePreemptTest {
                     () -> true, () -> { }, Runnable::run, Runnable::run, (s, m) -> { });
         }
         @Override public java.util.concurrent.ExecutorService worker() {
-            return Executors.newSingleThreadExecutor();
+            return Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r);
+                t.setDaemon(true);
+                return t;
+            });
         }
         @Override public android.os.Handler main() { return null; }
         @Override public android.content.Context app() { return null; }

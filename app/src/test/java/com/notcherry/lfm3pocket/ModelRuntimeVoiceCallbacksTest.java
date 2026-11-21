@@ -50,7 +50,13 @@ public final class ModelRuntimeVoiceCallbacksTest {
             };
         }
         @Override public PlaybackController playback() { return null; }
-        @Override public ExecutorService worker() { return Executors.newSingleThreadExecutor(); }
+        @Override public ExecutorService worker() {
+            return Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r);
+                t.setDaemon(true);
+                return t;
+            });
+        }
         @Override public android.os.Handler main() { return null; }
         @Override public android.content.Context app() { return null; }
         @Override public SharedPreferences modelPrefs() { return null; }

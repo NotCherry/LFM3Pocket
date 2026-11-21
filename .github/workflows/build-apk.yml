@@ -84,7 +84,25 @@ jobs:
           bash -n .github/scripts/collect-arm64-omni-evidence.sh
           bash .github/scripts/collect-arm64-omni-evidence.sh --self-test
       - name: Execute JVM JUnit tests
-        run: gradle :app:testSmokeDebugUnitTest --no-daemon --stacktrace
+        run: |
+          set -euo pipefail
+          mkdir -p ci-diag
+          gradle :app:testSmokeDebugUnitTest --no-daemon --stacktrace --info > gradle-jvm-tests.log 2>&1 &
+          GRADLE_PID=$!
+          echo "Gradle PID: $GRADLE_PID"
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            sleep 150
+            if ! kill -0 "$GRADLE_PID" 2>/dev/null; then
+              break
+            fi
+            echo "--- Thread dump at +$((i*150/60))m ---" | tee -a ci-diag/thread-dumps.log
+            jps -l | tee -a ci-diag/thread-dumps.log || true
+            for pid in $(jps -q); do
+              echo "--- jstack $pid ---" | tee -a ci-diag/thread-dumps.log
+              jstack "$pid" >> ci-diag/thread-dumps.log 2>&1 || true
+            done
+          done
+          wait "$GRADLE_PID"
       - name: Verify Room v4 and v5 schemas were exported
         run: |
           test -s app/schemas/com.notcherry.lfm3pocket.HistoryDatabase/4.json
@@ -95,6 +113,8 @@ jobs:
         with:
           name: LFM3Pocket-jvm-unit-results
           path: |
+            gradle-jvm-tests.log
+            ci-diag/
             app/build/test-results/testSmokeDebugUnitTest/
             app/build/reports/tests/testSmokeDebugUnitTest/
             app/schemas/com.notcherry.lfm3pocket.HistoryDatabase/4.json
