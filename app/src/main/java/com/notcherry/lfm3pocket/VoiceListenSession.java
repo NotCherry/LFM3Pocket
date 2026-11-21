@@ -11,6 +11,10 @@ import java.util.function.Consumer;
 /**
  * Timed or PTT-bound listen windows for voice actions. Owns a dedicated {@link RecordingController}
  * with a tighter sample cap than chat capture.
+ *
+ * <p>Lock ordering: never call into {@link RecordingController} while holding {@code this}.
+ * Controllers may publish listeners synchronously (tests use {@code Runnable::run}), and those
+ * listeners re-enter {@link #onRecording} which synchronizes on this session.
  */
 public final class VoiceListenSession implements AutoCloseable {
     public enum State { IDLE, LISTENING, READY, CANCELLED, TIMEOUT, ERROR }
@@ -40,12 +44,16 @@ public final class VoiceListenSession implements AutoCloseable {
     public State state() { return state; }
 
   /** Start an automatic timed listen (shade Talk). */
-    public synchronized boolean startTimed(int timeoutMs) {
-        if (closed || state == State.LISTENING) return false;
-        cancelTimeout();
-        set(State.LISTENING, "Listening…");
+    public boolean startTimed(int timeoutMs) {
+        synchronized (this) {
+            if (closed || state == State.LISTENING) return false;
+            cancelTimeout();
+            set(State.LISTENING, "Listening…");
+        }
         if (!controller.start()) {
-            set(State.ERROR, "Could not start microphone");
+            synchronized (this) {
+                set(State.ERROR, "Could not start microphone");
+            }
             return false;
         }
         if (timeoutMs > 0) scheduleTimeout(timeoutMs);
@@ -53,44 +61,74 @@ public final class VoiceListenSession implements AutoCloseable {
     }
 
   /** PTT press — manual stop ends the utterance. */
-    public synchronized boolean startPtt() {
-        if (closed || state == State.LISTENING) return false;
-        cancelTimeout();
-        set(State.LISTENING, "Listening…");
+    public boolean startPtt() {
+        synchronized (this) {
+            if (closed || state == State.LISTENING) return false;
+            cancelTimeout();
+            set(State.LISTENING, "Listening…");
+        }
         if (!controller.start()) {
-            set(State.ERROR, "Could not start microphone");
+            synchronized (this) {
+                set(State.ERROR, "Could not start microphone");
+            }
             return false;
         }
         return true;
     }
 
-    public synchronized void stopPtt() {
-        if (state != State.LISTENING) return;
-        controller.stop();
-    }
-
-    public synchronized void cancel(String reason) {
-        cancelTimeout();
-        if (state == State.LISTENING) {
-            controller.cancel();
-            set(State.CANCELLED, reason == null ? "Cancelled" : reason);
+    public void stopPtt() {
+        boolean shouldStop;
+        synchronized (this) {
+            shouldStop = (state == State.LISTENING);
+        }
+        if (shouldStop) {
+            controller.stop();
         }
     }
 
-    @Override public synchronized void close() {
-        closed = true;
-        cancelTimeout();
+    public void cancel(String reason) {
+        boolean shouldCancel;
+        String msg = reason == null ? "Cancelled" : reason;
+        synchronized (this) {
+            cancelTimeout();
+            shouldCancel = (state == State.LISTENING);
+        }
+        if (shouldCancel) {
+            controller.cancel();
+        }
+        synchronized (this) {
+            if (state == State.LISTENING) {
+                set(State.CANCELLED, msg);
+            }
+        }
+    }
+
+    @Override public void close() {
+        synchronized (this) {
+            closed = true;
+            cancelTimeout();
+        }
         controller.close();
-        if (state == State.LISTENING) set(State.CANCELLED, "Closed");
+        synchronized (this) {
+            if (state == State.LISTENING) set(State.CANCELLED, "Closed");
+        }
     }
 
     private void scheduleTimeout(int timeoutMs) {
         ScheduledFuture<?> task = timeoutExecutor.schedule(() -> {
+            boolean shouldStop;
             synchronized (VoiceListenSession.this) {
                 if (state != State.LISTENING) return;
                 state = State.TIMEOUT;
+                shouldStop = true;
+            }
+            if (shouldStop) {
                 controller.stop();
-                listener.changed(State.TIMEOUT, "Listen timed out");
+            }
+            synchronized (VoiceListenSession.this) {
+                if (state == State.TIMEOUT) {
+                    listener.changed(State.TIMEOUT, "Listen timed out");
+                }
             }
         }, timeoutMs, TimeUnit.MILLISECONDS);
         timeout.set(task);
