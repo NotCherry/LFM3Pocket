@@ -23,6 +23,8 @@ public final class RecordingController implements AutoCloseable {
     private volatile State state=State.IDLE;
     private volatile boolean stopping,discard,closed;
     private boolean active;private long epoch;
+    /** Monotonic publish id: async UI may drop superseded events; only the latest seq is delivered. */
+    private long publishSeq;
     public RecordingController(File directory,Factory factory,BooleanSupplier permission,Executor worker,
                                Consumer<Runnable> ui,Listener listener){
         this(directory,factory,permission,worker,ui,listener,MAX_SAMPLES);
@@ -66,14 +68,22 @@ public final class RecordingController implements AutoCloseable {
      * Publish state without holding {@code this} across the UI/listener callback.
      * Sync UI dispatch ({@code Runnable::run} in unit tests) must not invert locks with
      * {@link VoiceListenSession}, which re-enters from the listener.
+     * A publish sequence number drops superseded async UI events so STOPPING cannot
+     * overtake a later IDLE/ERROR after {@link #finish}.
      */
     private void publish(long turn,State next,String message,File file){
+        final long seq;
         synchronized(this){
             if(closed || turn!=epoch){if(file!=null)file.delete();return;}
+            // stop() may race finish(): reject STOPPING once the turn is no longer active.
+            if(next==State.STOPPING && !active)return;
             state=next;
+            seq=++publishSeq;
         }
         ui.accept(()->{
-            synchronized(this){if(closed || turn!=epoch){if(file!=null)file.delete();return;}}
+            synchronized(this){
+                if(closed || turn!=epoch || seq!=publishSeq){if(file!=null)file.delete();return;}
+            }
             listener.changed(next,message,file);
         });
     }

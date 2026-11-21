@@ -86,12 +86,17 @@ jobs:
       - name: Execute JVM JUnit tests
         # Hang diagnostics: background Gradle, periodic jstack. Fail fast (~12m) instead of
         # burning the full 30m job timeout when a unit test deadlocks (seen after #233).
+        # Log is tailed into the job stream so failed test names stay visible; exit status
+        # comes from the Gradle PID (not a tee pipeline).
         timeout-minutes: 15
         run: |
           set -euo pipefail
           mkdir -p ci-diag
-          gradle :app:testSmokeDebugUnitTest --no-daemon --stacktrace --info > gradle-jvm-tests.log 2>&1 &
+          : > gradle-jvm-tests.log
+          gradle :app:testSmokeDebugUnitTest --no-daemon --stacktrace > gradle-jvm-tests.log 2>&1 &
           GRADLE_PID=$!
+          tail -n +1 -F gradle-jvm-tests.log &
+          TAIL_PID=$!
           echo "Gradle PID: $GRADLE_PID"
           status=0
           for i in 1 2 3 4 5 6 7 8; do
@@ -113,10 +118,12 @@ jobs:
             done
             kill "$GRADLE_PID" 2>/dev/null || true
             wait "$GRADLE_PID" || true
+            kill "$TAIL_PID" 2>/dev/null || true
             exit 1
           fi
           wait "$GRADLE_PID" || status=$?
-          tail -n 80 gradle-jvm-tests.log || true
+          kill "$TAIL_PID" 2>/dev/null || true
+          wait "$TAIL_PID" 2>/dev/null || true
           exit "$status"
       - name: Verify Room v4 and v5 schemas were exported
         run: |
@@ -252,23 +259,8 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: echo "Generated AVD snapshot for caching."
       - name: Execute connected JNI smoke and real UI E2E tests
-        id: e2e-run
-        continue-on-error: true
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: false
-          emulator-boot-timeout: 600
-          disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: bash .github/scripts/run-jni-smoke.sh "$E2E_TIER"
-      - name: Retry E2E once after emulator boot flake
-        # android-emulator-runner fails the step when post-boot `adb shell input keyevent 82`
-        # races the input service (seen on main deep runs). One clean retry recovers that flake
-        # without skipping tests.
-        if: steps.e2e-run.outcome == 'failure'
+        # No blanket retry: retrying every failure would mask real red tests and can blow the
+        # 90m deep-tier budget. Post-boot `keyevent 82` flakes remain visible and actionable.
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30

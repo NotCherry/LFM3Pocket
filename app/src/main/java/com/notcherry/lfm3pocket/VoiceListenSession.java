@@ -52,8 +52,17 @@ public final class VoiceListenSession implements AutoCloseable {
         }
         if (!controller.start()) {
             synchronized (this) {
-                set(State.ERROR, "Could not start microphone");
+                if (state == State.LISTENING) set(State.ERROR, "Could not start microphone");
             }
+            return false;
+        }
+        // cancel()/close() may have raced between releasing `this` and controller.start().
+        boolean keep;
+        synchronized (this) {
+            keep = !closed && state == State.LISTENING;
+        }
+        if (!keep) {
+            controller.cancel();
             return false;
         }
         if (timeoutMs > 0) scheduleTimeout(timeoutMs);
@@ -69,8 +78,16 @@ public final class VoiceListenSession implements AutoCloseable {
         }
         if (!controller.start()) {
             synchronized (this) {
-                set(State.ERROR, "Could not start microphone");
+                if (state == State.LISTENING) set(State.ERROR, "Could not start microphone");
             }
+            return false;
+        }
+        boolean keep;
+        synchronized (this) {
+            keep = !closed && state == State.LISTENING;
+        }
+        if (!keep) {
+            controller.cancel();
             return false;
         }
         return true;
@@ -92,39 +109,35 @@ public final class VoiceListenSession implements AutoCloseable {
         synchronized (this) {
             cancelTimeout();
             shouldCancel = (state == State.LISTENING);
+            // Apply caller reason before controller.cancel() so sync UI onRecording(IDLE)
+            // does not overwrite CANCELLED with "Recording cancelled".
+            if (shouldCancel) {
+                set(State.CANCELLED, msg);
+            }
         }
         if (shouldCancel) {
             controller.cancel();
         }
-        synchronized (this) {
-            if (state == State.LISTENING) {
-                set(State.CANCELLED, msg);
-            }
-        }
     }
 
     @Override public void close() {
+        boolean wasListening;
         synchronized (this) {
             closed = true;
             cancelTimeout();
+            wasListening = (state == State.LISTENING);
+            if (wasListening) set(State.CANCELLED, "Closed");
         }
         controller.close();
-        synchronized (this) {
-            if (state == State.LISTENING) set(State.CANCELLED, "Closed");
-        }
     }
 
     private void scheduleTimeout(int timeoutMs) {
         ScheduledFuture<?> task = timeoutExecutor.schedule(() -> {
-            boolean shouldStop;
             synchronized (VoiceListenSession.this) {
                 if (state != State.LISTENING) return;
                 state = State.TIMEOUT;
-                shouldStop = true;
             }
-            if (shouldStop) {
-                controller.stop();
-            }
+            controller.stop();
             synchronized (VoiceListenSession.this) {
                 if (state == State.TIMEOUT) {
                     listener.changed(State.TIMEOUT, "Listen timed out");
@@ -187,6 +200,7 @@ public final class VoiceListenSession implements AutoCloseable {
                     state = State.IDLE;
                     return;
                 }
+                // Prefer an already-applied cancel/close reason over the controller's generic message.
                 if (state == State.LISTENING) set(State.CANCELLED, message);
             }
         }
