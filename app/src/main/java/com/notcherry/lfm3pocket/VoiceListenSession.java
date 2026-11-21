@@ -159,6 +159,9 @@ public final class VoiceListenSession implements AutoCloseable {
                 return;
             }
             if (recState == RecordingController.State.RECORDING) {
+                // Already LISTENING from startTimed/startPtt — do not re-notify (VoiceActionRuntime
+                // treats every LISTENING callback as policyListenStarted / a listen restart).
+                if (state == State.LISTENING) return;
                 if (state != State.TIMEOUT && state != State.CANCELLED) set(State.LISTENING, "Listening…");
                 return;
             }
