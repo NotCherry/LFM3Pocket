@@ -27,8 +27,9 @@ public final class VoiceListenSessionTest {
             }
             public void close() {}
         };
+        java.util.concurrent.ScheduledExecutorService timeoutExec = Executors.newSingleThreadScheduledExecutor();
         VoiceListenSession session = new VoiceListenSession(dir, factory, () -> true,
-                workerTasks::offer, Runnable::run, Executors.newSingleThreadScheduledExecutor(),
+                workerTasks::offer, Runnable::run, timeoutExec,
                 new VoiceListenSession.Listener() {
                     @Override public void changed(VoiceListenSession.State state, String message) {
                         states.add(state);
@@ -38,12 +39,16 @@ public final class VoiceListenSessionTest {
                         wav.delete();
                     }
                 }, VoiceListenLimits.MAX_ACTION_SAMPLES);
-        assertTrue(session.startPtt());
-        assertEquals(VoiceListenSession.State.LISTENING, session.state());
-        workerTasks.take().run();
-        session.stopPtt();
-        while (!workerTasks.isEmpty()) workerTasks.poll().run();
-        assertTrue(states.contains(VoiceListenSession.State.READY));
-        session.close();
+        try {
+            assertTrue(session.startPtt());
+            assertEquals(VoiceListenSession.State.LISTENING, session.state());
+            workerTasks.take().run();
+            session.stopPtt();
+            while (!workerTasks.isEmpty()) workerTasks.poll().run();
+            assertTrue(states.contains(VoiceListenSession.State.READY));
+        } finally {
+            session.close();
+            timeoutExec.shutdownNow();
+        }
     }
 }
