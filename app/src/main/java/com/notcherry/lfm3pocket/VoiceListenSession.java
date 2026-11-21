@@ -11,6 +11,10 @@ import java.util.function.Consumer;
 /**
  * Timed or PTT-bound listen windows for voice actions. Owns a dedicated {@link RecordingController}
  * with a tighter sample cap than chat capture.
+ *
+ * <p>Lock ordering: never call into {@link RecordingController} while holding {@code this}.
+ * Controllers may publish listeners synchronously (tests use {@code Runnable::run}), and those
+ * listeners re-enter {@link #onRecording} which synchronizes on this session.
  */
 public final class VoiceListenSession implements AutoCloseable {
     public enum State { IDLE, LISTENING, READY, CANCELLED, TIMEOUT, ERROR }
@@ -40,12 +44,25 @@ public final class VoiceListenSession implements AutoCloseable {
     public State state() { return state; }
 
   /** Start an automatic timed listen (shade Talk). */
-    public synchronized boolean startTimed(int timeoutMs) {
-        if (closed || state == State.LISTENING) return false;
-        cancelTimeout();
-        set(State.LISTENING, "Listening…");
+    public boolean startTimed(int timeoutMs) {
+        synchronized (this) {
+            if (closed || state == State.LISTENING) return false;
+            cancelTimeout();
+            set(State.LISTENING, "Listening…");
+        }
         if (!controller.start()) {
-            set(State.ERROR, "Could not start microphone");
+            synchronized (this) {
+                if (state == State.LISTENING) set(State.ERROR, "Could not start microphone");
+            }
+            return false;
+        }
+        // cancel()/close() may have raced between releasing `this` and controller.start().
+        boolean keep;
+        synchronized (this) {
+            keep = !closed && state == State.LISTENING;
+        }
+        if (!keep) {
+            controller.cancel();
             return false;
         }
         if (timeoutMs > 0) scheduleTimeout(timeoutMs);
@@ -53,35 +70,65 @@ public final class VoiceListenSession implements AutoCloseable {
     }
 
   /** PTT press — manual stop ends the utterance. */
-    public synchronized boolean startPtt() {
-        if (closed || state == State.LISTENING) return false;
-        cancelTimeout();
-        set(State.LISTENING, "Listening…");
+    public boolean startPtt() {
+        synchronized (this) {
+            if (closed || state == State.LISTENING) return false;
+            cancelTimeout();
+            set(State.LISTENING, "Listening…");
+        }
         if (!controller.start()) {
-            set(State.ERROR, "Could not start microphone");
+            synchronized (this) {
+                if (state == State.LISTENING) set(State.ERROR, "Could not start microphone");
+            }
+            return false;
+        }
+        boolean keep;
+        synchronized (this) {
+            keep = !closed && state == State.LISTENING;
+        }
+        if (!keep) {
+            controller.cancel();
             return false;
         }
         return true;
     }
 
-    public synchronized void stopPtt() {
-        if (state != State.LISTENING) return;
-        controller.stop();
-    }
-
-    public synchronized void cancel(String reason) {
-        cancelTimeout();
-        if (state == State.LISTENING) {
-            controller.cancel();
-            set(State.CANCELLED, reason == null ? "Cancelled" : reason);
+    public void stopPtt() {
+        boolean shouldStop;
+        synchronized (this) {
+            shouldStop = (state == State.LISTENING);
+        }
+        if (shouldStop) {
+            controller.stop();
         }
     }
 
-    @Override public synchronized void close() {
-        closed = true;
-        cancelTimeout();
+    public void cancel(String reason) {
+        boolean shouldCancel;
+        String msg = reason == null ? "Cancelled" : reason;
+        synchronized (this) {
+            cancelTimeout();
+            shouldCancel = (state == State.LISTENING);
+            // Apply caller reason before controller.cancel() so sync UI onRecording(IDLE)
+            // does not overwrite CANCELLED with "Recording cancelled".
+            if (shouldCancel) {
+                set(State.CANCELLED, msg);
+            }
+        }
+        if (shouldCancel) {
+            controller.cancel();
+        }
+    }
+
+    @Override public void close() {
+        boolean wasListening;
+        synchronized (this) {
+            closed = true;
+            cancelTimeout();
+            wasListening = (state == State.LISTENING);
+            if (wasListening) set(State.CANCELLED, "Closed");
+        }
         controller.close();
-        if (state == State.LISTENING) set(State.CANCELLED, "Closed");
     }
 
     private void scheduleTimeout(int timeoutMs) {
@@ -89,8 +136,12 @@ public final class VoiceListenSession implements AutoCloseable {
             synchronized (VoiceListenSession.this) {
                 if (state != State.LISTENING) return;
                 state = State.TIMEOUT;
-                controller.stop();
-                listener.changed(State.TIMEOUT, "Listen timed out");
+            }
+            controller.stop();
+            synchronized (VoiceListenSession.this) {
+                if (state == State.TIMEOUT) {
+                    listener.changed(State.TIMEOUT, "Listen timed out");
+                }
             }
         }, timeoutMs, TimeUnit.MILLISECONDS);
         timeout.set(task);
@@ -108,6 +159,9 @@ public final class VoiceListenSession implements AutoCloseable {
                 return;
             }
             if (recState == RecordingController.State.RECORDING) {
+                // Already LISTENING from startTimed/startPtt — do not re-notify (VoiceActionRuntime
+                // treats every LISTENING callback as policyListenStarted / a listen restart).
+                if (state == State.LISTENING) return;
                 if (state != State.TIMEOUT && state != State.CANCELLED) set(State.LISTENING, "Listening…");
                 return;
             }
@@ -149,6 +203,7 @@ public final class VoiceListenSession implements AutoCloseable {
                     state = State.IDLE;
                     return;
                 }
+                // Prefer an already-applied cancel/close reason over the controller's generic message.
                 if (state == State.LISTENING) set(State.CANCELLED, message);
             }
         }

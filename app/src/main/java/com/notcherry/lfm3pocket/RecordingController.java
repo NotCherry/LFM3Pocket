@@ -23,6 +23,8 @@ public final class RecordingController implements AutoCloseable {
     private volatile State state=State.IDLE;
     private volatile boolean stopping,discard,closed;
     private boolean active;private long epoch;
+    /** Monotonic publish id: async UI may drop superseded events; only the latest seq is delivered. */
+    private long publishSeq;
     public RecordingController(File directory,Factory factory,BooleanSupplier permission,Executor worker,
                                Consumer<Runnable> ui,Listener listener){
         this(directory,factory,permission,worker,ui,listener,MAX_SAMPLES);
@@ -34,34 +36,60 @@ public final class RecordingController implements AutoCloseable {
         this.maxSamples=maxSamples<=0?MAX_SAMPLES:maxSamples;
     }
     public State state(){return state;}
-    public synchronized boolean start(){
-        if(closed || active)return false;
-        active=true;stopping=false;discard=false;long turn=++epoch;
+    public boolean start(){
+        long turn;
+        synchronized(this){
+            if(closed || active)return false;
+            active=true;stopping=false;discard=false;turn=++epoch;
+        }
         publish(turn,State.STARTING,"Starting microphone...",null);
         try{worker.execute(()->capture(turn));}
         catch(RuntimeException e){finish(turn,State.ERROR,"Could not schedule recording",null);}
         return true;
     }
-    public synchronized void stop(){
-        if(!active || closed || stopping)return;
-        stopping=true;publish(epoch,State.STOPPING,"Finishing voice recording...",null);
+    public void stop(){
+        long turn;
+        synchronized(this){
+            if(!active || closed || stopping)return;
+            stopping=true;turn=epoch;
+        }
+        publish(turn,State.STOPPING,"Finishing voice recording...",null);
     }
-    public synchronized void cancel(){
-        if(!active || closed)return;
-        discard=true;stopping=true;
-        finish(epoch,State.IDLE,"Recording cancelled",null);
+    public void cancel(){
+        long turn;
+        synchronized(this){
+            if(!active || closed)return;
+            discard=true;stopping=true;turn=epoch;
+        }
+        finish(turn,State.IDLE,"Recording cancelled",null);
     }
     @Override public synchronized void close(){closed=true;discard=true;stopping=true;state=State.CLOSED;}
-    private synchronized void publish(long turn,State next,String message,File file){
-        if(closed || turn!=epoch){if(file!=null)file.delete();return;}
-        state=next;
+    /**
+     * Publish state without holding {@code this} across the UI/listener callback.
+     * Sync UI dispatch ({@code Runnable::run} in unit tests) must not invert locks with
+     * {@link VoiceListenSession}, which re-enters from the listener.
+     * A publish sequence number drops superseded async UI events so STOPPING cannot
+     * overtake a later IDLE/ERROR after {@link #finish}.
+     */
+    private void publish(long turn,State next,String message,File file){
+        final long seq;
+        synchronized(this){
+            if(closed || turn!=epoch){if(file!=null)file.delete();return;}
+            // stop() may race finish(): reject STOPPING once the turn is no longer active.
+            if(next==State.STOPPING && !active)return;
+            state=next;
+            seq=++publishSeq;
+        }
         ui.accept(()->{
-            synchronized(this){if(closed || turn!=epoch){if(file!=null)file.delete();return;}}
+            synchronized(this){
+                if(closed || turn!=epoch || seq!=publishSeq){if(file!=null)file.delete();return;}
+            }
             listener.changed(next,message,file);
         });
     }
-    private synchronized void finish(long turn,State next,String message,File file){
-        active=false;publish(turn,next,message,file);
+    private void finish(long turn,State next,String message,File file){
+        synchronized(this){active=false;}
+        publish(turn,next,message,file);
     }
     private synchronized boolean superseded(long turn){return turn!=epoch;}
 
