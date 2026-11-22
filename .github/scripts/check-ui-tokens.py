@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Fail CI when UI code bypasses Atlas / Stillwater color tokens.
 
+Also keeps DESIGN soft-chalk / radius clauses honest for audit follow-ups.
+
 Checks:
 1. No `Color(0x…)` / ARGB `0xFF……` literals in app UI sources outside allowlisted token files.
 2. `AtlasColors.inkSoft`, `StillwaterUi.SOFT`, and `colors.xml` `still_soft` stay in sync.
