@@ -39,9 +39,12 @@ import com.notcherry.lfm3pocket.ui.theme.atlasSpacing
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 
 /**
- * Atlas Settings layout (U13). Production host is [MainActivity] settings mode so SAF
- * import / model load stay on the existing Activity; this composable documents the visual
- * recipe and can be embedded by future hosts.
+ * Atlas Settings **visual recipe** (U13) for readable-at-scale / Compose tests.
+ *
+ * **Not the production Settings host.** Production Settings is the View scroll built in
+ * [MainActivity] (`model_configuration_scroll`). New sections (Speech, Images, Crash log,
+ * etc.) must land there — or in a shared section model both hosts consume — so this recipe
+ * does not drift further. See `docs/ui-audit.md` F04.
  */
 @Composable
 fun SettingsScreen(

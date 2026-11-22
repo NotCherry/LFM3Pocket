@@ -117,7 +117,7 @@ fun ChatTurn(
                 Text(
                     text = turn.text,
                     style = type.body,
-                    color = ColorSoft,
+                    color = atlas.inkSoft,
                     modifier = Modifier
                         .drawBehind {
                             drawLine(
@@ -236,8 +236,6 @@ fun ReasoningRail(reasoning: String, modifier: Modifier = Modifier) {
     }
 }
 
-private val ColorSoft = androidx.compose.ui.graphics.Color(0xFFC9C2B4)
-
 @Composable
 private fun EmptyConversation(onSuggest: (String) -> Unit) {
     val atlas = MaterialTheme.atlasColors
@@ -252,7 +250,7 @@ private fun EmptyConversation(onSuggest: (String) -> Unit) {
         Text(
             text = "Text, photos, and voice stay on this phone until you opt into search.",
             style = type.body,
-            color = ColorSoft,
+            color = atlas.inkSoft,
         )
         Spacer(Modifier.height(20.dp))
         listOf(
