@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-22
-- Related: [#252](https://github.com/NotCherry/LFM3Pocket/pull/252) (implementation), [#239](https://github.com/NotCherry/LFM3Pocket/issues/239)
+- Related: [#252](https://github.com/NotCherry/LFM3Pocket/pull/252), [#239](https://github.com/NotCherry/LFM3Pocket/issues/239)
 
 ## Context
 
@@ -10,46 +10,39 @@ Emulator end-to-end checks are the quality gate for native inference, chat UI, a
 
 ## Decision
 
-Hanami keeps two emulator E2E tiers. Both class contracts live in one gate script, `.github/scripts/assert-android-test-results.py`, which is the single source of truth. The emulator job takes its instrumentation class filter from that script (`--list-classes`), so the classes that execute and the classes the gate requires stay the same list.
+Hanami keeps two emulator E2E tiers. Both class contracts live in one gate script, `.github/scripts/assert-android-test-results.py`, which is the single source of truth. The emulator job takes its instrumentation class filter from that script, so the classes that execute and the classes the gate requires stay the same list.
 
-Triggers (`.github/workflows/build-apk.yml`):
-
-- **Pull requests** to `main` (except paths ignored below) → smoke tier.
-- **Push to `main`** that touches paths outside `docs/**` and `**/*.md`, the nightly schedule (`17 3 * * *`), and **workflow dispatch** (tier choice, default `deep`) → deep tier.
-- Pushes and pull requests that change only documentation under those `paths-ignore` rules do **not** start this workflow.
+Pull requests and pushes to `main` skip the emulator job when the change is only documentation or markdown. Any other pull request uses the smoke tier. Any other push to `main` uses the deep tier. The nightly schedule always uses deep. Manual workflow dispatch selects a tier and defaults to deep.
 
 ### PR smoke
 
-When the emulator job runs for a pull request, it uses the smoke tier. The tier stays intentionally narrow and fast, and it always includes three proofs:
+The smoke tier stays intentionally narrow and fast, and it always includes three proofs:
 
-1. A real JNI/native inference proof on the emulator (`GenerationSmokeTest`).
-2. App boot and the core chat UI flow (`ComposeHostE2eTest`).
-3. A cross-process settings-restart persistence proof. This proof is a scripted phase of its own (`.github/scripts/verify-settings-restart.sh`), with its own result gate, and it stays on the pull-request path together with the connected proofs above.
+1. A real JNI/native inference proof on the emulator.
+2. App boot and the core chat UI flow.
+3. A cross-process settings-restart persistence proof. This proof is a scripted phase of its own, with its own result gate, and it stays on the pull-request path together with the connected proofs above.
 
 ### Deep / nightly
 
-When the emulator job runs in deep tier, the connected contract is an explicit inventory of the full intended `androidTest` set (`DEEP_REQUIRED_CLASSES` in the gate script), including heavy, matrix, stress, native-deep, and accessibility-at-scale coverage. Harness and helper types stay outside that inventory. Deep includes the smoke connected proofs and also runs the broader scripted cross-process durability proofs (settings, history-restart, and history-journey via `.github/scripts/verify-*.sh`).
+The connected contract is an explicit inventory of the full intended `androidTest` set, including heavy, matrix, stress, native-deep, and accessibility-at-scale coverage. Harness and helper types stay outside that inventory. Deep includes the smoke proofs and also runs the broader scripted cross-process durability proofs (history survival across restart, and the history journey).
 
-After connected tests and those scripts, every deep run also executes `scripts/stress-flaky-e2e-194.sh` from `.github/scripts/run-jni-smoke.sh` (issue #194 flake evidence). That script is **not** part of either class contract, but under `set -Eeuo pipefail` its failure fails the deep emulator job the same as a missing required class. A separate workflow (`.github/workflows/e2e-flake-194-stress.yml`) can dispatch the same stress script alone for triage.
+On every deep pass — a non-documentation push to `main`, the nightly schedule, and a manual deep dispatch — the flake-triage stress script runs after those proofs. It does not add classes to either contract. A failure fails the deep job, so the script gates that tier. The same script can be dispatched on its own for triage.
 
-### Enrolling new instrumentation classes
+### Enrolling a new instrumentation class
 
-A class runs in CI and is required by a tier only after the gate script lists it in `SMOKE_REQUIRED_CLASSES` or `DEEP_REQUIRED_CLASSES`. Today the script does **not** define an exclusion list and does **not** compare `app/src/androidTest` against those contracts. `run-jni-smoke.sh` filters Gradle connected tests to the tier list, so a new `*Test` class that nobody adds to a contract is **not executed and not gated**—CI stays green with no signal that the class was forgotten. Reviewers must verify new instrumentation classes against the gate script in the same change.
+A class runs in CI, and is required by a tier, only after the gate script lists it in the deep contract or the smoke contract. The gate script has no exclusion list and does not compare the instrumentation source set with those contracts. A new class that nobody adds is not executed and not gated, and the job stays green. Reviewers check new instrumentation classes against the gate script in the same change.
 
-**Follow-up (not implemented yet):** add `EXCLUDED_CLASSES` in the gate script (each entry with a short rationale) and a CI check (for example in `--self-test`) that every intended instrumentation class is in deep, smoke, or exclusions—tracked as a separate change/issue.
+An explicit exclusion list, plus a check that every instrumentation class is either in a contract or on that list, is not part of this decision.
 
 ## Consequences
 
-- Pull requests keep a fast emulator gate that still proves native inference, app boot plus core chat UI, and settings persistence across a process restart.
-- Deep runs (push to `main` outside doc-only paths, nightly schedule, or deep manual dispatch) fail when any class in the deep inventory is missing, failing, or skipped, when the run recorded no tests, when scripted durability proofs fail, or when the #194 stress script fails.
-- Authors who add an instrumentation class update the gate script (`SMOKE_REQUIRED_CLASSES` or `DEEP_REQUIRED_CLASSES`) in the same change until `EXCLUDED_CLASSES` and an inventory check exist.
-- The #194 stress script repeats known flaky cases; it does not add classes to either contract but still gates deep tier success.
-- A regression outside the smoke proofs can merge on a green pull request. The deep tier is what catches it.
-- A **red deep or nightly** Android Stage 1 CI run on `main` is treated as a release-health blocker: the merge author or whoever landed the regressing commit fixes forward or reverts, and opens or updates an issue that links the failed workflow run until `main` is green again. No special on-call rotation is defined in-repo; the owner of the last non-doc push to `main` is the default responder.
+- Pull requests that run the emulator job keep a fast gate that still proves native inference, app boot plus core chat UI, and settings persistence across a process restart.
+- A deep run fails when any class in the explicit inventory is missing, failing, or skipped, when the run recorded no tests, when a scripted durability proof fails, or when the flake-triage stress script fails.
+- Authors who add an instrumentation class update the gate script in the same change. Presence in the instrumentation source set alone does not enroll the class, and nothing in CI reports the omission.
+- A regression outside the smoke proofs can merge on a green pull request. A red deep or nightly run on `main` is a mainline blocker: the author of the change that landed it fixes forward or reverts, and opens or updates an issue that links the failed run until `main` is green again.
 
 ## Alternatives considered
 
-- **Full deep inventory on every pull request** — Rejected; emulator time dominated review latency before #252.
-- **Sharding or an emulator matrix** — Rejected for now; operational cost and flaky-surface area without solving contract drift.
-- **Path-based test selection** — Rejected; easy to miss cross-cutting JNI, Room, and Compose failures when only unrelated paths change.
-- **Rely on class presence in `androidTest` without an explicit gate list** — Rejected; that was the drift problem #252 fixed by tying execution and assertion to one script.
+- **Full inventory on every pull request.** This was the previous gate. Rejected: it was too slow for review ([#239](https://github.com/NotCherry/LFM3Pocket/issues/239)).
+- **Sharding the same inventory across emulator jobs.** Rejected for this decision. The split is a contract of what must run on a pull request, not a way to put the full inventory back on that path.
+- **Selecting tests from changed paths.** Rejected. A path filter does not keep a native-inference proof and a settings-persistence proof on every pull request that runs the emulator job, and it does not define the inventory the deep tier must keep.
