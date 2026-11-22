@@ -1,8 +1,10 @@
 # Hanami UI usability / styling audit
 
-Phase 1 audit of production surfaces under `app/src/main` against [`DESIGN.md`](DESIGN.md) and Atlas / Stage 1 contracts. Findings are ranked by user impact. Line numbers refer to `origin/main` at audit time unless noted.
+Phase 1 audit of production surfaces under `app/src/main` against [`DESIGN.md`](DESIGN.md) and Atlas / Stage 1 contracts. Findings are ranked by user impact. Finding IDs (`F01`…`F25`) are **stable identifiers**, not a strict numeric ranking.
 
-**Method:** Code walk of every screen/flow (Home, Chat, Settings View host, Compose Settings recipe, History, About, Camera, tool consent, empty/loading/error) plus emulator screenshots (`docs/evidence/ui-audit/`, Pixel 6 API 35, phone release APK). Live device visual for U16 remains pending separately.
+**Audit tree:** code claims checked against `main` @ `2d81a3b970c695cff487f090ab79936d6821c9a9` (key locations include line numbers below).
+
+**Method:** Code walk of every screen/flow (Home, Chat, Settings View host, Compose Settings recipe, History, About, Camera, tool consent, empty/loading/error) plus emulator screenshots under [`docs/evidence/ui-audit/`](evidence/ui-audit/) (Pixel 6 API 35). Screenshots were captured from a local **phone-release APK `0.3.1` / versionCode `3001`** (built ~2026-11-16 under `/home/cherry/src/LFM3Pocket-release-build/…/app-phone-release.apk`) — **older than `main`**. Where the APK UI differs from `main`, the evidence table notes it; code findings still refer to `2d81a3b`. Live device visual for U16 ([#133](https://github.com/NotCherry/LFM3Pocket/issues/133), checklist under `device-evidence/reports/ui-atlas/`) remains PENDING separately.
 
 **Verdict:** Production Settings is a single giant `ScrollView` in `MainActivity` (View), not `SettingsScreen.kt`. Compose Atlas tokens exist, but View chrome and several Compose screens still hardcode English, spacing, and a soft-chalk color outside `AtlasColors`. New-user path is Home → Open chat → must import a GGUF from Settings; there is no first-run onboarding.
 
@@ -12,7 +14,7 @@ Phase 1 audit of production surfaces under `app/src/main` against [`DESIGN.md`](
 
 | Shot | Surface | What it shows |
 | --- | --- | --- |
-| [`01-home.png`](evidence/ui-audit/01-home.png) | Home | Brand + Open chat; **No model loaded** footer with no CTA; New chat absent on this build’s Home |
+| [`01-home.png`](evidence/ui-audit/01-home.png) | Home | Brand + Open chat; **No model loaded** footer with no CTA. **APK 0.3.1 lag:** this shot has no Home New chat; on `main` @ `2d81a3b` Home always renders New chat (`ComposeHostActivity.kt:254-268`, `home_new_chat`) |
 | [`02-chat-empty.png`](evidence/ui-audit/02-chat-empty.png) | Chat empty | Mode duplicated (header + composer); model warning quiet; Clear unlabeled in strings; suggestion chips English |
 | [`03-chat-overflow.png`](evidence/ui-audit/03-chat-overflow.png) | Chat overflow | Settings / Web search only (hardcoded EN) |
 | [`04-settings-top.png`](evidence/ui-audit/04-settings-top.png) | Settings top | Model import row wrapping; Load/Unload/Settings strip while already in Settings |
@@ -30,7 +32,7 @@ Also useful: existing [`docs/evidence/interface-size/`](evidence/interface-size/
 
 | ID | Finding | User impact | Location | Fix direction |
 | --- | --- | --- | --- | --- |
-| **F01** | **No first-run onboarding.** Launcher is `ComposeHostActivity` Home; Open chat / New chat jump into `MainActivity` with status `"No model loaded. Select an LFM3 GGUF file."` Import / Load live only inside Settings scroll. | New users land in an empty chat with no guided import CTA, download link, or “what is a GGUF?” explanation. | `AndroidManifest.xml`; `ComposeHostActivity.kt` Home; `MainActivity.java` model-empty status | Phase 3: first-run card or Home empty-model CTA that deep-links Settings → Model import; keep E2E IDs. |
+| **F01** | **No first-run onboarding.** Launcher is `ComposeHostActivity` Home; Open chat / New chat (`ComposeHostActivity.kt:254-268`, `home_new_chat` on `main`) jump into `MainActivity` with status `"No model loaded. Select an LFM3 GGUF file."` (`MainActivity.java:291`). Import / Load live only inside Settings scroll. | New users land in an empty chat with no guided import CTA, download link, or “what is a GGUF?” explanation. | `AndroidManifest.xml`; `ComposeHostActivity.kt:197-298`; `MainActivity.java:291` | Phase 3: first-run card or Home empty-model CTA that deep-links Settings → Model import; keep E2E IDs. |
 | **F02** | **Model import/load discoverability.** Model pickers sit at the top of the Settings mega-scroll; chat top bar has New chat + gear only. Home shows `"No model loaded"` as muted footer text with no action. | Users who open chat first cannot import without finding Settings; model flow is not on the chat viewport. | Home footer; chat empty; Settings model row | Phase 3: promote Import/Load when no model; optional chat empty-state primary CTA. |
 | **F03** | **Hardcoded English across primary surfaces (i18n broken for PL).** History, About, Chat empty/composer/tools, Camera, Benchmark, overflow menu, and many `status.setText(...)` paths bypass `strings.xml`. | Polish locale still shows English chrome and errors; DESIGN §11 requires EN+PL for user-visible chrome. | See **Hardcoded string inventory** | Phase 3: move literals to `values` / `values-pl`; Phase 2 string baseline lint. |
 
@@ -40,7 +42,7 @@ Also useful: existing [`docs/evidence/interface-size/`](evidence/interface-size/
 | --- | --- | --- | --- | --- |
 | **F04** | **Production Settings = giant `MainActivity` scroll; `SettingsScreen.kt` is recipe/test-only.** Comment admits production host is MainActivity; Compose screen used in `ComposeTextReadableTest` only. | Dual Settings UX: recipe misses Speech, Images, Background, Tools, Notification, Calendar, Crash log, Prompt lookup, Cactus/Whistle. Drift will keep growing. | `SettingsScreen.kt`; `MainActivity.java` configuration builder | Phase 2: document single source of truth; Phase 3: delete/stub recipe or share a section model. |
 | **F05** | **Settings section order / burial (current main).** Order: Model → Appearance → Inference (+ Prompt lookup) → Benchmark → SEARXNG → Images → Background → Tools → Notification → Calendar → Speech (Whistle + tiny-voca) → Default assistant → Crash log. | Appearance is early (good). Speech / Images / Crash log require long scroll; Crash log is last. Power-user jargon sits before Speech. | `MainActivity.java` configuration | Phase 3: Everyday vs Advanced grouping; optional sticky section index. **Avoid churn in Speech while #251 lands.** |
-| **F06** | **Touch targets under 48dp (View).** DESIGN §11 / `InterfaceSize.MIN_TOUCH_DP=48`, but many Settings/media rows use `dp(44)` or `dp(46)` via `StillwaterReadable` without `minTouchPx`. Compact interface scale shrinks those further. | Harder taps on Save search, media row, idle presets, Whistle/tiny-voca/crash buttons, stepper ±. | `MainActivity.java`; `StillwaterReadable.java`; `InterfaceSize.java` | Phase 2: lint interactive mins; Phase 3: raise floors; keep visual chrome dense (#175). |
+| **F06** | **Touch targets under 48dp (View).** DESIGN §11 / `InterfaceSize.MIN_TOUCH_DP=48`, but many Settings/media rows use `dp(44)` or `dp(46)` via `StillwaterReadable` without `minTouchPx`. Compact interface scale shrinks those further. **Chat gear / overflow:** `settings_open` and `chat_overflow` use `LayoutParams(dp(36), dp(36))` (`MainActivity.java:445-448`, `461-463`); with MeasureSpec `EXACTLY`, `setMinimumWidth/Height(minTouchPx)` is ignored → real hit target **36dp**. | Harder taps on gear, overflow, Save search, media row, idle presets, Whistle/tiny-voca/crash buttons, stepper ±. | `MainActivity.java:445-463`, `573+`; `StillwaterReadable.java`; `InterfaceSize.java` | Phase 2: lint interactive mins; Phase 3: raise floors (padding/min size without EXACTLY 36); keep visual chrome dense (#175). |
 | **F07** | **Clear vs New chat confusion.** Top bar **New chat** starts a new conversation ID. Composer **Clear** empties transcript without new ID — matches DESIGN §6.11, but Clear is unlabeled in strings, no `testTag`, English-only `"Clear"`. | Users may wipe a thread thinking they started a new one (or vice versa); PL users see English Clear. | `ChatPanel.kt`; DESIGN §6.11 | Phase 3: `clear_conversation` string + PL; rename to “Clear transcript”; add `chat_clear` tag; optional confirm. |
 | **F08** | **Confusing product jargon labels.** `SEARXNG`, `Prompt lookup decode (ngram-mod)`, `Cactus Whistle STT`, `Whistle model (.cact)`, `tiny-voca` ship as primary labels. Polish keeps acronyms/brand tokens. | Non-experts cannot tell what to enable. | `strings.xml` / `values-pl/strings.xml` | Phase 3: plain-language titles + mono subtitle; PL glosses. Defer Whistle copy churn until after #251. |
 | **F09** | **`settingsInlineError` only visible inside Settings.** Chat-side failures mostly go to `status` / `ChatLiveStatus`, many hardcoded English. | Invalid Save while Settings closed is invisible; chat status line is easy to miss and untranslated. | `MainActivity.java` save paths | Phase 3: sticky Save-row errors + localize status strings. |
@@ -124,7 +126,8 @@ Production UI is one vertical scroll (`R.id.model_configuration_scroll`) with st
 ## Phase split recommendations
 
 ### Phase 2 — tokens / guard (CI + docs, minimal UX change)
-1. Resolve DESIGN §4 vs §6.4 radius; add `docs/theme/README.md` pointer.
+Tracked in [#258](https://github.com/NotCherry/LFM3Pocket/pull/258) (lands `inkSoft` in DESIGN §2, resolves §4 vs §6.4 to 0–2dp, `docs/theme/README.md`, `check-ui-tokens.py`, Settings recipe annotation). Settings single-source choice (View vs Compose) remains a Phase 3 ADR (P3f).
+1. Resolve DESIGN §4 vs §6.4 radius; add `docs/theme/README.md` pointer; link this audit from DESIGN §14.
 2. Add `AtlasColors.inkSoft` (= `#C9C2B4`); sync `StillwaterUi.SOFT` / `still_soft`; JVM equality test.
 3. Add `.github/scripts/check-ui-tokens.py`: forbid raw hex / `Color(0x…)` outside theme + `StillwaterUi` / `colors.xml`; optional spacing allowlist; **baseline** for existing string literals so CI stays green until Phase 3 extracts them.
 4. Wire script into `build-apk.yml` `unit` job (**not** docs-only paths-ignore — script + workflow change must run).
@@ -146,6 +149,6 @@ Keep Stage 1 resource IDs (`settings_*`, `chat_*`, `import_*`, `home_*`) stable 
 
 - Appearance is **not** buried on current main (near top after Model) — burial risk is Speech / Crash / Calendar instead.
 - Media Photo/Camera/Voice are labeled buttons in `MainActivity`, not icon-only Compose composer icons.
-- `InterfaceSize.minTouchPx` is correctly used on chat top-bar New chat / gear / overflow mins and interface SeekBar.
+- Chat top-bar **New chat** uses wrap content + `minTouchPx` (not EXACTLY 36) — OK; gear/overflow are **not** OK (see F06).
 - Polish coverage for shared `strings.xml` keys is generally careful; gaps are mostly **unextracted** Kotlin/Java literals and kept English jargon inside PL strings.
 - Compact default density from #175 must remain the default; Interface size presets must keep working.
