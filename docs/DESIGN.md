@@ -311,3 +311,4 @@ existing benchmark controls (`settings_bench_run` / `settings_bench_result`).
 | [`UI_ACCEPTANCE_MATRIX.md`](UI_ACCEPTANCE_MATRIX.md) | UT-01..UT-08 |
 | [`UI_E2E_CONTRACT.md`](UI_E2E_CONTRACT.md) | Flat transcript + ID contract |
 | [`ACCEPTANCE_MATRIX.md`](ACCEPTANCE_MATRIX.md) | Stage 1 AT-01..AT-09 (unchanged authority for product capability) |
+| [`adr/0012-two-tier-emulator-e2e-gating.md`](adr/0012-two-tier-emulator-e2e-gating.md) | PR smoke vs deep/nightly emulator E2E gates |
