@@ -48,7 +48,7 @@ public final class GgufSelection {
     static Map<String,Object> inspect(File file) throws IOException {
         if (!file.isFile()) throw new IOException("Selected GGUF is missing or unreadable");
         try (RandomAccessFile input = new RandomAccessFile(file, "r")) {
-            if (input.readInt() != 0x47475546) throw new IOException("Not a GGUF file");
+            if (input.readInt() != 0x47475546 /* ui-tokens: allow */) throw new IOException("Not a GGUF file");
             long version = u32(input);
             if (version != 2 && version != 3) throw new IOException("Unsupported GGUF version");
             long tensors = bounded(u64(input),100000,"tensor count");

@@ -29,6 +29,7 @@ Use these names in code (`PocketTheme` / `AtlasColors`). Hex values are normativ
 | `surface` | `#0E0E0C` | App background. Full-bleed. |
 | `surfaceRaised` | `#161614` | Slightly lifted panels (tool panel fill, settings groups). |
 | `surfaceOverlay` | `#1C1C18` | Modals, consent sheet, overflow menus. |
+| `surfaceGlow` | `#1C1A16` | Warm Home radial-gradient highlight (warmer than `surfaceOverlay`). |
 | `ink` | `#F3EFE6` | Primary chalk text (body, headlines). |
 | `inkSoft` | `#C9C2B4` | Quiet chalk for secondary body (user turns, soft Home copy). Between `ink` and `inkMuted`. |
 | `inkMuted` | `#8F897C` | Secondary text, timestamps, hints. |
@@ -312,5 +313,4 @@ existing benchmark controls (`settings_bench_run` / `settings_bench_result`).
 | [`UI_ACCEPTANCE_MATRIX.md`](UI_ACCEPTANCE_MATRIX.md) | UT-01..UT-08 |
 | [`UI_E2E_CONTRACT.md`](UI_E2E_CONTRACT.md) | Flat transcript + ID contract |
 | [`ACCEPTANCE_MATRIX.md`](ACCEPTANCE_MATRIX.md) | Stage 1 AT-01..AT-09 (unchanged authority for product capability) |
-| [`ui-audit.md`](ui-audit.md) | Phase 1 usability/styling audit (F01–F25) + follow-up PR plan |
 | [`adr/0012-two-tier-emulator-e2e-gating.md`](adr/0012-two-tier-emulator-e2e-gating.md) | PR smoke vs deep/nightly emulator E2E gates |

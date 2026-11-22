@@ -17,4 +17,4 @@ Authoritative Stillwater / Atlas design tokens live in:
 4. Keep Interface size presets (#175 / ADR 0002) working; compact default density stays.
 5. Production Settings is `MainActivity`’s View scroll, not `SettingsScreen.kt` (recipe/test host).
 
-Usability backlog: [`docs/ui-audit.md`](../ui-audit.md).
+Usability backlog: `docs/ui-audit.md` (lands via Phase 1 audit PR).

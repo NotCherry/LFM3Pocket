@@ -213,7 +213,7 @@ private fun StillwaterHome(
             .fillMaxSize()
             .background(
                 Brush.radialGradient(
-                    listOf(atlas.surfaceOverlay, atlas.surface),
+                    listOf(atlas.surfaceGlow, atlas.surface),
                     radius = 1400f,
                 ),
             )

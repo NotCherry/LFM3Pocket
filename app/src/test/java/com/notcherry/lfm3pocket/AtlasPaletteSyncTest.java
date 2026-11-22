@@ -5,8 +5,9 @@ import static org.junit.Assert.assertEquals;
 import org.junit.Test;
 
 /**
- * Keeps View {@link StillwaterUi} hexes aligned with DESIGN / Compose {@code AtlasColors}
- * (Compose Color is not available on the pure JVM unit classpath).
+ * JVM assert that View {@link StillwaterUi} hexes match the DESIGN table literals.
+ * Compose {@code AtlasColors} ↔ View sync is enforced by
+ * {@code .github/scripts/check-ui-tokens.py} (Compose Color is not on the pure JVM classpath).
  */
 public final class AtlasPaletteSyncTest {
     @Test public void softChalkMatchesDesignInkSoft() {

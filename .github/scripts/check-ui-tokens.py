@@ -4,11 +4,13 @@
 Also keeps DESIGN soft-chalk / radius clauses honest for audit follow-ups.
 
 Checks:
-1. No `Color(0x…)` / ARGB `0xFF……` literals in app UI sources outside allowlisted token files.
+1. No `Color(0x…)` / 8-digit ARGB hex literals in app sources outside allowlisted
+   token files (case-insensitive; any alpha). Inline escape: `ui-tokens: allow`.
 2. `AtlasColors.inkSoft`, `StillwaterUi.SOFT`, and `colors.xml` `still_soft` stay in sync.
 3. DESIGN tool-panel radius clause matches AtlasShapes (0–2dp), not the old 6–8dp wording.
 
-Self-test: injecting a forbidden hex into a temp copy of ChatPanel.kt must fail the scan.
+Self-test: write a poisoned ChatPanel copy under a temp tree and assert
+`scan_forbidden_hex` reports it.
 """
 from __future__ import annotations
 
@@ -18,41 +20,52 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-UI_ROOT = ROOT / "app" / "src" / "main" / "java" / "com" / "notcherry" / "lfm3pocket"
+APP_JAVA = ROOT / "app" / "src" / "main" / "java" / "com" / "notcherry" / "lfm3pocket"
 RES_COLORS = ROOT / "app" / "src" / "main" / "res" / "values" / "colors.xml"
-ATLAS_COLORS = UI_ROOT / "ui" / "theme" / "AtlasColors.kt"
-STILLWATER = UI_ROOT / "StillwaterUi.java"
+ATLAS_COLORS = APP_JAVA / "ui" / "theme" / "AtlasColors.kt"
+STILLWATER = APP_JAVA / "StillwaterUi.java"
 DESIGN = ROOT / "docs" / "DESIGN.md"
 
-# Token / palette sources may define hexes. Everything else under the app package must use them.
 ALLOWLIST = {
     ATLAS_COLORS.resolve(),
     STILLWATER.resolve(),
-    (UI_ROOT / "RuntimeNotifications.java").resolve(),
+    (APP_JAVA / "RuntimeNotifications.java").resolve(),
 }
 
-HEX_ARGB = re.compile(r"\b0xFF[0-9A-Fa-f]{6}\b")
-COMPOSE_COLOR = re.compile(r"Color\(\s*0x[0-9A-Fa-f]{8}\s*\)")
+# Any 8-digit hex (ARGB), case-insensitive — covers 0xff… and non-FF alphas like 0x66E6C27A.
+HEX_ARGB = re.compile(r"\b0x[0-9A-Fa-f]{8}\b", re.I)
+COMPOSE_COLOR = re.compile(r"Color\(\s*0x[0-9A-Fa-f]{8}\s*\)", re.I)
+ALLOW_MARK = re.compile(r"ui-tokens:\s*allow", re.I)
 SOFT_HEX = "C9C2B4"
-INKSOFT_LINE = re.compile(r"inkSoft\s*[:=].*0xFF([0-9A-Fa-f]{6})")
-SOFT_JAVA = re.compile(r"SOFT\s*=\s*0xFF([0-9A-Fa-f]{6})")
+INKSOFT_LINE = re.compile(r"inkSoft\s*[:=].*0x[Ff]{2}([0-9A-Fa-f]{6})")
+SOFT_JAVA = re.compile(r"SOFT\s*=\s*0x[Ff]{2}([0-9A-Fa-f]{6})")
 SOFT_XML = re.compile(r'name="still_soft">#([0-9A-Fa-f]{6})<')
 
 
-def scan_forbidden_hex() -> list[str]:
+def scan_forbidden_hex(root: Path = APP_JAVA, repo_root: Path = ROOT) -> list[str]:
+    """Scan Kotlin/Java under `root` for color hex literals outside the allowlist."""
     errors: list[str] = []
-    for path in UI_ROOT.rglob("*"):
+    for path in root.rglob("*"):
         if path.suffix not in {".kt", ".java"}:
             continue
         if path.resolve() in ALLOWLIST:
             continue
         text = path.read_text(encoding="utf-8")
-        rel = path.relative_to(ROOT)
+        try:
+            rel = path.relative_to(repo_root)
+        except ValueError:
+            rel = path
         for i, line in enumerate(text.splitlines(), 1):
-            if line.lstrip().startswith("//") or line.lstrip().startswith("*"):
+            stripped = line.lstrip()
+            if stripped.startswith("//") or stripped.startswith("*"):
+                continue
+            if ALLOW_MARK.search(line):
                 continue
             if COMPOSE_COLOR.search(line) or HEX_ARGB.search(line):
-                errors.append(f"{rel}:{i}: forbidden color literal (use AtlasColors / StillwaterUi): {line.strip()}")
+                errors.append(
+                    f"{rel}:{i}: forbidden color literal "
+                    f"(use AtlasColors / StillwaterUi, or mark `ui-tokens: allow`): {line.strip()}"
+                )
     return errors
 
 
@@ -70,16 +83,19 @@ def check_soft_sync() -> list[str]:
         errors.append("StillwaterUi.java missing SOFT constant")
     if not m_xml:
         errors.append("colors.xml missing still_soft")
-    vals = {
+    present = {
         "AtlasColors.inkSoft": (m_atlas.group(1).upper() if m_atlas else None),
         "StillwaterUi.SOFT": (m_still.group(1).upper() if m_still else None),
         "still_soft": (m_xml.group(1).upper() if m_xml else None),
     }
-    present = {k: v for k, v in vals.items() if v}
-    if present and {v for v in present.values()} != {SOFT_HEX}:
-        errors.append(f"soft chalk mismatch (expected {SOFT_HEX}): {present}")
-    elif present and len(set(present.values())) > 1:
+    present = {k: v for k, v in present.items() if v}
+    if not present:
+        return errors
+    unique = set(present.values())
+    if len(unique) > 1:
         errors.append(f"soft chalk out of sync: {present}")
+    elif unique != {SOFT_HEX}:
+        errors.append(f"soft chalk mismatch (expected {SOFT_HEX}): {present}")
     return errors
 
 
@@ -87,23 +103,44 @@ def check_design_radius() -> list[str]:
     text = DESIGN.read_text(encoding="utf-8")
     errors: list[str] = []
     if re.search(r"tool panel.*radius 6.?8", text, re.I):
-        errors.append("DESIGN.md still documents tool panel radius 6–8dp; must match §4 / AtlasShapes (0–2dp)")
-    if "radius **0–2dp**" not in text and "radius 0–2dp" not in text.lower():
-        # §4 already has 0–2dp; §6.4 must also
-        if "Bordered panel:" in text and "0–2dp" not in text.split("Bordered panel:")[1][:120]:
-            errors.append("DESIGN.md §6.4 tool panel radius should state 0–2dp")
+        errors.append(
+            "DESIGN.md still documents tool panel radius 6–8dp; must match §4 / AtlasShapes (0–2dp)"
+        )
+    if "Bordered panel:" in text and "0–2dp" not in text.split("Bordered panel:")[1][:160]:
+        errors.append("DESIGN.md §6.4 tool panel radius should state 0–2dp")
     return errors
 
 
 def self_test() -> None:
-    sample = UI_ROOT / "ChatPanel.kt"
+    sample = APP_JAVA / "ChatPanel.kt"
     original = sample.read_text(encoding="utf-8")
-    poisoned = original + "\nprivate val Bad = Color(0xFF123456)\n"
     with tempfile.TemporaryDirectory() as tmp:
-        # Run scan logic against a fake tree would be heavy; instead assert helpers detect poison inline.
-        if not COMPOSE_COLOR.search(poisoned):
-            raise AssertionError("self-test: COMPOSE_COLOR failed to match injected literal")
-    # Soft sync must see inkSoft
+        tmp_root = Path(tmp)
+        # Minimal tree mirroring package layout under a fake repo root.
+        pkg = tmp_root / "app" / "src" / "main" / "java" / "com" / "notcherry" / "lfm3pocket"
+        pkg.mkdir(parents=True)
+        poisoned = pkg / "ChatPanel.kt"
+        poisoned.write_text(original + "\nprivate val Bad = Color(0xFF123456)\n", encoding="utf-8")
+        # Also cover lowercase / non-FF alpha without allow mark.
+        (pkg / "Other.java").write_text(
+            "class Other { int c = 0xffaabbcc; int a = 0x66E6C27A; }\n",
+            encoding="utf-8",
+        )
+        found = scan_forbidden_hex(root=pkg, repo_root=tmp_root)
+        if not any("ChatPanel.kt" in e and "0xFF123456" in e for e in found):
+            raise AssertionError(f"self-test: poisoned ChatPanel not flagged: {found}")
+        if not any("Other.java" in e and "0xffaabbcc" in e.lower() for e in found):
+            raise AssertionError(f"self-test: lowercase hex not flagged: {found}")
+        if not any("Other.java" in e and "0x66E6C27A" in e for e in found):
+            raise AssertionError(f"self-test: non-FF alpha not flagged: {found}")
+        # Allow mark must suppress.
+        (pkg / "Allowed.java").write_text(
+            "class Allowed { int c = 0xFF123456; // ui-tokens: allow\n}\n",
+            encoding="utf-8",
+        )
+        found2 = scan_forbidden_hex(root=pkg, repo_root=tmp_root)
+        if any("Allowed.java" in e for e in found2):
+            raise AssertionError(f"self-test: allow mark ignored: {found2}")
     errs = check_soft_sync()
     if errs:
         raise AssertionError(f"self-test soft sync failed on clean tree: {errs}")

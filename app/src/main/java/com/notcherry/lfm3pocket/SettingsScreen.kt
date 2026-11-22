@@ -44,7 +44,7 @@ import com.notcherry.lfm3pocket.ui.theme.atlasTypography
  * **Not the production Settings host.** Production Settings is the View scroll built in
  * [MainActivity] (`model_configuration_scroll`). New sections (Speech, Images, Crash log,
  * etc.) must land there — or in a shared section model both hosts consume — so this recipe
- * does not drift further. See `docs/ui-audit.md` F04.
+ * does not drift further (audit finding F04 / Phase 3 Settings single-source).
  */
 @Composable
 fun SettingsScreen(
