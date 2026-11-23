@@ -27,7 +27,6 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -64,8 +63,8 @@ class ComposeHostActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (routeExternalAsk(intent)) return
-        window.statusBarColor = 0xFF0E0E0C.toInt()
-        window.navigationBarColor = 0xFF0E0E0C.toInt()
+        window.statusBarColor = StillwaterUi.SURFACE
+        window.navigationBarColor = StillwaterUi.SURFACE
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
         setContent {
             PocketTheme {
@@ -214,7 +213,7 @@ private fun StillwaterHome(
             .fillMaxSize()
             .background(
                 Brush.radialGradient(
-                    listOf(Color(0xFF1C1A16), atlas.surface),
+                    listOf(atlas.surfaceGlow, atlas.surface),
                     radius = 1400f,
                 ),
             )
@@ -234,7 +233,7 @@ private fun StillwaterHome(
             Text(
                 "Liquid AI LFM3 models, on this phone.",
                 style = type.body,
-                color = Color(0xFFC9C2B4),
+                color = atlas.inkSoft,
                 modifier = Modifier.fillMaxWidth(0.86f),
             )
             Spacer(Modifier.weight(1f))

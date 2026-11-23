@@ -48,7 +48,7 @@ public final class ToolConfirmationActivity extends Activity {
 
         ScrollView scroll=new ScrollView(this);
         GradientDrawable panel=new GradientDrawable();
-        panel.setColor(raised);panel.setCornerRadius(8*getResources().getDisplayMetrics().density);
+        panel.setColor(raised);panel.setCornerRadius(2*getResources().getDisplayMetrics().density);
         panel.setStroke(Math.max(1,(int)getResources().getDisplayMetrics().density),border);
         details=new TextView(this);details.setId(R.id.tool_details);
         details.setTextSize(15);details.setTextColor(ink);details.setTypeface(StillwaterUi.mono(this));

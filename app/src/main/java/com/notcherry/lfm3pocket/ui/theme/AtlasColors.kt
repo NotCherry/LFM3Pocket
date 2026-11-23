@@ -13,7 +13,11 @@ data class AtlasColors(
     val surface: Color = Color(0xFF0E0E0C),
     val surfaceRaised: Color = Color(0xFF161614),
     val surfaceOverlay: Color = Color(0xFF1C1C18),
+    /** Warm Home radial glow; slightly warmer than surfaceOverlay. */
+    val surfaceGlow: Color = Color(0xFF1C1A16),
     val ink: Color = Color(0xFFF3EFE6),
+    /** Quiet chalk for secondary body (user turns, soft Home copy). Between ink and inkMuted. */
+    val inkSoft: Color = Color(0xFFC9C2B4),
     val inkMuted: Color = Color(0xFF8F897C),
     val inkDisabled: Color = Color(0xFFA39E92),
     val accent: Color = Color(0xFFE6C27A),

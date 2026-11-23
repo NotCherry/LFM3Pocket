@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-17
+- Amended: 2026-11-23 ([#212](https://github.com/NotCherry/LFM3Pocket/pull/212) hybrid fallback)
 
 ## Context
 
@@ -23,9 +24,9 @@ generation; the **target** model verifies drafts in one batched `llama_process` 
 `common_sampler_sample_and_accept_n`). Output distribution matches sequential sampling when verification
 succeeds (llama.cpp guarantees for this path).
 
-LFM hybrid memory may not support partial `llama_memory_seq_rm`; Hanami already handles that for chat KV.
-The speculative driver uses llama.cpp **sequence checkpoints** when partial removal is unavailable (same
-as `examples/speculative-simple`).
+LFM hybrid memory may not support partial sequence removal. Hanami already clears and re-prefills chat KV when a partial trim fails ([ADR 0001](0001-arm64-dotprod-and-kv-residency.md)).
+Prompt lookup needs one further trim, of the last prompt token, before it can draft. If that trim fails, the turn does not fail and does not stay on the speculative path: it decodes sequentially ([#212](https://github.com/NotCherry/LFM3Pocket/pull/212)).
+When prompt lookup does run on a context that can remove only a whole sequence, rejected drafts roll back with llama.cpp sequence checkpoints (same as `examples/speculative-simple`).
 
 ## Decision
 
@@ -38,6 +39,9 @@ as `examples/speculative-simple`).
    - `n_match = 16`, `n_min = 2`, `n_max = 12`
 4. Settings **Run speed test** (`settings_bench_run`) reports **sequential** and **ngram-mod** tg tok/s
    plus draft acceptance % on the loaded model (emulator x86_64 is not representative of arm64 DOTPROD).
+5. **Hybrid fallback.** If the loaded context cannot trim the prompt tail that prompt lookup needs,
+   that turn uses the sequential decoder. The user still gets a reply. Checkpoints are the rollback
+   method only for a prompt-lookup turn that actually starts.
 
 Draft-model speculative decoding remains **out of scope** until users can opt into a second small GGUF
 without blowing the 4 GB budget.
@@ -47,8 +51,9 @@ without blowing the 4 GB budget.
 - APK/native link step grows (llama-common objects); no new network fetch.
 - Best speedups when assistant output reuses prompt/history n-grams (templated answers, lists, code
   scaffolding). Creative paraphrase may see little gain — acceptance rate drops, overhead is small.
-- Hybrid LFM contexts pay checkpoint cost on partial draft rejection; worst case approaches sequential
-  tok/s for that turn.
+- Hybrid LFM contexts that cannot trim the prompt tail skip prompt lookup for that turn and decode
+  sequentially. When prompt lookup does run, partial draft rejection pays the checkpoint cost; worst
+  case approaches sequential tok/s for that turn.
 - Measurement on physical arm64 (e.g. RMX2170 + LFM3 Q4_K_M) is still required for honest before/after
   numbers; CI smoke only proves the JNI path runs.
 
