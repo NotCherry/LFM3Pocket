@@ -12,19 +12,23 @@ source "${_stress_dir}/lib/app-ids.sh"
 #   bash scripts/stress-flaky-e2e-194.sh [runs]
 #
 # Env:
-#   STRESS_RUNS                Override run count (default: arg1 or 10)
-#   STRESS_ARTIFACT_DIR        Directory for per-failure diagnostics and summary
-#   STRESS_INSTRUMENT_TIMEOUT  Per-test am instrument timeout in seconds (default: 300)
-#   PKG                        Application package (default: dev.notcherry.hanami)
-#   RUNNER                     am instrument target (default: from scripts/lib/app-ids.sh)
+#   STRESS_RUNS                   Override run count (default: arg1 or 10)
+#   STRESS_ARTIFACT_DIR           Directory for per-failure diagnostics and summary
+#   STRESS_INSTRUMENT_TIMEOUT     Per-test am instrument timeout in seconds (default: 300)
+#   STRESS_INSTRUMENT_KILL_AFTER  SIGKILL grace after timeout in seconds (default: 15)
+#   PKG                           Application package (default: HANAMI_APP_ID)
+#   RUNNER                        am instrument target (default: HANAMI_TEST_RUNNER)
 #
 # Requires: adb-connected device/emulator and smoke debug + androidTest APKs
 # installed. On failure, captures instrument output, logcat tail, active
 # notifications, runtime service state, and window/activity dumps when
 # STRESS_ARTIFACT_DIR is set.
 
+PKG="${PKG:-$HANAMI_APP_ID}"
+RUNNER="${RUNNER:-$HANAMI_TEST_RUNNER}"
 RUNS="${STRESS_RUNS:-${1:-10}}"
 INSTRUMENT_TIMEOUT="${STRESS_INSTRUMENT_TIMEOUT:-300}"
+INSTRUMENT_KILL_AFTER="${STRESS_INSTRUMENT_KILL_AFTER:-15}"
 ARTIFACT_DIR="${STRESS_ARTIFACT_DIR:-}"
 TESTS=(
   "com.notcherry.lfm3pocket.BackgroundNotificationE2eTest#loadedModelAndActiveReplyDriveTheOngoingNotification"
@@ -61,6 +65,11 @@ EOF
   echo "Diagnostics captured in ${dir}" >&2
 }
 
+kill_stuck_instrumentation() {
+  adb shell am force-stop "$HANAMI_APP_ID" >/dev/null 2>&1 || true
+  adb shell am force-stop "$HANAMI_TEST_PKG" >/dev/null 2>&1 || true
+}
+
 passed=0
 echo "Instrumentation target: ${RUNNER} (package ${PKG})"
 for i in $(seq 1 "$RUNS"); do
@@ -69,10 +78,12 @@ for i in $(seq 1 "$RUNS"); do
     echo "-- $test"
     instrument_rc=0
     set +e
-    out="$(timeout "${INSTRUMENT_TIMEOUT}s" adb shell am instrument -w -r -e class "$test" "$RUNNER" 2>&1)"
+    out="$(timeout -k "${INSTRUMENT_KILL_AFTER}" "${INSTRUMENT_TIMEOUT}s" \
+      adb shell am instrument -w -r -e class "$test" "$RUNNER" 2>&1)"
     instrument_rc=$?
     set -e
     if [[ "$instrument_rc" -eq 124 ]]; then
+      kill_stuck_instrumentation
       out="${out}
 ERROR: am instrument timed out after ${INSTRUMENT_TIMEOUT}s"
     elif [[ "$instrument_rc" -ne 0 ]]; then
@@ -80,7 +91,7 @@ ERROR: am instrument timed out after ${INSTRUMENT_TIMEOUT}s"
 ERROR: am instrument exited ${instrument_rc}"
     fi
     printf '%s\n' "$out"
-    if [[ "$instrument_rc" -eq 124 ]] || [[ "$instrument_rc" -ne 0 ]]; then
+    if [[ "$instrument_rc" -ne 0 ]]; then
       capture_failure "$i" "$test" "$out"
       exit 1
     fi

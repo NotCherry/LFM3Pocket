@@ -17,7 +17,7 @@ for phase in prepare verify; do
   timeout 120s adb shell am instrument -w -r \
     -e class com.notcherry.lfm3pocket.HistoryJourneyE2eTest \
     -e h05Phase "$phase" \
-    "$HANAMI_INSTRUMENTATION_RUNNER" > "$result"
+    "$HANAMI_TEST_RUNNER" > "$result"
   cat "$result"
   python3 .github/scripts/assert-instrumentation-result.py "$result"
 done
