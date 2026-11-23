@@ -8,7 +8,7 @@
 
 [`DESIGN.md`](../DESIGN.md) §2 is the Stillwater / Atlas color spec. Its hex values are normative, and the implementation checklist already told authors to take colors from Atlas tokens / `PocketTheme` rather than one-off hex. That line was a review convention. A pull request could still paint UI with a raw color literal and stay green.
 
-[#258](https://github.com/NotCherry/LFM3Pocket/pull/258) made `AtlasColors` / `PocketTheme` the single source of colors in code and aligned the Android resource palette with the same values. This record is the decision that the rule is machine-enforced, and the exact scope of that enforcement. The checks do not parse the DESIGN.md color table, and they do not compare every `colors.xml` entry to the spec.
+[#258](https://github.com/NotCherry/LFM3Pocket/pull/258) made `AtlasColors` / `PocketTheme` the Compose source for UI colors, including `inkSoft`, and added the CI guard. That pull request did not edit `colors.xml`. Soft chalk (`still_soft`) was already the spec value; the guard now requires it to stay in step with `inkSoft` and `StillwaterUi.SOFT`. It does not claim the rest of the resource palette was aligned. This record is the decision that the rule is machine-enforced, and the exact scope of that enforcement. The checks do not parse the DESIGN.md color table, and they do not compare every `colors.xml` entry to the spec.
 
 ## Decision
 

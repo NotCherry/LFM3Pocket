@@ -349,9 +349,9 @@ Size: large.
 
 ### Phase 5 — other devices
 
-**Loopback prompt-in landed in #147** (opt-in, `127.0.0.1`, no approve). Pairing token, token streaming, MCP, and companions remain open. Size was medium for loopback, more for companions.
+**Loopback prompt-in landed in #147** (opt-in, `127.0.0.1`, no approve). [#205](https://github.com/NotCherry/LFM3Pocket/pull/205) added the per-install bearer and the request bounds ([ADR 0015](../adr/0015-loopback-api-local-only.md)). Token streaming, MCP, companions, and a separate cross-device pairing flow remain open.
 
-- ~~Loopback API, off by default, `127.0.0.1`, prompt in, no `approve`.~~ Pairing token and token streaming still open.
+- ~~Loopback API, off by default, `127.0.0.1`, prompt in, no `approve`, per-install bearer ([ADR 0015](../adr/0015-loopback-api-local-only.md)).~~ Token streaming, MCP, and companions still open.
 - MCP server as a skin on that API. MCP client as a second opt-in endpoint beside SearXNG.
 - Wear or desktop as clients of that API. No shell bridge.
 

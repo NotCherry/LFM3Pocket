@@ -1,4 +1,4 @@
-# Atlas UI acceptance matrix — LFM3 Pocket
+# Atlas UI acceptance matrix
 
 This is the **UI** test-to-requirement map for the Atlas redesign epic (tracker [#135](https://github.com/NotCherry/LFM3Pocket/issues/135) / U00). It tracks **UT-01..UT-08** only.
 

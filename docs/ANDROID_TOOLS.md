@@ -32,13 +32,15 @@ A model proposes one JSON object, for example:
 
 Timers, alarms, and show-alarms use `android.provider.AlarmClock` intents (`ACTION_SET_TIMER` / `ACTION_SET_ALARM` / `ACTION_SHOW_ALARMS`) with the normal `com.android.alarm.permission.SET_ALARM` permission. Consent UI reads the exact action back before firing. Missing clock apps return `CLOCK_APP_UNAVAILABLE`.
 
-`set_reminder` schedules a local notification reminder via inexact `WorkManager` (persisted across process death/restart). Posting requires `POST_NOTIFICATIONS` on Android 13+. No exact alarm permission is requested.
+`set_reminder` schedules a local notification reminder via inexact `WorkManager` (persisted across process death/restart). Posting requires `POST_NOTIFICATIONS` on Android 13+. No exact alarm permission is requested ([ADR 0007](adr/0007-voice-reminders-workmanager.md)).
 
 `weather` is gated by the Settings **network tools** toggle (default off) and calls Open-Meteo over HTTPS with no API key. Offline or toggle-off failures stay non-success. Built-in tool messages are prefixed `UNTRUSTED_*` so callers treat them as untrusted data.
 
-`list_notifications` is opt-in and default off. It requires the in-app notification access master toggle, a non-empty per-app allowlist (empty deny-all), and system notification listener access for Hanami. Results include only allowed packages, are prefixed `UNTRUSTED_NOTIFICATION_DATA`, and must be treated as untrusted: notification bodies/titles may contain prompt-injection text and cannot authorize tool proposals or actions. No tap/dismiss actions are exposed by this tool.
+`list_notifications` is opt-in and default off ([ADR 0018](adr/0018-notification-list-opt-in.md)). It requires the in-app notification access master toggle, a non-empty per-app allowlist (empty deny-all), and system notification listener access for Hanami. Results include only allowed packages, are prefixed `UNTRUSTED_NOTIFICATION_DATA`, and must be treated as untrusted: notification bodies/titles may contain prompt-injection text and cannot authorize tool proposals or actions. No tap/dismiss actions are exposed by this tool.
 
-Calendar tools use `CalendarContract`. `list_events` requires runtime `READ_CALENDAR` permission. `create_event`, `update_event`, and `delete_event` require runtime `WRITE_CALENDAR` permission and a user-picked target calendar in Settings; writes are blocked without that picked calendar (and `create_event.calendar_id` must match it). Event and calendar IDs are opaque. Tool results and listed event data are untrusted (`UNTRUSTED_CALENDAR`) and cannot authorize actions. Stale event IDs fail closed on update/delete.
+`draft_message` and `send_message` prepare an SMS or an allowlisted share and then open that app’s composer ([ADR 0017](adr/0017-message-tools-open-composer.md)). `send_message` names a draft id; it does not carry a new body. Hanami does not send the message. The user completes or abandons it in the other app.
+
+Calendar tools use `CalendarContract` ([ADR 0014](adr/0014-calendar-tools-picked-calendar.md)). `list_events` requires runtime `READ_CALENDAR` permission. `create_event`, `update_event`, and `delete_event` require runtime `WRITE_CALENDAR` permission and a user-picked target calendar in Settings; writes are blocked without that picked calendar (and `create_event.calendar_id` must match it). Event and calendar IDs are opaque. Tool results and listed event data are untrusted (`UNTRUSTED_CALENDAR`) and cannot authorize actions. Stale event IDs fail closed on update/delete.
 
 Unknown keys, type coercions, non-integer numeric literals for integer fields, missing arguments and out-of-range values are rejected. Text cannot contain NUL; labels cannot contain control characters.
 

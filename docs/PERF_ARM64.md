@@ -28,7 +28,7 @@ Owner report: the same LFM3 Q4_K_M GGUF ran at ~10+ tok/s decode in PocketPal AI
 | Topology thread default | Avoid little-core oversubscription on 2-cluster SoCs; use big+mid only when a mid cluster exists (≥3). Device-dependent. |
 | `n_batch` ≤1024 | Faster prompt processing; little effect on single-token decode. |
 | Infer thread priority | Avoids occasional background nice; small/situational. |
-| `ngram-mod` prompt lookup (ADR 0011) | Batches verified draft tokens; gain when chat repeats prompt/history n-grams. No second GGUF. Phone params: `n_match=16`, `n_max=12`. Settings speed test prints **sequential** and **ngram-mod** tg tok/s. |
+| `ngram-mod` prompt lookup (ADR 0011) | Batches verified draft tokens; gain when chat repeats prompt/history n-grams. No second GGUF. Phone params: `n_match=16`, `n_max=12`. If hybrid memory cannot trim the prompt tail, that turn decodes sequentially. Settings speed test prints **sequential** and **ngram-mod** tg tok/s. |
 
 ## Before / after tok/s
 
