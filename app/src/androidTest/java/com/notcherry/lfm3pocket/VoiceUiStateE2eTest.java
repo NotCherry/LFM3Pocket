@@ -144,10 +144,20 @@ public final class VoiceUiStateE2eTest {
             assertTrue(timeoutStatus.get(), timeoutStatus.get().toLowerCase().contains("timed out")
                     || timeoutStatus.get().toLowerCase().contains("timeout"));
 
+            waitFor("listen idle after timeout", () -> {
+                final boolean[] idle = { false };
+                scenario.onActivity(activity -> {
+                    VoiceListenSession.State state = ((Lfm3PocketApplication) activity.getApplication())
+                            .modelRuntime().voice().listenSessionForTests().state();
+                    idle[0] = state == VoiceListenSession.State.IDLE;
+                });
+                return idle[0];
+            });
+
             scenario.onActivity(activity -> {
-                app.capturePermission(false);
                 ModelRuntime runtime = ((Lfm3PocketApplication) activity.getApplication()).modelRuntime();
-                runtime.voice().cancelAll("reset");
+                runtime.stopTurn();
+                app.forceMicrophonePermission(false);
                 runtime.voice().beginShadeTalk();
             });
             waitFor("microphone error visible", () -> {

@@ -99,12 +99,13 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host, AutoClo
     }
 
     public void beginShadeTalk() {
-        if (callbacks.modelHandle() == 0L || callbacks.isGenerating()) return;
+        if (callbacks.modelHandle() == 0L) return;
         if (!((Lfm3PocketApplication) callbacks.app()).hasMicrophonePermission()) {
             String message = callbacks.app().getString(R.string.voice_mic_required);
             callbacks.onVoiceStatus().accept(message);
             return;
         }
+        if (callbacks.isGenerating()) return;
         if (!isEnabled()) {
             String message = disabledReason();
             callbacks.onVoiceStatus().accept(message);
@@ -136,6 +137,7 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host, AutoClo
 
     public void cancelAll(String reason) {
         transcriptionCancelled.set(true);
+        callbacks.engine().stop();
         spoken.stop();
         listen.cancel(reason);
         if (mode == Mode.CONFIRM) rejectPendingConfirm();
