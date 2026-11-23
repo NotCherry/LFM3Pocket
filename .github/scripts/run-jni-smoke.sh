@@ -63,8 +63,10 @@ fi
 
 # Cached AVD /data can hold an older smoke APK with a different signing key.
 SMOKE_PKG="${SMOKE_PKG:-dev.notcherry.hanami}"
+SMOKE_TEST_PKG="${SMOKE_TEST_PKG:-dev.notcherry.hanami.test}"
 # shellcheck disable=SC2046
 adb $(adb_target) uninstall "$SMOKE_PKG" >/dev/null 2>&1 || true
+adb $(adb_target) uninstall "$SMOKE_TEST_PKG" >/dev/null 2>&1 || true
 
 adb logcat -c || true
 
