@@ -244,6 +244,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         InterfaceSize.recreateIfChanged(this, attachedInterfaceScale);
         CactusWhistleModelDownloader.bindUi(cactusWhistleDownloadUi);
         if (CactusWhistleModelDownloader.isDownloading()) paintSpeechInputControls();
+        String pendingWhistleError = CactusWhistleModelDownloader.consumePendingBackgroundError();
+        if (pendingWhistleError != null && status != null) status.setText(pendingWhistleError);
     }
 
     @Override protected void onPause() {
@@ -2635,11 +2637,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             speechInputWhistleButton.setSelected(mode == SpeechInputMode.CACTUS_WHISTLE_STT);
             speechInputWhistleButton.setAlpha(mode == SpeechInputMode.CACTUS_WHISTLE_STT ? 1f : 0.7f);
         }
+        CactusWhistleModelStore store = new CactusWhistleModelStore(this);
         String path = prefs.cactusWhistleModelPath();
         boolean hasPath = path != null && !path.trim().isEmpty();
         if (hasPath && !new File(path).isFile()) {
             prefs.setCactusWhistleModelPath("");
             hasPath = false;
+        }
+        if (!hasPath && store.isReady()) {
+            path = store.modelFile().getAbsolutePath();
+            prefs.setCactusWhistleModelPath(path);
+            hasPath = true;
         }
         boolean downloading = CactusWhistleModelDownloader.isDownloading();
         if (speechInputCactusStatus != null && !downloading) {
@@ -2655,12 +2663,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             speechInputCactusStatus.setText(label);
         }
         if (speechInputCactusDownloadButton != null) {
-            CactusWhistleModelStore store = new CactusWhistleModelStore(this);
             speechInputCactusDownloadButton.setEnabled(!downloading && !store.isReady());
         }
         if (speechInputCactusClearButton != null) {
-            CactusWhistleModelStore store = new CactusWhistleModelStore(this);
-            speechInputCactusClearButton.setEnabled(hasPath || store.isReady());
+            speechInputCactusClearButton.setEnabled(!downloading && (hasPath || store.isReady()));
         }
     }
 

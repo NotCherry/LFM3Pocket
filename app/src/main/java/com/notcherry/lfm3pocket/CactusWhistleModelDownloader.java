@@ -31,6 +31,7 @@ public final class CactusWhistleModelDownloader {
 
     private static final AtomicBoolean IN_FLIGHT = new AtomicBoolean();
     private static volatile UiCallbacks boundUi;
+    private static volatile String pendingBackgroundError;
 
     private final CactusWhistleModelStore store;
     private final ModelFetcher fetcher;
@@ -54,12 +55,26 @@ public final class CactusWhistleModelDownloader {
         IN_FLIGHT.set(false);
     }
 
+    static void clearBoundUiForTests() {
+        boundUi = null;
+    }
+
     public static void bindUi(UiCallbacks callbacks) {
         boundUi = callbacks;
     }
 
     public static void unbindUi(UiCallbacks callbacks) {
         if (boundUi == callbacks) boundUi = null;
+    }
+
+    public static String consumePendingBackgroundError() {
+        String message = pendingBackgroundError;
+        pendingBackgroundError = null;
+        return message;
+    }
+
+    static void resetPendingBackgroundErrorForTests() {
+        pendingBackgroundError = null;
     }
 
     /** Starts a background download, or returns false if one is already in flight. */
@@ -101,15 +116,24 @@ public final class CactusWhistleModelDownloader {
                     StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);
             store.markComplete();
+            store.persistDownloadedModelSelection();
             if (progress != null) progress.onDone(target);
             UiCallbacks ui = boundUi;
-            if (ui != null) ui.onDone(target);
+            if (ui != null) {
+                ui.onDone(target);
+            } else {
+                pendingBackgroundError = null;
+            }
         } catch (Exception failed) {
             store.discardPartial();
             String message = failed.getMessage() == null ? failed.toString() : failed.getMessage();
             if (progress != null) progress.onError(message);
             UiCallbacks ui = boundUi;
-            if (ui != null) ui.onError(message);
+            if (ui != null) {
+                ui.onError(message);
+            } else {
+                pendingBackgroundError = message;
+            }
         }
     }
 
@@ -145,16 +169,18 @@ public final class CactusWhistleModelDownloader {
         connection.setInstanceFollowRedirects(true);
         connection.setConnectTimeout(30_000);
         connection.setReadTimeout(120_000);
-        connection.connect();
-        int code = connection.getResponseCode();
-        if (code < 200 || code >= 300) {
-            throw new IllegalStateException(name + ": HTTP " + code);
-        }
-        long total = connection.getContentLengthLong();
-        File parent = target.getParentFile();
-        if (parent != null) parent.mkdirs();
-        try (InputStream input = connection.getInputStream()) {
-            writeAndVerifySha256(input, expectedSha256, name, target, total, progress, clock);
+        try {
+            connection.connect();
+            int code = connection.getResponseCode();
+            if (code < 200 || code >= 300) {
+                throw new IllegalStateException(name + ": HTTP " + code);
+            }
+            long total = connection.getContentLengthLong();
+            File parent = target.getParentFile();
+            if (parent != null) parent.mkdirs();
+            try (InputStream input = connection.getInputStream()) {
+                writeAndVerifySha256(input, expectedSha256, name, target, total, progress, clock);
+            }
         } finally {
             connection.disconnect();
         }
