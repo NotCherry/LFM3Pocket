@@ -1,16 +1,25 @@
 package com.notcherry.lfm3pocket;
 
+import android.app.Activity;
+import android.app.role.RoleManager;
+import android.content.Intent;
+import android.os.Build;
+import android.provider.Settings;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.function.Consumer;
+
 /** Settings scroll row for choosing the device default assistant. */
 final class DefaultAssistantSettingsSection {
     static final class Deps {
-        final Runnable openDefaultAssistantPicker;
+        final Consumer<Intent> launchActivity;
+        final Consumer<CharSequence> chatStatus;
 
-        Deps(Runnable openDefaultAssistantPicker) {
-            this.openDefaultAssistantPicker = openDefaultAssistantPicker;
+        Deps(Consumer<Intent> launchActivity, Consumer<CharSequence> chatStatus) {
+            this.launchActivity = launchActivity;
+            this.chatStatus = chatStatus;
         }
     }
 
@@ -26,10 +35,30 @@ final class DefaultAssistantSettingsSection {
         Button defaultAssistantButton = ui.button(ui.getString(R.string.default_assistant_button));
         defaultAssistantButton.setId(R.id.settings_default_assistant);
         StillwaterUi.quiet(defaultAssistantButton);
-        defaultAssistantButton.setOnClickListener(v -> deps.openDefaultAssistantPicker.run());
+        defaultAssistantButton.setOnClickListener(v -> openDefaultAssistantPicker());
         StillwaterReadable.addFlexibleFullWidth(configuration, defaultAssistantButton, 48);
         TextView defaultAssistantHelp = ui.label(ui.getString(R.string.default_assistant_help), 12, inkMuted);
         StillwaterReadable.prepareWrappingLabel(defaultAssistantHelp);
         configuration.addView(defaultAssistantHelp);
+    }
+
+    private void openDefaultAssistantPicker() {
+        Activity activity = ui.settingsActivity();
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                RoleManager roles = activity.getSystemService(RoleManager.class);
+                if (roles != null && roles.isRoleAvailable(RoleManager.ROLE_ASSISTANT)) {
+                    deps.launchActivity.accept(roles.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT));
+                    return;
+                }
+            }
+            deps.launchActivity.accept(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS));
+        } catch (Exception e) {
+            try {
+                deps.launchActivity.accept(new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));
+            } catch (Exception nested) {
+                deps.chatStatus.accept("Could not open the default-assistant settings.");
+            }
+        }
     }
 }

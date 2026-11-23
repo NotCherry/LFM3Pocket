@@ -534,7 +534,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         integrationsSettingsSection.mount(configuration, ink, inkMuted);
 
         new DefaultAssistantSettingsSection(this, new DefaultAssistantSettingsSection.Deps(
-                this::openDefaultAssistantPicker)).mount(configuration, inkMuted);
+                this::startActivity, this::setChatStatus)).mount(configuration, inkMuted);
         new CrashLogSettingsSection(this, new CrashLogSettingsSection.Deps(this::setChatStatus))
                 .mount(configuration, ink, inkMuted);
 
@@ -1669,25 +1669,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             chatPanel.render(FlatTranscriptFormatter.EMPTY_TRANSCRIPT, freshStatus);
         }
         updateControls();
-    }
-
-    private void openDefaultAssistantPicker() {
-        try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                android.app.role.RoleManager roles = getSystemService(android.app.role.RoleManager.class);
-                if (roles != null && roles.isRoleAvailable(android.app.role.RoleManager.ROLE_ASSISTANT)) {
-                    startActivity(roles.createRequestRoleIntent(android.app.role.RoleManager.ROLE_ASSISTANT));
-                    return;
-                }
-            }
-            startActivity(new Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS));
-        } catch (Exception e) {
-            try {
-                startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));
-            } catch (Exception nested) {
-                setChatStatus("Could not open the default-assistant settings.");
-            }
-        }
     }
 
     private void stopActiveWork() {
