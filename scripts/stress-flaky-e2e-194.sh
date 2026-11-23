@@ -29,6 +29,14 @@ RUNNER="${RUNNER:-$HANAMI_TEST_RUNNER}"
 RUNS="${STRESS_RUNS:-${1:-10}}"
 INSTRUMENT_TIMEOUT="${STRESS_INSTRUMENT_TIMEOUT:-300}"
 INSTRUMENT_KILL_AFTER="${STRESS_INSTRUMENT_KILL_AFTER:-15}"
+if [[ ! "$INSTRUMENT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: STRESS_INSTRUMENT_TIMEOUT must be a positive integer (got: ${INSTRUMENT_TIMEOUT})" >&2
+  exit 1
+fi
+if [[ ! "$INSTRUMENT_KILL_AFTER" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: STRESS_INSTRUMENT_KILL_AFTER must be a positive integer (got: ${INSTRUMENT_KILL_AFTER})" >&2
+  exit 1
+fi
 ARTIFACT_DIR="${STRESS_ARTIFACT_DIR:-}"
 TESTS=(
   "com.notcherry.lfm3pocket.BackgroundNotificationE2eTest#loadedModelAndActiveReplyDriveTheOngoingNotification"
@@ -66,7 +74,7 @@ EOF
 }
 
 kill_stuck_instrumentation() {
-  adb shell am force-stop "$HANAMI_APP_ID" >/dev/null 2>&1 || true
+  adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
   adb shell am force-stop "$HANAMI_TEST_PKG" >/dev/null 2>&1 || true
 }
 
@@ -83,7 +91,6 @@ for i in $(seq 1 "$RUNS"); do
     instrument_rc=$?
     set -e
     if [[ "$instrument_rc" -eq 124 ]]; then
-      kill_stuck_instrumentation
       out="${out}
 ERROR: am instrument timed out after ${INSTRUMENT_TIMEOUT}s"
     elif [[ "$instrument_rc" -ne 0 ]]; then
@@ -93,6 +100,9 @@ ERROR: am instrument exited ${instrument_rc}"
     printf '%s\n' "$out"
     if [[ "$instrument_rc" -ne 0 ]]; then
       capture_failure "$i" "$test" "$out"
+      if [[ "$instrument_rc" -eq 124 ]]; then
+        kill_stuck_instrumentation
+      fi
       exit 1
     fi
     if printf '%s\n' "$out" | grep -qE 'FAILURES!!!|Error in '; then
