@@ -79,6 +79,8 @@ jobs:
           python3 .github/scripts/assert-release-ci-gate.py --self-test
       - name: Verify Stage 1 acceptance matrix completeness
         run: python3 .github/scripts/check-acceptance-matrix.py
+      - name: Verify UI color tokens (no ad-hoc hex in UI packages)
+        run: python3 .github/scripts/check-ui-tokens.py
       - name: Verify ARM64 evidence collector negative controls
         run: |
           bash -n .github/scripts/collect-arm64-omni-evidence.sh

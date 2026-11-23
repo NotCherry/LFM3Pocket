@@ -29,7 +29,9 @@ Use these names in code (`PocketTheme` / `AtlasColors`). Hex values are normativ
 | `surface` | `#0E0E0C` | App background. Full-bleed. |
 | `surfaceRaised` | `#161614` | Slightly lifted panels (tool panel fill, settings groups). |
 | `surfaceOverlay` | `#1C1C18` | Modals, consent sheet, overflow menus. |
+| `surfaceGlow` | `#1C1A16` | Warm Home radial-gradient highlight (warmer than `surfaceOverlay`). |
 | `ink` | `#F3EFE6` | Primary chalk text (body, headlines). |
+| `inkSoft` | `#C9C2B4` | Quiet chalk for secondary body (user turns, soft Home copy). Between `ink` and `inkMuted`. |
 | `inkMuted` | `#8F897C` | Secondary text, timestamps, hints. |
 | `inkDisabled` | `#A39E92` | Disabled controls and placeholders. Light enough for WCAG AA on `surface`. |
 | `accent` | `#E6C27A` | Candle: links, primary CTA fill, source links, stream cursor. |
@@ -154,7 +156,7 @@ Atlas prefers **borders over shadows**.
 
 ### 6.4 Tool panel (U11)
 
-- Bordered panel: `surfaceRaised` fill, `border` stroke, radius 6–8dp.
+- Bordered panel: `surfaceRaised` fill, `border` stroke, radius **0–2dp** (same as §4 / `AtlasShapes`; nearly square).
 - Header: tool name in `mono` + optional risk tint (`warn` / `danger` / `ok`).
 - Body: arguments / details in `mono`, selectable where useful.
 - Actions: **Approve** / **Reject** as clear buttons; keep stable IDs `tool_approve`, `tool_reject`, `tool_details`, `tool_status` (add `tool_risk`, `tool_result` per U11).

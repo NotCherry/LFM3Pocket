@@ -39,7 +39,7 @@ public final class ModelImporter {
             if (expectedBytes >= 0 && copied != expectedBytes) throw new IOException("Selected document was truncated or changed during import");
             if (copied < 1024 * 1024) throw new IOException("File is too small to be an LFM3 GGUF");
             try (RandomAccessFile check = new RandomAccessFile(temporary, "r")) {
-                if (check.readInt() != 0x47475546) throw new IOException("Selected document is not GGUF");
+                if (check.readInt() != 0x47475546 /* ui-tokens: allow */) throw new IOException("Selected document is not GGUF");
                 int version = Integer.reverseBytes(check.readInt());
                 if (version != 2 && version != 3) throw new IOException("Unsupported GGUF version");
             }
