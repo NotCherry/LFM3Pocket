@@ -27,6 +27,8 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.annotation.StringRes;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -102,7 +104,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     boolean assistantVoiceSessionLaunchRequested;
     boolean freshChatRequestedFromAssist;
 
-    private TextView status;
     private ChatShellSection chatShellSection;
     private ModelManagerPanel modelManager;
     private View settingsHost;
@@ -123,12 +124,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private final ModelRuntime.Ui viewer = new ModelRuntime.Ui() {
         @Override public void onChat(String transcript, String message, boolean running) {
-            if (destroyed || chatPanel == null || status == null) return;
+            if (destroyed || chatPanel == null || chatShellSection == null) return;
             generating = running;
             busy = running || recordingActive() || playbackActive() || speaking;
             chatPanel.render(transcript, message);
-            status.setText(message);
-            status.setVisibility(running ? View.GONE : View.VISIBLE);
+            chatShellSection.applyChatStatusDuringTurn(message, running);
             updateControls();
         }
         @Override public void onSnapshot(ChatSnapshot snapshot) {
@@ -144,16 +144,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             if (chatShellSection != null) chatShellSection.setBrandTitle(historyTitle);
         }
         @Override public void onPlayback(String message) {
-            if (destroyed || status == null) return;
+            if (destroyed || chatShellSection == null) return;
             busy = recordingActive() || playbackActive() || generating || speaking;
-            status.setText(message);
+            setChatStatus(message);
             updateControls();
         }
         @Override public void onSpeech(boolean active, String message) {
-            if (destroyed || status == null) return;
+            if (destroyed || chatShellSection == null) return;
             speaking = active;
             busy = active || recordingActive() || playbackActive() || generating;
-            status.setText(message);
+            setChatStatus(message);
             updateControls();
         }
         @Override public void onToolOutcome(ToolRegistry.Request request, ToolCoordinator.Outcome outcome) {
@@ -161,10 +161,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             presentToolOutcome(request, outcome);
         }
         @Override public void onVoiceStatus(String message) {
-            if (destroyed || status == null) return;
+            if (destroyed || chatShellSection == null) return;
             if (message != null) {
                 voiceUiStatus = message;
-                status.setText(message);
+                setChatStatus(message);
             }
             updateControls();
         }
@@ -184,7 +184,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             if (CactusWhistleModelDownloader.isDownloading()) integrationsSettingsSection.paintSpeechInputControls();
         }
         String pendingWhistleError = CactusWhistleModelDownloader.consumePendingBackgroundError();
-        if (pendingWhistleError != null && status != null) status.setText(pendingWhistleError);
+        if (pendingWhistleError != null) setChatStatus(pendingWhistleError);
     }
 
     @Override protected void onPause() {
@@ -212,7 +212,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                         return;
                     }
                     busy = recordingActive() || playbackActive() || speaking || generating;
-                    status.setText(message);
+                    setChatStatus(message);
                     if (completed != null) {
                         if (!pendingAudioPath.isEmpty()) HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
                         pendingAudioPath = completed.getAbsolutePath();
@@ -232,7 +232,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         }, error -> {
             if (destroyed) return;
             inferenceSettings=InferenceSettings.DEFAULT;inferenceEngine.configure(inferenceSettings);
-            settingsLoaded=true;status.setText("Settings unavailable; using defaults: "+error);
+            settingsLoaded=true;setChatStatus("Settings unavailable; using defaults: "+error);
             syncInlineSettingsFields();updateControls();
         });
         imageSettingsStore.load(settings -> {
@@ -243,7 +243,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             if (destroyed) return;
             imageSettings=ImageSettings.DEFAULT;imageSettingsLoaded=true;
             if (imageSettingsSection != null) imageSettingsSection.syncFields();
-            status.setText("Image settings unavailable; using defaults: "+error);
+            setChatStatus("Image settings unavailable; using defaults: "+error);
         });
         String previous = pocketPreferences().getString("model", "");
         mmprojPath = pocketPreferences().getString("mmproj", "");
@@ -257,12 +257,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         final boolean modelInMemory = runtime.handle() != 0L
                 && (previous.equals(runtime.loadedPath()) || isContentUri(previous));
         if (modelInMemory) {
-            if (!launchNewChat && !runtime.isGenerating()) status.setText(mmprojPath == null || mmprojPath.isEmpty()
+            if (!launchNewChat && !runtime.isGenerating()) setChatStatus(mmprojPath == null || mmprojPath.isEmpty()
                     ? "Text model ready · offline" : "Model and projector loaded · offline");
         } else if (!previous.isEmpty() && (isContentUri(previous) || new File(previous).isFile())) {
             loadSelectedModel(previous, mmprojPath);
         } else if (runtime.handle() == 0L) {
-            status.setText("No model loaded. Select an LFM3 GGUF file.");
+            setChatStatus("No model loaded. Select an LFM3 GGUF file.");
         }
         if (launchNewChat) {
             mainHandler.post(() -> handlePendingNewChatRequests(getIntent()));
@@ -377,6 +377,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         if (chatShellSection != null) chatShellSection.setChatStatus(message);
     }
 
+    void setChatStatus(@StringRes int resId) {
+        setChatStatus(getString(resId));
+    }
+
+    void setChatStatus(@StringRes int resId, Object... formatArgs) {
+        setChatStatus(getString(resId, formatArgs));
+    }
+
+    private CharSequence currentChatStatus() {
+        return chatShellSection == null ? "" : chatShellSection.chatStatusText();
+    }
+
     @Override public EditText addSettingInput(LinearLayout form, String title, String hint, int value, int id,
             int step, int min, int max) {
         return settingInput(form, title, hint, value, id, step, min, max);
@@ -448,7 +460,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 new ChatShellSection.ChatPanelDeps(this::send, this::stopActiveWork, this::onChatPanelNewChat,
                         this::onChatPanelRetryTurn, this::requestCompact)));
         chatShellSection.mountChrome(root, ink, inkMuted, accent);
-        status = chatShellSection.statusView();
 
         // --- Settings host (hidden by default) ---
         LinearLayout settingsRoot = new LinearLayout(this);
@@ -579,7 +590,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             share.putExtra(android.content.Intent.EXTRA_SUBJECT, "Hanami crash log");
             share.putExtra(android.content.Intent.EXTRA_TEXT, body);
             startActivity(android.content.Intent.createChooser(share, getString(R.string.settings_crash_log_export)));
-            status.setText(getString(R.string.settings_crash_log_exported));
+            setChatStatus(getString(R.string.settings_crash_log_exported));
         });
         configuration.addView(exportCrashLog, new LinearLayout.LayoutParams(-1, dp(44)));
         Button clearCrashLog = button(getString(R.string.settings_crash_log_clear));
@@ -722,7 +733,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             modelManager.showSettings(settingsLoaded ? inferenceSettings.summary() : "Loading inference settings...");
             String model = pocketPreferences().getString("model", "");
             String projector = pocketPreferences().getString("mmproj", "");
-            String description = status.getText().toString();
+            String description = currentChatStatus().toString();
             modelManager.updateSelection(
                     model.isEmpty() ? "" : pocketPreferences().getString("model_name", new File(model).getName()),
                     projector.isEmpty() ? "" : pocketPreferences().getString("projector_name", new File(projector).getName()),
@@ -732,14 +743,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private void requestCompact() {
         if (busy || generating || speaking || recordingActive() || playbackActive() || modelHandle() == 0L || !settingsLoaded) {
-            if (modelHandle() == 0L) status.setText("No model loaded.");
+            if (modelHandle() == 0L) setChatStatus("No model loaded.");
             return;
         }
         session = runtime.session();
         boolean started = runtime.requestCompact();
         if (!started && session != null) {
             // Session emits a specific status when it cannot compact yet.
-            status.setText(session.snapshot() == null ? status.getText() : session.snapshot().status);
+            ChatSnapshot compactSnapshot = session.snapshot();
+            setChatStatus(compactSnapshot == null ? currentChatStatus() : compactSnapshot.status);
         } else if (started) {
             busy = true;
             updateControls();
@@ -755,12 +767,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void unloadSelectedModel() {
         if (busy || modelHandle() == 0) return;
         busy = true;
-        status.setText("Unloading model...");
+        setChatStatus("Unloading model...");
         updateControls();
         runtime.unload("user", () -> {
             if (destroyed) return;
             busy = false;
-            status.setText("Model unloaded. Selected files remain available for reload.");
+            setChatStatus("Model unloaded. Selected files remain available for reload.");
             updateControls();
         });
     }
@@ -886,12 +898,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         }
         if (uris.isEmpty()) return;
         if (pendingDocuments.size() + uris.size() > DocumentAttachmentReader.MAX_FILES) {
-            status.setText("You can attach up to " + DocumentAttachmentReader.MAX_FILES + " documents.");
+            setChatStatus("You can attach up to " + DocumentAttachmentReader.MAX_FILES + " documents.");
             return;
         }
         busy = true;
         updateControls();
-        status.setText(getString(R.string.importing_document));
+        setChatStatus(getString(R.string.importing_document));
         worker.execute(() -> {
             java.util.ArrayList<ChatSession.Attachment> imported = new java.util.ArrayList<>();
             String error = null;
@@ -932,10 +944,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 if (destroyed) return;
                 busy = false;
                 if (importError != null) {
-                    status.setText(importError);
+                    setChatStatus(importError);
                 } else if (!ok.isEmpty()) {
                     pendingDocuments.addAll(ok);
-                    status.setText(getString(R.string.documents_attached_status, pendingDocuments.size()));
+                    setChatStatus(getString(R.string.documents_attached_status, pendingDocuments.size()));
                 }
                 syncPendingDocumentsUi();
                 updateControls();
@@ -1004,9 +1016,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         pendingDocuments.remove(index);
         syncPendingDocumentsUi();
         if (pendingDocuments.isEmpty()) {
-            status.setText("Document removed.");
+            setChatStatus("Document removed.");
         } else {
-            status.setText(getString(R.string.documents_attached_status, pendingDocuments.size()));
+            setChatStatus(getString(R.string.documents_attached_status, pendingDocuments.size()));
         }
         updateControls();
     }
@@ -1030,7 +1042,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void copySelectedPhoto(Uri uri) {
         busy = true;
         updateControls();
-        status.setText(getString(R.string.importing_photo));
+        setChatStatus(getString(R.string.importing_photo));
         ImageSettings prepareSettings = imageSettings;
         worker.execute(() -> {
             File photo = new File(getCacheDir(), "photo-" + System.currentTimeMillis() + ".img");
@@ -1056,7 +1068,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 String validationError = ImageAttachmentFiles.validationError(photo);
                 if (validationError != null) throw new IOException(validationError);
                 runOnUiThread(() -> {
-                    if (!destroyed) status.setText(getString(R.string.preparing_photo));
+                    if (!destroyed) setChatStatus(getString(R.string.preparing_photo));
                 });
                 ImagePreprocessor.Result prepared = ImagePreprocessor.prepare(this, photo, prepareSettings);
                 preparedCopy = prepared.file;
@@ -1067,7 +1079,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 if (preparedCopy != null && !preparedCopy.equals(photo)) preparedCopy.delete();
                 runOnUiThread(() -> {
                     busy = false;
-                    status.setText("Photo import failed: " + e.getMessage());
+                    setChatStatus("Photo import failed: " + e.getMessage());
                     updateControls();
                 });
             }
@@ -1077,7 +1089,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void prepareCapturedPhoto(String path) {
         busy = true;
         updateControls();
-        status.setText(getString(R.string.preparing_photo));
+        setChatStatus(getString(R.string.preparing_photo));
         ImageSettings prepareSettings = imageSettings;
         worker.execute(() -> {
             File photo = new File(path);
@@ -1094,7 +1106,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 HistoryMediaCleanup.deleteAttachment(this, path);
                 runOnUiThread(() -> {
                     busy = false;
-                    status.setText("Photo import failed: " + e.getMessage());
+                    setChatStatus("Photo import failed: " + e.getMessage());
                     updateControls();
                 });
             }
@@ -1131,7 +1143,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 pendingAudioPath=path;
             }
             busy = false;
-            status.setText("photo".equals(kind)
+            setChatStatus("photo".equals(kind)
                     ? getString(R.string.photo_attached_status)
                     : (kind + " attached. Add a question and press Send."));
             updateControls();
@@ -1143,7 +1155,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
         pendingImagePath = "";
         chatPanel.clearImageAttachment();
-        status.setText("Photo removed. Add a question and press Send.");
+        setChatStatus("Photo removed. Add a question and press Send.");
         updateControls();
     }
 
@@ -1186,7 +1198,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         voiceSttCancelled.set(false);
         transcribingVoiceInput = true;
         busy = true;
-        if (status != null) status.setText(getString(R.string.speech_input_transcribing));
+        setChatStatus(getString(R.string.speech_input_transcribing));
         updateControls();
         audioWorker.execute(() -> {
             SttResult result;
@@ -1203,7 +1215,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 if (destroyed) return;
                 busy = recordingActive() || playbackActive() || speaking || generating;
                 if (stt == null || stt.status == SttResult.Status.CANCELLED || voiceSttCancelled.get()) {
-                    status.setText("Speech transcription cancelled.");
+                    setChatStatus("Speech transcription cancelled.");
                     updateControls();
                     return;
                 }
@@ -1212,10 +1224,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                         String msg = stt.message == null || stt.message.isEmpty()
                                 ? getString(R.string.speech_input_transcript_empty)
                                 : stt.message;
-                        status.setText(msg);
+                        setChatStatus(msg);
                     } else {
                         String detail = stt.message == null || stt.message.isEmpty() ? "unknown error" : stt.message;
-                        status.setText(getString(R.string.speech_input_transcript_failed, detail));
+                        setChatStatus(getString(R.string.speech_input_transcript_failed, detail));
                     }
                     updateControls();
                     return;
@@ -1246,7 +1258,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED && !destroyed && !busy) {
                 launchCameraCapture();
             } else {
-                status.setText("Camera access is needed to take a photo.");
+                setChatStatus("Camera access is needed to take a photo.");
             }
             updateControls();
             return;
@@ -1260,15 +1272,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             }
             if (granted
                     && foreground && !destroyed && !busy) recordingController.start();
-            else status.setText("Microphone access is needed for voice input.");
+            else setChatStatus("Microphone access is needed for voice input.");
             if (!granted) pendingAssistantVoiceSession = false;
             return;
         }
         if (requestCode == REQUEST_READ_CALENDAR) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 showCalendarPickerDialog();
-            } else if (status != null) {
-                status.setText(getString(R.string.calendar_permission_needed));
+            } else {
+                setChatStatus(getString(R.string.calendar_permission_needed));
             }
             if (integrationsSettingsSection != null) integrationsSettingsSection.refreshCalendarPickerStatus();
         }
@@ -1325,11 +1337,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         if (code == TAKE_PHOTO && result == RESULT_OK && data != null) {
             String path = data.getStringExtra(CameraCaptureActivity.EXTRA_PHOTO_PATH);
             if (path != null && new File(path).isFile()) prepareCapturedPhoto(path);
-            else status.setText("The camera did not return a photo.");
+            else setChatStatus("The camera did not return a photo.");
             return;
         }
         if (code == TAKE_PHOTO && result != RESULT_OK) {
-            status.setText("Camera closed without taking a photo.");
+            setChatStatus("Camera closed without taking a photo.");
             return;
         }
         if ((code == OPEN_MODEL_URI || code == OPEN_MMPROJ_URI)
@@ -1345,7 +1357,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         final Uri uri = data.getData();
         busy = true;
         updateControls();
-        status.setText(code == PICK_MODEL ? getString(R.string.importing_model) : "Importing projector into private storage...");
+        setChatStatus(code == PICK_MODEL ? getString(R.string.importing_model) : "Importing projector into private storage...");
         AtomicBoolean cancellation = new AtomicBoolean();
         importCancellation = cancellation;
         updateControls();
@@ -1368,13 +1380,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 imported = new ModelImporter(new File(getFilesDir(), "models")).importFile(
                         () -> getContentResolver().openInputStream(uri), expected, cancellation,
                         bytes -> runOnUiThread(() -> {
-                            if (!destroyed && !cancellation.get()) status.setText("Importing GGUF: " + (bytes / 1024 / 1024) + " MiB. Stop to cancel.");
+                            if (!destroyed && !cancellation.get()) setChatStatus("Importing GGUF: " + (bytes / 1024 / 1024) + " MiB. Stop to cancel.");
                         }));
                 if (cancellation.get()) throw new IOException("Import cancelled");
                 String model = isProjector ? previousModel : imported.getAbsolutePath();
                 String projector = isProjector ? imported.getAbsolutePath() : "";
                 if (runtime.loadBlocking(model, projector, statusText -> runOnUiThread(() -> {
-                    if (!destroyed) status.setText(statusText);
+                    if (!destroyed) setChatStatus(statusText);
                 }))) {
                     pocketPreferences().edit().putString("model", model)
                             .putString("mmproj", projector)
@@ -1387,7 +1399,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 }
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    if (!destroyed) status.setText("Import failed: " + e.getMessage());
+                    if (!destroyed) setChatStatus("Import failed: " + e.getMessage());
                 });
             } finally {
                 if (imported != null) imported.delete();
@@ -1406,7 +1418,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void openExternalDocument(Uri uri, boolean projector) {
         busy = true;
         updateControls();
-        status.setText(getString(R.string.opening_external_model));
+        setChatStatus(getString(R.string.opening_external_model));
         worker.execute(() -> {
             ExternalModelStore store = ((Lfm3PocketApplication) getApplication()).externalModels();
             try {
@@ -1441,7 +1453,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 GgufSelection.validate(new File(modelPath),
                         projectorPath.isEmpty() ? null : new File(projectorPath));
                 boolean loaded = runtime.loadBlocking(modelPath, projectorPath, statusText -> runOnUiThread(() -> {
-                    if (!destroyed) status.setText(statusText);
+                    if (!destroyed) setChatStatus(statusText);
                 }));
                 if (loaded) {
                     pocketPreferences().edit()
@@ -1462,7 +1474,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 }
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    if (!destroyed) status.setText("Could not open storage model: " + e.getMessage());
+                    if (!destroyed) setChatStatus("Could not open storage model: " + e.getMessage());
                 });
             } finally {
                 runOnUiThread(() -> {
@@ -1495,7 +1507,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void importWhistleModel(Uri uri) {
         busy = true;
         updateControls();
-        status.setText(getString(R.string.opening_external_model));
+        setChatStatus(getString(R.string.opening_external_model));
         worker.execute(() -> {
             File dest = null;
             try {
@@ -1531,7 +1543,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                     new RuntimePreferences(this).setCactusWhistleModelPath(saved.getAbsolutePath());
                     if (integrationsSettingsSection != null) integrationsSettingsSection.paintSpeechInputControls();
                     busy = false;
-                    status.setText(saved.getName() + " selected for Cactus Whistle STT.");
+                    setChatStatus(saved.getName() + " selected for Cactus Whistle STT.");
                     updateControls();
                 });
                 return;
@@ -1541,7 +1553,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 runOnUiThread(() -> {
                     if (destroyed) return;
                     busy = false;
-                    status.setText("Could not import Whistle model: " + message);
+                    setChatStatus("Could not import Whistle model: " + message);
                     updateControls();
                 });
             }
@@ -1555,7 +1567,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             final String targetProjector = projector == null ? "" : projector;
             busy = true;
             updateControls();
-            status.setText(getString(R.string.opening_external_model));
+            setChatStatus(getString(R.string.opening_external_model));
             worker.execute(() -> {
                 try {
                     ExternalModelStore store = ((Lfm3PocketApplication) getApplication()).externalModels();
@@ -1563,7 +1575,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                     String projectorPath = targetProjector.isEmpty()
                             ? "" : resolveLoadPath(targetProjector, store);
                     boolean ok = runtime.loadBlocking(modelPath, projectorPath, statusText -> runOnUiThread(() -> {
-                        if (!destroyed) status.setText(statusText);
+                        if (!destroyed) setChatStatus(statusText);
                     }));
                     if (ok) {
                         java.util.HashSet<String> active = new java.util.HashSet<>();
@@ -1583,7 +1595,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                         // Defensive: do not retain unrelated stale leases beyond current selection.
                         store.releaseExcept(active);
                         if (!destroyed) {
-                            runOnUiThread(() -> status.setText("Could not load the selected storage model."));
+                            runOnUiThread(() -> setChatStatus("Could not load the selected storage model."));
                         }
                     }
                 } catch (Exception e) {
@@ -1597,7 +1609,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                     if (isContentUri(targetProjector) && !active.contains(targetProjector)) store.release(targetProjector);
                     store.releaseExcept(active);
                     runOnUiThread(() -> {
-                        if (!destroyed) status.setText("Could not open storage model: " + e.getMessage());
+                        if (!destroyed) setChatStatus("Could not open storage model: " + e.getMessage());
                     });
                 } finally {
                     runOnUiThread(() -> {
@@ -1617,11 +1629,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void loadModelInBackground(String path, String projector) {
         busy = true;
         updateControls();
-        status.setText(getString(R.string.loading_model));
+        setChatStatus(getString(R.string.loading_model));
         runtime.load(path, projector, statusText -> {
             if (destroyed) return;
             busy = false;
-            status.setText(statusText);
+            setChatStatus(statusText);
             updateControls();
             maybeStartPendingAssistantVoiceSession();
         });
@@ -1666,14 +1678,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             String model = pocketPreferences().getString("model", "");
             if (!busy && (model == null || model.isEmpty())) {
                 pendingAssistantVoiceSession = false;
-                status.setText(getString(R.string.assistant_voice_needs_model));
+                setChatStatus(getString(R.string.assistant_voice_needs_model));
                 updateControls();
             }
             return;
         }
         if (!runtime.voice().isEnabled()) {
             pendingAssistantVoiceSession = false;
-            status.setText(runtime.voice().disabledReason());
+            setChatStatus(runtime.voice().disabledReason());
             updateControls();
             return;
         }
@@ -1722,7 +1734,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         String freshStatus = fromSystemAssist
                 ? getString(R.string.fresh_chat_from_assist)
                 : getString(R.string.new_chat_ready);
-        status.setText(freshStatus);
+        setChatStatus(freshStatus);
         if (chatPanel != null) {
             chatPanel.render(FlatTranscriptFormatter.EMPTY_TRANSCRIPT, freshStatus);
         }
@@ -1743,7 +1755,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             try {
                 startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));
             } catch (Exception nested) {
-                status.setText("Could not open the default-assistant settings.");
+                setChatStatus("Could not open the default-assistant settings.");
             }
         }
     }
@@ -1753,7 +1765,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             voiceSttCancelled.set(true);
             transcribingVoiceInput = false;
             busy = false;
-            status.setText("Speech transcription cancelled.");
+            setChatStatus("Speech transcription cancelled.");
             updateControls();
         } else if (recordingActive()) {
             recordingController.stop();
@@ -1763,7 +1775,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             runtime.speak(lastAssistantReply);
         } else if (importCancellation != null) {
             importCancellation.set(true);
-            status.setText("Cancelling import...");
+            setChatStatus("Cancelling import...");
         } else {
             runtime.stopTurn();
         }
@@ -1830,7 +1842,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                             if (integrationsSettingsSection != null) {
                                 integrationsSettingsSection.paintTinyVocaPackStatus();
                             }
-                            if (status != null) status.setText(getString(R.string.tiny_voca_status_ready));
+                            setChatStatus(getString(R.string.tiny_voca_status_ready));
                         });
                     }
                     @Override public void onError(String message) {
@@ -1838,7 +1850,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                             if (integrationsSettingsSection != null) {
                                 integrationsSettingsSection.paintTinyVocaPackStatus();
                             }
-                            if (status != null) status.setText(message);
+                            setChatStatus(message);
                         });
                     }
                 }), "tiny-voca-download").start();
@@ -1873,15 +1885,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void handleWhistleDownloadStart(ModelDownloadManager.StartResult outcome, ModelDownloadManager manager) {
-        if (status == null) return;
+        if (chatShellSection == null) return;
         if (outcome == ModelDownloadManager.StartResult.INSUFFICIENT_SPACE) {
-            status.setText(getString(R.string.model_download_insufficient_space,
+            setChatStatus(R.string.model_download_insufficient_space,
                     formatMb(manager.insufficientSpaceRequiredBytes(ModelDownloadKind.CACTUS_WHISTLE)),
-                    formatMb(manager.insufficientSpaceUsableBytes())));
+                    formatMb(manager.insufficientSpaceUsableBytes()));
         } else if (outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
-            status.setText(R.string.model_download_already_running);
+            setChatStatus(R.string.model_download_already_running);
         } else if (outcome == ModelDownloadManager.StartResult.SCHEDULE_FAILED) {
-            status.setText(R.string.model_download_schedule_failed);
+            setChatStatus(R.string.model_download_schedule_failed);
         }
         if (outcome == ModelDownloadManager.StartResult.STARTED
                 || outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
@@ -1906,7 +1918,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             try {
                 copySelectedPhoto(Uri.parse(shared));
             } catch (Exception failed) {
-                status.setText("Photo import failed: " + failed.getMessage());
+                setChatStatus("Photo import failed: " + failed.getMessage());
             }
         }
     }
@@ -1955,7 +1967,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void send(String text) {
         if (busy || modelHandle() == 0L || !settingsLoaded) return;
         if (!runtime.acceptsTurn()) {
-            status.setText("Phone is too warm for a new reply.");
+            setChatStatus("Phone is too warm for a new reply.");
             return;
         }
         runtime.noteSubmission(text, inferenceSettings.maxTokens);
@@ -1999,7 +2011,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void showCalendarPickerDialog() {
         if (checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            if (status != null) status.setText(getString(R.string.calendar_permission_needed));
+            setChatStatus(getString(R.string.calendar_permission_needed));
             return;
         }
         final java.util.ArrayList<String> ids = new java.util.ArrayList<>();
@@ -2031,14 +2043,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 }
             }
         } catch (SecurityException e) {
-            if (status != null) status.setText(getString(R.string.calendar_permission_needed));
+            setChatStatus(getString(R.string.calendar_permission_needed));
             if (integrationsSettingsSection != null) integrationsSettingsSection.refreshCalendarPickerStatus();
             return;
         } catch (Exception ignored) {
             // Fall through to empty-state dialog.
         }
         if (ids.isEmpty()) {
-            if (status != null) status.setText(getString(R.string.calendar_no_calendars));
+            setChatStatus(getString(R.string.calendar_no_calendars));
             return;
         }
         CharSequence[] items = labels.toArray(new CharSequence[0]);

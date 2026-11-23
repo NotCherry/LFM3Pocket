@@ -178,6 +178,13 @@ final class ChatShellSection {
         if (status != null) status.setText(message);
     }
 
+    /** Matches ModelRuntime chat updates: hide status line while a turn status is on the panel. */
+    void applyChatStatusDuringTurn(CharSequence message, boolean turnRunning) {
+        if (status == null) return;
+        status.setText(message);
+        status.setVisibility(turnRunning ? View.GONE : View.VISIBLE);
+    }
+
     CharSequence chatStatusText() {
         return status == null ? "" : status.getText();
     }
@@ -227,10 +234,6 @@ final class ChatShellSection {
 
     Button speakButton() {
         return speakButton;
-    }
-
-    TextView statusView() {
-        return status;
     }
 
     private Button mediaButton(String title, int icon) {
