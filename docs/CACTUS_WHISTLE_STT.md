@@ -2,6 +2,8 @@
 
 Issue: [#188](https://github.com/NotCherry/LFM3Pocket/issues/188)
 
+Decision: [ADR 0021](adr/0021-optional-cactus-whistle-stt.md).
+
 LFM3 Pocket can use **Cactus Whistle** as an optional, selectable on-device speech-to-text (STT) input backend. It is an **opt-in alternative** to the existing LFM3-Omni audio-input path and does **not** replace the Omni default.
 
 ## What it does

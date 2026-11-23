@@ -11,7 +11,7 @@ Hands-free voice actions must reuse the existing `specialUse` model residency, `
 ## Decision
 
 1. **Capture:** `VoiceListenSession` wraps `RecordingController` with a tighter 16 kHz PCM cap and optional silence trim. Shade **Talk** starts a timed listen via `ModelRuntimeService` `PendingIntent`; in-app hold-to-talk delegates to `VoicePttCoordinator` (not `MainActivity` logic).
-2. **Inference:** By default, `VoiceActionRuntime` runs one `generateWithMedia` pass per command using `VoiceToolPromptCard` (no ASR-then-reply double pass). When Settings selects **Cactus Whistle STT**, command and spoken confirm use on-device transcription into the existing text pipeline instead of an Omni audio pass ([#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md)). Text-only pairs disable Talk via `VoiceAudioCapability`.
+2. **Inference:** By default, `VoiceActionRuntime` runs one `generateWithMedia` pass per command using `VoiceToolPromptCard` (no ASR-then-reply double pass). When Settings selects **Cactus Whistle STT**, command and spoken confirm use on-device transcription into the existing text pipeline instead of an Omni audio pass ([#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md), [ADR 0021](0021-optional-cactus-whistle-stt.md)). Text-only pairs disable Talk via `VoiceAudioCapability`.
 3. **Speech out:** `VoiceSpokenOutput` prefers Omni `generateSpeech`; otherwise labelled system TTS (`LabeledSystemTts`). Confirm read-backs speak exact `ToolCoordinator.describe` text.
 4. **Confirm:** Short confirm listen, then the closed `VoiceConfirmLexicon` (tak/nie + yes/no). The default listen is an Omni pass. With Whistle selected, that listen is transcribed on device and matched with the same lexicon. Ambiguous → reject. A failed, empty, or cancelled pass also rejects, on either path. Partial text from a failed Omni pass is not an approval, even when it contains “yes” or “tak” ([#204](https://github.com/NotCherry/LFM3Pocket/pull/204)).
 5. **FGS:** `RuntimeNotice.microphoneCapture` drives `FOREGROUND_SERVICE_TYPE_MICROPHONE` alongside existing `specialUse` / `mediaPlayback`.
@@ -29,3 +29,4 @@ Hands-free voice actions must reuse the existing `specialUse` model residency, `
 - Plan: [voice-actions.md](../plans/voice-actions.md) (merged in [#149](https://github.com/NotCherry/LFM3Pocket/pull/149))
 - Epic: [#167](https://github.com/NotCherry/LFM3Pocket/issues/167)
 - Later tools on the same consent path: reminders [ADR 0007](0007-voice-reminders-workmanager.md), calendar [ADR 0014](0014-calendar-tools-picked-calendar.md)
+- Optional Whistle speech-to-text: [ADR 0021](0021-optional-cactus-whistle-stt.md)
