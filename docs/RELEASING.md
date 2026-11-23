@@ -130,6 +130,7 @@ Native code is llama.cpp, built with `GGML_NATIVE=OFF`, `GGML_OPENMP=OFF`, `GGML
 These are the reasons a GitHub APK and an F-Droid APK will not be byte-for-byte identical, even before the different signature:
 
 - llama.cpp is not vendored. The build fetches the commit pinned in `vendor/LLAMA_CPP_COMMIT` (currently `8642541b255bfb5dc39cd351a178be09013a55d6`, from `v0.8.0`) via `scripts/fetch-llama.sh`. A moved tag cannot change the binary. F-Droid should keep that checkout.
+- Cactus Whistle STT runtime is not vendored. Release and phone ARM64 CI run `scripts/fetch-cactus.sh` (pin `vendor/CACTUS_RELEASE`, checksums `vendor/CACTUS_ANDROID_ARM64.sha256`) and set `HANAMI_REQUIRE_CACTUS=ON`. The packaged APK is checked for linked `cactus_load` / `cactus_transcribe` symbols via `.github/scripts/assert-cactus-runtime-in-apk.py`.
 - NDK `27.2.12479018` (r27c) and CMake `3.22.1` are pinned. A different NDK produces different codegen.
 - `GGML_NATIVE=OFF` is required. Leaving it on enables `-march=native` and the APK only runs on the builder's CPU.
 - Release `.so` files still embed a GNU build-id and the builder's absolute paths in debug info unless `-Wl,--build-id=none` and `-ffile-prefix-map` are added. This project does not add those flags yet, so native objects are not reproducible across machines.

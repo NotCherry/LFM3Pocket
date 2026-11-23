@@ -21,7 +21,7 @@ The app needs an opt-in input backend for that model. Weights and the Cactus nat
    - a file the user selects.
 
    The app never downloads the model on its own. **Remove** clears the selection and deletes the in-app downloaded copy. A user-selected file stored under a name other than `whistle.cact` stays in app-private storage until app data is cleared. The current pin and checksum are recorded in [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md).
-3. **Runtime** — Cactus runtime binaries are not committed and are not bundled by default. They are supplied as per-ABI build artifacts. A build without them still compiles and reports the backend unavailable.
+3. **Runtime** — Cactus runtime binaries are not committed to git. Phone ARM64 release and CI builds fetch the pinned `android-arm64` artifacts (`scripts/fetch-cactus.sh`, `vendor/CACTUS_RELEASE`) and link them into `liblfm3pocket.so`. `HANAMI_REQUIRE_CACTUS` and an APK symbol guard keep that path from regressing. Local/smoke builds without artifacts still compile and report the backend unavailable.
 4. **Privacy** — No audio or transcript is uploaded. There is no cloud speech-to-text fallback.
 5. **Scope** — The initial product is English-only, even though upstream supports more languages. A wider set waits on a product decision and updated copy.
 

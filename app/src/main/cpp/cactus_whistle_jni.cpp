@@ -9,7 +9,8 @@
 #include <vector>
 
 #if defined(HANAMI_CACTUS_WHISTLE)
-#include "cactus_whistle/cactus.h"
+// Resolved from third_party/cactus/<abi>/ when scripts/fetch-cactus.sh has run.
+#include "cactus.h"
 #endif
 
 namespace {
