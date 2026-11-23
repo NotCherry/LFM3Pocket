@@ -168,10 +168,7 @@ public final class VoiceUiStateE2eTest {
                 });
                 String s = shown[0];
                 String expected = shown[1];
-                return (expected != null && !expected.isEmpty() && s.contains(expected))
-                        || s.contains("microphone") || s.contains("permission") || s.contains("talk")
-                        || s.contains("mów") || s.contains("mikrofon") || s.contains("uprawn")
-                        || s.contains("required") || s.contains("error") || s.contains("could not");
+                return expected != null && !expected.isEmpty() && s.contains(expected);
             });
         }
     }
