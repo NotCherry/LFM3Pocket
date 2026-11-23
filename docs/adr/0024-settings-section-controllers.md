@@ -1,6 +1,6 @@
 # ADR 0024 — Settings UI as section controllers behind a settings host
 
-- Status: Accepted
+- Status: Accepted. Migration tracked in [#264](https://github.com/NotCherry/LFM3Pocket/issues/264).
 - Date: 2026-11-23
 - Related: [#264](https://github.com/NotCherry/LFM3Pocket/issues/264), [#285](https://github.com/NotCherry/LFM3Pocket/pull/285), [#286](https://github.com/NotCherry/LFM3Pocket/pull/286), [ADR 0002](0002-interface-size-density.md), [`DESIGN.md`](../DESIGN.md)
 
@@ -10,7 +10,7 @@ Settings, chat construction, and activity lifecycle grew up in one activity. Eve
 
 [#264](https://github.com/NotCherry/LFM3Pocket/issues/264) asks for a pure split. Behaviour and visuals stay as they are. Stable resource ids (`settings_*`, `chat_*`, `import_*`, `home_*`) stay as they are. The work lands one section at a time so it does not block feature changes. When the split is finished, the activity keeps lifecycle, activity results, and wiring. Migration progress is tracked in [#264](https://github.com/NotCherry/LFM3Pocket/issues/264), not in this record.
 
-[#285](https://github.com/NotCherry/LFM3Pocket/pull/285) moved Appearance out as its own section. That section still reached the activity directly. [#286](https://github.com/NotCherry/LFM3Pocket/pull/286) introduced the settings section host (`MainActivitySettingsHost`): the activity implements that contract, and a section depends on it. Image moved in the same change, and Appearance was retargeted onto the host.
+[#285](https://github.com/NotCherry/LFM3Pocket/pull/285) moved Appearance out as its own section. That section still reached the activity directly. [#286](https://github.com/NotCherry/LFM3Pocket/pull/286) introduced the settings section host: the activity implements that contract, and a section depends on it. Image moved in the same change, and Appearance was retargeted onto the host. Image kept its model and store on the section.
 
 Screen recipes stay in [`DESIGN.md`](../DESIGN.md). This record is the structure those screens are built with.
 
@@ -19,16 +19,16 @@ Screen recipes stay in [`DESIGN.md`](../DESIGN.md). This record is the structure
 Settings UI is a set of section controllers behind one settings section host.
 
 1. **A section owns its screen.** Each settings section builds its views, paints them, and persists its values. That work stays on the section.
-2. **Sections talk to the settings section host.** The host stays minimal: only needs shared by several sections belong on it — UI factories, lifecycle and finishing state, the main handler, strings, and status hooks. Section-specific stores, models, and callbacks go on the section’s constructor, not on the host ([#286](https://github.com/NotCherry/LFM3Pocket/pull/286) removed `imageSettings()`, `setImageSettings()`, and `imageSettingsStore()` from the host and passes them into `ImageSettingsSection`’s constructor). The activity implements the host. A section talks to that contract, not the activity class.
-3. **The activity keeps lifecycle and wiring.** It keeps lifecycle, activity results, and the wiring that attaches sections. Chat shell construction is separated from settings construction as part of the same split ([#264](https://github.com/NotCherry/LFM3Pocket/issues/264)). Section paint and section persistence stay on the sections. `setChatStatus` on the host is a transitional hook until the chat shell is extracted; revisit it in that step.
+2. **Sections talk to the settings section host.** The host offers only what is shared or activity-level: context, shared chrome, strings, a main-thread handler, and lifecycle hooks. One of those hooks recreates the activity after an interface-size change ([ADR 0002](0002-interface-size-density.md)). The activity implements the host. A section talks to that contract, not the activity class. A dependency that belongs to one section, such as its model or its store, is a constructor argument of that section. [#286](https://github.com/NotCherry/LFM3Pocket/pull/286) kept the image model and store on the Image section.
+3. **The activity keeps lifecycle and wiring.** It keeps lifecycle, activity results, and the wiring that attaches sections. Chat shell construction is separated from settings construction as part of the same split ([#264](https://github.com/NotCherry/LFM3Pocket/issues/264)). A section may still ask the host for a one-line status on the chat status line. That outlet stays on the host when the shell moves; whoever owns the shell fulfills it. The section does not build or hold the shell. Section paint and section persistence stay on the sections.
 4. **Stable UI ids are a compatibility contract.** `settings_*`, `chat_*`, `import_*`, and `home_*` ids stay in place as views move (`home_*` via Home Compose test tags such as `home_new_chat`). Tests and the design system keep addressing the same ids.
 5. **The move is one section per pull request, and each pull request is a pure refactor.** Which sections have moved and which remain is tracked in [#264](https://github.com/NotCherry/LFM3Pocket/issues/264).
 
 ## Consequences
 
-- New settings behaviour is added on a section, through the settings section host.
-- Until the remaining sections and the chat shell move, the activity still owns that work. The host contract is the shape they move into.
-- Shared activity-level hooks may grow on the host only when more than one section needs them. Otherwise the section takes the dependency via its constructor, as Image does after [#286](https://github.com/NotCherry/LFM3Pocket/pull/286).
+- New settings behaviour is added on a section. A shared or activity-level need goes through the settings section host. A section-specific dependency is passed into the section.
+- The host stays a narrow contract. Extending it is for a new shared or activity-level need, including a lifecycle hook only one section uses. One section's model or store does not go on the host.
+- The one-line status outlet stays on the host after the chat shell is separated. It is how a section reports a message. It is not ownership of the shell.
 - E2E and design-system selectors keep working across the split because the ids do not change. A move pull request leaves behaviour and visuals as they are.
 - A settings change can be reviewed inside one section, against the host contract and the id contract.
 
@@ -36,4 +36,5 @@ Settings UI is a set of section controllers behind one settings section host.
 
 - **Keep growing the activity.** Rejected. [#264](https://github.com/NotCherry/LFM3Pocket/issues/264) exists because every feature was landing in the same class and reviews were colliding.
 - **Sections hold the activity.** This is how Appearance first landed ([#285](https://github.com/NotCherry/LFM3Pocket/pull/285)). Rejected as the lasting shape: a section then depends on the concrete activity, and the next section inherits that coupling. [#286](https://github.com/NotCherry/LFM3Pocket/pull/286) replaced it with the host.
+- **Put each section's model and store on the host.** Rejected. The host would grow a member for every section and become a second activity. [#286](https://github.com/NotCherry/LFM3Pocket/pull/286) kept the image model and store on the Image section.
 - **One pull request for the whole split.** Rejected. [#264](https://github.com/NotCherry/LFM3Pocket/issues/264) asks for small pull requests, one section at a time, so the split does not block feature work. Each one stays a pure refactor.
