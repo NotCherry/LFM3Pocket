@@ -19,7 +19,7 @@ Model weights are never bundled in the APK. Import LFM3 / LFM3-Omni GGUFs in the
 
 GitHub Actions builds the ARM64 phone APK, runs an x86_64 emulator smoke test through the JNI generation path, and uploads the phone APK artifact. It checks out llama.cpp `v0.8.0` (`8642541b255bfb5dc39cd351a178be09013a55d6`) for LFM3 and multimodal support.
 
-Locally, install JDK 17, Android SDK/NDK and Gradle 8.13; run `git clone --branch v0.8.0 --depth 1 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp` then `gradle :app:assemblePhoneDebug`. A `vMAJOR.MINOR.PATCH` tag on HEAD sets `versionName` and `versionCode`. Untagged builds are `0.1.0` (versionCode 1000).
+Locally, install JDK 17, Android SDK/NDK and Gradle 8.13; run `bash scripts/fetch-llama.sh` and (for Whistle STT) `bash scripts/fetch-cactus.sh`, then `gradle :app:assemblePhoneDebug`. A `vMAJOR.MINOR.PATCH` tag on HEAD sets `versionName` and `versionCode`. Untagged builds are `0.1.0` (versionCode 1000).
 
 The Stage 1 release recipe is in [`docs/RELEASE.md`](docs/RELEASE.md). Signing, Obtainium, IzzyOnDroid, and F-Droid are in [`docs/RELEASING.md`](docs/RELEASING.md).
 

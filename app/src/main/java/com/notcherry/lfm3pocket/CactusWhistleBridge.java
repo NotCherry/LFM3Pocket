@@ -23,6 +23,16 @@ public final class CactusWhistleBridge {
         return nativeAvailable;
     }
 
+    /** Mirrors native DOTPROD guard (docs/adr/0001-arm64-dotprod-and-kv-residency.md). */
+    static boolean cactusCpuSupported() {
+        for (String abi : android.os.Build.SUPPORTED_ABIS) {
+            if ("arm64-v8a".equalsIgnoreCase(abi)) {
+                return CpuTopology.hasDotProd();
+            }
+        }
+        return true;
+    }
+
     public static synchronized SttAvailability availability(String modelPath) {
         ensureLoaded();
         if (!nativeAvailable) {
@@ -106,7 +116,7 @@ public final class CactusWhistleBridge {
             loadedAttempted = true;
             try {
                 // Implemented in liblfm3pocket when built with HANAMI_CACTUS_WHISTLE.
-                nativeAvailable = nativeProbe();
+                nativeAvailable = nativeProbe() && cactusCpuSupported();
             } catch (Throwable ignored) {
                 nativeAvailable = false;
             }

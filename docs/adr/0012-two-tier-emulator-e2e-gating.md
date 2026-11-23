@@ -4,6 +4,7 @@
 - Date: 2026-11-22
 - Related: [#252](https://github.com/NotCherry/LFM3Pocket/pull/252), [#239](https://github.com/NotCherry/LFM3Pocket/issues/239)
 - Amended: 2026-11-23 ([#278](https://github.com/NotCherry/LFM3Pocket/pull/278) inventory check + EXCLUDED_CLASSES)
+- Amended: 2026-11-23 — Exception to “no blanket retry” on emulator E2E: Stage 1 may re-start the emulator once (two starts total) only when attempt 1 fails before connected tests begin (pre-test infrastructure flake). Real tier test failures still fail the job; see [ADR 0023](0023-layered-test-timeouts.md) ([#283](https://github.com/NotCherry/LFM3Pocket/pull/283)).
 
 ## Context
 

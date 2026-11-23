@@ -230,6 +230,16 @@ jobs:
         if: steps.meta.outputs.source == 'build'
         run: rustup target add aarch64-linux-android
 
+      - name: Cache Cactus Android arm64 runtime
+        if: steps.meta.outputs.source == 'build'
+        uses: actions/cache@v4
+        with:
+          path: third_party/cactus/arm64-v8a
+          key: cactus-android-arm64-${{ hashFiles('vendor/CACTUS_RELEASE', 'vendor/CACTUS_HF_REVISION', 'vendor/CACTUS_ANDROID_ARM64.sha256') }}
+      - name: Fetch Cactus Whistle runtime (arm64-v8a)
+        if: steps.meta.outputs.source == 'build'
+        run: bash scripts/fetch-cactus.sh
+
       - name: Verify runner Android SDK
         if: steps.meta.outputs.source == 'build'
         run: |
@@ -258,26 +268,31 @@ jobs:
           HANAMI_KEY_ALIAS: ${{ secrets.HANAMI_KEY_ALIAS }}
           HANAMI_KEY_PASSWORD: ${{ secrets.HANAMI_KEY_PASSWORD }}
           HANAMI_REQUIRE_DIZIONE: '1'
+          HANAMI_REQUIRE_CACTUS: 'ON'
         run: |
           gradle :app:assemblePhoneRelease --no-daemon --stacktrace \
             -Phanami.versionName='${{ steps.version.outputs.version_name }}' \
-            -Phanami.versionCode='${{ steps.version.outputs.version_code }}'
+            -Phanami.versionCode='${{ steps.version.outputs.version_code }}' \
+            -Phanami.requireCactus=ON
 
       - name: Build unsigned ARM64 release APK
         if: steps.meta.outputs.mode == 'versioned' && steps.signing.outputs.mode == 'unsigned'
         env:
           HANAMI_RELEASE_TAG: ${{ steps.meta.outputs.tag }}
           HANAMI_REQUIRE_DIZIONE: '1'
+          HANAMI_REQUIRE_CACTUS: 'ON'
         run: |
           gradle :app:assemblePhoneRelease --no-daemon --stacktrace \
             -Phanami.versionName='${{ steps.version.outputs.version_name }}' \
-            -Phanami.versionCode='${{ steps.version.outputs.version_code }}'
+            -Phanami.versionCode='${{ steps.version.outputs.version_code }}' \
+            -Phanami.requireCactus=ON
 
       - name: Build ARM64 debug APK
         if: steps.meta.outputs.mode == 'latest' && steps.meta.outputs.source == 'build'
         env:
           HANAMI_REQUIRE_DIZIONE: '1'
-        run: gradle :app:assemblePhoneDebug --no-daemon --stacktrace
+          HANAMI_REQUIRE_CACTUS: 'ON'
+        run: gradle :app:assemblePhoneDebug --no-daemon --stacktrace -Phanami.requireCactus=ON
 
       - name: Stage release APK
         env:
@@ -304,6 +319,7 @@ jobs:
           fi
           if [ "$MODE" = 'versioned' ] || [ "$MODE" = 'latest' ]; then
             python3 .github/scripts/assert-dizione-jni-in-apk.py "release-out/$ASSET" --abis arm64-v8a
+            python3 .github/scripts/assert-cactus-runtime-in-apk.py "release-out/$ASSET"
           fi
           sha256sum "release-out/$ASSET" | tee "release-out/$ASSET.sha256"
           ls -lh "release-out/$ASSET"

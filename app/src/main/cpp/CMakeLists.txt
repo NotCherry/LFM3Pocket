@@ -76,19 +76,38 @@ target_include_directories(lfm3pocket PRIVATE
 
 # Optional: Cactus Whistle STT runtime (Android native artifacts from Cactus release).
 # Provide headers/lib at third_party/cactus/<abi>/cactus.h and libcactus.a (or set CACTUS_WHISTLE_DIR).
+# Upstream HF layout uses android-arm64 for ANDROID_ABI=arm64-v8a; scripts/fetch-cactus.sh
+# installs into third_party/cactus/arm64-v8a/. Phone release / ARM64 CI require the artifacts.
+option(HANAMI_REQUIRE_CACTUS "Fail the build when arm64-v8a Cactus runtime artifacts are missing" OFF)
 set(CACTUS_WHISTLE_DIR "" CACHE PATH "Directory containing cactus.h and libcactus.a for the target ABI")
 if(CACTUS_WHISTLE_DIR STREQUAL "" AND DEFINED ANDROID_ABI)
-    if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/cactus/${ANDROID_ABI}/cactus.h")
-        get_filename_component(CACTUS_WHISTLE_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/cactus/${ANDROID_ABI}" ABSOLUTE)
-    elseif(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/cactus/android-${ANDROID_ABI}/cactus.h")
-        get_filename_component(CACTUS_WHISTLE_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/cactus/android-${ANDROID_ABI}" ABSOLUTE)
+    set(_hanami_cactus_candidates
+        "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/cactus/${ANDROID_ABI}"
+        "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/cactus/android-${ANDROID_ABI}")
+    if(ANDROID_ABI STREQUAL "arm64-v8a")
+        list(APPEND _hanami_cactus_candidates
+            "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/cactus/android-arm64")
     endif()
+    foreach(_hanami_cactus_dir IN LISTS _hanami_cactus_candidates)
+        if(EXISTS "${_hanami_cactus_dir}/cactus.h" AND EXISTS "${_hanami_cactus_dir}/libcactus.a")
+            get_filename_component(CACTUS_WHISTLE_DIR "${_hanami_cactus_dir}" ABSOLUTE)
+            break()
+        endif()
+    endforeach()
 endif()
+set(_hanami_cactus_enabled OFF)
 if(NOT CACTUS_WHISTLE_DIR STREQUAL "" AND EXISTS "${CACTUS_WHISTLE_DIR}/cactus.h" AND EXISTS "${CACTUS_WHISTLE_DIR}/libcactus.a")
     message(STATUS "Hanami: enabling Cactus Whistle STT runtime from ${CACTUS_WHISTLE_DIR}")
     target_compile_definitions(lfm3pocket PRIVATE HANAMI_CACTUS_WHISTLE=1)
-    target_include_directories(lfm3pocket PRIVATE "${CACTUS_WHISTLE_DIR}" "${CMAKE_CURRENT_LIST_DIR}/cactus_whistle")
-    target_link_libraries(lfm3pocket PRIVATE "${CACTUS_WHISTLE_DIR}/libcactus.a")
+    # Prefer the fetched ABI header (cactus.h) over the local stub under cactus_whistle/.
+    target_include_directories(lfm3pocket PRIVATE "${CACTUS_WHISTLE_DIR}")
+    target_link_libraries(lfm3pocket PRIVATE "${CACTUS_WHISTLE_DIR}/libcactus.a" m)
+    set(_hanami_cactus_enabled ON)
+endif()
+if(HANAMI_REQUIRE_CACTUS AND ANDROID_ABI STREQUAL "arm64-v8a" AND NOT _hanami_cactus_enabled)
+    message(FATAL_ERROR
+        "HANAMI_REQUIRE_CACTUS=ON but cactus.h/libcactus.a were not found for arm64-v8a. "
+        "Run scripts/fetch-cactus.sh (pinned in vendor/CACTUS_RELEASE) before assembling the phone APK.")
 endif()
 
 target_link_libraries(lfm3pocket PRIVATE llama llama-common mtmd android log)

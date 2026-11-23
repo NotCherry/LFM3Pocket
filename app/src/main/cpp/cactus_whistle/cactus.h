@@ -43,6 +43,8 @@ CACTUS_API void cactus_set_audio(
     int word_timestamps
 );
 
+CACTUS_API void cactus_set_threads(int threads);
+
 CACTUS_API void cactus_reset(void);
 
 CACTUS_API int cactus_transcribe(

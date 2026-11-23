@@ -2,8 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-11-23
-- Related: [#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [#251](https://github.com/NotCherry/LFM3Pocket/pull/251), [#271](https://github.com/NotCherry/LFM3Pocket/pull/271), [ADR 0006](0006-voice-actions-loop.md), [ADR 0010](0010-tiny-voca-english-tts.md), [ADR 0022](0022-background-model-downloads.md), [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md)
+- Related: [#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [#251](https://github.com/NotCherry/LFM3Pocket/pull/251), [#271](https://github.com/NotCherry/LFM3Pocket/pull/271), [#277](https://github.com/NotCherry/LFM3Pocket/pull/277), [ADR 0006](0006-voice-actions-loop.md), [ADR 0010](0010-tiny-voca-english-tts.md), [ADR 0022](0022-background-model-downloads.md), [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md)
 - Amended: see [ADR 0022](0022-background-model-downloads.md) ([#261](https://github.com/NotCherry/LFM3Pocket/issues/261))
+- Amended: 2026-11-23 ([#277](https://github.com/NotCherry/LFM3Pocket/pull/277)) — phone ARM64 GitHub release/CI link the pinned Cactus runtime into `liblfm3pocket.so`; smoke/F-Droid keep the stub; Apache-2.0 NOTICE ships in APK assets (`licenses/cactus/`).
 
 ## Context
 
@@ -21,7 +22,7 @@ The app needs an opt-in input backend for that model. Weights and the Cactus nat
    - a file the user selects.
 
    The app never downloads the model on its own. **Remove** clears the selection and deletes the in-app downloaded copy. A user-selected file stored under a name other than `whistle.cact` stays in app-private storage until app data is cleared. The current pin and checksum are recorded in [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md).
-3. **Runtime** — Cactus runtime binaries are not committed and are not bundled by default. They are supplied as per-ABI build artifacts. A build without them still compiles and reports the backend unavailable.
+3. **Runtime** — Cactus runtime binaries are not committed to git. Phone ARM64 release and CI builds fetch the pinned `android-arm64` artifacts (`scripts/fetch-cactus.sh`, `vendor/CACTUS_RELEASE`) and link them into `liblfm3pocket.so`. `HANAMI_REQUIRE_CACTUS` and an APK symbol guard keep that path from regressing. Local/smoke builds without artifacts still compile and report the backend unavailable.
 4. **Privacy** — No audio or transcript is uploaded. There is no cloud speech-to-text fallback.
 5. **Scope** — The initial product is English-only, even though upstream supports more languages. A wider set waits on a product decision and updated copy.
 
@@ -30,8 +31,9 @@ This extends the pinned-download pattern in [ADR 0010](0010-tiny-voca-english-tt
 ## Consequences
 
 - Extra optional download (about 16.9 MB) and a second native inference stack, used only when the user selects Whistle.
-- License: the Whistle model and the Cactus runtime are Apache-2.0. The app stays MIT.
-- A revision bump requires updating the recorded pin and the checksum together. A mismatch is rejected and is not stored.
+- Phone ARM64 GitHub APKs grow by the linked Cactus static archive (~2.8 MB before strip/link effects) when `scripts/fetch-cactus.sh` runs. Smoke/x86_64 and the draft F-Droid recipe omit the prebuilt and keep the stub.
+- License: the Whistle model and the Cactus runtime are Apache-2.0. Redistributed runtime NOTICE/LICENSE text lives under [`licenses/cactus/`](../../licenses/cactus/). The app stays MIT.
+- A revision bump requires updating the recorded pin, Hugging Face commit (`vendor/CACTUS_HF_REVISION`), and the checksum together. A mismatch is rejected and is not stored.
 - Functional transcription depends on runtime availability per ABI. Without those artifacts the build still compiles, the backend reports unavailable, and the default Omni path is unchanged.
 
 ## Alternatives considered
