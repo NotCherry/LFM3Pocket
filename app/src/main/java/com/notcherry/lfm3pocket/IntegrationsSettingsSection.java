@@ -27,10 +27,11 @@ final class IntegrationsSettingsSection {
         final Runnable downloadCactusWhistleModel;
         final Runnable downloadTinyVocaPack;
         final Consumer<Runnable> runOnUiThread;
+        final Consumer<CharSequence> chatStatus;
 
         Deps(Supplier<RuntimePreferences> preferences, Runnable updateControls, Runnable pickCalendarTarget,
                 Runnable pickWhistleModel, Runnable downloadCactusWhistleModel, Runnable downloadTinyVocaPack,
-                Consumer<Runnable> runOnUiThread) {
+                Consumer<Runnable> runOnUiThread, Consumer<CharSequence> chatStatus) {
             this.preferences = preferences;
             this.updateControls = updateControls;
             this.pickCalendarTarget = pickCalendarTarget;
@@ -38,6 +39,7 @@ final class IntegrationsSettingsSection {
             this.downloadCactusWhistleModel = downloadCactusWhistleModel;
             this.downloadTinyVocaPack = downloadTinyVocaPack;
             this.runOnUiThread = runOnUiThread;
+            this.chatStatus = chatStatus;
         }
     }
 
@@ -75,19 +77,19 @@ final class IntegrationsSettingsSection {
                         deps.preferences.get().setCactusWhistleModelPath(modelFile.getAbsolutePath());
                         paintSpeechInputControls();
                         deps.updateControls.run();
-                        host.setChatStatus(host.getString(R.string.speech_input_cactus_status_ready));
+                        deps.chatStatus.accept(host.getString(R.string.speech_input_cactus_status_ready));
                     });
                 }
                 @Override public void onError(String message) {
                     deps.runOnUiThread.accept(() -> {
                         paintSpeechInputControls();
-                        host.setChatStatus(message);
+                        deps.chatStatus.accept(message);
                     });
                 }
                 @Override public void onCancelled() {
                     deps.runOnUiThread.accept(() -> {
                         paintSpeechInputControls();
-                        host.setChatStatus(host.getString(R.string.model_download_cancelled));
+                        deps.chatStatus.accept(host.getString(R.string.model_download_cancelled));
                     });
                 }
             };
@@ -144,7 +146,7 @@ final class IntegrationsSettingsSection {
             try {
                 host.settingsActivity().startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
             } catch (Exception e) {
-                host.setChatStatus("Could not open notification access settings.");
+                deps.chatStatus.accept("Could not open notification access settings.");
             }
         });
         StillwaterReadable.addFlexibleFullWidth(configuration, openNotificationAccessSettings, 44);
@@ -427,6 +429,6 @@ final class IntegrationsSettingsSection {
             if (!trimmed.isEmpty()) packages.add(trimmed);
         }
         deps.preferences.get().setNotificationAllowlist(packages);
-        host.setChatStatus(host.getString(R.string.notification_access_allowlist_saved));
+        deps.chatStatus.accept(host.getString(R.string.notification_access_allowlist_saved));
     }
 }

@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-23
-- Related: [#264](https://github.com/NotCherry/LFM3Pocket/issues/264), [#285](https://github.com/NotCherry/LFM3Pocket/pull/285), [#286](https://github.com/NotCherry/LFM3Pocket/pull/286), [ADR 0002](0002-interface-size-density.md), [`DESIGN.md`](../DESIGN.md)
+- Related: [#264](https://github.com/NotCherry/LFM3Pocket/issues/264), [#285](https://github.com/NotCherry/LFM3Pocket/pull/285), [#286](https://github.com/NotCherry/LFM3Pocket/pull/286), [#292](https://github.com/NotCherry/LFM3Pocket/pull/292), [ADR 0002](0002-interface-size-density.md), [`DESIGN.md`](../DESIGN.md)
 
 ## Context
 
@@ -19,8 +19,8 @@ Screen recipes stay in [`DESIGN.md`](../DESIGN.md). This record is the structure
 Settings UI is a set of section controllers behind one settings section host.
 
 1. **A section owns its screen.** Each settings section builds its views, paints them, and persists its values. That work stays on the section.
-2. **Sections talk to the settings section host.** The host stays minimal: only needs shared by several sections belong on it — UI factories, lifecycle and finishing state, the main handler, strings, and status hooks. One lifecycle hook recreates the activity after an interface-size change ([ADR 0002](0002-interface-size-density.md)). Section-specific stores, models, and callbacks go on the section’s constructor, not on the host ([#286](https://github.com/NotCherry/LFM3Pocket/pull/286) removed `imageSettings()`, `setImageSettings()`, and `imageSettingsStore()` from the host and passes them into `ImageSettingsSection`’s constructor). The activity implements the host. A section talks to that contract, not the activity class.
-3. **The activity keeps lifecycle and wiring.** It keeps lifecycle, activity results, and the wiring that attaches sections. Chat shell construction is separated from settings construction as part of the same split ([#264](https://github.com/NotCherry/LFM3Pocket/issues/264)). Section paint and section persistence stay on the sections. `setChatStatus` on the host is a transitional hook until the chat shell is extracted ([#264](https://github.com/NotCherry/LFM3Pocket/issues/264)); revisit it in that step.
+2. **Sections talk to the settings section host.** The host stays minimal: only hooks shared by several sections belong on it — via `SettingsUiFactory` for UI factories, plus lifecycle and finishing state, the main handler, and settings-scroll helpers. One lifecycle hook recreates the activity after an interface-size change ([ADR 0002](0002-interface-size-density.md)). Section-specific stores, models, and callbacks go on the section’s constructor, not on the host ([#286](https://github.com/NotCherry/LFM3Pocket/pull/286) removed `imageSettings()`, `setImageSettings()`, and `imageSettingsStore()` from the host and passes them into `ImageSettingsSection`’s constructor). The activity implements the host. A section talks to that contract, not the activity class.
+3. **The activity keeps lifecycle and wiring.** It keeps lifecycle, activity results, and the wiring that attaches sections. Chat shell construction is separated from settings construction as part of the same split ([#264](https://github.com/NotCherry/LFM3Pocket/issues/264)). Section paint and section persistence stay on the sections.
 4. **Stable UI ids are a compatibility contract.** `settings_*`, `chat_*`, `import_*`, and `home_*` ids stay in place as views move (`home_*` via Home Compose test tags such as `home_new_chat`). Tests and the design system keep addressing the same ids.
 5. **The move is one section per pull request, and each pull request is a pure refactor.** Which sections have moved and which remain is tracked in [#264](https://github.com/NotCherry/LFM3Pocket/issues/264).
 
@@ -28,7 +28,7 @@ Settings UI is a set of section controllers behind one settings section host.
 
 - New settings behaviour is added on a section. A shared or activity-level need goes through the settings section host. A section-specific dependency is passed into the section.
 - The host stays a narrow contract. It grows only when more than one section needs the same activity-level hook. Otherwise the section takes the dependency via its constructor, as Image does after [#286](https://github.com/NotCherry/LFM3Pocket/pull/286).
-- `setChatStatus` on the host is transitional until the chat shell moves ([#264](https://github.com/NotCherry/LFM3Pocket/issues/264)); revisit where that status line lives when the shell is extracted.
+- Chat status (`chat_status`) lives on `ChatShellSection`; settings sections receive a `Consumer<CharSequence>` status sink via deps/constructors ([#292](https://github.com/NotCherry/LFM3Pocket/pull/292)). Unifying direct `status.setText` calls in the activity with `setChatStatus` remains a follow-up ([#264](https://github.com/NotCherry/LFM3Pocket/issues/264)).
 - E2E and design-system selectors keep working across the split because the ids do not change. A move pull request leaves behaviour and visuals as they are.
 - A settings change can be reviewed inside one section, against the host contract and the id contract.
 
@@ -38,3 +38,11 @@ Settings UI is a set of section controllers behind one settings section host.
 - **Sections hold the activity.** This is how Appearance first landed ([#285](https://github.com/NotCherry/LFM3Pocket/pull/285)). Rejected as the lasting shape: a section then depends on the concrete activity, and the next section inherits that coupling. [#286](https://github.com/NotCherry/LFM3Pocket/pull/286) replaced it with the host.
 - **Put each section's model and store on the host.** Rejected. The host would grow a member for every section and become a second activity. [#286](https://github.com/NotCherry/LFM3Pocket/pull/286) kept the image model and store on the Image section.
 - **One pull request for the whole split.** Rejected. [#264](https://github.com/NotCherry/LFM3Pocket/issues/264) asks for small pull requests, one section at a time, so the split does not block feature work. Each one stays a pure refactor.
+
+## Amended (#292)
+
+[#292](https://github.com/NotCherry/LFM3Pocket/pull/292) extracts the chat shell into `ChatShellSection` and closes the transitional `setChatStatus` hook on `MainActivitySettingsHost`.
+
+- **Chat status ownership.** The `chat_status` line is built and updated inside `ChatShellSection`. `MainActivity` may still call `status.setText` on the view returned by `statusView()` for lifecycle paths; settings sections use a `Consumer<CharSequence> chatStatus` (or equivalent constructor arg) wired to `MainActivity.setChatStatus`, not the host interface.
+- **Host contract.** `setChatStatus` is removed from `MainActivitySettingsHost`. Shared UI factories (`label`, `button`, `dp`, `getString`, `settingsActivity`) move to `SettingsUiFactory`, which the host extends. `ChatShellSection` depends on `SettingsUiFactory` only, not the full settings host.
+- **Follow-up ([#264](https://github.com/NotCherry/LFM3Pocket/issues/264)).** Route remaining direct `status.setText` usage through one status API on the chat shell or activity helper in a later step.

@@ -103,12 +103,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     boolean freshChatRequestedFromAssist;
 
     private TextView status;
-    private TextView brandTitle;
-    private TextView modePill;
-    private View topBarView;
+    private ChatShellSection chatShellSection;
     private ModelManagerPanel modelManager;
     private View settingsHost;
-    private View chatShell;
     private InferenceSettings inferenceSettings=InferenceSettings.DEFAULT;
     private InferenceSettingsStore settingsStore;
     private ImageSettings imageSettings=ImageSettings.DEFAULT;
@@ -118,7 +115,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private boolean settingsOpen;
     private Button modelButton, mmprojButton;
     private Button photoButton, cameraButton, documentButton, recordButton, speakButton;
-    private Button settingsOpenButton;
     private boolean searchEnabled = false;
     private String searchEndpoint = "";
     private String mmprojPath = "";
@@ -145,7 +141,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         @Override public void onHistoryTitle(String title) {
             if (title == null || title.isBlank()) return;
             historyTitle = title;
-            if (brandTitle != null) brandTitle.setText(historyTitle);
+            if (chatShellSection != null) chatShellSection.setBrandTitle(historyTitle);
         }
         @Override public void onPlayback(String message) {
             if (destroyed || status == null) return;
@@ -346,7 +342,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                     historyConversationId = id;
                     historyTitle = title == null || title.isBlank() ? getString(R.string.new_conversation_title) : title;
                     runtime.setConversation(historyConversationId, historyTitle);
-                    if (brandTitle != null) brandTitle.setText(historyTitle);
+                    if (chatShellSection != null) chatShellSection.setBrandTitle(historyTitle);
                 })
                 .setNegativeButton(R.string.keep_this_reply, (dialog, which) -> {
                     historyConversationId = runtime.conversationId();
@@ -377,8 +373,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         recreate();
     }
 
-    @Override public void setChatStatus(CharSequence message) {
-        if (status != null) status.setText(message);
+    void setChatStatus(CharSequence message) {
+        if (chatShellSection != null) chatShellSection.setChatStatus(message);
     }
 
     @Override public EditText addSettingInput(LinearLayout form, String title, String hint, int value, int id,
@@ -405,6 +401,34 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         return b;
     }
 
+    private void onChatPanelNewChat() {
+        voiceSttCancelled.set(true);
+        HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
+        HistoryMediaCleanup.deleteAttachment(this, pendingAudioPath);
+        pendingImagePath = "";
+        pendingAudioPath = "";
+        clearPendingDocuments();
+        lastAssistantReply = "";
+        if (playbackActive()) playbackController.stop();
+        chatPanel.clearImageAttachment();
+        runtime.clearConversation();
+        lastAssistantReply = "";
+    }
+
+    private void onChatPanelRetryTurn(String turnId) {
+        if (busy || modelHandle() == 0L || !settingsLoaded) return;
+        runtime.noteSubmission("retry", inferenceSettings.maxTokens);
+        if (runtime.retryInterrupted(turnId)) {
+            session = runtime.session();
+            pendingImagePath = "";
+            pendingAudioPath = "";
+            clearPendingDocuments();
+            chatPanel.clearImageAttachment();
+            busy = true;
+            updateControls();
+        }
+    }
+
     private void buildUi(Bundle state) {
         int surface = StillwaterUi.SURFACE;
         int ink = StillwaterUi.INK;
@@ -418,67 +442,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         root.setBackgroundColor(surface);
         root.setPadding(dp(12), dp(6), dp(12), dp(6));
 
-        LinearLayout topBar = new LinearLayout(this);
-        topBar.setOrientation(LinearLayout.HORIZONTAL);
-        topBar.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout titles = new LinearLayout(this);
-        titles.setOrientation(LinearLayout.VERTICAL);
-        brandTitle = label(historyTitle, 17, ink);
-        brandTitle.setTypeface(StillwaterUi.serif(this));
-        StillwaterReadable.prepareWrappingLabel(brandTitle);
-        titles.addView(brandTitle);
-        modePill = label(searchEnabled ? getString(R.string.mode_web_search) : getString(R.string.mode_local), 11, inkMuted);
-        modePill.setTypeface(StillwaterUi.sans(this));
-        StillwaterReadable.prepareWrappingLabel(modePill);
-        titles.addView(modePill);
-        topBar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
-        Button newChat = button(getString(R.string.new_chat));
-        newChat.setId(R.id.chat_new_chat);
-        StillwaterUi.quiet(newChat);
-        newChat.setTextColor(accent);
-        newChat.setOnClickListener(v -> requestNewChat(false));
-        newChat.setMinimumWidth(InterfaceSize.minTouchPx(this));
-        newChat.setMinimumHeight(InterfaceSize.minTouchPx(this));
-        StillwaterReadable.prepareWrappingControl(newChat, dp(44));
-        topBar.addView(newChat, new LinearLayout.LayoutParams(-2, -2));
-        settingsOpenButton = button("");
-        settingsOpenButton.setId(R.id.settings_open);
-        settingsOpenButton.setContentDescription(getString(R.string.settings_title));
-        settingsOpenButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_still_gear, 0, 0, 0);
-        StillwaterUi.quiet(settingsOpenButton);
-        settingsOpenButton.setOnClickListener(v -> setSettingsOpen(true));
-        LinearLayout.LayoutParams settingsIconParams = new LinearLayout.LayoutParams(dp(36), dp(36));
-        settingsOpenButton.setMinimumWidth(InterfaceSize.minTouchPx(this));
-        settingsOpenButton.setMinimumHeight(InterfaceSize.minTouchPx(this));
-        topBar.addView(settingsOpenButton, settingsIconParams);
-        Button overflow = button("⋮");
-        overflow.setId(R.id.chat_overflow);
-        StillwaterUi.quiet(overflow);
-        overflow.setTextColor(inkMuted);
-        overflow.setOnClickListener(v -> {
-            android.view.ContextThemeWrapper menuContext =
-                    new android.view.ContextThemeWrapper(this, R.style.Theme_Stillwater);
-            android.widget.PopupMenu menu = new android.widget.PopupMenu(menuContext, v);
-            menu.getMenu().add(0, 1, 0, getString(R.string.settings_title));
-            menu.getMenu().add(0, 2, 1, "Web search");
-            menu.setOnMenuItemClickListener(item -> {
-                if (item.getItemId() == 1) setSettingsOpen(true);
-                else if (item.getItemId() == 2) showSearchSettings();
-                return true;
-            });
-            menu.show();
-        });
-        overflow.setMinimumWidth(InterfaceSize.minTouchPx(this));
-        overflow.setMinimumHeight(InterfaceSize.minTouchPx(this));
-        topBar.addView(overflow, new LinearLayout.LayoutParams(dp(36), dp(36)));
-        topBarView = topBar;
-        root.addView(topBar);
-
-        status = label(getString(R.string.starting), 12, inkMuted);
-        status.setId(R.id.chat_status);
-        status.setPadding(0, dp(4), 0, dp(4));
-        StillwaterReadable.prepareWrappingLabel(status);
-        root.addView(status);
+        chatShellSection = new ChatShellSection(this, new ChatShellSection.Deps(
+                () -> historyTitle, () -> searchEnabled, () -> requestNewChat(false),
+                () -> setSettingsOpen(true), this::showSearchSettings,
+                new ChatShellSection.ChatPanelDeps(this::send, this::stopActiveWork, this::onChatPanelNewChat,
+                        this::onChatPanelRetryTurn, this::requestCompact)));
+        chatShellSection.mountChrome(root, ink, inkMuted, accent);
+        status = chatShellSection.statusView();
 
         // --- Settings host (hidden by default) ---
         LinearLayout settingsRoot = new LinearLayout(this);
@@ -530,7 +500,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 () -> imageSettings, validated -> {
             imageSettings = validated;
             imageSettingsLoaded = true;
-        });
+        }, this::setChatStatus);
         inferenceSettingsSection = new InferenceSettingsSection(this, settingsStore,
                 () -> inferenceSettings, validated -> inferenceSettings = validated,
                 inferenceEngine::configure, () -> settingsLoaded, () -> busy, () -> generating,
@@ -544,7 +514,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                     @Override public void persistBundledQuiet(ImageSettings next) {
                         if (imageSettingsSection != null) imageSettingsSection.persist(next, false);
                     }
-                });
+                }, this::setChatStatus);
         inferenceSettingsSection.mount(configuration, ink, inkMuted);
         searchSettingsSection = new SearchSettingsSection(this, new SearchSettingsSection.Deps(
                 () -> searchEndpoint, () -> searchEnabled,
@@ -556,19 +526,19 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                             .putBoolean("search_enabled", searchEnabled).apply();
                 },
                 enabled -> chatPanel.setIdleMode(enabled), this::updateControls, () -> busy,
-                this::showSearchSettings));
+                this::showSearchSettings, this::setChatStatus));
         searchSettingsSection.mount(configuration, ink, inkMuted);
 
         imageSettingsSection.mount(configuration, ink, inkMuted);
         backgroundSettingsSection = new BackgroundSettingsSection(this, new BackgroundSettingsSection.Deps(
                 () -> new RuntimePreferences(this),
                 (keep, idle, lock, loopback) -> runtime.updateBackgroundSettings(keep, idle, lock, loopback),
-                () -> runtime.loopbackToken(), () -> runtime.loopbackPort()));
+                () -> runtime.loopbackToken(), () -> runtime.loopbackPort(), this::setChatStatus));
         backgroundSettingsSection.mount(configuration, ink, inkMuted);
         integrationsSettingsSection = new IntegrationsSettingsSection(this, new IntegrationsSettingsSection.Deps(
                 () -> new RuntimePreferences(this), this::updateControls, this::pickCalendarTarget,
                 this::pickWhistleModel, this::downloadCactusWhistleModel, this::downloadTinyVocaPack,
-                this::runOnUiThread));
+                this::runOnUiThread, this::setChatStatus));
         integrationsSettingsSection.mount(configuration, ink, inkMuted);
 
         defaultAssistantButton = button(getString(R.string.default_assistant_button));
@@ -648,63 +618,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         root.addView(settingsHost, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         // --- Chat shell (primary viewport) ---
-        LinearLayout chatRoot = new LinearLayout(this);
-        chatRoot.setOrientation(LinearLayout.VERTICAL);
-        chatPanel = new ChatPanel(this, this::send, this::stopActiveWork, () -> {
-            voiceSttCancelled.set(true);
-            HistoryMediaCleanup.deleteAttachment(this,pendingImagePath);
-            HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
-            pendingImagePath = "";
-            pendingAudioPath = "";
-            clearPendingDocuments();
-            lastAssistantReply = "";
-            if (playbackActive()) playbackController.stop();
-            chatPanel.clearImageAttachment();
-            runtime.clearConversation();
-            lastAssistantReply = "";
-        }, turnId -> {
-            if (busy || modelHandle() == 0L || !settingsLoaded) return;
-            runtime.noteSubmission("retry", inferenceSettings.maxTokens);
-            if (runtime.retryInterrupted(turnId)) {
-                session = runtime.session();
-                pendingImagePath = "";
-                pendingAudioPath = "";
-                clearPendingDocuments();
-                chatPanel.clearImageAttachment();
-                busy = true;
-                updateControls();
-            }
-        }, this::requestCompact);
-        chatRoot.addView(chatPanel, new LinearLayout.LayoutParams(-1, 0, 1f));
-
-        LinearLayout mediaHost = new LinearLayout(this);
-        mediaHost.setOrientation(LinearLayout.VERTICAL);
-        mediaHost.setBackgroundColor(surface);
-        mediaHost.setPadding(0, dp(2), 0, dp(2));
-        photoButton = mediaButton(getString(R.string.photo), R.drawable.ic_still_photo);
-        photoButton.setId(R.id.chat_photo);
-        cameraButton = mediaButton(getString(R.string.camera), R.drawable.ic_still_camera);
-        cameraButton.setId(R.id.chat_camera);
-        documentButton = mediaButton(getString(R.string.attach_document), R.drawable.ic_still_document);
-        documentButton.setId(R.id.chat_document);
-        documentButton.setContentDescription(getString(R.string.attach_document_talkback));
-        recordButton = mediaButton(getString(R.string.voice_input), R.drawable.ic_still_mic);
-        recordButton.setId(R.id.voice_record);
-        speakButton = mediaButton(getString(R.string.speak_reply), R.drawable.ic_still_speak);
-        speakButton.setId(R.id.voice_speak);
-        // Two rows when stacked (narrow / large fonts); one row otherwise.
-        if (StillwaterReadable.shouldStack(this)) {
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, this, 46, photoButton, cameraButton, documentButton);
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, this, 46,
-                    new float[]{1f, 1.2f}, recordButton, speakButton);
-        } else {
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, this, 46,
-                    new float[]{1f, 1f, 1f, 1.2f, 1.2f},
-                    photoButton, cameraButton, documentButton, recordButton, speakButton);
-        }
-        chatRoot.addView(mediaHost);
-        chatShell = chatRoot;
-        root.addView(chatShell, new LinearLayout.LayoutParams(-1, 0, 1f));
+        chatShellSection.mountViewport(root, surface);
+        chatPanel = chatShellSection.chatPanel();
+        photoButton = chatShellSection.photoButton();
+        cameraButton = chatShellSection.cameraButton();
+        documentButton = chatShellSection.documentButton();
+        recordButton = chatShellSection.recordButton();
+        speakButton = chatShellSection.speakButton();
 
         setContentView(root);
 
@@ -745,19 +665,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             getIntent().removeExtra(EXTRA_OPEN_SETTINGS);
         }
         if (settingsHost != null) settingsHost.setVisibility(open ? View.VISIBLE : View.GONE);
-        if (chatShell != null) chatShell.setVisibility(open ? View.GONE : View.VISIBLE);
-        if (settingsOpenButton != null) settingsOpenButton.setVisibility(open ? View.GONE : View.VISIBLE);
-        if (topBarView != null) topBarView.setVisibility(open ? View.GONE : View.VISIBLE);
+        if (chatShellSection != null) chatShellSection.hideChatUiWhenSettingsOpen(open);
         if (open) syncInlineSettingsFields();
     }
 
     private void updateControls() {
         if (searchSettingsSection != null) searchSettingsSection.paintWebSearchControl(busy);
-        if (modePill != null) {
-            modePill.setText(searchEnabled
-                    ? getString(R.string.mode_web_search)
-                    : getString(R.string.mode_local));
-        }
+        if (chatShellSection != null) chatShellSection.paintModePill(searchEnabled);
         modelButton.setEnabled(!busy);
         mmprojButton.setEnabled(!busy);
         if (openModelUriButton != null) openModelUriButton.setEnabled(!busy);
@@ -849,16 +763,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             status.setText("Model unloaded. Selected files remain available for reload.");
             updateControls();
         });
-    }
-
-    private Button mediaButton(String title, int icon) {
-        Button button = button(title);
-        StillwaterReadable.setTextSizeSp(button, 12);
-        button.setCompoundDrawablesWithIntrinsicBounds(icon, 0, 0, 0);
-        button.setCompoundDrawablePadding(dp(4));
-        StillwaterUi.quiet(button);
-        StillwaterReadable.prepareWrappingControl(button, dp(46));
-        return button;
     }
 
     private EditText settingInput(LinearLayout form, String title, String hint, int value, int id,
@@ -1811,7 +1715,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         String id = java.util.UUID.randomUUID().toString();
         historyConversationId = id;
         historyTitle = getString(R.string.new_conversation_title);
-        if (brandTitle != null) brandTitle.setText(historyTitle);
+        if (chatShellSection != null) chatShellSection.setBrandTitle(historyTitle);
         runtime.setConversation(id, historyTitle);
         runtime.clearConversation();
         setSettingsOpen(false);

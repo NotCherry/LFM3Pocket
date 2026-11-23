@@ -33,6 +33,7 @@ final class InferenceSettingsSection {
     private final ExecutorService worker;
     private final Runnable updateControls;
     private final BundledImageSettings bundledImages;
+    private final Consumer<CharSequence> chatStatus;
     private boolean benchmarkRunning;
     private EditText settingsContextField;
     private EditText settingsThreadsField;
@@ -45,7 +46,8 @@ final class InferenceSettingsSection {
             Supplier<InferenceSettings> currentSettings, Consumer<InferenceSettings> onSettingsSaved,
             Consumer<InferenceSettings> configureEngine, BooleanSupplier settingsLoaded,
             BooleanSupplier activityBusy, BooleanSupplier generating, Supplier<Long> modelHandle,
-            ExecutorService worker, Runnable updateControls, BundledImageSettings bundledImages) {
+            ExecutorService worker, Runnable updateControls, BundledImageSettings bundledImages,
+            Consumer<CharSequence> chatStatus) {
         this.host = host;
         this.store = store;
         this.currentSettings = currentSettings;
@@ -58,6 +60,7 @@ final class InferenceSettingsSection {
         this.worker = worker;
         this.updateControls = updateControls;
         this.bundledImages = bundledImages;
+        this.chatStatus = chatStatus;
     }
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
@@ -149,7 +152,7 @@ final class InferenceSettingsSection {
                 // that InferenceSettingsE2eTest matches exactly on chat_status.
                 bundledImages.persistBundledQuiet(nextImages);
                 updateControls.run();
-                host.setChatStatus(next.summary());
+                chatStatus.accept(next.summary());
             }, failure -> {
                 if (host.isHostFinishing()) return;
                 if (settingsInlineError != null)
@@ -160,7 +163,7 @@ final class InferenceSettingsSection {
                 settingsInlineError.setText("Enter whole numbers for all settings.");
         } catch (IllegalArgumentException invalid) {
             if (settingsInlineError != null) settingsInlineError.setText(invalid.getMessage());
-            host.setChatStatus(invalid.getMessage());
+            chatStatus.accept(invalid.getMessage());
         }
     }
 
@@ -221,7 +224,7 @@ final class InferenceSettingsSection {
                 (android.content.ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
         if (clipboard == null) return;
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Hanami benchmark", text));
-        host.setChatStatus("Benchmark results copied.");
+        chatStatus.accept("Benchmark results copied.");
     }
 
     private static String safeNativeBuildInfo() {
