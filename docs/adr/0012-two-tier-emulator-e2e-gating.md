@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-22
 - Related: [#252](https://github.com/NotCherry/LFM3Pocket/pull/252), [#239](https://github.com/NotCherry/LFM3Pocket/issues/239)
+- Amended: 2026-11-23 ([#278](https://github.com/NotCherry/LFM3Pocket/pull/278) inventory check + EXCLUDED_CLASSES)
 
 ## Context
 
@@ -30,9 +31,9 @@ On every deep pass — a non-documentation push to `main`, the nightly schedule,
 
 ### Enrolling a new instrumentation class
 
-Add the simple class name to `DEEP_REQUIRED_CLASSES` in `.github/scripts/assert-android-test-results.py` (and to `SMOKE_REQUIRED_CLASSES` when it should run on pull requests). Harness or helper types that live under `app/src/androidTest/` but are not JUnit test classes belong in `EXCLUDED_CLASSES` with a one-line justification.
+Add the simple class name to the deep tier list in `.github/scripts/assert-android-test-results.py` (and to the smoke tier list when it should run on pull requests). Harness or helper types that live under `app/src/androidTest/` but are not JUnit test classes belong on the script’s exclusion list, each with a one-line justification. A type that carries `@Test` cannot be excluded.
 
-The `unit` job runs `python3 .github/scripts/assert-android-test-results.py --check-inventory`, which scans `app/src/androidTest/` and fails when any instrumented test class is missing from those lists, when a listed class has no source file, or when an exclusion has no justification. Smoke classes must remain a subset of the deep list.
+The `unit` job runs `python3 .github/scripts/assert-android-test-results.py --check-inventory`, which scans `app/src/androidTest/` and fails when any instrumented test class is missing from those lists, when a listed class has no source file, when an exclusion has no justification, or when an exclusion would drop a real test class. Smoke classes must remain a subset of the deep list.
 
 ## Consequences
 
