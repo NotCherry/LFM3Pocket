@@ -137,6 +137,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private AppearanceSettingsSection appearanceSettings;
     private ImageSettingsSection imageSettingsSection;
     private InferenceSettingsSection inferenceSettingsSection;
+    private SearchSettingsSection searchSettingsSection;
     private Button openModelUriButton, openProjectorUriButton, defaultAssistantButton;
     private boolean foreground;
     private boolean microphoneRequested;
@@ -164,10 +165,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private boolean imageSettingsLoaded;
     private boolean settingsOpen;
     private Button modelButton, mmprojButton;
-    private Button searchButton, photoButton, cameraButton, documentButton, recordButton, speakButton;
+    private Button photoButton, cameraButton, documentButton, recordButton, speakButton;
     private Button settingsOpenButton;
-    private EditText searchEndpointField;
-    private CheckBox searchEnabledBox;
     private boolean searchEnabled = false;
     private String searchEndpoint = "";
     private String mmprojPath = "";
@@ -591,35 +590,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                     }
                 });
         inferenceSettingsSection.mount(configuration, ink, inkMuted);
-
-        TextView searchHeading = label(getString(R.string.searxng_heading), 11, inkMuted);
-        searchHeading.setTypeface(StillwaterUi.sansMedium(this));
-        searchHeading.setLetterSpacing(0.12f);
-        searchHeading.setPadding(0, dp(16), 0, dp(4));
-        configuration.addView(searchHeading);
-        searchEndpointField = new EditText(this);
-        searchEndpointField.setId(R.id.search_endpoint);
-        searchEndpointField.setSingleLine(true);
-        searchEndpointField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        searchEndpointField.setHint("https://your-searxng.example.org/search");
-        searchEndpointField.setHintTextColor(inkMuted);
-        searchEndpointField.setTextColor(ink);
-        searchEndpointField.setTypeface(StillwaterUi.mono(this));
-        searchEndpointField.setBackgroundColor(Color.TRANSPARENT);
-        StillwaterUi.styleInput(searchEndpointField);
-        searchEndpointField.setText(searchEndpoint);
-        configuration.addView(searchEndpointField);
-        searchEnabledBox = new CheckBox(this);
-        searchEnabledBox.setId(R.id.search_enabled);
-        searchEnabledBox.setText(R.string.use_web_search);
-        StillwaterUi.styleCheck(searchEnabledBox);
-        searchEnabledBox.setChecked(searchEnabled);
-        configuration.addView(searchEnabledBox);
-        searchButton = button(getString(R.string.web_search_off));
-        searchButton.setId(R.id.web_search);
-        StillwaterUi.quiet(searchButton);
-        searchButton.setOnClickListener(v -> showSearchSettings());
-        StillwaterReadable.addFlexibleFullWidth(configuration, searchButton, 44);
+        searchSettingsSection = new SearchSettingsSection(this, new SearchSettingsSection.Deps(
+                () -> searchEndpoint, () -> searchEnabled,
+                (endpoint, enabled) -> {
+                    searchEndpoint = endpoint;
+                    searchEnabled = enabled;
+                    pocketPreferences().edit()
+                            .putString("search_endpoint", searchEndpoint)
+                            .putBoolean("search_enabled", searchEnabled).apply();
+                },
+                enabled -> chatPanel.setIdleMode(enabled), this::updateControls, () -> busy,
+                this::showSearchSettings));
+        searchSettingsSection.mount(configuration, ink, inkMuted);
 
         imageSettingsSection.mount(configuration, ink, inkMuted);
 
@@ -923,12 +905,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             if (inferenceSettingsSection != null) inferenceSettingsSection.saveInline();
         });
         StillwaterReadable.addFlexibleFullWidth(settingsActions, saveInference, 52);
-        Button saveSearch = button(getString(R.string.save_search));
-        saveSearch.setId(R.id.search_save);
-        StillwaterUi.quiet(saveSearch);
-        saveSearch.setOnClickListener(v -> saveInlineSearchSettings());
-        StillwaterReadable.prepareWrappingControl(saveSearch, dp(44));
-        settingsActions.addView(saveSearch, new LinearLayout.LayoutParams(-2, -2));
+        if (searchSettingsSection != null) searchSettingsSection.mountSaveButton(settingsActions);
         settingsRoot.addView(settingsActions, new LinearLayout.LayoutParams(-1, -2));
 
         settingsHost = settingsRoot;
@@ -1000,7 +977,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         mmprojButton.setOnClickListener(v -> pickMmproj());
         openModelUriButton.setOnClickListener(v -> pickExternalModel(OPEN_MODEL_URI));
         openProjectorUriButton.setOnClickListener(v -> pickExternalModel(OPEN_MMPROJ_URI));
-        searchButton.setOnClickListener(v -> showSearchSettings());
         photoButton.setOnClickListener(v -> pickPhoto());
         cameraButton.setOnClickListener(v -> takePhoto());
         documentButton.setOnClickListener(v -> pickDocument());
@@ -1041,13 +1017,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void updateControls() {
-        searchButton.setText(searchEnabled ? getString(R.string.web_search_on) : getString(R.string.web_search_off));
+        if (searchSettingsSection != null) searchSettingsSection.paintWebSearchControl(busy);
         if (modePill != null) {
             modePill.setText(searchEnabled
                     ? getString(R.string.mode_web_search)
                     : getString(R.string.mode_local));
         }
-        searchButton.setEnabled(!busy);
         modelButton.setEnabled(!busy);
         mmprojButton.setEnabled(!busy);
         if (openModelUriButton != null) openModelUriButton.setEnabled(!busy);
@@ -1205,10 +1180,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private void syncInlineSettingsFields() {
         if (inferenceSettingsSection != null) inferenceSettingsSection.syncFields();
-        if (searchEndpointField != null) {
-            searchEndpointField.setText(searchEndpoint);
-            searchEnabledBox.setChecked(searchEnabled);
-        }
+        if (searchSettingsSection != null) searchSettingsSection.syncFields();
         if (networkToolsBox != null) {
             bindingBackground = true;
             networkToolsBox.setChecked(new RuntimePreferences(this).networkToolsEnabled());
@@ -1221,22 +1193,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         refreshCalendarPickerStatus();
     }
 
-    private void saveInlineSearchSettings() {
-        if (searchEndpointField == null) return;
-        String value = searchEndpointField.getText().toString().trim();
-        if (!SearchEndpointPolicy.accepts(value)) {
-            status.setText("Use an HTTPS SearXNG search endpoint.");
-            return;
-        }
-        searchEndpoint = value;
-        searchEnabled = SearchEndpointPolicy.enabled(searchEnabledBox.isChecked(), value);
-        pocketPreferences().edit()
-                .putString("search_endpoint", searchEndpoint)
-                .putBoolean("search_enabled", searchEnabled).apply();
-        chatPanel.setIdleMode(searchEnabled);
-        updateControls();
-    }
-
     private void showInferenceSettings() {
         if (busy || !settingsLoaded) return;
         setSettingsOpen(true);
@@ -1247,7 +1203,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void showSearchSettings() {
         setSettingsOpen(true);
         syncInlineSettingsFields();
-        if (searchEndpointField != null) searchEndpointField.requestFocus();
+        if (searchSettingsSection != null) searchSettingsSection.focusEndpointField();
     }
 
     private void pickPhoto() {
