@@ -11,7 +11,7 @@ import android.widget.TextView;
  * Owns view wiring and paint logic; {@link MainActivity} keeps lifecycle and activity results.
  */
 final class AppearanceSettingsSection {
-    private final MainActivity activity;
+    private final MainActivitySettingsHost host;
     private final Handler mainHandler;
     private Button interfaceCompactButton;
     private Button interfaceDefaultButton;
@@ -23,55 +23,55 @@ final class AppearanceSettingsSection {
     private float pendingInterfaceSliderScale = InterfaceSize.DEFAULT;
     private final Runnable applyInterfaceSlider;
 
-    AppearanceSettingsSection(MainActivity activity, Handler mainHandler) {
-        this.activity = activity;
+    AppearanceSettingsSection(MainActivitySettingsHost host, Handler mainHandler) {
+        this.host = host;
         this.mainHandler = mainHandler;
         this.applyInterfaceSlider = () -> {
-            if (activity.isHostFinishing() || bindingInterfaceSize || interfaceSliderTracking) return;
+            if (host.isHostFinishing() || bindingInterfaceSize || interfaceSliderTracking) return;
             applyInterfaceSize(pendingInterfaceSliderScale);
         };
     }
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
-        LinearLayout section = new LinearLayout(activity);
+        LinearLayout section = new LinearLayout(host.settingsActivity());
         section.setId(R.id.settings_appearance);
         section.setOrientation(LinearLayout.VERTICAL);
-        TextView heading = activity.label(activity.getString(R.string.appearance_heading), 11, inkMuted);
-        heading.setTypeface(StillwaterUi.sansMedium(activity));
+        TextView heading = host.label(host.getString(R.string.appearance_heading), 11, inkMuted);
+        heading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
         heading.setLetterSpacing(0.12f);
-        heading.setPadding(0, activity.dp(16), 0, activity.dp(4));
+        heading.setPadding(0, host.dp(16), 0, host.dp(4));
         section.addView(heading);
-        TextView title = activity.label(activity.getString(R.string.interface_size_label), 14, ink);
+        TextView title = host.label(host.getString(R.string.interface_size_label), 14, ink);
         StillwaterReadable.prepareWrappingLabel(title);
         section.addView(title);
-        TextView help = activity.label(activity.getString(R.string.interface_size_help), 12, inkMuted);
+        TextView help = host.label(host.getString(R.string.interface_size_help), 12, inkMuted);
         StillwaterReadable.prepareWrappingLabel(help);
         section.addView(help);
 
-        interfaceCompactButton = interfacePreset(activity.getString(R.string.interface_size_compact),
+        interfaceCompactButton = interfacePreset(host.getString(R.string.interface_size_compact),
                 InterfaceSize.COMPACT, R.id.settings_interface_compact);
-        interfaceDefaultButton = interfacePreset(activity.getString(R.string.interface_size_default),
+        interfaceDefaultButton = interfacePreset(host.getString(R.string.interface_size_default),
                 InterfaceSize.DEFAULT, R.id.settings_interface_default);
-        interfaceLargeButton = interfacePreset(activity.getString(R.string.interface_size_large),
+        interfaceLargeButton = interfacePreset(host.getString(R.string.interface_size_large),
                 InterfaceSize.LARGE, R.id.settings_interface_large);
-        LinearLayout presets = StillwaterReadable.addFlexibleButtonRow(section, activity, 44,
+        LinearLayout presets = StillwaterReadable.addFlexibleButtonRow(section, host.settingsActivity(), 44,
                 interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton);
         presets.setId(R.id.settings_interface_size);
 
-        interfaceSizeValue = activity.label("", 12, inkMuted);
+        interfaceSizeValue = host.label("", 12, inkMuted);
         interfaceSizeValue.setId(R.id.settings_interface_value);
         StillwaterReadable.prepareWrappingLabel(interfaceSizeValue);
-        interfaceSizeValue.setPadding(0, activity.dp(8), 0, activity.dp(2));
+        interfaceSizeValue.setPadding(0, host.dp(8), 0, host.dp(2));
         section.addView(interfaceSizeValue);
 
-        interfaceSizeSlider = new SeekBar(activity);
+        interfaceSizeSlider = new SeekBar(host.settingsActivity());
         interfaceSizeSlider.setId(R.id.settings_interface_slider);
         interfaceSizeSlider.setMax(50); // 80..130 in 1% steps
-        interfaceSizeSlider.setMinimumHeight(InterfaceSize.minTouchPx(activity));
+        interfaceSizeSlider.setMinimumHeight(InterfaceSize.minTouchPx(host.settingsActivity()));
         interfaceSizeSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 float scale = InterfaceSize.fromPercent(80 + progress);
-                interfaceSizeValue.setText(activity.getString(R.string.interface_size_percent,
+                interfaceSizeValue.setText(host.getString(R.string.interface_size_percent,
                         InterfaceSize.percent(scale)));
                 if (!fromUser || bindingInterfaceSize) return;
                 highlightInterfaceSize(scale);
@@ -100,7 +100,7 @@ final class AppearanceSettingsSection {
     }
 
     private Button interfacePreset(String title, float scale, int id) {
-        Button presetButton = activity.button(title);
+        Button presetButton = host.button(title);
         presetButton.setId(id);
         StillwaterUi.quiet(presetButton);
         presetButton.setOnClickListener(v -> {
@@ -112,20 +112,20 @@ final class AppearanceSettingsSection {
 
     private void applyInterfaceSize(float scale) {
         float next = InterfaceSize.clamp(scale);
-        if (Math.abs(next - InterfaceSize.read(activity)) < 0.001f) {
+        if (Math.abs(next - InterfaceSize.read(host.settingsActivity())) < 0.001f) {
             syncControls();
             return;
         }
-        InterfaceSize.write(activity, next);
-        activity.prepareSettingsRecreateForInterfaceSize();
+        InterfaceSize.write(host.settingsActivity(), next);
+        host.prepareSettingsRecreateForInterfaceSize();
     }
 
     void syncControls() {
         if (interfaceSizeSlider == null) return;
         bindingInterfaceSize = true;
-        float scale = InterfaceSize.read(activity);
+        float scale = InterfaceSize.read(host.settingsActivity());
         interfaceSizeSlider.setProgress(InterfaceSize.percent(scale) - 80);
-        interfaceSizeValue.setText(activity.getString(R.string.interface_size_percent,
+        interfaceSizeValue.setText(host.getString(R.string.interface_size_percent,
                 InterfaceSize.percent(scale)));
         highlightInterfaceSize(scale);
         bindingInterfaceSize = false;
