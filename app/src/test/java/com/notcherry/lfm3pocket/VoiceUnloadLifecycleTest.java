@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-public final class VoiceUnloadLifecycleTest {
+public final class VoiceUnloadLifecycleTest extends HanamiConcurrencyUnitTest {
     @Test public void unloadDuringCommandCaptureStopsMicAndDeletesArtifacts() throws Exception {
         for (String cause : unloadCauses()) {
             File dir = Files.createTempDirectory("voice-unload-command-" + cause).toFile();

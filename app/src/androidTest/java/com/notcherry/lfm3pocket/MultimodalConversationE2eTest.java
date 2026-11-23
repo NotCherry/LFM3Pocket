@@ -19,7 +19,9 @@ import androidx.test.uiautomator.Until;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.Timeout;
 import org.junit.runner.RunWith;
 
 import java.io.File;
@@ -33,6 +35,9 @@ import java.util.regex.Pattern;
  */
 @RunWith(AndroidJUnit4.class)
 public final class MultimodalConversationE2eTest {
+    @Rule
+    public final Timeout perTestTimeout = InstrumentedTestTimeouts.HEAVY_E2E;
+
     private static final long UI_TIMEOUT_MS = 20000L;
     private TestLfm3PocketApplication app;
     private Context context;

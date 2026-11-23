@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.Test;
 
-public final class RuntimePolicyTest {
+public final class RuntimePolicyTest extends HanamiConcurrencyUnitTest {
     private final RuntimePolicy policy = new RuntimePolicy();
 
     @Test public void listeningUsesMicrophoneCaptureFlag() {

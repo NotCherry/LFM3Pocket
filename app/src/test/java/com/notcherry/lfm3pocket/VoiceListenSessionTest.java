@@ -19,7 +19,7 @@ import java.util.function.Consumer;
 
 import org.junit.Test;
 
-public final class VoiceListenSessionTest {
+public final class VoiceListenSessionTest extends HanamiConcurrencyUnitTest {
     @Test public void idleToListeningToReady() throws Exception {
         File dir = new File(System.getProperty("java.io.tmpdir"), "voice-listen");
         dir.mkdirs();

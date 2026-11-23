@@ -1,5 +1,7 @@
 # Verification plan
 
+Per-test and per-task timeout policy: [`TESTING.md`](TESTING.md).
+
 ## GitHub Actions
 
 - Build the `phone` flavor for `arm64-v8a` and upload `LFM3Pocket-arm64-debug`.

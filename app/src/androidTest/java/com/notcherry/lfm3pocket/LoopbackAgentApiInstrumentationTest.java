@@ -8,7 +8,9 @@ import static org.junit.Assert.assertTrue;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import org.json.JSONObject;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.Timeout;
 import org.junit.runner.RunWith;
 
 import java.io.ByteArrayOutputStream;
@@ -20,6 +22,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 @RunWith(AndroidJUnit4.class)
 public final class LoopbackAgentApiInstrumentationTest {
+    @Rule
+    public final Timeout perTestTimeout = InstrumentedTestTimeouts.CONCURRENCY;
+
     private static final String TOKEN = "instrumentation-test-token";
 
     @Test
