@@ -22,9 +22,9 @@ public final class ModelDownloadJobStopTest {
         assertEquals(ModelDownloadJobStop.Action.USER_CANCEL, action);
     }
 
-    @Test public void constraintLossIsSystemStopAndReschedules() {
-        ModelDownloadJobStop.Action action = ModelDownloadJobStop.actionForStopReason(
-                JobParameters.STOP_REASON_DEVICE_IDLE);
+    @Test public void systemStopReschedules() {
+        // Any stop reason other than user/app cancel is a system stop (e.g. constraints, preempt).
+        ModelDownloadJobStop.Action action = ModelDownloadJobStop.actionForStopReason(3);
         assertEquals(ModelDownloadJobStop.Action.SYSTEM_STOP, action);
         assertTrue(ModelDownloadJobStop.onStopWantsReschedule(action));
     }
