@@ -413,15 +413,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     int dp(int n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
 
-    TextView createLabel(String s, int sp, int color) {
-        return label(s, sp, color);
-    }
-
-    Button createButton(String title) {
-        return button(title);
-    }
-
-    boolean isDestroyedFlag() {
+    boolean isHostFinishing() {
         return destroyed;
     }
 
@@ -431,7 +423,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         recreate();
     }
 
-    private TextView label(String s, int sp, int color) {
+    TextView label(String s, int sp, int color) {
         TextView v = new TextView(this);
         v.setText(s);
         v.setTextSize(sp);
@@ -443,7 +435,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         return v;
     }
 
-    private Button button(String title) {
+    Button button(String title) {
         Button b = new Button(this);
         b.setText(title);
         b.setAllCaps(false);

@@ -27,7 +27,7 @@ final class AppearanceSettingsSection {
         this.activity = activity;
         this.mainHandler = mainHandler;
         this.applyInterfaceSlider = () -> {
-            if (activity.isDestroyedFlag() || bindingInterfaceSize || interfaceSliderTracking) return;
+            if (activity.isHostFinishing() || bindingInterfaceSize || interfaceSliderTracking) return;
             applyInterfaceSize(pendingInterfaceSliderScale);
         };
     }
@@ -36,15 +36,15 @@ final class AppearanceSettingsSection {
         LinearLayout section = new LinearLayout(activity);
         section.setId(R.id.settings_appearance);
         section.setOrientation(LinearLayout.VERTICAL);
-        TextView heading = activity.createLabel(activity.getString(R.string.appearance_heading), 11, inkMuted);
+        TextView heading = activity.label(activity.getString(R.string.appearance_heading), 11, inkMuted);
         heading.setTypeface(StillwaterUi.sansMedium(activity));
         heading.setLetterSpacing(0.12f);
         heading.setPadding(0, activity.dp(16), 0, activity.dp(4));
         section.addView(heading);
-        TextView title = activity.createLabel(activity.getString(R.string.interface_size_label), 14, ink);
+        TextView title = activity.label(activity.getString(R.string.interface_size_label), 14, ink);
         StillwaterReadable.prepareWrappingLabel(title);
         section.addView(title);
-        TextView help = activity.createLabel(activity.getString(R.string.interface_size_help), 12, inkMuted);
+        TextView help = activity.label(activity.getString(R.string.interface_size_help), 12, inkMuted);
         StillwaterReadable.prepareWrappingLabel(help);
         section.addView(help);
 
@@ -58,7 +58,7 @@ final class AppearanceSettingsSection {
                 interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton);
         presets.setId(R.id.settings_interface_size);
 
-        interfaceSizeValue = activity.createLabel("", 12, inkMuted);
+        interfaceSizeValue = activity.label("", 12, inkMuted);
         interfaceSizeValue.setId(R.id.settings_interface_value);
         StillwaterReadable.prepareWrappingLabel(interfaceSizeValue);
         interfaceSizeValue.setPadding(0, activity.dp(8), 0, activity.dp(2));
@@ -100,7 +100,7 @@ final class AppearanceSettingsSection {
     }
 
     private Button interfacePreset(String title, float scale, int id) {
-        Button presetButton = activity.createButton(title);
+        Button presetButton = activity.button(title);
         presetButton.setId(id);
         StillwaterUi.quiet(presetButton);
         presetButton.setOnClickListener(v -> {
