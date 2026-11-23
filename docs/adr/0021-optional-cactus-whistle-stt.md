@@ -19,7 +19,7 @@ The app needs an opt-in input backend for that model. Weights and the Cactus nat
    - an explicit, user-initiated in-app download from a pinned `Cactus-Compute/whistle` revision on Hugging Face, kept only after SHA-256 verification;
    - a file the user selects.
 
-   The app never downloads the model on its own. **Remove** clears the selection and deletes only the in-app downloaded copy; a user-selected `.cact` file is left untouched until app data is cleared. The current pin and checksum are recorded in [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md).
+   The app never downloads the model on its own. **Remove** clears the selection and deletes the in-app downloaded copy. A user-selected file stored under a name other than `whistle.cact` stays in app-private storage until app data is cleared. The current pin and checksum are recorded in [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md).
 3. **Runtime** — Cactus runtime binaries are not committed and are not bundled by default. They are supplied as per-ABI build artifacts. A build without them still compiles and reports the backend unavailable.
 4. **Privacy** — No audio or transcript is uploaded. There is no cloud speech-to-text fallback.
 5. **Scope** — The initial product is English-only, even though upstream supports more languages. A wider set waits on a product decision and updated copy.
