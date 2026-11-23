@@ -8,11 +8,36 @@
 #include <string>
 #include <vector>
 
+#if defined(__ANDROID__) && defined(__aarch64__)
+#include <sys/auxv.h>
+#ifndef AT_HWCAP
+#define AT_HWCAP 16
+#endif
+#ifndef HWCAP_ASIMDDP
+#define HWCAP_ASIMDDP (1UL << 20)
+#endif
+#endif
+
 #if defined(HANAMI_CACTUS_WHISTLE)
-#include "cactus_whistle/cactus.h"
+// Resolved from third_party/cactus/<abi>/ when scripts/fetch-cactus.sh has run.
+#include "cactus.h"
 #endif
 
 namespace {
+
+#if defined(HANAMI_CACTUS_WHISTLE)
+
+/** Pinned libcactus.a contains ~185 sdot kernels and a g_dotprod gate; no i8mm/SVE in the archive. */
+bool cactus_runtime_cpu_usable() {
+#if defined(__ANDROID__) && defined(__aarch64__)
+    const unsigned long hwcap = getauxval(AT_HWCAP);
+    return (hwcap & HWCAP_ASIMDDP) != 0;
+#else
+    return true;
+#endif
+}
+
+#endif
 
 std::mutex g_mutex;
 
@@ -35,7 +60,7 @@ jstring make_jstring(JNIEnv * env, const std::string & value) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_notcherry_lfm3pocket_CactusWhistleBridge_nativeProbe(JNIEnv *, jclass) {
 #if defined(HANAMI_CACTUS_WHISTLE)
-    return JNI_TRUE;
+    return cactus_runtime_cpu_usable() ? JNI_TRUE : JNI_FALSE;
 #else
     return JNI_FALSE;
 #endif

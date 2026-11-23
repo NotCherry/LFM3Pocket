@@ -17,6 +17,11 @@ def hanamiSigningReady = hanamiKeystore && hanamiStorePassword && hanamiKeyAlias
 def hanamiGgmlVulkan = (project.findProperty('hanami.ggmlVulkan')
         ?: System.getenv('HANAMI_GGML_VULKAN')
         ?: 'OFF').toString()
+// Phone release / ARM64 CI require the pinned Cactus Whistle runtime (scripts/fetch-cactus.sh).
+// Smoke/x86_64 keeps the stub path when artifacts are absent.
+def hanamiRequireCactus = (project.findProperty('hanami.requireCactus')
+        ?: System.getenv('HANAMI_REQUIRE_CACTUS')
+        ?: 'OFF').toString()
 
 android {
     // Source package stays put so the Java/Kotlin tree does not move.
@@ -53,7 +58,8 @@ android {
                           '-DLLAMA_BUILD_TESTS=OFF',
                           '-DLLAMA_BUILD_EXAMPLES=OFF',
                           '-DLLAMA_BUILD_SERVER=OFF',
-                          "-DHANAMI_GGML_VULKAN=${hanamiGgmlVulkan}"
+                          "-DHANAMI_GGML_VULKAN=${hanamiGgmlVulkan}",
+                          "-DHANAMI_REQUIRE_CACTUS=${hanamiRequireCactus}"
                 cppFlags '-std=c++17'
             }
         }
@@ -175,6 +181,8 @@ dependencies {
 
 ksp { arg('room.schemaLocation', "$projectDir/schemas"); arg('room.generateKotlin', 'false') }
 android.sourceSets.androidTest.assets.srcDirs += files("$projectDir/schemas")
+// Apache-2.0 NOTICE/LICENSE for the optional Cactus runtime redistributed in phone ARM64 builds.
+android.sourceSets.main.assets.srcDirs += file("${rootProject.projectDir}/licenses/cactus")
 
 // Per-task ceilings so one hung suite cannot block CI indefinitely (see docs/TESTING.md).
 tasks.withType(Test).configureEach { task ->

@@ -78,6 +78,8 @@ jobs:
           python3 .github/scripts/assert-instrumentation-result.py --self-test
           python3 .github/scripts/next-hanami-version.py --self-test
           python3 .github/scripts/assert-release-ci-gate.py --self-test
+          python3 .github/scripts/assert-cactus-runtime-in-apk.py --self-test
+          bash -n scripts/fetch-cactus.sh
       - name: Verify Stage 1 acceptance matrix completeness
         run: python3 .github/scripts/check-acceptance-matrix.py
       - name: Verify UI color tokens (no ad-hoc hex in UI packages)
@@ -306,6 +308,13 @@ jobs:
         run: |
           bash scripts/fetch-llama.sh
           git -C third_party/llama.cpp rev-parse HEAD
+      - name: Cache Cactus Android arm64 runtime
+        uses: actions/cache@v4
+        with:
+          path: third_party/cactus/arm64-v8a
+          key: cactus-android-arm64-${{ hashFiles('vendor/CACTUS_RELEASE', 'vendor/CACTUS_HF_REVISION', 'vendor/CACTUS_ANDROID_ARM64.sha256') }}
+      - name: Fetch Cactus Whistle runtime (arm64-v8a)
+        run: bash scripts/fetch-cactus.sh
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -325,9 +334,15 @@ jobs:
         with:
           gradle-version: '8.13'
       - name: Build ARM64 APK
-        run: gradle :app:assemblePhoneDebug :app:assembleDeviceCheckDebug :app:assembleDeviceCheckDebugAndroidTest --no-daemon --stacktrace
+        env:
+          HANAMI_REQUIRE_CACTUS: 'ON'
+        run: gradle :app:assemblePhoneDebug :app:assembleDeviceCheckDebug :app:assembleDeviceCheckDebugAndroidTest --no-daemon --stacktrace -Phanami.requireCactus=ON
       - name: Assert ARM64 APK exists
         run: test -s app/build/outputs/apk/phone/debug/app-phone-debug.apk
+      - name: Assert Cactus Whistle runtime is linked into the phone APK
+        run: |
+          python3 .github/scripts/assert-cactus-runtime-in-apk.py --self-test
+          python3 .github/scripts/assert-cactus-runtime-in-apk.py app/build/outputs/apk/phone/debug/app-phone-debug.apk
       - name: Verify effective native CPU optimization
         run: |
           python3 .github/scripts/assert-native-optimization.py --self-test
