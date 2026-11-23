@@ -15,7 +15,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-public final class VoiceActionRuntimePreemptTest {
+public final class VoiceActionRuntimePreemptTest extends HanamiConcurrencyUnitTest {
     @Test public void pttDuringConfirmListenRejectsAndStartsCommand() throws Exception {
         File dir = new File(System.getProperty("java.io.tmpdir"), "voice-preempt");
         dir.mkdirs();

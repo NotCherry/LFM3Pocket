@@ -23,5 +23,4 @@ public final class ModelDownloadPolicies {
     public static boolean shouldConfirmMetered(MeteredNetwork network, boolean userConfirmedMetered) {
         return network.isActiveNetworkMetered() && !userConfirmedMetered;
     }
-
 }

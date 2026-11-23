@@ -16,7 +16,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class LoopbackAgentApiTest {
+public final class LoopbackAgentApiTest extends HanamiConcurrencyUnitTest {
     private static final String TOKEN = "unit-test-token";
 
     @Test public void handleResponsesHaveAccurateUtf8ContentLength() {

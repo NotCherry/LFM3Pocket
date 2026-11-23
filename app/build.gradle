@@ -176,3 +176,14 @@ dependencies {
 ksp { arg('room.schemaLocation', "$projectDir/schemas"); arg('room.generateKotlin', 'false') }
 android.sourceSets.androidTest.assets.srcDirs += files("$projectDir/schemas")
 
+// Per-task ceilings so one hung suite cannot block CI indefinitely (see docs/TESTING.md).
+tasks.withType(Test).configureEach { task ->
+    if (task.name.contains('UnitTest')) {
+        task.timeout = java.time.Duration.ofMinutes(10)
+    }
+}
+tasks.matching { it.name ==~ /connected.*AndroidTest/ }.configureEach {
+    // DeviceProviderInstrumentTestTask — not a Gradle Test subtype; local runs only (CI uses shell timeout).
+    timeout = java.time.Duration.ofMinutes(48)
+}
+

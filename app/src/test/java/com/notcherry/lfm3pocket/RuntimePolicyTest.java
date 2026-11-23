@@ -219,7 +219,8 @@ public final class RuntimePolicyTest {
         }
     }
 
-    @Test public void serializedInterleavingsKeepForegroundAndWakeEffectsConsistent() throws Exception {
+    @Test(timeout = TestTimeouts.RUNTIME_POLICY_INTERLEAVING_MS)
+    public void serializedInterleavingsKeepForegroundAndWakeEffectsConsistent() throws Exception {
         ExecutorService owner = Executors.newSingleThreadExecutor(r -> new Thread(r, "policy-owner"));
         ExecutorService producers = Executors.newFixedThreadPool(4);
         try {
