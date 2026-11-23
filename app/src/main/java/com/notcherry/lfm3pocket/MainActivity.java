@@ -136,6 +136,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private float attachedInterfaceScale = InterfaceSize.DEFAULT;
     private AppearanceSettingsSection appearanceSettings;
     private ImageSettingsSection imageSettingsSection;
+    private InferenceSettingsSection inferenceSettingsSection;
     private Button openModelUriButton, openProjectorUriButton, defaultAssistantButton;
     private boolean foreground;
     private boolean microphoneRequested;
@@ -165,12 +166,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private Button modelButton, mmprojButton;
     private Button searchButton, photoButton, cameraButton, documentButton, recordButton, speakButton;
     private Button settingsOpenButton;
-    private EditText settingsContextField, settingsThreadsField, settingsTokensField;
-    private CheckBox promptLookupBox;
-    private TextView settingsInlineError;
-    private TextView settingsBenchResult;
-    private TextView settingsBuildInfo;
-    private boolean benchmarkRunning;
     private EditText searchEndpointField;
     private CheckBox searchEnabledBox;
     private boolean searchEnabled = false;
@@ -581,64 +576,21 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             imageSettings = validated;
             imageSettingsLoaded = true;
         });
-
-        TextView inferenceHeading = label(getString(R.string.inference_heading), 11, inkMuted);
-        inferenceHeading.setTypeface(StillwaterUi.sansMedium(this));
-        inferenceHeading.setLetterSpacing(0.12f);
-        inferenceHeading.setPadding(0, dp(16), 0, dp(4));
-        configuration.addView(inferenceHeading);
-        settingsContextField = settingInput(configuration, getString(R.string.context_label),
-                getString(R.string.context_hint),
-                inferenceSettings.contextTokens, R.id.settings_context, 256, 512, 8192);
-        settingsThreadsField = settingInput(configuration, getString(R.string.decode_threads_label),
-                getString(R.string.decode_threads_hint),
-                inferenceSettings.threads, R.id.settings_threads, 1, 1, 8);
-        settingsTokensField = settingInput(configuration, getString(R.string.response_tokens_label),
-                getString(R.string.response_tokens_hint),
-                inferenceSettings.maxTokens, R.id.settings_tokens, 1, 1, 2048);
-        promptLookupBox = new CheckBox(this);
-        promptLookupBox.setId(R.id.settings_prompt_lookup);
-        promptLookupBox.setText(R.string.prompt_lookup_label);
-        StillwaterUi.styleCheck(promptLookupBox);
-        promptLookupBox.setChecked(inferenceSettings.promptLookup);
-        configuration.addView(promptLookupBox);
-        configuration.addView(label(getString(R.string.prompt_lookup_hint), 12, inkMuted));
-        settingsInlineError = label("", 13, StillwaterUi.DANGER);
-        StillwaterReadable.prepareWrappingLabel(settingsInlineError);
-        configuration.addView(settingsInlineError);
-
-        TextView benchHeading = label("BENCHMARK", 11, inkMuted);
-        benchHeading.setTypeface(StillwaterUi.sansMedium(this));
-        benchHeading.setLetterSpacing(0.12f);
-        benchHeading.setPadding(0, dp(16), 0, dp(4));
-        configuration.addView(benchHeading);
-        configuration.addView(label(
-                "Measures prompt-processing (pp) and decode (tg) tok/s on the loaded model, like llama-bench.",
-                12, inkMuted));
-        Button runBench = button("Run speed test");
-        runBench.setId(R.id.settings_bench_run);
-        StillwaterUi.quiet(runBench);
-        runBench.setOnClickListener(v -> runInlineBenchmark());
-        configuration.addView(runBench, new LinearLayout.LayoutParams(-1, dp(48)));
-        settingsBenchResult = label("Load a model, then run the speed test. Results wrap and can be copied.", 13, ink);
-        settingsBenchResult.setId(R.id.settings_bench_result);
-        settingsBenchResult.setSingleLine(false);
-        settingsBenchResult.setMaxLines(24);
-        settingsBenchResult.setHorizontallyScrolling(false);
-        settingsBenchResult.setPadding(0, dp(8), 0, dp(4));
-        configuration.addView(settingsBenchResult);
-        Button copyBench = button("Copy results");
-        copyBench.setId(R.id.settings_bench_copy);
-        StillwaterUi.quiet(copyBench);
-        copyBench.setOnClickListener(v -> copyBenchmarkResults());
-        configuration.addView(copyBench, new LinearLayout.LayoutParams(-1, dp(44)));
-        settingsBuildInfo = label(safeNativeBuildInfo(), 12, inkMuted);
-        settingsBuildInfo.setId(R.id.settings_build_info);
-        settingsBuildInfo.setSingleLine(false);
-        settingsBuildInfo.setMaxLines(8);
-        settingsBuildInfo.setHorizontallyScrolling(false);
-        settingsBuildInfo.setPadding(0, dp(4), 0, dp(8));
-        configuration.addView(settingsBuildInfo);
+        inferenceSettingsSection = new InferenceSettingsSection(this, settingsStore,
+                () -> inferenceSettings, validated -> inferenceSettings = validated,
+                inferenceEngine::configure, () -> settingsLoaded, () -> busy, () -> generating,
+                this::modelHandle, worker, this::updateControls,
+                new InferenceSettingsSection.BundledImageSettings() {
+                    @Override public ImageSettings readForBundledSave() {
+                        return imageSettingsSection == null
+                                ? imageSettings
+                                : imageSettingsSection.readForInlineInferenceSave();
+                    }
+                    @Override public void persistBundledQuiet(ImageSettings next) {
+                        if (imageSettingsSection != null) imageSettingsSection.persist(next, false);
+                    }
+                });
+        inferenceSettingsSection.mount(configuration, ink, inkMuted);
 
         TextView searchHeading = label(getString(R.string.searxng_heading), 11, inkMuted);
         searchHeading.setTypeface(StillwaterUi.sansMedium(this));
@@ -967,7 +919,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         Button saveInference = button(getString(R.string.save));
         saveInference.setId(R.id.settings_save);
         StillwaterUi.primary(saveInference);
-        saveInference.setOnClickListener(v -> saveInlineInferenceSettings());
+        saveInference.setOnClickListener(v -> {
+            if (inferenceSettingsSection != null) inferenceSettingsSection.saveInline();
+        });
         StillwaterReadable.addFlexibleFullWidth(settingsActions, saveInference, 52);
         Button saveSearch = button(getString(R.string.save_search));
         saveSearch.setId(R.id.search_save);
@@ -1250,12 +1204,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void syncInlineSettingsFields() {
-        if (settingsContextField != null && settingsLoaded) {
-            settingsContextField.setText(Integer.toString(inferenceSettings.contextTokens));
-            settingsThreadsField.setText(Integer.toString(inferenceSettings.threads));
-            settingsTokensField.setText(Integer.toString(inferenceSettings.maxTokens));
-            if (promptLookupBox != null) promptLookupBox.setChecked(inferenceSettings.promptLookup);
-        }
+        if (inferenceSettingsSection != null) inferenceSettingsSection.syncFields();
         if (searchEndpointField != null) {
             searchEndpointField.setText(searchEndpoint);
             searchEnabledBox.setChecked(searchEnabled);
@@ -1270,102 +1219,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             bindingBackground = false;
         }
         refreshCalendarPickerStatus();
-    }
-
-    private void saveInlineInferenceSettings() {
-        if (busy || !settingsLoaded || settingsContextField == null) return;
-        if (settingsInlineError != null) settingsInlineError.setText("");
-        try {
-            InferenceSettings next = new InferenceSettings(
-                    Integer.parseInt(settingsContextField.getText().toString()),
-                    Integer.parseInt(settingsThreadsField.getText().toString()),
-                    Integer.parseInt(settingsTokensField.getText().toString()),
-                    promptLookupBox == null || promptLookupBox.isChecked());
-            ImageSettings nextImages = imageSettingsSection == null
-                    ? imageSettings
-                    : imageSettingsSection.readForInlineInferenceSave();
-            settingsStore.save(next, () -> {
-                if (destroyed) return;
-                inferenceSettings = next;
-                inferenceEngine.configure(next);
-                // Quiet image persist so it cannot race and overwrite the inference summary
-                // that InferenceSettingsE2eTest matches exactly on chat_status.
-                if (imageSettingsSection != null) imageSettingsSection.persist(nextImages, false);
-                updateControls();
-                status.setText(next.summary());
-            }, failure -> {
-                if (destroyed) return;
-                if (settingsInlineError != null)
-                    settingsInlineError.setText("Settings were not saved: " + failure);
-            });
-        } catch (NumberFormatException invalid) {
-            if (settingsInlineError != null)
-                settingsInlineError.setText("Enter whole numbers for all settings.");
-        } catch (IllegalArgumentException invalid) {
-            if (settingsInlineError != null) settingsInlineError.setText(invalid.getMessage());
-            status.setText(invalid.getMessage());
-        }
-    }
-
-    private static String safeNativeBuildInfo() {
-        try {
-            return NativeBridge.nativeBuildInfo();
-        } catch (UnsatisfiedLinkError | Exception ignored) {
-            return "Native build info unavailable until the library loads.";
-        }
-    }
-
-    private void runInlineBenchmark() {
-        if (destroyed || benchmarkRunning || busy || generating) return;
-        long handle = runtime != null ? runtime.handle() : 0L;
-        if (handle == 0L) {
-            if (settingsBenchResult != null)
-                settingsBenchResult.setText("Load a GGUF model first, then run the speed test.");
-            return;
-        }
-        InferenceSettings limits = inferenceSettings;
-        try {
-            if (settingsLoaded && settingsContextField != null) {
-                limits = new InferenceSettings(
-                        Integer.parseInt(settingsContextField.getText().toString()),
-                        Integer.parseInt(settingsThreadsField.getText().toString()),
-                        Integer.parseInt(settingsTokensField.getText().toString()),
-                        promptLookupBox == null || promptLookupBox.isChecked());
-            }
-        } catch (RuntimeException ignored) {
-            limits = inferenceSettings;
-        }
-        final InferenceSettings benchLimits = limits;
-        benchmarkRunning = true;
-        if (settingsBenchResult != null)
-            settingsBenchResult.setText("Running prompt-processing and decode benchmark…");
-        updateControls();
-        worker.execute(() -> {
-            String report;
-            try {
-                report = NativeBridge.runBenchmark(handle, benchLimits);
-            } catch (UnsatisfiedLinkError | RuntimeException e) {
-                report = "Benchmark failed: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-            }
-            final String text = report == null ? "Benchmark returned no result." : report;
-            mainHandler.post(() -> {
-                benchmarkRunning = false;
-                if (destroyed) return;
-                if (settingsBenchResult != null) settingsBenchResult.setText(text);
-                updateControls();
-            });
-        });
-    }
-
-    private void copyBenchmarkResults() {
-        if (settingsBenchResult == null) return;
-        CharSequence text = settingsBenchResult.getText();
-        if (text == null || text.length() == 0) return;
-        android.content.ClipboardManager clipboard =
-                (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        if (clipboard == null) return;
-        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Hanami benchmark", text));
-        if (status != null) status.setText("Benchmark results copied.");
     }
 
     private void saveInlineSearchSettings() {
@@ -1388,7 +1241,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         if (busy || !settingsLoaded) return;
         setSettingsOpen(true);
         syncInlineSettingsFields();
-        if (settingsContextField != null) settingsContextField.requestFocus();
+        if (inferenceSettingsSection != null) inferenceSettingsSection.focusContextField();
     }
 
     private void showSearchSettings() {
