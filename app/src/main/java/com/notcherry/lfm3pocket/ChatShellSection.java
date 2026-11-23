@@ -236,10 +236,6 @@ final class ChatShellSection {
         return speakButton;
     }
 
-    TextView statusView() {
-        return status;
-    }
-
     private Button mediaButton(String title, int icon) {
         Button button = ui.button(title);
         StillwaterReadable.setTextSizeSp(button, 12);

@@ -27,6 +27,8 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.annotation.StringRes;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -375,11 +377,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         if (chatShellSection != null) chatShellSection.setChatStatus(message);
     }
 
-    void setChatStatus(int resId) {
+    void setChatStatus(@StringRes int resId) {
         setChatStatus(getString(resId));
     }
 
-    void setChatStatus(int resId, Object... formatArgs) {
+    void setChatStatus(@StringRes int resId, Object... formatArgs) {
         setChatStatus(getString(resId, formatArgs));
     }
 
@@ -748,7 +750,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         boolean started = runtime.requestCompact();
         if (!started && session != null) {
             // Session emits a specific status when it cannot compact yet.
-            setChatStatus(session.snapshot() == null ? currentChatStatus() : session.snapshot().status);
+            ChatSnapshot compactSnapshot = session.snapshot();
+            setChatStatus(compactSnapshot == null ? currentChatStatus() : compactSnapshot.status);
         } else if (started) {
             busy = true;
             updateControls();
@@ -1882,10 +1885,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void handleWhistleDownloadStart(ModelDownloadManager.StartResult outcome, ModelDownloadManager manager) {
+        if (chatShellSection == null) return;
         if (outcome == ModelDownloadManager.StartResult.INSUFFICIENT_SPACE) {
-            setChatStatus(getString(R.string.model_download_insufficient_space,
+            setChatStatus(R.string.model_download_insufficient_space,
                     formatMb(manager.insufficientSpaceRequiredBytes(ModelDownloadKind.CACTUS_WHISTLE)),
-                    formatMb(manager.insufficientSpaceUsableBytes())));
+                    formatMb(manager.insufficientSpaceUsableBytes()));
         } else if (outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
             setChatStatus(R.string.model_download_already_running);
         } else if (outcome == ModelDownloadManager.StartResult.SCHEDULE_FAILED) {
