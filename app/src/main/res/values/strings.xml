@@ -19,6 +19,7 @@
     <string name="model_download_insufficient_space">Not enough storage (need %1$s, have %2$s)</string>
     <string name="model_download_already_running">A model download is already in progress</string>
     <string name="model_download_schedule_failed">Could not start the download. Try again from Settings.</string>
+    <string name="model_download_foreground_failed">Could not show download progress in the background. Try again from Settings.</string>
     <string name="import_model">Import model</string>
     <string name="import_projector">Import projector</string>
     <string name="open_model_from_storage">Open model from storage</string>

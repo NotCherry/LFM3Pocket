@@ -15,10 +15,6 @@ public final class ModelDownloadPolicies {
 
     private ModelDownloadPolicies() {}
 
-    public static String insufficientSpaceMessage(long usable, long required) {
-        return "Not enough storage (need " + formatMb(required) + ", have " + formatMb(usable) + ")";
-    }
-
     public static boolean hasSufficientSpace(UsableSpace space, String filesDirPath, long expectedBytes) {
         long required = expectedBytes + FREE_SPACE_MARGIN_BYTES;
         return space.usableBytes(filesDirPath) >= required;
@@ -28,8 +24,4 @@ public final class ModelDownloadPolicies {
         return network.isActiveNetworkMetered() && !userConfirmedMetered;
     }
 
-    private static String formatMb(long bytes) {
-        double mb = bytes / (1024.0 * 1024.0);
-        return String.format(java.util.Locale.US, "%.1f MB", mb);
-    }
 }

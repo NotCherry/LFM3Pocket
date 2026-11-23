@@ -1,8 +1,7 @@
 package com.notcherry.lfm3pocket;
 
 import java.io.File;
-import java.util.EnumMap;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -11,7 +10,7 @@ public final class ModelDownloadCoordinator {
     private static final AtomicBoolean IN_FLIGHT = new AtomicBoolean();
     private static final AtomicReference<ModelDownloadKind> ACTIVE = new AtomicReference<>();
     private static final AtomicReference<ModelDownloadCancelToken> CANCEL = new AtomicReference<>();
-    private static final Map<ModelDownloadKind, Boolean> QUEUED = new EnumMap<>(ModelDownloadKind.class);
+    private static final ConcurrentHashMap<ModelDownloadKind, Boolean> QUEUED = new ConcurrentHashMap<>();
 
     private ModelDownloadCoordinator() {}
 
@@ -83,13 +82,11 @@ public final class ModelDownloadCoordinator {
             task.execute(progress, cancel);
             return Result.SUCCESS;
         } catch (ModelDownloadCancelledException cancelled) {
-            if (cancel.isUserCancel()) {
-                task.discardPartialOnly();
-                task.notifyUiCancelled();
-                return Result.CANCELLED;
-            }
-            return Result.STOPPED;
+            return outcomeForCancel(task, cancel);
         } catch (Exception failed) {
+            if (cancel.isCancelled()) {
+                return outcomeForCancel(task, cancel);
+            }
             task.discardPartialOnly();
             String message = failed.getMessage() == null ? failed.toString() : failed.getMessage();
             task.notifyUiError(message);
@@ -100,6 +97,15 @@ public final class ModelDownloadCoordinator {
             CANCEL.set(null);
             clearQueued(task.kind());
         }
+    }
+
+    private static Result outcomeForCancel(ModelDownloadTask task, ModelDownloadCancelToken cancel) {
+        if (cancel.isUserCancel()) {
+            task.discardPartialOnly();
+            task.notifyUiCancelled();
+            return Result.CANCELLED;
+        }
+        return Result.STOPPED;
     }
 
     private static CactusWhistleModelDownloader.Progress progressRelay(ModelDownloadTask task) {

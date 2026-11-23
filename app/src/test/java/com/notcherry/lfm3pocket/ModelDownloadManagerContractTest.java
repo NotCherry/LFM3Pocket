@@ -9,6 +9,7 @@ import org.junit.Test;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.MessageDigest;
@@ -103,6 +104,54 @@ public final class ModelDownloadManagerContractTest {
         assertTrue(store.modelFile().isFile());
         assertTrue(store.isReady());
         assertFalse(store.partialFile().exists());
+    }
+
+    @Test public void userCancelAfterDisconnectIOException() throws Exception {
+        File dir = Files.createTempDirectory("mgr-cancel-io").toFile();
+        CactusWhistleModelStore store = new CactusWhistleModelStore(dir);
+        ModelDownloadCancelToken cancel = new ModelDownloadCancelToken();
+        java.util.concurrent.atomic.AtomicBoolean uiCancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        CactusWhistleModelDownloader.bindUi(new CactusWhistleModelDownloader.UiCallbacks() {
+            @Override public void onProgress(String name, long written, long total) { }
+            @Override public void onDone(File modelFile) { }
+            @Override public void onError(String message) { }
+            @Override public void onCancelled() { uiCancelled.set(true); }
+        });
+        try {
+            CactusWhistleModelDownloader downloader = new CactusWhistleModelDownloader(store,
+                    (name, expectedSha256, target, progress, clock, token) -> {
+                        try (FileOutputStream out = new FileOutputStream(target)) {
+                            out.write("partial".getBytes(StandardCharsets.UTF_8));
+                        }
+                        token.requestUserCancel();
+                        throw new IOException("Socket closed");
+                    }, System::currentTimeMillis);
+            assertEquals(ModelDownloadCoordinator.Result.CANCELLED,
+                    ModelDownloadCoordinator.run(new CactusWhistleModelDownloadTask(store, downloader), cancel));
+            assertTrue(uiCancelled.get());
+            assertFalse(store.partialFile().exists());
+            assertEquals(null, CactusWhistleModelDownloader.consumePendingBackgroundError());
+        } finally {
+            CactusWhistleModelDownloader.clearBoundUiForTests();
+        }
+    }
+
+    @Test public void systemStopAfterDisconnectIOExceptionKeepsPartial() throws Exception {
+        File dir = Files.createTempDirectory("mgr-stop-io").toFile();
+        CactusWhistleModelStore store = new CactusWhistleModelStore(dir);
+        CactusWhistleModelDownloader downloader = new CactusWhistleModelDownloader(store,
+                (name, expectedSha256, target, progress, clock, token) -> {
+                    try (FileOutputStream out = new FileOutputStream(target)) {
+                        out.write("partial".getBytes(StandardCharsets.UTF_8));
+                    }
+                    token.requestSystemStop();
+                    throw new IOException("Socket closed");
+                }, System::currentTimeMillis);
+        assertEquals(ModelDownloadCoordinator.Result.STOPPED,
+                ModelDownloadCoordinator.run(new CactusWhistleModelDownloadTask(store, downloader),
+                        new ModelDownloadCancelToken()));
+        assertTrue(store.partialFile().isFile());
+        assertEquals(null, CactusWhistleModelDownloader.consumePendingBackgroundError());
     }
 
     @Test public void systemStopKeepsPartialAndVerifiedModel() throws Exception {

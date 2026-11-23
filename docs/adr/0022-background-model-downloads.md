@@ -15,7 +15,7 @@ Pinned optional models (Whistle today; tiny-voca pack later) are large, user-ini
 3. **API 26–33** — One-shot `WorkManager` worker with `setForegroundAsync` / `getForegroundInfo` and `FOREGROUND_SERVICE_TYPE_DATA_SYNC` (no expedited work without a foreground contract).
 4. **Permissions / manifest** — `INTERNET`, `POST_NOTIFICATIONS`, `RUN_USER_INITIATED_JOBS`, `FOREGROUND_SERVICE_DATA_SYNC`; merge `androidx.work.impl.foreground.SystemForegroundService` with `foregroundServiceType="dataSync"`.
 5. **Pre-flight** — `StatFs` usable space ≥ expected bytes + 8 MiB margin before enqueue; on a metered network the Settings UI must confirm once (UNMETERED job / work constraint when not confirmed).
-6. **Cancel vs stop** — User cancel (notification, Settings, `STOP_REASON_USER` / `STOP_REASON_CANCELLED_BY_APP`) sets user-cancel, deletes `.partial`, and does not reschedule. System stop (constraints, task manager) interrupts without deleting `.partial` and requests job reschedule / work retry.
+6. **Cancel vs stop** — User cancel (notification, Settings, `STOP_REASON_USER` / `STOP_REASON_CANCELLED_BY_APP`) sets user-cancel, deletes `.partial`, and does not reschedule. System stop (constraints, task manager) interrupts without deleting `.partial` and requests job reschedule / work retry. There is **no HTTP Range resume**: every attempt rewrites `.partial` from byte zero; keeping `.partial` after a system stop only avoids an extra delete until the next run overwrites the file.
 7. **Tests** — JVM contracts for outcome mapping, stop vs cancel, foreground promotion failure, and existing whistle downloader contracts.
 
 ## Consequences
@@ -23,9 +23,10 @@ Pinned optional models (Whistle today; tiny-voca pack later) are large, user-ini
 - Downloads survive rotation and backgrounding on supported API levels with shade progress and cancel.
 - Tiny-voca can adopt the same manager without duplicating policy.
 - UIDT and foreground WorkManager both depend on notification permission for best UX; denial does not block the transfer but may hide progress.
+- No byte-range resume; a system stop leaves an incomplete `.partial` on disk, but the next attempt still downloads the full payload from the start and overwrites that file.
 
 ## Alternatives considered
 
 - **Raw thread in Activity** — Rejected (#261); no notification, no cancel, process-bound.
 - **Expedited WorkManager only** — Rejected; API 26–30 requires `getForegroundInfo` when expedited, and quota is brittle for multi‑MB files.
-- **Always delete partial on any interrupt** — Rejected; system constraint loss should allow resume/restart from partial where possible.
+- **Always delete partial on any interrupt** — Rejected for system stops; deleting on every interrupt would force a full rewrite anyway (no resume today) while losing a hook for a future Range implementation. User cancel still deletes `.partial` immediately.

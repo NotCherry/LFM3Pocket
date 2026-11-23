@@ -10,6 +10,7 @@ import android.net.Uri;
 import android.database.Cursor;
 import android.provider.OpenableColumns;
 import java.util.concurrent.atomic.AtomicBoolean;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -59,6 +60,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final int OPEN_MMPROJ_URI = 49;
     private static final int PICK_WHISTLE_MODEL = 50;
     private static final int REQUEST_READ_CALENDAR = 51;
+    private static final int REQUEST_POST_NOTIFICATIONS_WHISTLE = 52;
 
 
     private ExecutorService worker;
@@ -2721,7 +2723,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 }), "tiny-voca-download").start();
     }
 
+    private void requestNotificationPermissionForModelDownloadIfNeeded() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS },
+                REQUEST_POST_NOTIFICATIONS_WHISTLE);
+    }
+
     private void downloadCactusWhistleModel() {
+        requestNotificationPermissionForModelDownloadIfNeeded();
         ModelDownloadManager manager = ModelDownloadManager.getInstance(this);
         ModelDownloadManager.StartResult outcome = manager.startWhistle(false);
         if (outcome == ModelDownloadManager.StartResult.METERED_NEEDS_CONFIRMATION) {

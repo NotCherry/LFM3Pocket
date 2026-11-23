@@ -18,6 +18,7 @@
     <string name="model_download_insufficient_space">Za mało miejsca (potrzeba %1$s, dostępne %2$s)</string>
     <string name="model_download_already_running">Pobieranie modelu jest już w toku</string>
     <string name="model_download_schedule_failed">Nie udało się rozpocząć pobierania. Spróbuj ponownie w Ustawieniach.</string>
+    <string name="model_download_foreground_failed">Nie udało się pokazać postępu pobierania w tle. Spróbuj ponownie w Ustawieniach.</string>
     <string name="import_model">Importuj model</string>
     <string name="import_projector">Importuj projektor</string>
     <string name="open_model_from_storage">Otwórz model z pamięci telefonu</string>

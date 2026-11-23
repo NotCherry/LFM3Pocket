@@ -37,6 +37,9 @@ public final class ModelDownloadWorker extends Worker {
             ModelDownloadOutcomes.ForegroundPromotion promotion = ModelDownloadForeground.promote(
                     () -> setForegroundAsync(foregroundInfo(app, kind, app.getString(R.string.model_download_starting), -1)));
             if (promotion == ModelDownloadOutcomes.ForegroundPromotion.FAILED) {
+                ModelDownloadCoordinator.clearQueued(kind);
+                CactusWhistleModelDownloader.notifyUiError(
+                        app.getString(R.string.model_download_foreground_failed));
                 return ListenableWorker.Result.failure();
             }
             ModelDownloadCoordinator.Result outcome = ModelDownloadCoordinator.run(task, cancel);
@@ -57,6 +60,16 @@ public final class ModelDownloadWorker extends Worker {
             } catch (IllegalArgumentException ignored) { }
         }
         return foregroundInfo(app, kind, app.getString(R.string.model_download_starting), -1);
+    }
+
+    @Override public void onStopped() {
+        String raw = getInputData().getString(KEY_KIND);
+        if (raw != null) {
+            try {
+                ModelDownloadCoordinator.requestSystemStop(ModelDownloadKind.valueOf(raw));
+            } catch (IllegalArgumentException ignored) { }
+        }
+        super.onStopped();
     }
 
     static ForegroundInfo foregroundInfo(Context context, ModelDownloadKind kind, String body, int percent) {

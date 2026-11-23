@@ -230,7 +230,15 @@ public final class CactusWhistleModelDownloader {
             long lastProgressMs = Long.MIN_VALUE;
             for (;;) {
                 if (cancel != null) cancel.throwIfCancelled();
-                int read = input.read(buffer);
+                int read;
+                try {
+                    read = input.read(buffer);
+                } catch (java.io.IOException io) {
+                    if (cancel != null && cancel.isCancelled()) {
+                        throw new ModelDownloadCancelledException();
+                    }
+                    throw io;
+                }
                 if (read < 0) break;
                 digest.update(buffer, 0, read);
                 output.write(buffer, 0, read);
