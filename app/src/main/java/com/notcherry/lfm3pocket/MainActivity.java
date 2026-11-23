@@ -83,12 +83,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private final java.util.concurrent.atomic.AtomicBoolean voiceSttCancelled = new java.util.concurrent.atomic.AtomicBoolean();
     private volatile boolean transcribingVoiceInput;
     private PlaybackController playbackController;
-    private CheckBox keepLoadedBox;
-    private Button idleOffButton;
-    private Button idle15Button;
-    private Button idle60Button;
-    private CheckBox lockPreviewBox;
-    private CheckBox loopbackBox;
     private CheckBox networkToolsBox;
     private CheckBox notificationAccessBox;
     private EditText notificationAllowlistField;
@@ -138,6 +132,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private ImageSettingsSection imageSettingsSection;
     private InferenceSettingsSection inferenceSettingsSection;
     private SearchSettingsSection searchSettingsSection;
+    private BackgroundSettingsSection backgroundSettingsSection;
     private Button openModelUriButton, openProjectorUriButton, defaultAssistantButton;
     private boolean foreground;
     private boolean microphoneRequested;
@@ -604,42 +599,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         searchSettingsSection.mount(configuration, ink, inkMuted);
 
         imageSettingsSection.mount(configuration, ink, inkMuted);
-
-        TextView backgroundHeading = label(getString(R.string.background_heading), 11, inkMuted);
-        backgroundHeading.setTypeface(StillwaterUi.sansMedium(this));
-        backgroundHeading.setLetterSpacing(0.12f);
-        backgroundHeading.setPadding(0, dp(16), 0, dp(4));
-        configuration.addView(backgroundHeading);
-        keepLoadedBox = new CheckBox(this);
-        keepLoadedBox.setId(R.id.settings_keep_loaded);
-        keepLoadedBox.setText(R.string.keep_model_loaded);
-        StillwaterUi.styleCheck(keepLoadedBox);
-        keepLoadedBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
-        configuration.addView(keepLoadedBox);
-        configuration.addView(label(getString(R.string.unload_after_idle), 16, ink));
-        idleOffButton = idleChoice(getString(R.string.idle_off), 0, R.id.settings_idle_off);
-        idle15Button = idleChoice(getString(R.string.idle_15), 15, R.id.settings_idle_15);
-        idle60Button = idleChoice(getString(R.string.idle_60), 60, R.id.settings_idle_60);
-        LinearLayout idleRow = StillwaterReadable.addFlexibleButtonRow(configuration, this, 44,
-                idleOffButton, idle15Button, idle60Button);
-        idleRow.setId(R.id.settings_idle_unload);
-        lockPreviewBox = new CheckBox(this);
-        lockPreviewBox.setId(R.id.settings_lock_preview);
-        lockPreviewBox.setText(R.string.lock_screen_preview);
-        StillwaterUi.styleCheck(lockPreviewBox);
-        lockPreviewBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
-        configuration.addView(lockPreviewBox);
-        loopbackBox = new CheckBox(this);
-        loopbackBox.setId(R.id.settings_loopback);
-        loopbackBox.setText(R.string.loopback_prompts);
-        StillwaterUi.styleCheck(loopbackBox);
-        loopbackBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
-        configuration.addView(loopbackBox);
-        Button loopbackTokenButton = button(getString(R.string.loopback_show_token));
-        loopbackTokenButton.setId(R.id.settings_loopback_token);
-        StillwaterUi.quiet(loopbackTokenButton);
-        loopbackTokenButton.setOnClickListener(v -> showLoopbackToken());
-        StillwaterReadable.addFlexibleFullWidth(configuration, loopbackTokenButton, 44);
+        backgroundSettingsSection = new BackgroundSettingsSection(this, new BackgroundSettingsSection.Deps(
+                () -> new RuntimePreferences(this),
+                (keep, idle, lock, loopback) -> runtime.updateBackgroundSettings(keep, idle, lock, loopback),
+                () -> runtime.loopbackToken(), runtime::loopbackPort, () -> runtime != null));
+        backgroundSettingsSection.mount(configuration, ink, inkMuted);
 
         TextView toolsHeading = label(getString(R.string.tools_heading), 11, inkMuted);
         toolsHeading.setTypeface(StillwaterUi.sansMedium(this));
@@ -2176,13 +2140,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void syncBackgroundControls() {
-        if (keepLoadedBox == null || runtime == null) return;
+        if (backgroundSettingsSection != null) backgroundSettingsSection.syncControls();
+        if (networkToolsBox == null) return;
         RuntimePreferences prefs = new RuntimePreferences(this);
         bindingBackground = true;
-        keepLoadedBox.setChecked(prefs.keepLoaded());
-        lockPreviewBox.setChecked(prefs.lockPreview());
-        if (loopbackBox != null) loopbackBox.setChecked(prefs.loopbackEnabled());
-        if (networkToolsBox != null) networkToolsBox.setChecked(prefs.networkToolsEnabled());
+        networkToolsBox.setChecked(prefs.networkToolsEnabled());
         if (notificationAccessBox != null) notificationAccessBox.setChecked(prefs.notificationAccessEnabled());
         if (notificationAllowlistField != null) {
             StringBuilder allowlistText = new StringBuilder();
@@ -2195,7 +2157,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         if (tinyVocaTtsBox != null) tinyVocaTtsBox.setChecked(prefs.tinyVocaEnglishTtsEnabled());
         paintTinyVocaPackStatus();
         paintSpeechInputControls();
-        paintIdle(prefs.idleMinutes());
         bindingBackground = false;
     }
 
@@ -2352,34 +2313,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private boolean bindingBackground;
 
-    private void saveBackgroundSettings() {
-        if (bindingBackground || keepLoadedBox == null) return;
-        int idle = idle15Button.isSelected() ? 15 : idle60Button.isSelected() ? 60 : 0;
-        boolean loopback = loopbackBox != null && loopbackBox.isChecked();
-        runtime.updateBackgroundSettings(keepLoadedBox.isChecked(), idle, lockPreviewBox.isChecked(), loopback);
-        paintIdle(idle);
-    }
-
-    private void showLoopbackToken() {
-        if (runtime == null) return;
-        String token = runtime.loopbackToken();
-        int port = runtime.loopbackPort();
-        String message = getString(R.string.loopback_token_message, port, token);
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.loopback_token_title)
-                .setMessage(message)
-                .setPositiveButton(R.string.copy, (dialog, which) -> {
-                    android.content.ClipboardManager clipboard =
-                            (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                    if (clipboard != null) {
-                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Hanami loopback token", token));
-                        if (status != null) status.setText(R.string.loopback_token_copied);
-                    }
-                })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
-    }
-
     private void applyDraft(Intent intent) {
         if (intent == null || chatPanel == null) return;
         String draft = intent.getStringExtra(EXTRA_DRAFT_TEXT);
@@ -2396,30 +2329,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 status.setText("Photo import failed: " + failed.getMessage());
             }
         }
-    }
-
-    private Button idleChoice(String label, int minutes, int id) {
-        Button choice = button(label);
-        choice.setId(id);
-        StillwaterUi.quiet(choice);
-        choice.setOnClickListener(v -> {
-            idleOffButton.setSelected(minutes == 0);
-            idle15Button.setSelected(minutes == 15);
-            idle60Button.setSelected(minutes == 60);
-            saveBackgroundSettings();
-        });
-        return choice;
-    }
-
-    private void paintIdle(int minutes) {
-        styleIdle(idleOffButton, minutes == 0);
-        styleIdle(idle15Button, minutes == 15);
-        styleIdle(idle60Button, minutes == 60);
-    }
-
-    private void styleIdle(Button choice, boolean selected) {
-        choice.setSelected(selected);
-        choice.setTextColor(selected ? StillwaterUi.CANDLE : StillwaterUi.INK);
     }
 
     private void persistToolOutcome(ToolCoordinator.Proposal proposal,ToolRegistry.Request request,
