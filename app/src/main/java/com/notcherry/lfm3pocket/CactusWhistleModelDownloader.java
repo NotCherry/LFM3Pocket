@@ -27,6 +27,7 @@ public final class CactusWhistleModelDownloader {
         void onProgress(String name, long written, long total);
         void onDone(File modelFile);
         void onError(String message);
+        void onCancelled();
     }
 
     private static final AtomicBoolean IN_FLIGHT = new AtomicBoolean();
@@ -48,7 +49,8 @@ public final class CactusWhistleModelDownloader {
     }
 
     public static boolean isDownloading() {
-        return IN_FLIGHT.get();
+        return IN_FLIGHT.get()
+                || ModelDownloadCoordinator.isActiveOrQueued(ModelDownloadKind.CACTUS_WHISTLE);
     }
 
     static void resetInFlightForTests() {
@@ -67,6 +69,37 @@ public final class CactusWhistleModelDownloader {
         if (boundUi == callbacks) boundUi = null;
     }
 
+    static void notifyUiProgress(String name, long written, long total) {
+        UiCallbacks ui = boundUi;
+        if (ui != null) ui.onProgress(name, written, total);
+    }
+
+    static void notifyUiDone(File modelFile) {
+        UiCallbacks ui = boundUi;
+        if (ui != null) {
+            ui.onDone(modelFile);
+        } else {
+            pendingBackgroundError = null;
+        }
+    }
+
+    static void notifyUiError(String message) {
+        UiCallbacks ui = boundUi;
+        if (ui != null) {
+            ui.onError(message);
+        } else {
+            pendingBackgroundError = message;
+        }
+    }
+
+    static void notifyUiCancelled() {
+        UiCallbacks ui = boundUi;
+        if (ui != null) {
+            ui.onCancelled();
+        }
+        pendingBackgroundError = null;
+    }
+
     public static String consumePendingBackgroundError() {
         String message = pendingBackgroundError;
         pendingBackgroundError = null;
@@ -77,19 +110,13 @@ public final class CactusWhistleModelDownloader {
         pendingBackgroundError = null;
     }
 
-    /** Starts a background download, or returns false if one is already in flight. */
-    public boolean startDownload(Progress progress) {
-        if (!IN_FLIGHT.compareAndSet(false, true)) {
-            return false;
-        }
-        new Thread(() -> {
-            try {
-                downloadBody(progress);
-            } finally {
-                IN_FLIGHT.set(false);
-            }
-        }, "cactus-whistle-download").start();
-        return true;
+    /**
+     * Writes the pinned model to {@code partialFile} with SHA-256 verification (no atomic install).
+     * Used by {@link ModelDownloadCoordinator}; does not manage single-flight.
+     */
+    void fetchToPartial(File partial, Progress progress, ModelDownloadCancelToken cancel) throws Exception {
+        fetcher.fetch(CactusWhistleModelManifest.FILE_NAME, CactusWhistleModelManifest.SHA256, partial,
+                wrapProgress(progress), clock, cancel);
     }
 
     /** Synchronous download for JVM tests; returns false if already in flight. */
@@ -111,7 +138,7 @@ public final class CactusWhistleModelDownloader {
         try {
             store.directory().mkdirs();
             fetcher.fetch(CactusWhistleModelManifest.FILE_NAME, CactusWhistleModelManifest.SHA256, temp,
-                    wrapProgress(progress), clock);
+                    wrapProgress(progress), clock, null);
             Files.move(temp.toPath(), target.toPath(),
                     StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);
@@ -158,18 +185,20 @@ public final class CactusWhistleModelDownloader {
     }
 
     interface ModelFetcher {
-        void fetch(String name, String expectedSha256, File target, Progress progress, LongSupplier clock)
-                throws Exception;
+        void fetch(String name, String expectedSha256, File target, Progress progress, LongSupplier clock,
+                   ModelDownloadCancelToken cancel) throws Exception;
     }
 
     private static void fetchFromHuggingFace(String name, String expectedSha256, File target,
-                                             Progress progress, LongSupplier clock) throws Exception {
+                                             Progress progress, LongSupplier clock,
+                                             ModelDownloadCancelToken cancel) throws Exception {
         URL url = new URL(CactusWhistleModelManifest.HF_BASE + name);
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setInstanceFollowRedirects(true);
         connection.setConnectTimeout(30_000);
         connection.setReadTimeout(120_000);
         try {
+            if (cancel != null) cancel.bindHttpConnection(connection);
             connection.connect();
             int code = connection.getResponseCode();
             if (code < 200 || code >= 300) {
@@ -179,7 +208,7 @@ public final class CactusWhistleModelDownloader {
             File parent = target.getParentFile();
             if (parent != null) parent.mkdirs();
             try (InputStream input = connection.getInputStream()) {
-                writeAndVerifySha256(input, expectedSha256, name, target, total, progress, clock);
+                writeAndVerifySha256(input, expectedSha256, name, target, total, progress, clock, cancel);
             }
         } finally {
             connection.disconnect();
@@ -188,13 +217,28 @@ public final class CactusWhistleModelDownloader {
 
     static void writeAndVerifySha256(InputStream input, String expectedSha256, String name, File target,
                                      long total, Progress progress, LongSupplier clock) throws Exception {
+        writeAndVerifySha256(input, expectedSha256, name, target, total, progress, clock, null);
+    }
+
+    static void writeAndVerifySha256(InputStream input, String expectedSha256, String name, File target,
+                                     long total, Progress progress, LongSupplier clock,
+                                     ModelDownloadCancelToken cancel) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         try (FileOutputStream output = new FileOutputStream(target)) {
             byte[] buffer = new byte[8192];
             long written = 0;
             long lastProgressMs = Long.MIN_VALUE;
             for (;;) {
-                int read = input.read(buffer);
+                if (cancel != null) cancel.throwIfCancelled();
+                int read;
+                try {
+                    read = input.read(buffer);
+                } catch (java.io.IOException io) {
+                    if (cancel != null && cancel.isCancelled()) {
+                        throw new ModelDownloadCancelledException();
+                    }
+                    throw io;
+                }
                 if (read < 0) break;
                 digest.update(buffer, 0, read);
                 output.write(buffer, 0, read);

@@ -46,7 +46,7 @@ public final class CactusWhistleModelDownloaderContractTest {
         AtomicLong now = new AtomicLong();
         List<Long> writtenSnapshots = new ArrayList<>();
         CactusWhistleModelDownloader downloader = new CactusWhistleModelDownloader(store,
-                (name, expectedSha256, target, progress, clock) -> {
+                (name, expectedSha256, target, progress, clock, cancel) -> {
                     try (ByteArrayInputStream input = new ByteArrayInputStream(payload)) {
                         CactusWhistleModelDownloader.writeAndVerifySha256(input, digest, name, target,
                                 payload.length, progress == null ? null : new CactusWhistleModelDownloader.Progress() {
@@ -69,7 +69,7 @@ public final class CactusWhistleModelDownloaderContractTest {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         CactusWhistleModelDownloader blocker = new CactusWhistleModelDownloader(store,
-                (name, expectedSha256, target, progress, clock) -> {
+                (name, expectedSha256, target, progress, clock, cancel) -> {
                     entered.countDown();
                     assertTrue(release.await(5, TimeUnit.SECONDS));
                 }, System::currentTimeMillis);
@@ -94,7 +94,7 @@ public final class CactusWhistleModelDownloaderContractTest {
         File revision = new File(dir, ".whistle-download-revision");
         assertTrue(revision.isFile());
         CactusWhistleModelDownloader downloader = new CactusWhistleModelDownloader(store,
-                (name, expectedSha256, target, progress, clock) -> {
+                (name, expectedSha256, target, progress, clock, cancel) -> {
                     try (FileOutputStream out = new FileOutputStream(target)) {
                         out.write("partial".getBytes(StandardCharsets.UTF_8));
                     }
@@ -119,7 +119,7 @@ public final class CactusWhistleModelDownloaderContractTest {
         store.markComplete();
         byte[] bad = "not-the-model".getBytes(StandardCharsets.UTF_8);
         CactusWhistleModelDownloader downloader = new CactusWhistleModelDownloader(store,
-                (name, expectedSha256, target, progress, clock) -> {
+                (name, expectedSha256, target, progress, clock, cancel) -> {
                     try (ByteArrayInputStream input = new ByteArrayInputStream(bad)) {
                         CactusWhistleModelDownloader.writeAndVerifySha256(input,
                                 CactusWhistleModelManifest.SHA256, name, target, bad.length, progress, clock);
@@ -151,7 +151,7 @@ public final class CactusWhistleModelDownloaderContractTest {
         byte[] nextPayload = bytesOfLength(2 * 1024 * 1024 + 32);
         String nextDigest = sha256(nextPayload);
         CactusWhistleModelDownloader downloader = new CactusWhistleModelDownloader(store,
-                (name, expectedSha256, target, progress, clock) -> {
+                (name, expectedSha256, target, progress, clock, cancel) -> {
                     try (ByteArrayInputStream input = new ByteArrayInputStream(nextPayload)) {
                         CactusWhistleModelDownloader.writeAndVerifySha256(input, nextDigest, name, target,
                                 nextPayload.length, progress, clock);
@@ -172,7 +172,7 @@ public final class CactusWhistleModelDownloaderContractTest {
         byte[] payload = bytesOfLength(2 * 1024 * 1024);
         String digest = sha256(payload);
         CactusWhistleModelDownloader downloader = new CactusWhistleModelDownloader(store,
-                (name, expectedSha256, target, progress, clock) -> {
+                (name, expectedSha256, target, progress, clock, cancel) -> {
                     try (ByteArrayInputStream input = new ByteArrayInputStream(payload)) {
                         CactusWhistleModelDownloader.writeAndVerifySha256(input, digest, name, target,
                                 payload.length, progress, clock);
@@ -189,7 +189,7 @@ public final class CactusWhistleModelDownloaderContractTest {
         File dir = Files.createTempDirectory("whistle-bg-err").toFile();
         CactusWhistleModelStore store = new CactusWhistleModelStore(dir);
         CactusWhistleModelDownloader downloader = new CactusWhistleModelDownloader(store,
-                (name, expectedSha256, target, progress, clock) ->
+                (name, expectedSha256, target, progress, clock, cancel) ->
                         { throw new IllegalStateException("offline"); }, System::currentTimeMillis);
         assertTrue(downloader.download(null));
         assertEquals("offline", CactusWhistleModelDownloader.consumePendingBackgroundError());

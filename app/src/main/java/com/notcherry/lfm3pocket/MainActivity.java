@@ -10,6 +10,7 @@ import android.net.Uri;
 import android.database.Cursor;
 import android.provider.OpenableColumns;
 import java.util.concurrent.atomic.AtomicBoolean;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -59,6 +60,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final int OPEN_MMPROJ_URI = 49;
     private static final int PICK_WHISTLE_MODEL = 50;
     private static final int REQUEST_READ_CALENDAR = 51;
+    private static final int REQUEST_POST_NOTIFICATIONS_WHISTLE = 52;
 
 
     private ExecutorService worker;
@@ -100,7 +102,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private Button tinyVocaRemoveButton;
     private Button speechInputOmniButton, speechInputWhistleButton;
     private TextView speechInputCactusStatus;
-    private Button speechInputCactusDownloadButton, speechInputCactusPickButton, speechInputCactusClearButton;
+    private Button speechInputCactusDownloadButton, speechInputCactusCancelButton,
+            speechInputCactusPickButton, speechInputCactusClearButton;
     private final CactusWhistleModelDownloader.UiCallbacks cactusWhistleDownloadUi = new CactusWhistleModelDownloader.UiCallbacks() {
         @Override public void onProgress(String name, long written, long total) {
             runOnUiThread(() -> {
@@ -122,6 +125,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             runOnUiThread(() -> {
                 paintSpeechInputControls();
                 if (status != null) status.setText(message);
+            });
+        }
+        @Override public void onCancelled() {
+            runOnUiThread(() -> {
+                paintSpeechInputControls();
+                if (status != null) status.setText(getString(R.string.model_download_cancelled));
             });
         }
     };
@@ -818,6 +827,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         StillwaterUi.quiet(speechInputCactusDownloadButton);
         speechInputCactusDownloadButton.setOnClickListener(v -> downloadCactusWhistleModel());
         configuration.addView(speechInputCactusDownloadButton, new LinearLayout.LayoutParams(-1, dp(44)));
+        speechInputCactusCancelButton = button(getString(R.string.model_download_cancel));
+        speechInputCactusCancelButton.setId(R.id.settings_cactus_whistle_cancel);
+        StillwaterUi.quiet(speechInputCactusCancelButton);
+        speechInputCactusCancelButton.setOnClickListener(v -> {
+            ModelDownloadManager.getInstance(this).cancel(ModelDownloadKind.CACTUS_WHISTLE);
+            paintSpeechInputControls();
+        });
+        configuration.addView(speechInputCactusCancelButton, new LinearLayout.LayoutParams(-1, dp(44)));
         speechInputCactusPickButton = button(getString(R.string.speech_input_cactus_pick));
         speechInputCactusPickButton.setId(R.id.settings_cactus_whistle_pick);
         StillwaterUi.quiet(speechInputCactusPickButton);
@@ -2084,7 +2101,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void pickWhistleModel() {
-        if (busy) return;
+        if (busy || CactusWhistleModelDownloader.isDownloading()) return;
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         pick.addCategory(Intent.CATEGORY_OPENABLE);
         pick.setType("*/*");
@@ -2665,6 +2682,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (speechInputCactusDownloadButton != null) {
             speechInputCactusDownloadButton.setEnabled(!downloading && !store.isReady());
         }
+        if (speechInputCactusCancelButton != null) {
+            speechInputCactusCancelButton.setEnabled(downloading);
+            speechInputCactusCancelButton.setVisibility(downloading ? View.VISIBLE : View.GONE);
+        }
+        if (speechInputCactusPickButton != null) {
+            speechInputCactusPickButton.setEnabled(!downloading);
+        }
         if (speechInputCactusClearButton != null) {
             speechInputCactusClearButton.setEnabled(!downloading && (hasPath || store.isReady()));
         }
@@ -2699,10 +2723,53 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 }), "tiny-voca-download").start();
     }
 
+    private void requestNotificationPermissionForModelDownloadIfNeeded() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS },
+                REQUEST_POST_NOTIFICATIONS_WHISTLE);
+    }
+
     private void downloadCactusWhistleModel() {
-        android.content.Context app = getApplicationContext();
-        if (!new CactusWhistleModelDownloader(new CactusWhistleModelStore(app)).startDownload(null)) return;
-        paintSpeechInputControls();
+        requestNotificationPermissionForModelDownloadIfNeeded();
+        ModelDownloadManager manager = ModelDownloadManager.getInstance(this);
+        ModelDownloadManager.StartResult outcome = manager.startWhistle(false);
+        if (outcome == ModelDownloadManager.StartResult.METERED_NEEDS_CONFIRMATION) {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.model_download_metered_title)
+                    .setMessage(R.string.model_download_metered_message)
+                    .setPositiveButton(android.R.string.ok, (d, w) -> {
+                        ModelDownloadManager.StartResult retry = manager.startWhistle(true);
+                        handleWhistleDownloadStart(retry, manager);
+                    })
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show();
+            return;
+        }
+        handleWhistleDownloadStart(outcome, manager);
+    }
+
+    private void handleWhistleDownloadStart(ModelDownloadManager.StartResult outcome, ModelDownloadManager manager) {
+        if (status == null) return;
+        if (outcome == ModelDownloadManager.StartResult.INSUFFICIENT_SPACE) {
+            status.setText(getString(R.string.model_download_insufficient_space,
+                    formatMb(manager.insufficientSpaceRequiredBytes(ModelDownloadKind.CACTUS_WHISTLE)),
+                    formatMb(manager.insufficientSpaceUsableBytes())));
+        } else if (outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
+            status.setText(R.string.model_download_already_running);
+        } else if (outcome == ModelDownloadManager.StartResult.SCHEDULE_FAILED) {
+            status.setText(R.string.model_download_schedule_failed);
+        }
+        if (outcome == ModelDownloadManager.StartResult.STARTED
+                || outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
+            paintSpeechInputControls();
+        }
+    }
+
+    private static String formatMb(long bytes) {
+        return String.format(java.util.Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0));
     }
 
     private boolean bindingBackground;

@@ -1,8 +1,9 @@
 # ADR 0021 — Optional Cactus Whistle STT
 
-- Status: Accepted (partly reconstructed retrospectively)
+- Status: Accepted
 - Date: 2026-11-23
-- Related: [#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [#251](https://github.com/NotCherry/LFM3Pocket/pull/251), [ADR 0006](0006-voice-actions-loop.md), [ADR 0010](0010-tiny-voca-english-tts.md), [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md)
+- Related: [#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [#251](https://github.com/NotCherry/LFM3Pocket/pull/251), [#271](https://github.com/NotCherry/LFM3Pocket/pull/271), [ADR 0006](0006-voice-actions-loop.md), [ADR 0010](0010-tiny-voca-english-tts.md), [ADR 0022](0022-background-model-downloads.md), [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md)
+- Amended: see [ADR 0022](0022-background-model-downloads.md) ([#261](https://github.com/NotCherry/LFM3Pocket/issues/261))
 
 ## Context
 
@@ -10,7 +11,7 @@ Hands-free commands default to one LFM3-Omni audio pass on the loaded model ([AD
 
 [Cactus Whistle](https://huggingface.co/Cactus-Compute/whistle) is a separate on-device speech-to-text model (`whistle.cact`, about 16.9 MB, Apache-2.0). Upstream advertises several languages. The voice loop already authorizes tools and confirms them before they run. Turning speech into text must not bypass either rule.
 
-The app needs an opt-in input backend for that model. Weights and the Cactus native runtime are not part of the default install. [#224](https://github.com/NotCherry/LFM3Pocket/pull/224) added the backend, with the model supplied as a file the user selects. [#251](https://github.com/NotCherry/LFM3Pocket/pull/251) added an explicit in-app download of a pinned revision, on the same pattern as the tiny-voca pack ([ADR 0010](0010-tiny-voca-english-tts.md)). The download mechanism (background jobs, permissions, cellular-network confirmation) is being reworked in [#261](https://github.com/NotCherry/LFM3Pocket/issues/261); this ADR will get an `- Amended:` entry once that work is merged.
+The app needs an opt-in input backend for that model. Weights and the Cactus native runtime are not part of the default install. [#224](https://github.com/NotCherry/LFM3Pocket/pull/224) added the backend, with the model supplied as a file the user selects. [#251](https://github.com/NotCherry/LFM3Pocket/pull/251) added an explicit in-app download of a pinned revision, on the same pattern as the tiny-voca pack ([ADR 0010](0010-tiny-voca-english-tts.md)). In-app download scheduling (UIDT, WorkManager, permissions, metered confirmation, cancel, free space) is recorded in [ADR 0022](0022-background-model-downloads.md).
 
 ## Decision
 
