@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import re
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -79,8 +80,23 @@ DEEP_REQUIRED_CLASSES = (
     "VoiceUiStateE2eTest",
     "ZCameraCaptureE2eTest",
 )
+# Harness/helpers under androidTest that are not instrumented JUnit classes (runners,
+# fakes, fixtures). Every value must be a short justification for the exclusion.
+EXCLUDED_CLASSES: dict[str, str] = {
+    "ImportDocumentsProvider": "SAF DocumentsProvider fixture packaged in the test APK",
+    "TestGgufFixtures": "GGUF byte fixtures for preflight tests; not a JUnit class",
+    "TestLfm3PocketApplication": "Fake Application wired by UiE2eTestRunner for UI E2E",
+    "UiE2eTestRunner": "AndroidJUnitRunner that installs TestLfm3PocketApplication",
+}
 # Historical floor plus headroom; actual executed tests are substantially higher.
 DEEP_MIN_TESTS = 89
+
+_HAS_TEST_ANNOTATION = re.compile(r"@(?:[\w.]+\.)?Test\b")
+_TEST_CLASS_SUFFIX = "Test"
+_DECLARED_TYPE = re.compile(
+    r"(?m)^(?:public\s+|private\s+|internal\s+|final\s+|abstract\s+|data\s+)*"
+    r"(?:class|object)\s+(\w+)\b"
+)
 
 MODES = {
     "smoke": (SMOKE_REQUIRED_CLASSES, SMOKE_MIN_TESTS),
@@ -89,6 +105,120 @@ MODES = {
 REQUIRED_CLASSES = DEEP_REQUIRED_CLASSES
 MIN_TESTS = DEEP_MIN_TESTS
 PACKAGE = "com.notcherry.lfm3pocket"
+
+
+def repo_android_test_root() -> Path:
+    """Return app/src/androidTest relative to the repository root."""
+    return Path(__file__).resolve().parents[2] / "app" / "src" / "androidTest"
+
+
+def _class_source_paths(android_test_root: Path, simple_name: str) -> list[Path]:
+    return list(android_test_root.rglob(f"{simple_name}.java")) + list(
+        android_test_root.rglob(f"{simple_name}.kt")
+    )
+
+
+def declared_type_names(source_text: str) -> list[str]:
+    """Return simple names of top-level classes/objects declared in a source file."""
+    return _DECLARED_TYPE.findall(source_text)
+
+
+def is_instrumented_test_class(simple_name: str, source_text: str) -> bool:
+    """True when a type looks like an instrumented JUnit test class."""
+    if simple_name.endswith(_TEST_CLASS_SUFFIX):
+        return True
+    return _HAS_TEST_ANNOTATION.search(source_text) is not None
+
+
+def discover_android_test_classes(android_test_root: Path) -> set[str]:
+    """Scan androidTest sources for classes that should appear in the tier inventory.
+
+    Uses class/object declarations in each file (not only the file name) so Kotlin
+    sources stay aligned with instrumentation filters, which are keyed by type name.
+    """
+    if not android_test_root.is_dir():
+        raise ValueError(f"Missing androidTest source tree: {android_test_root}")
+    discovered: set[str] = set()
+    for path in sorted(android_test_root.rglob("*")):
+        if path.suffix not in {".java", ".kt"}:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ValueError(f"Unreadable androidTest source {path}: {exc}") from exc
+        declared = declared_type_names(text)
+        candidates = declared if declared else [path.stem]
+        for simple_name in candidates:
+            if is_instrumented_test_class(simple_name, text):
+                discovered.add(simple_name)
+    return discovered
+
+
+def check_inventory(
+    android_test_root: Path | None = None,
+    *,
+    deep_classes: tuple[str, ...] | None = None,
+    excluded_classes: dict[str, str] | None = None,
+    smoke_classes: tuple[str, ...] | None = None,
+) -> None:
+    """Fail when androidTest classes drift from DEEP_REQUIRED_CLASSES / EXCLUDED_CLASSES."""
+    root = android_test_root or repo_android_test_root()
+    discovered = discover_android_test_classes(root)
+    deep = set(deep_classes if deep_classes is not None else DEEP_REQUIRED_CLASSES)
+    excluded_map = excluded_classes if excluded_classes is not None else EXCLUDED_CLASSES
+    excluded = set(excluded_map)
+    smoke = set(smoke_classes if smoke_classes is not None else SMOKE_REQUIRED_CLASSES)
+
+    missing_justification = [
+        name for name, reason in excluded_map.items() if not str(reason).strip()
+    ]
+    if missing_justification:
+        raise ValueError(
+            "EXCLUDED_CLASSES missing justification: "
+            + ", ".join(sorted(missing_justification))
+        )
+
+    if not smoke.issubset(deep):
+        raise ValueError(
+            "SMOKE_REQUIRED_CLASSES must be a subset of DEEP_REQUIRED_CLASSES: "
+            + ", ".join(sorted(smoke - deep))
+        )
+
+    overlap = deep & excluded
+    if overlap:
+        raise ValueError(
+            "Class cannot be both required and excluded: " + ", ".join(sorted(overlap))
+        )
+
+    excluded_tests = sorted(excluded & discovered)
+    if excluded_tests:
+        raise ValueError(
+            "EXCLUDED_CLASSES must not list instrumented test classes: "
+            + ", ".join(excluded_tests)
+        )
+
+    stale: list[str] = []
+    for name in sorted(deep | excluded | smoke):
+        if not _class_source_paths(root, name):
+            stale.append(name)
+    if stale:
+        raise ValueError(
+            "Stale inventory entries (no androidTest source file): " + ", ".join(stale)
+        )
+
+    unlisted = sorted(discovered - deep - excluded)
+    if unlisted:
+        raise ValueError(
+            "androidTest classes not in DEEP_REQUIRED_CLASSES or EXCLUDED_CLASSES: "
+            + ", ".join(unlisted)
+        )
+
+    non_tests_in_deep = sorted(deep - discovered)
+    if non_tests_in_deep:
+        raise ValueError(
+            "DEEP_REQUIRED_CLASSES entries are not instrumented test classes: "
+            + ", ".join(non_tests_in_deep)
+        )
 
 
 def required_class_args(mode: str) -> str:
@@ -138,6 +268,32 @@ def verify(directory: Path, mode: str = "deep") -> tuple[int, int, int]:
             f"skipped={skipped}, min_tests={min_tests}, missing_required={missing}"
         )
     return len(cases), failed, skipped
+
+
+def _expect_inventory_error(
+    android_test_root: Path,
+    message_substring: str,
+    *,
+    deep_classes: tuple[str, ...] | None = None,
+    excluded_classes: dict[str, str] | None = None,
+    smoke_classes: tuple[str, ...] | None = None,
+) -> None:
+    try:
+        check_inventory(
+            android_test_root,
+            deep_classes=deep_classes,
+            excluded_classes=excluded_classes,
+            smoke_classes=smoke_classes,
+        )
+    except ValueError as exc:
+        if message_substring not in str(exc):
+            raise AssertionError(
+                f"Expected inventory error containing {message_substring!r}, got: {exc}"
+            ) from exc
+    else:
+        raise AssertionError(
+            f"Inventory check should have failed ({message_substring})"
+        )
 
 
 def self_test() -> None:
@@ -218,7 +374,110 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Gate accepted an empty instrumentation run")
-    print("Negative controls passed: failing, missing-required, and zero-test XML were rejected for tiers.")
+
+        def inventory_pkg(name: str) -> tuple[Path, Path]:
+            root = Path(temp) / name
+            pkg = root / "java/com/notcherry/lfm3pocket"
+            pkg.mkdir(parents=True)
+            return root, pkg
+
+        stale_contract = ("ListedButRemovedTest",)
+        stale_root, _ = inventory_pkg("inventory-stale")
+        _expect_inventory_error(
+            stale_root,
+            "Stale inventory",
+            deep_classes=stale_contract,
+            excluded_classes={},
+            smoke_classes=stale_contract,
+        )
+
+        enrolled = ("EnrolledTest",)
+        unlisted_root, unlisted_pkg = inventory_pkg("inventory-unlisted")
+        unlisted_pkg.joinpath("EnrolledTest.java").write_text(
+            "public class EnrolledTest { @org.junit.Test public void t() {} }",
+            encoding="utf-8",
+        )
+        unlisted_pkg.joinpath("OrphanNewTest.java").write_text(
+            "public class OrphanNewTest { @org.junit.Test public void t() {} }",
+            encoding="utf-8",
+        )
+        _expect_inventory_error(
+            unlisted_root,
+            "not in DEEP_REQUIRED_CLASSES",
+            deep_classes=enrolled,
+            excluded_classes={},
+            smoke_classes=enrolled,
+        )
+
+        fqdn_root, fqdn_pkg = inventory_pkg("inventory-fqdn")
+        fqdn_pkg.joinpath("EnrolledTest.java").write_text(
+            "public class EnrolledTest { @org.junit.Test public void t() {} }",
+            encoding="utf-8",
+        )
+        fqdn_pkg.joinpath("FqdnCase.java").write_text(
+            "public class FqdnInstrumentationCase { @org.junit.Test public void t() {} }",
+            encoding="utf-8",
+        )
+        _expect_inventory_error(
+            fqdn_root,
+            "not in DEEP_REQUIRED_CLASSES",
+            deep_classes=enrolled,
+            excluded_classes={},
+            smoke_classes=enrolled,
+        )
+
+        excluded_root, excluded_pkg = inventory_pkg("inventory-excluded-test")
+        excluded_pkg.joinpath("SneakyTest.java").write_text(
+            "public class SneakyTest { @org.junit.Test public void t() {} }",
+            encoding="utf-8",
+        )
+        _expect_inventory_error(
+            excluded_root,
+            "must not list instrumented test classes",
+            deep_classes=enrolled,
+            excluded_classes={"SneakyTest": "bogus helper"},
+            smoke_classes=enrolled,
+        )
+
+        justify_root, justify_pkg = inventory_pkg("inventory-missing-justify")
+        justify_pkg.joinpath("FixtureOnly.java").write_text(
+            "final class FixtureOnly { static void noop() {} }",
+            encoding="utf-8",
+        )
+        _expect_inventory_error(
+            justify_root,
+            "missing justification",
+            deep_classes=(),
+            excluded_classes={"FixtureOnly": "   "},
+            smoke_classes=(),
+        )
+
+        smoke_root, _ = inventory_pkg("inventory-smoke-deep")
+        _expect_inventory_error(
+            smoke_root,
+            "subset of DEEP_REQUIRED_CLASSES",
+            deep_classes=(),
+            excluded_classes={},
+            smoke_classes=("OnlySmokeTest",),
+        )
+
+        overlap_root, overlap_pkg = inventory_pkg("inventory-overlap")
+        overlap_pkg.joinpath("OverlapTest.java").write_text(
+            "public class OverlapTest { @org.junit.Test public void t() {} }",
+            encoding="utf-8",
+        )
+        _expect_inventory_error(
+            overlap_root,
+            "both required and excluded",
+            deep_classes=("OverlapTest",),
+            excluded_classes={"OverlapTest": "cannot be both"},
+            smoke_classes=("OverlapTest",),
+        )
+
+    print(
+        "Negative controls passed: failing, missing-required, and zero-test XML were rejected; "
+        "inventory check rejects stale, unlisted, and invalid exclusion entries."
+    )
 
 
 def main() -> None:
@@ -230,9 +489,26 @@ def main() -> None:
     parser.add_argument("--self-test", action="store_true", help="Run negative controls")
     parser.add_argument("--list-classes", action="store_true",
                         help="Print comma-separated fully-qualified test classes for --mode")
+    parser.add_argument(
+        "--check-inventory",
+        action="store_true",
+        help="Verify androidTest sources match DEEP_REQUIRED_CLASSES and EXCLUDED_CLASSES",
+    )
     args = parser.parse_args()
     if args.self_test:
         self_test()
+        return
+    if args.check_inventory:
+        try:
+            check_inventory()
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(1)
+        print(
+            "Android instrumentation inventory OK: "
+            f"{len(DEEP_REQUIRED_CLASSES)} deep classes, "
+            f"{len(EXCLUDED_CLASSES)} excluded helpers"
+        )
         return
     if args.list_classes:
         try:
