@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+_stress_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/app-ids.sh
+source "${_stress_dir}/lib/app-ids.sh"
+
 # Targeted stress run for issue #194: repeat the two historically flaky
 # instrumentation tests on a connected device/emulator until one fails.
 #
@@ -8,11 +12,11 @@ set -euo pipefail
 #   bash scripts/stress-flaky-e2e-194.sh [runs]
 #
 # Env:
-#   STRESS_RUNS           Override run count (default: arg1 or 10)
-#   STRESS_ARTIFACT_DIR   Directory for per-failure diagnostics and summary
-#   PKG                   Application package (default: com.notcherry.lfm3pocket)
-#   RUNNER                am instrument target (default:
-#                         dev.notcherry.hanami.test/com.notcherry.lfm3pocket.UiE2eTestRunner)
+#   STRESS_RUNS                Override run count (default: arg1 or 10)
+#   STRESS_ARTIFACT_DIR        Directory for per-failure diagnostics and summary
+#   STRESS_INSTRUMENT_TIMEOUT  Per-test am instrument timeout in seconds (default: 300)
+#   PKG                        Application package (default: dev.notcherry.hanami)
+#   RUNNER                     am instrument target (default: from scripts/lib/app-ids.sh)
 #
 # Requires: adb-connected device/emulator and smoke debug + androidTest APKs
 # installed. On failure, captures instrument output, logcat tail, active
@@ -20,8 +24,7 @@ set -euo pipefail
 # STRESS_ARTIFACT_DIR is set.
 
 RUNS="${STRESS_RUNS:-${1:-10}}"
-PKG="${PKG:-com.notcherry.lfm3pocket}"
-RUNNER="${RUNNER:-dev.notcherry.hanami.test/com.notcherry.lfm3pocket.UiE2eTestRunner}"
+INSTRUMENT_TIMEOUT="${STRESS_INSTRUMENT_TIMEOUT:-300}"
 ARTIFACT_DIR="${STRESS_ARTIFACT_DIR:-}"
 TESTS=(
   "com.notcherry.lfm3pocket.BackgroundNotificationE2eTest#loadedModelAndActiveReplyDriveTheOngoingNotification"
@@ -64,8 +67,23 @@ for i in $(seq 1 "$RUNS"); do
   echo "== stress run $i/$RUNS =="
   for test in "${TESTS[@]}"; do
     echo "-- $test"
-    out="$(adb shell am instrument -w -r -e class "$test" "$RUNNER" 2>&1 || true)"
+    instrument_rc=0
+    set +e
+    out="$(timeout "${INSTRUMENT_TIMEOUT}s" adb shell am instrument -w -r -e class "$test" "$RUNNER" 2>&1)"
+    instrument_rc=$?
+    set -e
+    if [[ "$instrument_rc" -eq 124 ]]; then
+      out="${out}
+ERROR: am instrument timed out after ${INSTRUMENT_TIMEOUT}s"
+    elif [[ "$instrument_rc" -ne 0 ]]; then
+      out="${out}
+ERROR: am instrument exited ${instrument_rc}"
+    fi
     printf '%s\n' "$out"
+    if [[ "$instrument_rc" -eq 124 ]] || [[ "$instrument_rc" -ne 0 ]]; then
+      capture_failure "$i" "$test" "$out"
+      exit 1
+    fi
     if printf '%s\n' "$out" | grep -qE 'FAILURES!!!|Error in '; then
       capture_failure "$i" "$test" "$out"
       exit 1
