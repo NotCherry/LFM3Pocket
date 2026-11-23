@@ -60,6 +60,12 @@ if [ "${EMULATOR_CI_SIMULATE_INFRA_FAIL:-}" = "1" ] && [ "${EMULATOR_INFRA_ATTEM
   echo "ERROR: CI simulated pre-test infrastructure failure (EMULATOR_CI_SIMULATE_INFRA_FAIL=1)" >&2
   exit 10
 fi
+
+# Cached AVD /data can hold an older smoke APK with a different signing key.
+SMOKE_PKG="${SMOKE_PKG:-dev.notcherry.hanami}"
+# shellcheck disable=SC2046
+adb $(adb_target) uninstall "$SMOKE_PKG" >/dev/null 2>&1 || true
+
 adb logcat -c || true
 
 # When APKs are already assembled (CI pre-assemble step), install them directly
