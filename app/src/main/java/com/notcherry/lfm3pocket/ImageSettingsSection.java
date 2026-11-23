@@ -6,9 +6,15 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
 /** Settings scroll section for chat image prepare / resize / JPEG quality. */
 final class ImageSettingsSection {
     private final MainActivitySettingsHost host;
+    private final ImageSettingsStore store;
+    private final Supplier<ImageSettings> currentSettings;
+    private final Consumer<ImageSettings> onSettingsSaved;
     private boolean bindingImageSettings;
     private CheckBox imagePrepareBox;
     private CheckBox imageCropBox;
@@ -19,8 +25,12 @@ final class ImageSettingsSection {
     private Button imageMax1024Button;
     private Button imageMaxOriginalButton;
 
-    ImageSettingsSection(MainActivitySettingsHost host) {
+    ImageSettingsSection(MainActivitySettingsHost host, ImageSettingsStore store,
+            Supplier<ImageSettings> currentSettings, Consumer<ImageSettings> onSettingsSaved) {
         this.host = host;
+        this.store = store;
+        this.currentSettings = currentSettings;
+        this.onSettingsSaved = onSettingsSaved;
     }
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
@@ -40,7 +50,7 @@ final class ImageSettingsSection {
         StillwaterUi.styleCheck(imagePrepareBox);
         imagePrepareBox.setOnCheckedChangeListener((button, checked) -> {
             if (bindingImageSettings) return;
-            ImageSettings current = host.imageSettings();
+            ImageSettings current = currentSettings.get();
             persist(new ImageSettings(checked, current.maxSide, current.cropToSquare, readImageQualityField()), true);
         });
         section.addView(imagePrepareBox);
@@ -69,7 +79,7 @@ final class ImageSettingsSection {
         StillwaterUi.styleCheck(imageCropBox);
         imageCropBox.setOnCheckedChangeListener((button, checked) -> {
             if (bindingImageSettings) return;
-            ImageSettings current = host.imageSettings();
+            ImageSettings current = currentSettings.get();
             persist(new ImageSettings(current.enabled, current.maxSide, checked, readImageQualityField()), true);
         });
         section.addView(imageCropBox);
@@ -77,12 +87,12 @@ final class ImageSettingsSection {
 
         imageQualityField = host.addSettingInput(section, host.getString(R.string.settings_image_quality),
                 host.getString(R.string.settings_image_quality_help),
-                host.imageSettings().jpegQuality, R.id.settings_image_quality, 5, 40, 95);
+                currentSettings.get().jpegQuality, R.id.settings_image_quality, 5, 40, 95);
         imageQualityField.setOnFocusChangeListener((v, hasFocus) -> {
             if (hasFocus || bindingImageSettings) return;
             try {
                 int quality = Integer.parseInt(imageQualityField.getText().toString().trim());
-                ImageSettings current = host.imageSettings();
+                ImageSettings current = currentSettings.get();
                 persist(new ImageSettings(current.enabled, current.maxSide, current.cropToSquare, quality), true);
             } catch (RuntimeException invalid) {
                 syncFields();
@@ -95,7 +105,7 @@ final class ImageSettingsSection {
 
     /** Matches {@link MainActivity}'s bundled inference save (max side from stored model). */
     ImageSettings readForInlineInferenceSave() {
-        ImageSettings current = host.imageSettings();
+        ImageSettings current = currentSettings.get();
         return new ImageSettings(
                 imagePrepareBox == null || imagePrepareBox.isChecked(),
                 current.maxSide,
@@ -105,7 +115,7 @@ final class ImageSettingsSection {
 
     void syncFields() {
         if (imagePrepareBox == null) return;
-        ImageSettings settings = host.imageSettings();
+        ImageSettings settings = currentSettings.get();
         bindingImageSettings = true;
         imagePrepareBox.setChecked(settings.enabled);
         if (imageCropBox != null) imageCropBox.setChecked(settings.cropToSquare);
@@ -115,14 +125,13 @@ final class ImageSettingsSection {
     }
 
     void persist(ImageSettings next, boolean announce) {
-        ImageSettingsStore store = host.imageSettingsStore();
         if (store == null) return;
         try {
             ImageSettings validated = new ImageSettings(next.enabled, next.maxSide,
                     next.cropToSquare, next.jpegQuality);
             store.save(validated, () -> {
                 if (host.isHostFinishing()) return;
-                host.setImageSettings(validated);
+                onSettingsSaved.accept(validated);
                 syncFields();
                 if (announce) host.setChatStatus(validated.summary());
             }, failure -> {
@@ -142,18 +151,18 @@ final class ImageSettingsSection {
         StillwaterUi.quiet(choice);
         choice.setOnClickListener(v -> {
             if (bindingImageSettings) return;
-            ImageSettings current = host.imageSettings();
+            ImageSettings current = currentSettings.get();
             persist(new ImageSettings(current.enabled, side, current.cropToSquare, readImageQualityField()), true);
         });
         return choice;
     }
 
     private int readImageQualityField() {
-        if (imageQualityField == null) return host.imageSettings().jpegQuality;
+        if (imageQualityField == null) return currentSettings.get().jpegQuality;
         try {
             return Integer.parseInt(imageQualityField.getText().toString().trim());
         } catch (NumberFormatException ignored) {
-            return host.imageSettings().jpegQuality;
+            return currentSettings.get().jpegQuality;
         }
     }
 

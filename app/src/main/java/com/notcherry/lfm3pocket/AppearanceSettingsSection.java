@@ -23,9 +23,9 @@ final class AppearanceSettingsSection {
     private float pendingInterfaceSliderScale = InterfaceSize.DEFAULT;
     private final Runnable applyInterfaceSlider;
 
-    AppearanceSettingsSection(MainActivitySettingsHost host, Handler mainHandler) {
+    AppearanceSettingsSection(MainActivitySettingsHost host) {
         this.host = host;
-        this.mainHandler = mainHandler;
+        this.mainHandler = host.settingsMainHandler();
         this.applyInterfaceSlider = () -> {
             if (host.isHostFinishing() || bindingInterfaceSize || interfaceSliderTracking) return;
             applyInterfaceSize(pendingInterfaceSliderScale);

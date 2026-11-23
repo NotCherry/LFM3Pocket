@@ -427,10 +427,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         recreate();
     }
 
-    @Override public String getString(int resId, Object formatArg) {
-        return super.getString(resId, formatArg);
-    }
-
     @Override public void setChatStatus(CharSequence message) {
         if (status != null) status.setText(message);
     }
@@ -438,19 +434,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     @Override public EditText addSettingInput(LinearLayout form, String title, String hint, int value, int id,
             int step, int min, int max) {
         return settingInput(form, title, hint, value, id, step, min, max);
-    }
-
-    @Override public ImageSettings imageSettings() {
-        return imageSettings;
-    }
-
-    @Override public void setImageSettings(ImageSettings settings) {
-        imageSettings = settings;
-        imageSettingsLoaded = true;
-    }
-
-    @Override public ImageSettingsStore imageSettingsStore() {
-        return imageSettingsStore;
     }
 
     @Override public TextView label(String s, int sp, int color) {
@@ -591,9 +574,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings);
         configuration.addView(modelManager, new LinearLayout.LayoutParams(-1, -2));
 
-        appearanceSettings = new AppearanceSettingsSection(this, this.settingsMainHandler());
+        appearanceSettings = new AppearanceSettingsSection(this);
         appearanceSettings.mount(configuration, ink, inkMuted);
-        imageSettingsSection = new ImageSettingsSection(this);
+        imageSettingsSection = new ImageSettingsSection(this, imageSettingsStore,
+                () -> imageSettings, validated -> {
+            imageSettings = validated;
+            imageSettingsLoaded = true;
+        });
 
         TextView inferenceHeading = label(getString(R.string.inference_heading), 11, inkMuted);
         inferenceHeading.setTypeface(StillwaterUi.sansMedium(this));

@@ -22,7 +22,7 @@ interface MainActivitySettingsHost {
 
     String getString(int resId);
 
-    String getString(int resId, Object formatArg);
+    String getString(int resId, Object... formatArgs);
 
     boolean isHostFinishing();
 
@@ -34,10 +34,4 @@ interface MainActivitySettingsHost {
 
     EditText addSettingInput(LinearLayout form, String title, String hint, int value, int id,
             int step, int min, int max);
-
-    ImageSettings imageSettings();
-
-    void setImageSettings(ImageSettings settings);
-
-    ImageSettingsStore imageSettingsStore();
 }
