@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-23
 - Related: [#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [#251](https://github.com/NotCherry/LFM3Pocket/pull/251), [#271](https://github.com/NotCherry/LFM3Pocket/pull/271), [#277](https://github.com/NotCherry/LFM3Pocket/pull/277), [ADR 0006](0006-voice-actions-loop.md), [ADR 0010](0010-tiny-voca-english-tts.md), [ADR 0022](0022-background-model-downloads.md), [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md)
-- Amended: see [ADR 0022](0022-background-model-downloads.md) ([#261](https://github.com/NotCherry/LFM3Pocket/issues/261)); **Amended 2026-11 ([#277](https://github.com/NotCherry/LFM3Pocket/pull/277)):** phone ARM64 GitHub release/CI builds link the pinned Cactus runtime into `liblfm3pocket.so` (still not committed to git; smoke/F-Droid may ship the stub).
+- Amended: 2026-11-23 ([#277](https://github.com/NotCherry/LFM3Pocket/pull/277)) — phone ARM64 GitHub release/CI link the pinned Cactus runtime into `liblfm3pocket.so`; smoke/F-Droid keep the stub; Apache-2.0 NOTICE ships in APK assets (`licenses/cactus/`).
 
 ## Context
 

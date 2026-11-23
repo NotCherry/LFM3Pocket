@@ -23,7 +23,8 @@ def _nm_command() -> list[str] | None:
     for candidate in ("llvm-nm", "nm"):
         path = shutil.which(candidate)
         if path:
-            return [path, "-D"]
+            # Defined symbols only — reject undefined (U) imports that nm would list without --defined-only.
+            return [path, "-D", "--defined-only"]
     return None
 
 

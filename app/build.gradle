@@ -181,6 +181,8 @@ dependencies {
 
 ksp { arg('room.schemaLocation', "$projectDir/schemas"); arg('room.generateKotlin', 'false') }
 android.sourceSets.androidTest.assets.srcDirs += files("$projectDir/schemas")
+// Apache-2.0 NOTICE/LICENSE for the optional Cactus runtime redistributed in phone ARM64 builds.
+android.sourceSets.main.assets.srcDirs += file("${rootProject.projectDir}/licenses/cactus")
 
 // Per-task ceilings so one hung suite cannot block CI indefinitely (see docs/TESTING.md).
 tasks.withType(Test).configureEach { task ->
