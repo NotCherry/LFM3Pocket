@@ -11,9 +11,9 @@ A program on the same phone can submit a prompt while the model is resident. Tha
 ## Decision
 
 1. **Off, and loopback only.** The listener is off until the user turns it on. It binds to loopback and drops a peer that is not loopback. It does not listen on the LAN.
-2. **Caller token.** While it is on, a request must carry the per-install bearer token. The token is shown only through an explicit in-app action. It is not written to the log.
+2. **Caller token.** While it is on, every request — including `GET /health` — must carry the per-install bearer token in `Authorization: Bearer …`. Missing or wrong credentials get `401` before routing. The token is shown only through an explicit in-app action. It is not written to the log.
 3. **No approve.** The listener can submit a prompt and answer a health check. The approve route is forbidden. A request cannot become user authority for a tool. Consent stays on the phone UI.
-4. **Bounded intake.** Header size, body size, how long a read may take, and how many clients may be in flight are capped. A client past the cap is rejected. The prompt body is parsed as JSON. A malformed body is rejected. Submitted text is an ordinary prompt, with the same trust as text typed in chat.
+4. **Bounded intake.** Header size, body size, how long a read may take, and how many clients may be in flight are capped. A client past the cap is rejected. For `POST /v1/ask`, a body that starts with `{` is parsed as JSON and must contain a string `prompt` field. A malformed JSON object is rejected. Any other non-blank body is accepted as the prompt text itself. Submitted text is an ordinary prompt, with the same trust as text typed in chat.
 5. **Out of scope.** Token streaming, an MCP skin, a companion on another device, and a shell bridge are not this decision.
 
 ## Consequences

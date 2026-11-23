@@ -11,17 +11,23 @@ Numbers **0003–0005** and **0007** were drafted on branches that never merged.
 ## Template
 
 ```markdown
-# Title
+# ADR NNNN — Title
 
-- Status: Proposed | Accepted | Superseded by ADR-NNNN
+- Status: Proposed | Accepted | Accepted (reconstructed retrospectively) | Superseded by ADR-NNNN
 - Date: YYYY-MM-DD
+- Related: [#NNN](https://github.com/NotCherry/LFM3Pocket/pull/NNN), [ADR MMMM](MMMM-other.md), [`TOPIC.md`](../TOPIC.md)
+- Amended: YYYY-MM-DD ([#NNN](https://github.com/NotCherry/LFM3Pocket/pull/NNN) short note)
 
 ## Context
 
 ## Decision
 
 ## Consequences
+
+## Alternatives considered
 ```
+
+Older files (for example [0002](0002-interface-size-density.md) and [0006](0006-voice-actions-loop.md)) use a `## Status` heading instead of the `- Status:` bullet. New records should prefer the bullet form above.
 
 ## Index
 

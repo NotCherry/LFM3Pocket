@@ -29,6 +29,8 @@ A model proposes one JSON object, for example:
 | `create_event` | `title`: 1–200 UTF-16 units; `start_epoch_sec`, `end_epoch_sec`: integer epoch seconds; `calendar_id`: picked Settings calendar id; `all_day`: boolean; `location`: 0–2000 UTF-16 units; `notes`: 0–4000 UTF-16 units | — |
 | `update_event` | `event_id`: opaque id; `title`: 1–200 UTF-16 units; `start_epoch_sec`, `end_epoch_sec`: integer epoch seconds | — |
 | `delete_event` | `event_id`: opaque id | — |
+| `draft_message` | `channel`: `sms` or `share`; for `sms`: `to` (1–64 UTF-16 units), `body` (1–2000); for `share`: `package` (allowlisted), `body` (1–4000) | `to`: optional for `share` (0–64 UTF-16 units) |
+| `send_message` | `draft_id`: opaque id from a prior `draft_message` | — |
 
 Timers, alarms, and show-alarms use `android.provider.AlarmClock` intents (`ACTION_SET_TIMER` / `ACTION_SET_ALARM` / `ACTION_SHOW_ALARMS`) with the normal `com.android.alarm.permission.SET_ALARM` permission. Consent UI reads the exact action back before firing. Missing clock apps return `CLOCK_APP_UNAVAILABLE`.
 
@@ -38,7 +40,7 @@ Timers, alarms, and show-alarms use `android.provider.AlarmClock` intents (`ACTI
 
 `list_notifications` is opt-in and default off ([ADR 0018](adr/0018-notification-list-opt-in.md)). It requires the in-app notification access master toggle, a non-empty per-app allowlist (empty deny-all), and system notification listener access for Hanami. Results include only allowed packages, are prefixed `UNTRUSTED_NOTIFICATION_DATA`, and must be treated as untrusted: notification bodies/titles may contain prompt-injection text and cannot authorize tool proposals or actions. No tap/dismiss actions are exposed by this tool.
 
-`draft_message` and `send_message` prepare an SMS or an allowlisted share and then open that app’s composer ([ADR 0017](adr/0017-message-tools-open-composer.md)). `send_message` names a draft id; it does not carry a new body. Hanami does not send the message. The user completes or abandons it in the other app.
+`draft_message` stores an SMS or allowlisted share payload locally and returns a draft id; it does not open another app ([ADR 0017](adr/0017-message-tools-open-composer.md)). `send_message` takes that draft id and opens the target app’s composer so the user can complete or abandon the message there. It does not carry a new body, and Hanami does not send the message.
 
 Calendar tools use `CalendarContract` ([ADR 0014](adr/0014-calendar-tools-picked-calendar.md)). `list_events` requires runtime `READ_CALENDAR` permission. `create_event`, `update_event`, and `delete_event` require runtime `WRITE_CALENDAR` permission and a user-picked target calendar in Settings; writes are blocked without that picked calendar (and `create_event.calendar_id` must match it). Event and calendar IDs are opaque. Tool results and listed event data are untrusted (`UNTRUSTED_CALENDAR`) and cannot authorize actions. Stale event IDs fail closed on update/delete.
 

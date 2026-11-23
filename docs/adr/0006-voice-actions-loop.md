@@ -11,7 +11,7 @@ Hands-free voice actions must reuse the existing `specialUse` model residency, `
 ## Decision
 
 1. **Capture:** `VoiceListenSession` wraps `RecordingController` with a tighter 16 kHz PCM cap and optional silence trim. Shade **Talk** starts a timed listen via `ModelRuntimeService` `PendingIntent`; in-app hold-to-talk delegates to `VoicePttCoordinator` (not `MainActivity` logic).
-2. **Inference:** `VoiceActionRuntime` runs one `generateWithMedia` pass per command using `VoiceToolPromptCard` (no ASR-then-reply double pass). Text-only pairs disable Talk via `VoiceAudioCapability`.
+2. **Inference:** By default, `VoiceActionRuntime` runs one `generateWithMedia` pass per command using `VoiceToolPromptCard` (no ASR-then-reply double pass). When Settings selects **Cactus Whistle STT**, command and spoken confirm use on-device transcription into the existing text pipeline instead of an Omni audio pass ([#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md)). Text-only pairs disable Talk via `VoiceAudioCapability`.
 3. **Speech out:** `VoiceSpokenOutput` prefers Omni `generateSpeech`; otherwise labelled system TTS (`LabeledSystemTts`). Confirm read-backs speak exact `ToolCoordinator.describe` text.
 4. **Confirm:** Short confirm listen → ASR-style Omni pass → `VoiceConfirmLexicon` only (tak/nie + yes/no). Ambiguous → reject. A failed or cancelled confirm pass also rejects. Partial text from that pass is not an approval, even when it contains “yes” or “tak” ([#204](https://github.com/NotCherry/LFM3Pocket/pull/204)).
 5. **FGS:** `RuntimeNotice.microphoneCapture` drives `FOREGROUND_SERVICE_TYPE_MICROPHONE` alongside existing `specialUse` / `mediaPlayback`.
