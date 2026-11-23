@@ -1,8 +1,7 @@
 package com.notcherry.lfm3pocket;
 
-import androidx.concurrent.futures.ListenableFuture;
-
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -11,7 +10,7 @@ public final class ModelDownloadForeground {
     private ModelDownloadForeground() {}
 
     public interface AsyncForeground {
-        ListenableFuture<?> promote();
+        Future<?> promote();
     }
 
     public static ModelDownloadOutcomes.ForegroundPromotion promote(AsyncForeground async) {

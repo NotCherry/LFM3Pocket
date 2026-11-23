@@ -34,7 +34,7 @@ public final class ModelDownloadJobService extends JobService {
         }
         String title = getString(R.string.model_download_notification_title);
         String starting = getString(R.string.model_download_starting);
-        JobService.setNotification(params, kind.notificationId(),
+        setNotification(params, kind.notificationId(),
                 ModelDownloadNotifications.buildNotification(this, kind, title, starting, -1),
                 JobService.JOB_END_NOTIFICATION_POLICY_REMOVE);
         activeJob = params;
@@ -48,7 +48,7 @@ public final class ModelDownloadJobService extends JobService {
         if (Build.VERSION.SDK_INT < 34) return;
         JobParameters params = activeJob;
         if (params == null || kind != activeKind) return;
-        JobService.setNotification(params, kind.notificationId(),
+        setNotification(params, kind.notificationId(),
                 ModelDownloadNotifications.buildNotification(this, kind, title, label, percent),
                 JobService.JOB_END_NOTIFICATION_POLICY_REMOVE);
     }

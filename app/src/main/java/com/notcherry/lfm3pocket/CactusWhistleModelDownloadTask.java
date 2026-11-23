@@ -14,7 +14,10 @@ public final class CactusWhistleModelDownloadTask implements ModelDownloadTask {
     private final CactusWhistleModelDownloader downloader;
 
     public CactusWhistleModelDownloadTask(Context context) {
-        CactusWhistleModelStore store = new CactusWhistleModelStore(context);
+        this(new CactusWhistleModelStore(context));
+    }
+
+    CactusWhistleModelDownloadTask(CactusWhistleModelStore store) {
         this(store, new CactusWhistleModelDownloader(store));
     }
 
