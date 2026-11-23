@@ -83,56 +83,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private final java.util.concurrent.atomic.AtomicBoolean voiceSttCancelled = new java.util.concurrent.atomic.AtomicBoolean();
     private volatile boolean transcribingVoiceInput;
     private PlaybackController playbackController;
-    private CheckBox networkToolsBox;
-    private CheckBox notificationAccessBox;
-    private EditText notificationAllowlistField;
-    private TextView calendarStatusText;
-    private Button calendarPickButton;
-    private Button calendarClearButton;
-    private CheckBox tinyVocaTtsBox;
-    private TextView tinyVocaStatus;
-    private Button tinyVocaDownloadButton;
-    private Button tinyVocaRemoveButton;
-    private Button speechInputOmniButton, speechInputWhistleButton;
-    private TextView speechInputCactusStatus;
-    private Button speechInputCactusDownloadButton, speechInputCactusCancelButton,
-            speechInputCactusPickButton, speechInputCactusClearButton;
-    private final CactusWhistleModelDownloader.UiCallbacks cactusWhistleDownloadUi = new CactusWhistleModelDownloader.UiCallbacks() {
-        @Override public void onProgress(String name, long written, long total) {
-            runOnUiThread(() -> {
-                if (speechInputCactusStatus != null) {
-                    String label = CactusWhistleModelDownloader.formatProgressLabel(name, written, total);
-                    speechInputCactusStatus.setText(getString(R.string.speech_input_cactus_downloading, label));
-                }
-            });
-        }
-        @Override public void onDone(java.io.File modelFile) {
-            runOnUiThread(() -> {
-                new RuntimePreferences(MainActivity.this).setCactusWhistleModelPath(modelFile.getAbsolutePath());
-                paintSpeechInputControls();
-                updateControls();
-                if (status != null) status.setText(getString(R.string.speech_input_cactus_status_ready));
-            });
-        }
-        @Override public void onError(String message) {
-            runOnUiThread(() -> {
-                paintSpeechInputControls();
-                if (status != null) status.setText(message);
-            });
-        }
-        @Override public void onCancelled() {
-            runOnUiThread(() -> {
-                paintSpeechInputControls();
-                if (status != null) status.setText(getString(R.string.model_download_cancelled));
-            });
-        }
-    };
     private float attachedInterfaceScale = InterfaceSize.DEFAULT;
     private AppearanceSettingsSection appearanceSettings;
     private ImageSettingsSection imageSettingsSection;
     private InferenceSettingsSection inferenceSettingsSection;
     private SearchSettingsSection searchSettingsSection;
     private BackgroundSettingsSection backgroundSettingsSection;
+    private IntegrationsSettingsSection integrationsSettingsSection;
     private Button openModelUriButton, openProjectorUriButton, defaultAssistantButton;
     private boolean foreground;
     private boolean microphoneRequested;
@@ -226,14 +183,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     @Override protected void onResume() {
         super.onResume();
         InterfaceSize.recreateIfChanged(this, attachedInterfaceScale);
-        CactusWhistleModelDownloader.bindUi(cactusWhistleDownloadUi);
-        if (CactusWhistleModelDownloader.isDownloading()) paintSpeechInputControls();
+        if (integrationsSettingsSection != null) {
+            CactusWhistleModelDownloader.bindUi(integrationsSettingsSection.cactusWhistleDownloadUi());
+            if (CactusWhistleModelDownloader.isDownloading()) integrationsSettingsSection.paintSpeechInputControls();
+        }
         String pendingWhistleError = CactusWhistleModelDownloader.consumePendingBackgroundError();
         if (pendingWhistleError != null && status != null) status.setText(pendingWhistleError);
     }
 
     @Override protected void onPause() {
-        CactusWhistleModelDownloader.unbindUi(cactusWhistleDownloadUi);
+        if (integrationsSettingsSection != null) {
+            CactusWhistleModelDownloader.unbindUi(integrationsSettingsSection.cactusWhistleDownloadUi());
+        }
         super.onPause();
     }
 
@@ -602,203 +563,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         backgroundSettingsSection = new BackgroundSettingsSection(this, new BackgroundSettingsSection.Deps(
                 () -> new RuntimePreferences(this),
                 (keep, idle, lock, loopback) -> runtime.updateBackgroundSettings(keep, idle, lock, loopback),
-                () -> runtime.loopbackToken(), runtime::loopbackPort, () -> runtime != null));
+                () -> runtime.loopbackToken(), () -> runtime.loopbackPort()));
         backgroundSettingsSection.mount(configuration, ink, inkMuted);
-
-        TextView toolsHeading = label(getString(R.string.tools_heading), 11, inkMuted);
-        toolsHeading.setTypeface(StillwaterUi.sansMedium(this));
-        toolsHeading.setLetterSpacing(0.12f);
-        toolsHeading.setPadding(0, dp(16), 0, dp(4));
-        configuration.addView(toolsHeading);
-        networkToolsBox = new CheckBox(this);
-        networkToolsBox.setId(R.id.settings_network_tools);
-        networkToolsBox.setText(R.string.network_tools_label);
-        StillwaterUi.styleCheck(networkToolsBox);
-        networkToolsBox.setOnCheckedChangeListener((button, checked) -> {
-            if (bindingBackground) return;
-            new RuntimePreferences(this).setNetworkToolsEnabled(checked);
-        });
-        configuration.addView(networkToolsBox);
-        TextView networkToolsHelp = label(getString(R.string.network_tools_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(networkToolsHelp);
-        configuration.addView(networkToolsHelp);
-
-        TextView notificationAccessHeading = label(getString(R.string.notification_access_heading), 11, inkMuted);
-        notificationAccessHeading.setTypeface(StillwaterUi.sansMedium(this));
-        notificationAccessHeading.setLetterSpacing(0.12f);
-        notificationAccessHeading.setPadding(0, dp(16), 0, dp(4));
-        configuration.addView(notificationAccessHeading);
-        notificationAccessBox = new CheckBox(this);
-        notificationAccessBox.setId(R.id.settings_notification_access);
-        notificationAccessBox.setText(R.string.notification_access_enabled);
-        StillwaterUi.styleCheck(notificationAccessBox);
-        notificationAccessBox.setOnCheckedChangeListener((button, checked) -> {
-            if (bindingBackground) return;
-            new RuntimePreferences(this).setNotificationAccessEnabled(checked);
-        });
-        configuration.addView(notificationAccessBox);
-        TextView notificationAccessHelp = label(getString(R.string.notification_access_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(notificationAccessHelp);
-        configuration.addView(notificationAccessHelp);
-        Button openNotificationAccessSettings = button(getString(R.string.notification_access_open_settings));
-        openNotificationAccessSettings.setId(R.id.settings_notification_open_system);
-        StillwaterUi.quiet(openNotificationAccessSettings);
-        openNotificationAccessSettings.setOnClickListener(v -> {
-            try {
-                startActivity(new Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
-            } catch (Exception e) {
-                status.setText("Could not open notification access settings.");
-            }
-        });
-        StillwaterReadable.addFlexibleFullWidth(configuration, openNotificationAccessSettings, 44);
-        TextView notificationAllowlistLabel = label(getString(R.string.notification_access_allowlist_label), 14, ink);
-        StillwaterReadable.prepareWrappingLabel(notificationAllowlistLabel);
-        configuration.addView(notificationAllowlistLabel);
-        notificationAllowlistField = new EditText(this);
-        notificationAllowlistField.setId(R.id.settings_notification_allowlist);
-        notificationAllowlistField.setMinLines(3);
-        notificationAllowlistField.setMaxLines(8);
-        notificationAllowlistField.setGravity(Gravity.TOP | Gravity.START);
-        notificationAllowlistField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        notificationAllowlistField.setHint(getString(R.string.notification_access_allowlist_hint));
-        notificationAllowlistField.setHintTextColor(inkMuted);
-        notificationAllowlistField.setTextColor(ink);
-        notificationAllowlistField.setTypeface(StillwaterUi.mono(this));
-        notificationAllowlistField.setBackgroundColor(Color.TRANSPARENT);
-        StillwaterUi.styleInput(notificationAllowlistField);
-        configuration.addView(notificationAllowlistField);
-        Button saveNotificationAllowlist = button(getString(R.string.notification_access_save_allowlist));
-        saveNotificationAllowlist.setId(R.id.settings_notification_save_allowlist);
-        StillwaterUi.quiet(saveNotificationAllowlist);
-        saveNotificationAllowlist.setOnClickListener(v -> saveNotificationAllowlist());
-        StillwaterReadable.addFlexibleFullWidth(configuration, saveNotificationAllowlist, 44);
-        TextView notificationAllowlistHelp = label(getString(R.string.notification_access_empty_allowlist), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(notificationAllowlistHelp);
-        configuration.addView(notificationAllowlistHelp);
-
-        TextView calendarHeading = label(getString(R.string.calendar_heading), 11, inkMuted);
-        calendarHeading.setTypeface(StillwaterUi.sansMedium(this));
-        calendarHeading.setLetterSpacing(0.12f);
-        calendarHeading.setPadding(0, dp(16), 0, dp(4));
-        configuration.addView(calendarHeading);
-        TextView calendarHelp = label(getString(R.string.calendar_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(calendarHelp);
-        configuration.addView(calendarHelp);
-        calendarStatusText = label(getString(R.string.calendar_none_picked), 13, ink);
-        calendarStatusText.setId(R.id.settings_calendar_status);
-        StillwaterReadable.prepareWrappingLabel(calendarStatusText);
-        configuration.addView(calendarStatusText);
-        calendarPickButton = button(getString(R.string.calendar_pick_button));
-        calendarPickButton.setId(R.id.settings_calendar_pick);
-        StillwaterUi.quiet(calendarPickButton);
-        calendarPickButton.setOnClickListener(v -> pickCalendarTarget());
-        StillwaterReadable.addFlexibleFullWidth(configuration, calendarPickButton, 44);
-        calendarClearButton = button(getString(R.string.calendar_clear_button));
-        calendarClearButton.setId(R.id.settings_calendar_clear);
-        StillwaterUi.quiet(calendarClearButton);
-        calendarClearButton.setOnClickListener(v -> {
-            new RuntimePreferences(this).setCalendarWriteTarget("", "");
-            refreshCalendarPickerStatus();
-        });
-        StillwaterReadable.addFlexibleFullWidth(configuration, calendarClearButton, 44);
-
-        TextView speechHeading = label(getString(R.string.speech_heading), 11, inkMuted);
-        speechHeading.setTypeface(StillwaterUi.sansMedium(this));
-        speechHeading.setLetterSpacing(0.12f);
-        speechHeading.setPadding(0, dp(16), 0, dp(4));
-        configuration.addView(speechHeading);
-
-        TextView speechInputHeading = label(getString(R.string.speech_input_heading), 11, inkMuted);
-        speechInputHeading.setTypeface(StillwaterUi.sansMedium(this));
-        speechInputHeading.setLetterSpacing(0.08f);
-        speechInputHeading.setPadding(0, dp(8), 0, dp(2));
-        configuration.addView(speechInputHeading);
-        TextView speechInputLabel = label(getString(R.string.speech_input_mode_label), 14, ink);
-        speechInputLabel.setTypeface(StillwaterUi.sansMedium(this));
-        StillwaterReadable.prepareWrappingLabel(speechInputLabel);
-        configuration.addView(speechInputLabel);
-        TextView speechInputHelp = label(getString(R.string.speech_input_mode_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(speechInputHelp);
-        configuration.addView(speechInputHelp);
-        speechInputOmniButton = button(getString(R.string.speech_input_omni));
-        speechInputWhistleButton = button(getString(R.string.speech_input_cactus_whistle));
-        speechInputOmniButton.setOnClickListener(v -> {
-            new RuntimePreferences(this).setSpeechInputMode(SpeechInputMode.OMNI_AUDIO);
-            paintSpeechInputControls();
-            updateControls();
-        });
-        speechInputWhistleButton.setOnClickListener(v -> {
-            new RuntimePreferences(this).setSpeechInputMode(SpeechInputMode.CACTUS_WHISTLE_STT);
-            paintSpeechInputControls();
-            updateControls();
-        });
-        LinearLayout speechModeRow = StillwaterReadable.addFlexibleButtonRow(configuration, this, 44,
-                speechInputOmniButton, speechInputWhistleButton);
-        speechModeRow.setPadding(0, dp(4), 0, dp(4));
-        speechInputCactusStatus = label(getString(R.string.speech_input_cactus_status_missing), 13, ink);
-        speechInputCactusStatus.setId(R.id.settings_cactus_whistle_status);
-        StillwaterReadable.prepareWrappingLabel(speechInputCactusStatus);
-        configuration.addView(speechInputCactusStatus);
-        speechInputCactusDownloadButton = button(getString(R.string.speech_input_cactus_download));
-        speechInputCactusDownloadButton.setId(R.id.settings_cactus_whistle_download);
-        StillwaterUi.quiet(speechInputCactusDownloadButton);
-        speechInputCactusDownloadButton.setOnClickListener(v -> downloadCactusWhistleModel());
-        configuration.addView(speechInputCactusDownloadButton, new LinearLayout.LayoutParams(-1, dp(44)));
-        speechInputCactusCancelButton = button(getString(R.string.model_download_cancel));
-        speechInputCactusCancelButton.setId(R.id.settings_cactus_whistle_cancel);
-        StillwaterUi.quiet(speechInputCactusCancelButton);
-        speechInputCactusCancelButton.setOnClickListener(v -> {
-            ModelDownloadManager.getInstance(this).cancel(ModelDownloadKind.CACTUS_WHISTLE);
-            paintSpeechInputControls();
-        });
-        configuration.addView(speechInputCactusCancelButton, new LinearLayout.LayoutParams(-1, dp(44)));
-        speechInputCactusPickButton = button(getString(R.string.speech_input_cactus_pick));
-        speechInputCactusPickButton.setId(R.id.settings_cactus_whistle_pick);
-        StillwaterUi.quiet(speechInputCactusPickButton);
-        speechInputCactusPickButton.setOnClickListener(v -> pickWhistleModel());
-        configuration.addView(speechInputCactusPickButton, new LinearLayout.LayoutParams(-1, dp(44)));
-        speechInputCactusClearButton = button(getString(R.string.speech_input_cactus_clear));
-        speechInputCactusClearButton.setId(R.id.settings_cactus_whistle_clear);
-        StillwaterUi.quiet(speechInputCactusClearButton);
-        speechInputCactusClearButton.setOnClickListener(v -> {
-            new RuntimePreferences(this).setCactusWhistleModelPath("");
-            new CactusWhistleModelStore(this).clear();
-            paintSpeechInputControls();
-            updateControls();
-        });
-        configuration.addView(speechInputCactusClearButton, new LinearLayout.LayoutParams(-1, dp(44)));
-        TextView speechCactusHelp = label(getString(R.string.speech_input_cactus_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(speechCactusHelp);
-        configuration.addView(speechCactusHelp);
-
-        tinyVocaTtsBox = new CheckBox(this);
-        tinyVocaTtsBox.setId(R.id.settings_tiny_voca_tts);
-        tinyVocaTtsBox.setText(R.string.tiny_voca_tts_label);
-        StillwaterUi.styleCheck(tinyVocaTtsBox);
-        tinyVocaTtsBox.setOnCheckedChangeListener((button, checked) -> {
-            if (bindingBackground) return;
-            new RuntimePreferences(this).setTinyVocaEnglishTtsEnabled(checked);
-        });
-        configuration.addView(tinyVocaTtsBox);
-        TextView tinyVocaHelp = label(getString(R.string.tiny_voca_tts_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(tinyVocaHelp);
-        configuration.addView(tinyVocaHelp);
-        tinyVocaStatus = label(getString(R.string.tiny_voca_status_missing), 13, ink);
-        tinyVocaStatus.setId(R.id.settings_tiny_voca_status);
-        configuration.addView(tinyVocaStatus);
-        tinyVocaDownloadButton = button(getString(R.string.tiny_voca_download));
-        tinyVocaDownloadButton.setId(R.id.settings_tiny_voca_download);
-        StillwaterUi.quiet(tinyVocaDownloadButton);
-        tinyVocaDownloadButton.setOnClickListener(v -> downloadTinyVocaPack());
-        configuration.addView(tinyVocaDownloadButton, new LinearLayout.LayoutParams(-1, dp(44)));
-        tinyVocaRemoveButton = button(getString(R.string.tiny_voca_remove));
-        tinyVocaRemoveButton.setId(R.id.settings_tiny_voca_remove);
-        StillwaterUi.quiet(tinyVocaRemoveButton);
-        tinyVocaRemoveButton.setOnClickListener(v -> {
-            new TinyVocaPackStore(this).clear();
-            paintTinyVocaPackStatus();
-        });
-        configuration.addView(tinyVocaRemoveButton, new LinearLayout.LayoutParams(-1, dp(44)));
+        integrationsSettingsSection = new IntegrationsSettingsSection(this, new IntegrationsSettingsSection.Deps(
+                () -> new RuntimePreferences(this), this::updateControls, this::pickCalendarTarget,
+                this::pickWhistleModel, this::downloadCactusWhistleModel, this::downloadTinyVocaPack));
+        integrationsSettingsSection.mount(configuration, ink, inkMuted);
 
         defaultAssistantButton = button(getString(R.string.default_assistant_button));
         defaultAssistantButton.setId(R.id.settings_default_assistant);
@@ -1145,16 +915,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void syncInlineSettingsFields() {
         if (inferenceSettingsSection != null) inferenceSettingsSection.syncFields();
         if (searchSettingsSection != null) searchSettingsSection.syncFields();
-        if (networkToolsBox != null) {
-            bindingBackground = true;
-            networkToolsBox.setChecked(new RuntimePreferences(this).networkToolsEnabled());
-            RuntimePreferences prefs = new RuntimePreferences(this);
-            if (tinyVocaTtsBox != null) tinyVocaTtsBox.setChecked(prefs.tinyVocaEnglishTtsEnabled());
-            paintTinyVocaPackStatus();
-            paintSpeechInputControls();
-            bindingBackground = false;
-        }
-        refreshCalendarPickerStatus();
+        if (integrationsSettingsSection != null) integrationsSettingsSection.syncFields();
     }
 
     private void showInferenceSettings() {
@@ -1604,7 +1365,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             } else if (status != null) {
                 status.setText(getString(R.string.calendar_permission_needed));
             }
-            refreshCalendarPickerStatus();
+            if (integrationsSettingsSection != null) integrationsSettingsSection.refreshCalendarPickerStatus();
         }
     }
 
@@ -1863,7 +1624,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 runOnUiThread(() -> {
                     if (destroyed) return;
                     new RuntimePreferences(this).setCactusWhistleModelPath(saved.getAbsolutePath());
-                    paintSpeechInputControls();
+                    if (integrationsSettingsSection != null) integrationsSettingsSection.paintSpeechInputControls();
                     busy = false;
                     status.setText(saved.getName() + " selected for Cactus Whistle STT.");
                     updateControls();
@@ -2141,106 +1902,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private void syncBackgroundControls() {
         if (backgroundSettingsSection != null) backgroundSettingsSection.syncControls();
-        if (networkToolsBox == null) return;
-        RuntimePreferences prefs = new RuntimePreferences(this);
-        bindingBackground = true;
-        networkToolsBox.setChecked(prefs.networkToolsEnabled());
-        if (notificationAccessBox != null) notificationAccessBox.setChecked(prefs.notificationAccessEnabled());
-        if (notificationAllowlistField != null) {
-            StringBuilder allowlistText = new StringBuilder();
-            for (String pkg : prefs.notificationAllowlist()) {
-                if (allowlistText.length() > 0) allowlistText.append('\n');
-                allowlistText.append(pkg);
-            }
-            notificationAllowlistField.setText(allowlistText.toString());
-        }
-        if (tinyVocaTtsBox != null) tinyVocaTtsBox.setChecked(prefs.tinyVocaEnglishTtsEnabled());
-        paintTinyVocaPackStatus();
-        paintSpeechInputControls();
-        bindingBackground = false;
-    }
-
-    private void saveNotificationAllowlist() {
-        if (notificationAllowlistField == null) return;
-        String raw = notificationAllowlistField.getText() == null ? "" : notificationAllowlistField.getText().toString();
-        java.util.LinkedHashSet<String> packages = new java.util.LinkedHashSet<>();
-        for (String line : raw.split("[\n,]+")) {
-            if (line == null) continue;
-            String trimmed = line.trim();
-            if (!trimmed.isEmpty()) packages.add(trimmed);
-        }
-        new RuntimePreferences(this).setNotificationAllowlist(packages);
-        if (status != null) status.setText(getString(R.string.notification_access_allowlist_saved));
-    }
-
-    private void paintTinyVocaPackStatus() {
-        if (tinyVocaStatus == null) return;
-        boolean ready = new TinyVocaPackStore(this).isReady();
-        tinyVocaStatus.setText(ready ? getString(R.string.tiny_voca_status_ready)
-                : getString(R.string.tiny_voca_status_missing));
-        if (tinyVocaDownloadButton != null) tinyVocaDownloadButton.setEnabled(!ready);
-        if (tinyVocaRemoveButton != null) tinyVocaRemoveButton.setEnabled(ready);
-    }
-
-    private void paintSpeechInputControls() {
-        RuntimePreferences prefs = new RuntimePreferences(this);
-        SpeechInputMode mode = prefs.speechInputMode();
-        if (speechInputOmniButton != null) {
-            speechInputOmniButton.setSelected(mode == SpeechInputMode.OMNI_AUDIO);
-            speechInputOmniButton.setAlpha(mode == SpeechInputMode.OMNI_AUDIO ? 1f : 0.7f);
-        }
-        if (speechInputWhistleButton != null) {
-            speechInputWhistleButton.setSelected(mode == SpeechInputMode.CACTUS_WHISTLE_STT);
-            speechInputWhistleButton.setAlpha(mode == SpeechInputMode.CACTUS_WHISTLE_STT ? 1f : 0.7f);
-        }
-        CactusWhistleModelStore store = new CactusWhistleModelStore(this);
-        String path = prefs.cactusWhistleModelPath();
-        boolean hasPath = path != null && !path.trim().isEmpty();
-        if (hasPath && !new File(path).isFile()) {
-            prefs.setCactusWhistleModelPath("");
-            hasPath = false;
-        }
-        if (!hasPath && store.isReady()) {
-            path = store.modelFile().getAbsolutePath();
-            prefs.setCactusWhistleModelPath(path);
-            hasPath = true;
-        }
-        boolean downloading = CactusWhistleModelDownloader.isDownloading();
-        if (speechInputCactusStatus != null && !downloading) {
-            SttAvailability availability = CactusWhistleBridge.availability(path);
-            String label;
-            if (!hasPath) {
-                label = getString(R.string.speech_input_cactus_model_none);
-            } else {
-                label = new File(path).getName() + " · " + (availability.available
-                        ? getString(R.string.speech_input_cactus_status_ready)
-                        : availability.message);
-            }
-            speechInputCactusStatus.setText(label);
-        }
-        if (speechInputCactusDownloadButton != null) {
-            speechInputCactusDownloadButton.setEnabled(!downloading && !store.isReady());
-        }
-        if (speechInputCactusCancelButton != null) {
-            speechInputCactusCancelButton.setEnabled(downloading);
-            speechInputCactusCancelButton.setVisibility(downloading ? View.VISIBLE : View.GONE);
-        }
-        if (speechInputCactusPickButton != null) {
-            speechInputCactusPickButton.setEnabled(!downloading);
-        }
-        if (speechInputCactusClearButton != null) {
-            speechInputCactusClearButton.setEnabled(!downloading && (hasPath || store.isReady()));
-        }
+        if (integrationsSettingsSection != null) integrationsSettingsSection.syncControls();
     }
 
     private void downloadTinyVocaPack() {
-        if (tinyVocaDownloadButton != null) tinyVocaDownloadButton.setEnabled(false);
+        if (integrationsSettingsSection == null) return;
+        integrationsSettingsSection.beginTinyVocaDownload();
         new Thread(() -> new TinyVocaPackDownloader(new TinyVocaPackStore(this)).download(
                 new TinyVocaPackDownloader.Progress() {
                     @Override public void onFile(String path, long written, long total) {
                         runOnUiThread(() -> {
-                            if (tinyVocaStatus != null) {
-                                tinyVocaStatus.setText(getString(R.string.tiny_voca_downloading, path));
+                            if (integrationsSettingsSection != null) {
+                                integrationsSettingsSection.onTinyVocaDownloadProgress(path);
                             }
                         });
                     }
@@ -2249,13 +1922,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                         new Thread(() -> TinyVocaPhonemizerBridge.ensureLoaded(pack.phonemizerDir()),
                                 "tiny-voca-phonemizer-warmup").start();
                         runOnUiThread(() -> {
-                            paintTinyVocaPackStatus();
+                            if (integrationsSettingsSection != null) {
+                                integrationsSettingsSection.paintTinyVocaPackStatus();
+                            }
                             if (status != null) status.setText(getString(R.string.tiny_voca_status_ready));
                         });
                     }
                     @Override public void onError(String message) {
                         runOnUiThread(() -> {
-                            paintTinyVocaPackStatus();
+                            if (integrationsSettingsSection != null) {
+                                integrationsSettingsSection.paintTinyVocaPackStatus();
+                            }
                             if (status != null) status.setText(message);
                         });
                     }
@@ -2303,15 +1980,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         }
         if (outcome == ModelDownloadManager.StartResult.STARTED
                 || outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
-            paintSpeechInputControls();
+            if (integrationsSettingsSection != null) integrationsSettingsSection.paintSpeechInputControls();
         }
     }
 
     private static String formatMb(long bytes) {
         return String.format(java.util.Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0));
     }
-
-    private boolean bindingBackground;
 
     private void applyDraft(Intent intent) {
         if (intent == null || chatPanel == null) return;
@@ -2452,7 +2127,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             }
         } catch (SecurityException e) {
             if (status != null) status.setText(getString(R.string.calendar_permission_needed));
-            refreshCalendarPickerStatus();
+            if (integrationsSettingsSection != null) integrationsSettingsSection.refreshCalendarPickerStatus();
             return;
         } catch (Exception ignored) {
             // Fall through to empty-state dialog.
@@ -2467,24 +2142,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 .setItems(items, (dialog, which) -> {
                     if (which < 0 || which >= ids.size()) return;
                     new RuntimePreferences(this).setCalendarWriteTarget(ids.get(which), labels.get(which));
-                    refreshCalendarPickerStatus();
+                    if (integrationsSettingsSection != null) {
+                        integrationsSettingsSection.refreshCalendarPickerStatus();
+                    }
                 })
                 .setNegativeButton(android.R.string.cancel, null)
                 .show();
-    }
-
-    private void refreshCalendarPickerStatus() {
-        if (calendarStatusText == null) return;
-        RuntimePreferences prefs = new RuntimePreferences(this);
-        String id = prefs.calendarWriteId();
-        if (id == null || id.trim().isEmpty()) {
-            calendarStatusText.setText(getString(R.string.calendar_none_picked));
-            return;
-        }
-        String label = prefs.calendarWriteLabel();
-        if (label == null || label.trim().isEmpty()) label = id.trim();
-        else label = label.trim() + " (id " + id.trim() + ")";
-        calendarStatusText.setText(getString(R.string.calendar_picked, label));
     }
 
     @Override protected void onDestroy() {

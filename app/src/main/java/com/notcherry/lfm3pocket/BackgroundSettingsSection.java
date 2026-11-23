@@ -9,7 +9,6 @@ import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import java.util.function.BooleanSupplier;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
@@ -20,15 +19,13 @@ final class BackgroundSettingsSection {
         final BackgroundApply apply;
         final Supplier<String> loopbackToken;
         final IntSupplier loopbackPort;
-        final BooleanSupplier runtimeReady;
 
         Deps(Supplier<RuntimePreferences> preferences, BackgroundApply apply,
-                Supplier<String> loopbackToken, IntSupplier loopbackPort, BooleanSupplier runtimeReady) {
+                Supplier<String> loopbackToken, IntSupplier loopbackPort) {
             this.preferences = preferences;
             this.apply = apply;
             this.loopbackToken = loopbackToken;
             this.loopbackPort = loopbackPort;
-            this.runtimeReady = runtimeReady;
         }
     }
 
@@ -90,7 +87,7 @@ final class BackgroundSettingsSection {
     }
 
     void syncControls() {
-        if (keepLoadedBox == null || !deps.runtimeReady.getAsBoolean()) return;
+        if (keepLoadedBox == null) return;
         RuntimePreferences prefs = deps.preferences.get();
         bindingBackground = true;
         keepLoadedBox.setChecked(prefs.keepLoaded());
@@ -109,7 +106,6 @@ final class BackgroundSettingsSection {
     }
 
     private void showLoopbackToken() {
-        if (!deps.runtimeReady.getAsBoolean()) return;
         String token = deps.loopbackToken.get();
         int port = deps.loopbackPort.getAsInt();
         String message = host.getString(R.string.loopback_token_message, port, token);
