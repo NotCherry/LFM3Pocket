@@ -16,6 +16,7 @@ if [ "$retry" != "true" ]; then
 fi
 
 if [ "$attempt2" = "success" ]; then
+  echo "::warning::Emulator E2E passed only on infrastructure attempt 2 (attempt 1 pre-test flake)"
   echo "Android emulator E2E passed on infrastructure attempt 2."
   exit 0
 fi

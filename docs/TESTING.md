@@ -6,7 +6,9 @@ Hung or deadlocked tests must not burn an entire CI job ([ADR 0023](adr/0023-lay
 
 Stage 1 `.github/workflows/build-apk.yml` may start the API 30 emulator twice (at most) when the failure is **pre-test infrastructure** only—e.g. `adb: device offline` or `ServiceNotFoundException` for `input` before connected tests run. Real test failures are never retried.
 
-Before installing APKs or Gradle `connected*AndroidTest`, `.github/scripts/wait-for-emulator-ready.sh` waits for `sys.boot_completed=1`, checks published system services (`input`, `package`, `activity`, `window`), and recovers from offline adb (`adb reconnect`, `adb kill-server` / `start-server`) within a bounded timeout. Job and Gradle `timeout` layers in ADR 0023 are unchanged.
+Before installing APKs or Gradle `connected*AndroidTest`, `.github/scripts/wait-for-emulator-ready.sh` waits for `sys.boot_completed=1`, checks published system services (`input`, `package`, `activity`, `window`), and recovers from offline adb (`adb reconnect`, `adb kill-server` / `start-server`). Every `adb wait-for-device` is wrapped in `timeout` so readiness respects `EMULATOR_READY_TIMEOUT_S` (120s in CI). Failed infrastructure attempt 1 leaves diagnostics under `app/build/ci-artifacts/attempt-1/` before attempt 2 runs.
+
+Worst-case deep tier budget (90m job): pre-E2E assemble (~8m) + up to 2×(`emulator-boot-timeout` 420s + readiness 120s) + `timeout 45m` connected suite + scripted proofs—see [ADR 0023](adr/0023-layered-test-timeouts.md) amendment. Smoke tier uses `timeout 30m` connected; a second infra start is rare.
 
 ## Gradle (`app/build.gradle`)
 

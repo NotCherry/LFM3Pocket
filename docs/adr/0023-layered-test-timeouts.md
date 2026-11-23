@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-23
+- Amended: 2026-11-23 — Bounded pre-test emulator infrastructure retry (max two full emulator starts on infra-only failure) adds a second boot/readiness window inside the existing `emulator-e2e` job `timeout-minutes: 90`. CI uses `emulator-boot-timeout: 420` and `EMULATOR_READY_TIMEOUT_S=120` per attempt so worst-case deep tier (2× infra + `timeout 45m` connected + scripted proofs) still fits under the job ceiling ([#283](https://github.com/NotCherry/LFM3Pocket/pull/283)). Test failures are not retried.
 - Related: [#273](https://github.com/NotCherry/LFM3Pocket/pull/273), [#265](https://github.com/NotCherry/LFM3Pocket/issues/265), [ADR 0012](0012-two-tier-emulator-e2e-gating.md), [ADR 0016](0016-runtime-policy-owner-thread.md), [`TESTING.md`](../TESTING.md)
 
 ## Context

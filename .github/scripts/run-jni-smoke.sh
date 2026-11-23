@@ -32,19 +32,34 @@ esac
 mkdir -p app/build/ci-artifacts
 echo "E2E tier: $MODE" | tee app/build/ci-artifacts/e2e-tier.txt
 
+adb_target() {
+  if [ -n "${ANDROID_SERIAL:-}" ]; then
+    printf '%s\n' "-s" "$ANDROID_SERIAL"
+  fi
+}
+
 collect_diagnostics() {
   local exit_code="${1:-0}"
-  adb devices -l > app/build/ci-artifacts/adb-devices.txt 2>&1 || true
-  adb logcat -d -v threadtime > app/build/ci-artifacts/emulator-logcat.txt 2>&1 || true
+  # shellcheck disable=SC2046
+  adb $(adb_target) devices -l > app/build/ci-artifacts/adb-devices.txt 2>&1 || true
+  # shellcheck disable=SC2046
+  adb $(adb_target) logcat -d -v threadtime > app/build/ci-artifacts/emulator-logcat.txt 2>&1 || true
   if [ "$exit_code" -ne 0 ]; then
     # Best-effort screenshot of the last emulator state for failed UI assertions.
-    adb exec-out screencap -p > app/build/ci-artifacts/failure-screen.png 2>/dev/null || true
-    adb shell dumpsys activity activities > app/build/ci-artifacts/activity-dump.txt 2>&1 || true
+    # shellcheck disable=SC2046
+    adb $(adb_target) exec-out screencap -p > app/build/ci-artifacts/failure-screen.png 2>/dev/null || true
+    # shellcheck disable=SC2046
+    adb $(adb_target) shell dumpsys activity activities > app/build/ci-artifacts/activity-dump.txt 2>&1 || true
   fi
 }
 trap 'collect_diagnostics "$?"' EXIT
 
 bash .github/scripts/wait-for-emulator-ready.sh
+
+if [ "${EMULATOR_CI_SIMULATE_INFRA_FAIL:-}" = "1" ] && [ "${EMULATOR_INFRA_ATTEMPT:-}" = "1" ]; then
+  echo "ERROR: CI simulated pre-test infrastructure failure (EMULATOR_CI_SIMULATE_INFRA_FAIL=1)" >&2
+  exit 10
+fi
 adb logcat -c || true
 
 # When APKs are already assembled (CI pre-assemble step), install them directly

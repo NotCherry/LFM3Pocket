@@ -155,6 +155,8 @@ jobs:
     timeout-minutes: 90
     env:
       E2E_TIER: ${{ github.event_name == 'pull_request' && 'smoke' || (github.event_name == 'workflow_dispatch' && inputs.e2e_tier || 'deep') }}
+      # Bounded readiness (ADR 0023): 2×(boot 420s + 120s) + deep connected 45m must fit in job timeout-minutes: 90.
+      EMULATOR_READY_TIMEOUT_S: 120
     steps:
       - name: Select E2E tier
         run: |
@@ -274,7 +276,7 @@ jobs:
           target: google_apis
           arch: x86_64
           force-avd-creation: false
-          emulator-boot-timeout: 600
+          emulator-boot-timeout: 420
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           pre-emulator-launch-script: bash .github/scripts/emulator-pre-launch.sh 1
@@ -294,7 +296,7 @@ jobs:
           target: google_apis
           arch: x86_64
           force-avd-creation: false
-          emulator-boot-timeout: 600
+          emulator-boot-timeout: 420
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           pre-emulator-launch-script: bash .github/scripts/emulator-pre-launch.sh 2
@@ -318,6 +320,7 @@ jobs:
             app/build/outputs/androidTest-results/connected/
             app/build/reports/androidTests/connected/
             app/build/ci-artifacts/
+            app/build/ci-artifacts/attempt-1/
           if-no-files-found: warn
           retention-days: 14
 
