@@ -17,7 +17,7 @@ LFM3 Pocket can use **Cactus Whistle** as an optional, selectable on-device spee
 
 - Model: [Cactus-Compute/whistle](https://huggingface.co/Cactus-Compute/whistle) — `whistle.cact` (~16.9 MB), Apache-2.0, 7 languages advertised upstream (English, German, French, Spanish, Italian, Dutch, Polish). **Initial app configuration is English-only** unless/until product scope expands and UX is updated.
 - Runtime/API: [cactus-compute/cactus](https://github.com/cactus-compute/cactus), C API in published Android artifacts (see `cactus.h`).
-- Android native artifacts: pinned in `vendor/CACTUS_RELEASE` (currently **4.1.4**) from [Cactus-Compute/cactus releases](https://huggingface.co/Cactus-Compute/cactus/tree/main/releases). `android-arm64` provides `cactus.h` and `libcactus.a`; SHA-256 pins live in `vendor/CACTUS_ANDROID_ARM64.sha256`.
+- Android native artifacts: pinned release **4.1.4** (`vendor/CACTUS_RELEASE`) at Hugging Face commit `vendor/CACTUS_HF_REVISION` from [Cactus-Compute/cactus](https://huggingface.co/Cactus-Compute/cactus). `android-arm64` provides `cactus.h` and `libcactus.a`; SHA-256 pins live in `vendor/CACTUS_ANDROID_ARM64.sha256`.
 
 ## Licensing
 
@@ -43,7 +43,9 @@ LFM3 Pocket can use **Cactus Whistle** as an optional, selectable on-device spee
 - Upstream publishes per-ABI Android artifacts (e.g. `android-arm64`, and other targets in the release tree). Check the pinned release for the exact set and requirements.
 - JNI adapter: `app/src/main/cpp/cactus_whistle_jni.cpp` bridges `CactusWhistleBridge` (Java) to the Cactus C API (`cactus_load`, `cactus_init`, `cactus_transcribe`, etc.). Audio is provided as 16 kHz mono float PCM samples in [-1, 1], matching the captured WAV format used by the app.
 - CMake auto-enables the runtime when `third_party/cactus/<abi>/cactus.h` and `libcactus.a` are present (also accepts `android-arm64` for `arm64-v8a`), or when `CACTUS_WHISTLE_DIR` points to a directory containing them. Without artifacts the JNI compiles as a stub and reports unavailable at runtime.
-- **Reproducible build note:** runtime version is pinned in `vendor/CACTUS_RELEASE` with SHA-256 in `vendor/CACTUS_ANDROID_ARM64.sha256`. Model pin/checksums are in `CactusWhistleModelManifest`. Do not commit the downloaded binaries (`third_party/` is gitignored).
+- **Reproducible build note:** runtime version is pinned in `vendor/CACTUS_RELEASE`, HF commit in `vendor/CACTUS_HF_REVISION`, SHA-256 in `vendor/CACTUS_ANDROID_ARM64.sha256`. Model pin/checksums are in `CactusWhistleModelManifest`. Do not commit the downloaded binaries (`third_party/` is gitignored).
+- **CPU features:** the pinned `android-arm64` archive exposes NEON-named kernels and a `g_dotprod` runtime gate; no i8mm/SVE identifiers showed up in a symbol/string scan of `libcactus.a`. Hanami still gates process start on DOTPROD for llama.cpp ([ADR 0001](adr/0001-arm64-dotprod-and-kv-residency.md)). Confirm on-device that Whistle does not SIGILL on DOTPROD-only CPUs after an ARM64 CI link succeeds.
+- **Licensing notice:** Apache-2.0 text for the redistributed runtime is under [`licenses/cactus/`](../licenses/cactus/).
 
 ## Disable / remove
 

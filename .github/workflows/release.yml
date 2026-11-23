@@ -223,7 +223,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: third_party/cactus/arm64-v8a
-          key: cactus-android-arm64-${{ hashFiles('vendor/CACTUS_RELEASE', 'vendor/CACTUS_ANDROID_ARM64.sha256') }}
+          key: cactus-android-arm64-${{ hashFiles('vendor/CACTUS_RELEASE', 'vendor/CACTUS_HF_REVISION', 'vendor/CACTUS_ANDROID_ARM64.sha256') }}
       - name: Fetch Cactus Whistle runtime (arm64-v8a)
         if: steps.meta.outputs.source == 'build'
         run: bash scripts/fetch-cactus.sh

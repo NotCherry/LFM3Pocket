@@ -34,12 +34,24 @@ def _readelf_command() -> list[str] | None:
     return None
 
 
+def _is_undefined_symbol_line(parts: list[str]) -> bool:
+    """Reject nm type U and readelf UND / und rows (symbol referenced but not defined)."""
+    upper = [p.upper() for p in parts]
+    if "U" in upper:
+        return True
+    if "UND" in upper:
+        return True
+    return False
+
+
 def symbols_from_output(text: str) -> set[str]:
     found: set[str] = set()
     for line in text.splitlines():
+        # Match bare symbol tokens (nm -D / readelf -Ws), but only defined ones.
+        parts = line.replace("@", " ").split()
+        if _is_undefined_symbol_line(parts):
+            continue
         for name in REQUIRED_SYMBOLS:
-            # Match bare symbol tokens (nm -D / readelf -Ws).
-            parts = line.replace("@", " ").split()
             if name in parts:
                 found.add(name)
     return found
@@ -109,6 +121,15 @@ def self_test() -> None:
         "000000000024b814 T Java_com_notcherry_lfm3pocket_CactusWhistleBridge_nativeLoad\n"
     )
     assert symbols_from_output(stub) == set()
+
+    # Negative: undefined cactus_* (dynamic stub / missing static link) must not pass.
+    undefined_nm = "                 U cactus_load\n                 U cactus_transcribe\n"
+    undefined_readelf = (
+        "   12: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND cactus_load\n"
+        "   13: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND cactus_transcribe\n"
+    )
+    assert symbols_from_output(undefined_nm) == set()
+    assert symbols_from_output(undefined_readelf) == set()
 
     with tempfile.TemporaryDirectory() as tmp:
         apk = Path(tmp) / "empty.apk"

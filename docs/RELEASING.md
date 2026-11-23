@@ -117,7 +117,7 @@ The `phone` flavor is the one F-Droid should build. It is `arm64-v8a` only. `smo
 
 ### License
 
-`LICENSE` is MIT. The copyright line still says "LFM3 Pocket contributors". That is the existing license, not a new one. Bundled Inter, JetBrains Mono, and Noto Serif Display are SIL OFL 1.1 (`licenses/fonts/`). llama.cpp `v0.8.0` is MIT. Model weights are not shipped and stay under Liquid AI's model license.
+`LICENSE` is MIT. The copyright line still says "LFM3 Pocket contributors". That is the existing license, not a new one. Bundled Inter, JetBrains Mono, and Noto Serif Display are SIL OFL 1.1 (`licenses/fonts/`). llama.cpp `v0.8.0` is MIT. Phone ARM64 GitHub builds also redistribute the pinned Cactus runtime under Apache-2.0 (`licenses/cactus/`). Model weights are not shipped and stay under Liquid AI's model license (Whistle weights, when the user downloads them, are Apache-2.0).
 
 ### Dependency audit
 
@@ -130,7 +130,8 @@ Native code is llama.cpp, built with `GGML_NATIVE=OFF`, `GGML_OPENMP=OFF`, `GGML
 These are the reasons a GitHub APK and an F-Droid APK will not be byte-for-byte identical, even before the different signature:
 
 - llama.cpp is not vendored. The build fetches the commit pinned in `vendor/LLAMA_CPP_COMMIT` (currently `8642541b255bfb5dc39cd351a178be09013a55d6`, from `v0.8.0`) via `scripts/fetch-llama.sh`. A moved tag cannot change the binary. F-Droid should keep that checkout.
-- Cactus Whistle STT runtime is not vendored. Release and phone ARM64 CI run `scripts/fetch-cactus.sh` (pin `vendor/CACTUS_RELEASE`, checksums `vendor/CACTUS_ANDROID_ARM64.sha256`) and set `HANAMI_REQUIRE_CACTUS=ON`. The packaged APK is checked for linked `cactus_load` / `cactus_transcribe` symbols via `.github/scripts/assert-cactus-runtime-in-apk.py`.
+- Cactus Whistle STT runtime is not vendored. Release and phone ARM64 CI run `scripts/fetch-cactus.sh` (release pin `vendor/CACTUS_RELEASE`, HF commit `vendor/CACTUS_HF_REVISION`, checksums `vendor/CACTUS_ANDROID_ARM64.sha256`) and set `HANAMI_REQUIRE_CACTUS=ON`. The packaged APK is checked for linked `cactus_load` / `cactus_transcribe` symbols via `.github/scripts/assert-cactus-runtime-in-apk.py`. Apache-2.0 NOTICE for the redistributed runtime is under `licenses/cactus/`.
+- F-Droid main will not accept a prebuilt `libcactus.a`. The draft recipe `docs/fdroid/dev.notcherry.hanami.yml` does not run `fetch-cactus.sh` and leaves `HANAMI_REQUIRE_CACTUS` off, so an F-Droid build ships the Whistle JNI stub (Settings reports runtime unavailable). A future srclib that builds Cactus from source would be needed for a non-stub F-Droid package.
 - NDK `27.2.12479018` (r27c) and CMake `3.22.1` are pinned. A different NDK produces different codegen.
 - `GGML_NATIVE=OFF` is required. Leaving it on enables `-march=native` and the APK only runs on the builder's CPU.
 - Release `.so` files still embed a GNU build-id and the builder's absolute paths in debug info unless `-Wl,--build-id=none` and `-ffile-prefix-map` are added. This project does not add those flags yet, so native objects are not reproducible across machines.

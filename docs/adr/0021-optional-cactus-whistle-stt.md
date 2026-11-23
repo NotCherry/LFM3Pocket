@@ -2,8 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-11-23
-- Related: [#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [#251](https://github.com/NotCherry/LFM3Pocket/pull/251), [#271](https://github.com/NotCherry/LFM3Pocket/pull/271), [ADR 0006](0006-voice-actions-loop.md), [ADR 0010](0010-tiny-voca-english-tts.md), [ADR 0022](0022-background-model-downloads.md), [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md)
-- Amended: see [ADR 0022](0022-background-model-downloads.md) ([#261](https://github.com/NotCherry/LFM3Pocket/issues/261))
+- Related: [#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [#251](https://github.com/NotCherry/LFM3Pocket/pull/251), [#271](https://github.com/NotCherry/LFM3Pocket/pull/271), [#277](https://github.com/NotCherry/LFM3Pocket/pull/277), [ADR 0006](0006-voice-actions-loop.md), [ADR 0010](0010-tiny-voca-english-tts.md), [ADR 0022](0022-background-model-downloads.md), [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md)
+- Amended: see [ADR 0022](0022-background-model-downloads.md) ([#261](https://github.com/NotCherry/LFM3Pocket/issues/261)); **Amended 2026-11 ([#277](https://github.com/NotCherry/LFM3Pocket/pull/277)):** phone ARM64 GitHub release/CI builds link the pinned Cactus runtime into `liblfm3pocket.so` (still not committed to git; smoke/F-Droid may ship the stub).
 
 ## Context
 
@@ -30,8 +30,9 @@ This extends the pinned-download pattern in [ADR 0010](0010-tiny-voca-english-tt
 ## Consequences
 
 - Extra optional download (about 16.9 MB) and a second native inference stack, used only when the user selects Whistle.
-- License: the Whistle model and the Cactus runtime are Apache-2.0. The app stays MIT.
-- A revision bump requires updating the recorded pin and the checksum together. A mismatch is rejected and is not stored.
+- Phone ARM64 GitHub APKs grow by the linked Cactus static archive (~2.8 MB before strip/link effects) when `scripts/fetch-cactus.sh` runs. Smoke/x86_64 and the draft F-Droid recipe omit the prebuilt and keep the stub.
+- License: the Whistle model and the Cactus runtime are Apache-2.0. Redistributed runtime NOTICE/LICENSE text lives under [`licenses/cactus/`](../../licenses/cactus/). The app stays MIT.
+- A revision bump requires updating the recorded pin, Hugging Face commit (`vendor/CACTUS_HF_REVISION`), and the checksum together. A mismatch is rejected and is not stored.
 - Functional transcription depends on runtime availability per ABI. Without those artifacts the build still compiles, the backend reports unavailable, and the default Omni path is unchanged.
 
 ## Alternatives considered

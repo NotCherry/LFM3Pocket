@@ -2,14 +2,21 @@
 # Pinned Cactus Android arm64-v8a runtime artifacts for Whistle STT.
 # Downloads cactus.h + libcactus.a into third_party/cactus/arm64-v8a/ and verifies SHA-256.
 # Binaries stay out of git (third_party/ is gitignored); CI/release must run this before phone builds.
+# URLs use the pinned Hugging Face commit (vendor/CACTUS_HF_REVISION), not resolve/main.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PIN_FILE="$ROOT/vendor/CACTUS_RELEASE"
+REV_FILE="$ROOT/vendor/CACTUS_HF_REVISION"
 SUMS_FILE="$ROOT/vendor/CACTUS_ANDROID_ARM64.sha256"
 DEST="$ROOT/third_party/cactus/arm64-v8a"
 VERSION="$(tr -d '[:space:]' < "$PIN_FILE")"
+REVISION="$(tr -d '[:space:]' < "$REV_FILE")"
 if [[ -z "$VERSION" ]]; then
   echo "missing Cactus release pin in $PIN_FILE" >&2
+  exit 1
+fi
+if [[ -z "$REVISION" ]]; then
+  echo "missing Cactus Hugging Face revision in $REV_FILE" >&2
   exit 1
 fi
 if [[ ! -f "$SUMS_FILE" ]]; then
@@ -17,7 +24,7 @@ if [[ ! -f "$SUMS_FILE" ]]; then
   exit 1
 fi
 
-BASE="https://huggingface.co/Cactus-Compute/cactus/resolve/main/releases/${VERSION}/android-arm64"
+BASE="https://huggingface.co/Cactus-Compute/cactus/resolve/${REVISION}/releases/${VERSION}/android-arm64"
 mkdir -p "$DEST"
 
 need_fetch=0
@@ -30,7 +37,7 @@ fi
 if [[ "$need_fetch" -eq 1 ]]; then
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
-  echo "Fetching Cactus ${VERSION} android-arm64 into $DEST"
+  echo "Fetching Cactus ${VERSION} android-arm64 @ ${REVISION} into $DEST"
   curl -fsSL -o "$tmp/cactus.h" "${BASE}/cactus.h"
   curl -fsSL -o "$tmp/libcactus.a" "${BASE}/libcactus.a"
   (cd "$tmp" && sha256sum -c "$SUMS_FILE")
@@ -39,4 +46,4 @@ if [[ "$need_fetch" -eq 1 ]]; then
 fi
 
 (cd "$DEST" && sha256sum -c "$SUMS_FILE")
-echo "Cactus ${VERSION} android-arm64 ready at $DEST"
+echo "Cactus ${VERSION} android-arm64 @ ${REVISION} ready at $DEST"
