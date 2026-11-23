@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import re
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -79,8 +80,19 @@ DEEP_REQUIRED_CLASSES = (
     "VoiceUiStateE2eTest",
     "ZCameraCaptureE2eTest",
 )
+# Harness/helpers under androidTest that are not instrumented JUnit classes (runners,
+# fakes, fixtures). Every value must be a short justification for the exclusion.
+EXCLUDED_CLASSES: dict[str, str] = {
+    "ImportDocumentsProvider": "SAF DocumentsProvider fixture packaged in the test APK",
+    "TestGgufFixtures": "GGUF byte fixtures for preflight tests; not a JUnit class",
+    "TestLfm3PocketApplication": "Fake Application wired by UiE2eTestRunner for UI E2E",
+    "UiE2eTestRunner": "AndroidJUnitRunner that installs TestLfm3PocketApplication",
+}
 # Historical floor plus headroom; actual executed tests are substantially higher.
 DEEP_MIN_TESTS = 89
+
+_HAS_TEST_ANNOTATION = re.compile(r"@Test\b")
+_TEST_CLASS_SUFFIXES = ("Test", "E2eTest")
 
 MODES = {
     "smoke": (SMOKE_REQUIRED_CLASSES, SMOKE_MIN_TESTS),
@@ -89,6 +101,102 @@ MODES = {
 REQUIRED_CLASSES = DEEP_REQUIRED_CLASSES
 MIN_TESTS = DEEP_MIN_TESTS
 PACKAGE = "com.notcherry.lfm3pocket"
+
+
+def repo_android_test_root() -> Path:
+    """Return app/src/androidTest relative to the repository root."""
+    return Path(__file__).resolve().parents[2] / "app" / "src" / "androidTest"
+
+
+def _class_source_paths(android_test_root: Path, simple_name: str) -> list[Path]:
+    return list(android_test_root.rglob(f"{simple_name}.java")) + list(
+        android_test_root.rglob(f"{simple_name}.kt")
+    )
+
+
+def is_instrumented_test_class(simple_name: str, source_text: str) -> bool:
+    """True when a source file looks like an instrumented JUnit test class."""
+    if any(simple_name.endswith(suffix) for suffix in _TEST_CLASS_SUFFIXES):
+        return True
+    return _HAS_TEST_ANNOTATION.search(source_text) is not None
+
+
+def discover_android_test_classes(android_test_root: Path) -> set[str]:
+    """Scan androidTest sources for classes that should appear in the tier inventory."""
+    if not android_test_root.is_dir():
+        raise ValueError(f"Missing androidTest source tree: {android_test_root}")
+    discovered: set[str] = set()
+    for path in sorted(android_test_root.rglob("*")):
+        if path.suffix not in {".java", ".kt"}:
+            continue
+        simple_name = path.stem
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ValueError(f"Unreadable androidTest source {path}: {exc}") from exc
+        if is_instrumented_test_class(simple_name, text):
+            discovered.add(simple_name)
+    return discovered
+
+
+def check_inventory(
+    android_test_root: Path | None = None,
+    *,
+    deep_classes: tuple[str, ...] | None = None,
+    excluded_classes: dict[str, str] | None = None,
+    smoke_classes: tuple[str, ...] | None = None,
+) -> None:
+    """Fail when androidTest classes drift from DEEP_REQUIRED_CLASSES / EXCLUDED_CLASSES."""
+    root = android_test_root or repo_android_test_root()
+    discovered = discover_android_test_classes(root)
+    deep = set(deep_classes if deep_classes is not None else DEEP_REQUIRED_CLASSES)
+    excluded_map = excluded_classes if excluded_classes is not None else EXCLUDED_CLASSES
+    excluded = set(excluded_map)
+    smoke = set(smoke_classes if smoke_classes is not None else SMOKE_REQUIRED_CLASSES)
+
+    missing_justification = [
+        name for name, reason in excluded_map.items() if not str(reason).strip()
+    ]
+    if missing_justification:
+        raise ValueError(
+            "EXCLUDED_CLASSES missing justification: "
+            + ", ".join(sorted(missing_justification))
+        )
+
+    if not smoke.issubset(deep):
+        raise ValueError(
+            "SMOKE_REQUIRED_CLASSES must be a subset of DEEP_REQUIRED_CLASSES: "
+            + ", ".join(sorted(smoke - deep))
+        )
+
+    overlap = deep & excluded
+    if overlap:
+        raise ValueError(
+            "Class cannot be both required and excluded: " + ", ".join(sorted(overlap))
+        )
+
+    stale: list[str] = []
+    for name in sorted(deep | excluded | smoke):
+        if not _class_source_paths(root, name):
+            stale.append(name)
+    if stale:
+        raise ValueError(
+            "Stale inventory entries (no androidTest source file): " + ", ".join(stale)
+        )
+
+    unlisted = sorted(discovered - deep - excluded)
+    if unlisted:
+        raise ValueError(
+            "androidTest classes not in DEEP_REQUIRED_CLASSES or EXCLUDED_CLASSES: "
+            + ", ".join(unlisted)
+        )
+
+    non_tests_in_deep = sorted(deep - discovered)
+    if non_tests_in_deep:
+        raise ValueError(
+            "DEEP_REQUIRED_CLASSES entries are not instrumented test classes: "
+            + ", ".join(non_tests_in_deep)
+        )
 
 
 def required_class_args(mode: str) -> str:
@@ -218,7 +326,52 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("Gate accepted an empty instrumentation run")
-    print("Negative controls passed: failing, missing-required, and zero-test XML were rejected for tiers.")
+
+        inventory_root = Path(temp) / "inventory"
+        pkg = inventory_root / "java/com/notcherry/lfm3pocket"
+        pkg.mkdir(parents=True)
+        stale_contract = ("ListedButRemovedTest",)
+        try:
+            check_inventory(
+                inventory_root,
+                deep_classes=stale_contract,
+                excluded_classes={},
+                smoke_classes=stale_contract,
+            )
+        except ValueError as exc:
+            if "Stale inventory" not in str(exc):
+                raise AssertionError(f"Expected stale inventory error, got: {exc}") from exc
+        else:
+            raise AssertionError("Inventory check accepted a stale DEEP_REQUIRED_CLASSES entry")
+
+        enrolled = ("EnrolledTest",)
+        (pkg / "EnrolledTest.java").write_text(
+            "public class EnrolledTest { @org.junit.Test public void t() {} }",
+            encoding="utf-8",
+        )
+        (pkg / "OrphanNewTest.java").write_text(
+            "public class OrphanNewTest { @org.junit.Test public void t() {} }",
+            encoding="utf-8",
+        )
+        try:
+            check_inventory(
+                inventory_root,
+                deep_classes=enrolled,
+                excluded_classes={},
+                smoke_classes=enrolled,
+            )
+        except ValueError as exc:
+            if "not in DEEP_REQUIRED_CLASSES" not in str(exc):
+                raise AssertionError(f"Expected unlisted class error, got: {exc}") from exc
+        else:
+            raise AssertionError("Inventory check accepted an unlisted androidTest class")
+
+    if repo_android_test_root().is_dir():
+        check_inventory()
+    print(
+        "Negative controls passed: failing, missing-required, and zero-test XML were rejected; "
+        "inventory check rejects stale and unlisted classes."
+    )
 
 
 def main() -> None:
@@ -230,9 +383,26 @@ def main() -> None:
     parser.add_argument("--self-test", action="store_true", help="Run negative controls")
     parser.add_argument("--list-classes", action="store_true",
                         help="Print comma-separated fully-qualified test classes for --mode")
+    parser.add_argument(
+        "--check-inventory",
+        action="store_true",
+        help="Verify androidTest sources match DEEP_REQUIRED_CLASSES and EXCLUDED_CLASSES",
+    )
     args = parser.parse_args()
     if args.self_test:
         self_test()
+        return
+    if args.check_inventory:
+        try:
+            check_inventory()
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(1)
+        print(
+            "Android instrumentation inventory OK: "
+            f"{len(DEEP_REQUIRED_CLASSES)} deep classes, "
+            f"{len(EXCLUDED_CLASSES)} excluded helpers"
+        )
         return
     if args.list_classes:
         try:

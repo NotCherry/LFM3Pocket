@@ -30,15 +30,15 @@ On every deep pass — a non-documentation push to `main`, the nightly schedule,
 
 ### Enrolling a new instrumentation class
 
-A class runs in CI, and is required by a tier, only after the gate script lists it in the deep contract or the smoke contract. The gate script has no exclusion list and does not compare the instrumentation source set with those contracts. A new class that nobody adds is not executed and not gated, and the job stays green. Reviewers check new instrumentation classes against the gate script in the same change.
+Add the simple class name to `DEEP_REQUIRED_CLASSES` in `.github/scripts/assert-android-test-results.py` (and to `SMOKE_REQUIRED_CLASSES` when it should run on pull requests). Harness or helper types that live under `app/src/androidTest/` but are not JUnit test classes belong in `EXCLUDED_CLASSES` with a one-line justification.
 
-An explicit exclusion list, plus a check that every instrumentation class is either in a contract or on that list, is not part of this decision.
+The `unit` job runs `python3 .github/scripts/assert-android-test-results.py --check-inventory`, which scans `app/src/androidTest/` and fails when any instrumented test class is missing from those lists, when a listed class has no source file, or when an exclusion has no justification. Smoke classes must remain a subset of the deep list.
 
 ## Consequences
 
 - Pull requests that run the emulator job keep a fast gate that still proves native inference, app boot plus core chat UI, and settings persistence across a process restart.
 - A deep run fails when any class in the explicit inventory is missing, failing, or skipped, when the run recorded no tests, when a scripted durability proof fails, or when the flake-triage stress script fails.
-- Authors who add an instrumentation class update the gate script in the same change. Presence in the instrumentation source set alone does not enroll the class, and nothing in CI reports the omission.
+- Authors who add an instrumentation class update the gate script in the same change. The cheap inventory check in the `unit` job reports classes that are missing from the deep or exclusion lists.
 - A regression outside the smoke proofs can merge on a green pull request. A red deep or nightly run on `main` is a mainline blocker: the author of the change that landed it fixes forward or reverts, and opens or updates an issue that links the failed run until `main` is green again.
 
 ## Alternatives considered
