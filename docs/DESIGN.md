@@ -185,6 +185,7 @@ Hands-free voice rides the same model residency and tool consent as shade Approv
 - Row: `label` + control (stepper, switch, field) aligned; `mono` for numeric/endpoint values where appropriate.
 - Keep IDs: `settings_context`, `settings_threads`, `settings_tokens`, `search_*`, `import_*`.
 - **Speech (optional tiny-voca):** Section `SPEECH` / `MOWA` with English-only checkbox (`settings_tiny_voca_tts`), download/remove pack actions (`settings_tiny_voca_download`, `settings_tiny_voca_remove`), and status line (`settings_tiny_voca_status`). Help text must state that the option is English-only, that a missing pack uses system TTS for English, and that non-English replies keep the Omni voice (ADR 0010).
+- **Optional model downloads:** Cactus Whistle now, and the tiny-voca pack later, are user-initiated background transfers. They continue after the user leaves the app, run one at a time, and show progress in a low-importance notification with Cancel when notification permission is granted; denying `POST_NOTIFICATIONS` does not stop the transfer, only shade progress. The file is checksum-verified before an atomic install. User cancel or hard failure deletes `.partial` and leaves a previously verified model in place; a system interrupt keeps `.partial` and the next attempt downloads from byte zero (no Range resume). Before start, free space is checked, and on a metered network (typically mobile data) the user confirms first. Selecting or removing that model stays disabled while the download runs ([ADR 0021](adr/0021-optional-cactus-whistle-stt.md), [ADR 0022](adr/0022-background-model-downloads.md)).
 - **Images:** Preparation is on by default (longest-side cap, optional square crop, JPEG quality). The user’s source file is never rewritten ([ADR 0005](adr/0005-prepare-vision-images.md)).
 - **Calendar:** Writes require a calendar the user picked here. There is no silent default ([ADR 0014](adr/0014-calendar-tools-picked-calendar.md)).
 - **Loopback:** Prompt-in from the same phone is off by default, token-gated, and cannot approve a tool ([ADR 0015](adr/0015-loopback-api-local-only.md)).
@@ -325,4 +326,5 @@ existing benchmark controls (`settings_bench_run` / `settings_bench_result`).
 | [`adr/README.md`](adr/README.md) | ADR index, including unused numbers 0008 and 0009 |
 | [`adr/0003-turn-write-ahead.md`](adr/0003-turn-write-ahead.md) | Write the turn before inference; durable photo copy |
 | [`adr/0005-prepare-vision-images.md`](adr/0005-prepare-vision-images.md) | Prepare vision images before the projector |
+| [`adr/0022-background-model-downloads.md`](adr/0022-background-model-downloads.md) | Background downloads for optional pinned models |
 | [`ui-audit.md`](ui-audit.md) | Phase 1 usability / styling audit and backlog |
