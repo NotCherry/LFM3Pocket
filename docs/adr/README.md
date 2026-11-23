@@ -53,6 +53,9 @@ Older files (for example [0002](0002-interface-size-density.md) and [0006](0006-
 | [0018](0018-notification-list-opt-in.md) | Notification listing is opt-in, allowlisted, and untrusted | Accepted (reconstructed retrospectively) |
 | [0019](0019-explicit-conversation-compact.md) | Conversation compact is explicit; the transcript stays | Accepted (reconstructed retrospectively) |
 | [0020](0020-untrusted-local-documents.md) | Attached documents are untrusted and cannot propose tools | Accepted (reconstructed retrospectively) |
+| [0021](0021-optional-cactus-whistle-stt.md) | Optional Cactus Whistle STT | Accepted |
+
+Optional Cactus Whistle speech-to-text, with Omni audio still the default, is [0021](0021-optional-cactus-whistle-stt.md). Setup and the current pin stay in [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md) ([#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [#251](https://github.com/NotCherry/LFM3Pocket/pull/251)).
 
 ## Numbering gaps
 
@@ -66,8 +69,7 @@ Parallel work in November 2026 claimed numbers on branches that did not all land
 | 0008 | Drafted as ADR 0001 (`e7f573f`) and renumbered to 0008 on `cursor/self-hosted-runner-fallback-328e` (`aba364c`) for a cherry-tree self-hosted CI fallback. That branch never merged. Workflows on `main` run on `ubuntu-latest` only. The number stays unused so a future self-hosted decision can take a new number instead of reviving an unmerged draft. |
 | 0009 | Never written. No commit adds a file or mentions an ADR 0009. [0010](0010-tiny-voca-english-tts.md) and [0011](0011-ngram-mod-prompt-lookup.md) merged while 0003–0008 were still claimed off `main`, so the sequence jumped. |
 
-Two decisions from the same period already have their own topic docs, and this index does not copy them into a new number:
+One decision from the same period already has its own topic doc, and this index does not copy it into a new number:
 
-- Optional Cactus Whistle speech-to-text, with Omni audio still the default: [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md) ([#224](https://github.com/NotCherry/LFM3Pocket/pull/224)).
 - Vulkan offload stays opt-in, with CPU fallback: [`VOICE_GPU_NPU_SPIKE_164.md`](../VOICE_GPU_NPU_SPIKE_164.md) ([#217](https://github.com/NotCherry/LFM3Pocket/pull/217)).
 
