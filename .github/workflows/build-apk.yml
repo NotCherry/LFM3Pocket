@@ -155,6 +155,8 @@ jobs:
     timeout-minutes: 90
     env:
       E2E_TIER: ${{ github.event_name == 'pull_request' && 'smoke' || (github.event_name == 'workflow_dispatch' && inputs.e2e_tier || 'deep') }}
+      # Bounded readiness (ADR 0023): 2×(boot 420s + 120s) + deep connected 45m must fit in job timeout-minutes: 90.
+      EMULATOR_READY_TIMEOUT_S: 120
     steps:
       - name: Select E2E tier
         run: |
@@ -263,19 +265,49 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: echo "Generated AVD snapshot for caching."
-      - name: Execute connected JNI smoke and real UI E2E tests
-        # No blanket retry: retrying every failure would mask real red tests and can blow the
-        # 90m deep-tier budget. Post-boot `keyevent 82` flakes remain visible and actionable.
+      - name: Execute connected JNI smoke and real UI E2E tests (attempt 1/2)
+        id: emulator-e2e-1
+        continue-on-error: true
+        env:
+          EMULATOR_INFRA_ATTEMPT: 1
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
           target: google_apis
           arch: x86_64
           force-avd-creation: false
-          emulator-boot-timeout: 600
+          emulator-boot-timeout: 420
           disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          pre-emulator-launch-script: bash .github/scripts/emulator-pre-launch.sh 1
           script: bash .github/scripts/run-jni-smoke.sh "$E2E_TIER"
+      - name: Decide emulator infrastructure retry (never retry real test failures)
+        id: emulator-e2e-retry
+        if: always() && steps.emulator-e2e-1.outcome == 'failure'
+        run: bash .github/scripts/emulator-e2e-retry-gate.sh
+      - name: Execute connected JNI smoke and real UI E2E tests (attempt 2/2)
+        id: emulator-e2e-2
+        if: steps.emulator-e2e-retry.outputs.retry == 'true'
+        env:
+          EMULATOR_INFRA_ATTEMPT: 2
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-boot-timeout: 420
+          disable-animations: true
+          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          pre-emulator-launch-script: bash .github/scripts/emulator-pre-launch.sh 2
+          script: bash .github/scripts/run-jni-smoke.sh "$E2E_TIER"
+      - name: Assert emulator E2E outcome (infra retry bounded to 2 starts)
+        if: always()
+        env:
+          E2E_ATTEMPT_1_OUTCOME: ${{ steps.emulator-e2e-1.outcome }}
+          E2E_INFRA_RETRY: ${{ steps.emulator-e2e-retry.outputs.retry }}
+          E2E_ATTEMPT_2_OUTCOME: ${{ steps.emulator-e2e-2.outcome }}
+        run: bash .github/scripts/emulator-e2e-finalize.sh
       - name: Assert required tests actually executed and summarize JUnit
         if: always()
         run: python3 .github/scripts/assert-android-test-results.py app/build/outputs/androidTest-results/connected/ --mode "$E2E_TIER"
@@ -288,6 +320,7 @@ jobs:
             app/build/outputs/androidTest-results/connected/
             app/build/reports/androidTests/connected/
             app/build/ci-artifacts/
+            app/build/ci-artifacts/attempt-1/
           if-no-files-found: warn
           retention-days: 14
 
