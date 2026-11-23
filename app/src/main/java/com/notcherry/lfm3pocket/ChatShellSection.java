@@ -48,7 +48,7 @@ final class ChatShellSection {
         }
     }
 
-    private final MainActivitySettingsHost host;
+    private final SettingsUiFactory ui;
     private final Deps deps;
     private View topBarView;
     private TextView brandTitle;
@@ -63,57 +63,57 @@ final class ChatShellSection {
     private Button recordButton;
     private Button speakButton;
 
-    ChatShellSection(MainActivitySettingsHost host, Deps deps) {
-        this.host = host;
+    ChatShellSection(SettingsUiFactory ui, Deps deps) {
+        this.ui = ui;
         this.deps = deps;
     }
 
     void mountChrome(LinearLayout root, int ink, int inkMuted, int accent) {
-        LinearLayout topBar = new LinearLayout(host.settingsActivity());
+        LinearLayout topBar = new LinearLayout(ui.settingsActivity());
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout titles = new LinearLayout(host.settingsActivity());
+        LinearLayout titles = new LinearLayout(ui.settingsActivity());
         titles.setOrientation(LinearLayout.VERTICAL);
-        brandTitle = host.label(deps.historyTitle.get(), 17, ink);
-        brandTitle.setTypeface(StillwaterUi.serif(host.settingsActivity()));
+        brandTitle = ui.label(deps.historyTitle.get(), 17, ink);
+        brandTitle.setTypeface(StillwaterUi.serif(ui.settingsActivity()));
         StillwaterReadable.prepareWrappingLabel(brandTitle);
         titles.addView(brandTitle);
-        modePill = host.label(deps.searchEnabled.getAsBoolean()
-                        ? host.getString(R.string.mode_web_search)
-                        : host.getString(R.string.mode_local),
+        modePill = ui.label(deps.searchEnabled.getAsBoolean()
+                        ? ui.getString(R.string.mode_web_search)
+                        : ui.getString(R.string.mode_local),
                 11, inkMuted);
-        modePill.setTypeface(StillwaterUi.sans(host.settingsActivity()));
+        modePill.setTypeface(StillwaterUi.sans(ui.settingsActivity()));
         StillwaterReadable.prepareWrappingLabel(modePill);
         titles.addView(modePill);
         topBar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
-        Button newChat = host.button(host.getString(R.string.new_chat));
+        Button newChat = ui.button(ui.getString(R.string.new_chat));
         newChat.setId(R.id.chat_new_chat);
         StillwaterUi.quiet(newChat);
         newChat.setTextColor(accent);
         newChat.setOnClickListener(v -> deps.requestNewChat.run());
-        newChat.setMinimumWidth(InterfaceSize.minTouchPx(host.settingsActivity()));
-        newChat.setMinimumHeight(InterfaceSize.minTouchPx(host.settingsActivity()));
-        StillwaterReadable.prepareWrappingControl(newChat, host.dp(44));
+        newChat.setMinimumWidth(InterfaceSize.minTouchPx(ui.settingsActivity()));
+        newChat.setMinimumHeight(InterfaceSize.minTouchPx(ui.settingsActivity()));
+        StillwaterReadable.prepareWrappingControl(newChat, ui.dp(44));
         topBar.addView(newChat, new LinearLayout.LayoutParams(-2, -2));
-        settingsOpenButton = host.button("");
+        settingsOpenButton = ui.button("");
         settingsOpenButton.setId(R.id.settings_open);
-        settingsOpenButton.setContentDescription(host.getString(R.string.settings_title));
+        settingsOpenButton.setContentDescription(ui.getString(R.string.settings_title));
         settingsOpenButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_still_gear, 0, 0, 0);
         StillwaterUi.quiet(settingsOpenButton);
         settingsOpenButton.setOnClickListener(v -> deps.openSettings.run());
-        LinearLayout.LayoutParams settingsIconParams = new LinearLayout.LayoutParams(host.dp(36), host.dp(36));
-        settingsOpenButton.setMinimumWidth(InterfaceSize.minTouchPx(host.settingsActivity()));
-        settingsOpenButton.setMinimumHeight(InterfaceSize.minTouchPx(host.settingsActivity()));
+        LinearLayout.LayoutParams settingsIconParams = new LinearLayout.LayoutParams(ui.dp(36), ui.dp(36));
+        settingsOpenButton.setMinimumWidth(InterfaceSize.minTouchPx(ui.settingsActivity()));
+        settingsOpenButton.setMinimumHeight(InterfaceSize.minTouchPx(ui.settingsActivity()));
         topBar.addView(settingsOpenButton, settingsIconParams);
-        Button overflow = host.button("⋮");
+        Button overflow = ui.button("⋮");
         overflow.setId(R.id.chat_overflow);
         StillwaterUi.quiet(overflow);
         overflow.setTextColor(inkMuted);
         overflow.setOnClickListener(v -> {
             android.view.ContextThemeWrapper menuContext =
-                    new android.view.ContextThemeWrapper(host.settingsActivity(), R.style.Theme_Stillwater);
+                    new android.view.ContextThemeWrapper(ui.settingsActivity(), R.style.Theme_Stillwater);
             android.widget.PopupMenu menu = new android.widget.PopupMenu(menuContext, v);
-            menu.getMenu().add(0, 1, 0, host.getString(R.string.settings_title));
+            menu.getMenu().add(0, 1, 0, ui.getString(R.string.settings_title));
             menu.getMenu().add(0, 2, 1, "Web search");
             menu.setOnMenuItemClickListener(item -> {
                 if (item.getItemId() == 1) deps.openSettings.run();
@@ -122,50 +122,50 @@ final class ChatShellSection {
             });
             menu.show();
         });
-        overflow.setMinimumWidth(InterfaceSize.minTouchPx(host.settingsActivity()));
-        overflow.setMinimumHeight(InterfaceSize.minTouchPx(host.settingsActivity()));
-        topBar.addView(overflow, new LinearLayout.LayoutParams(host.dp(36), host.dp(36)));
+        overflow.setMinimumWidth(InterfaceSize.minTouchPx(ui.settingsActivity()));
+        overflow.setMinimumHeight(InterfaceSize.minTouchPx(ui.settingsActivity()));
+        topBar.addView(overflow, new LinearLayout.LayoutParams(ui.dp(36), ui.dp(36)));
         topBarView = topBar;
         root.addView(topBar);
 
-        status = host.label(host.getString(R.string.starting), 12, inkMuted);
+        status = ui.label(ui.getString(R.string.starting), 12, inkMuted);
         status.setId(R.id.chat_status);
-        status.setPadding(0, host.dp(4), 0, host.dp(4));
+        status.setPadding(0, ui.dp(4), 0, ui.dp(4));
         StillwaterReadable.prepareWrappingLabel(status);
         root.addView(status);
     }
 
     void mountViewport(LinearLayout root, int surface) {
-        LinearLayout chatRoot = new LinearLayout(host.settingsActivity());
+        LinearLayout chatRoot = new LinearLayout(ui.settingsActivity());
         chatRoot.setOrientation(LinearLayout.VERTICAL);
         ChatPanelDeps panel = deps.chatPanel;
-        chatPanel = new ChatPanel(host.settingsActivity(), panel.send, panel.stopActiveWork,
+        chatPanel = new ChatPanel(ui.settingsActivity(), panel.send, panel.stopActiveWork,
                 panel.onNewChat, panel.onRetryTurn, panel.requestCompact);
         chatRoot.addView(chatPanel, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        LinearLayout mediaHost = new LinearLayout(host.settingsActivity());
+        LinearLayout mediaHost = new LinearLayout(ui.settingsActivity());
         mediaHost.setOrientation(LinearLayout.VERTICAL);
         mediaHost.setBackgroundColor(surface);
-        mediaHost.setPadding(0, host.dp(2), 0, host.dp(2));
-        photoButton = mediaButton(host.getString(R.string.photo), R.drawable.ic_still_photo);
+        mediaHost.setPadding(0, ui.dp(2), 0, ui.dp(2));
+        photoButton = mediaButton(ui.getString(R.string.photo), R.drawable.ic_still_photo);
         photoButton.setId(R.id.chat_photo);
-        cameraButton = mediaButton(host.getString(R.string.camera), R.drawable.ic_still_camera);
+        cameraButton = mediaButton(ui.getString(R.string.camera), R.drawable.ic_still_camera);
         cameraButton.setId(R.id.chat_camera);
-        documentButton = mediaButton(host.getString(R.string.attach_document), R.drawable.ic_still_document);
+        documentButton = mediaButton(ui.getString(R.string.attach_document), R.drawable.ic_still_document);
         documentButton.setId(R.id.chat_document);
-        documentButton.setContentDescription(host.getString(R.string.attach_document_talkback));
-        recordButton = mediaButton(host.getString(R.string.voice_input), R.drawable.ic_still_mic);
+        documentButton.setContentDescription(ui.getString(R.string.attach_document_talkback));
+        recordButton = mediaButton(ui.getString(R.string.voice_input), R.drawable.ic_still_mic);
         recordButton.setId(R.id.voice_record);
-        speakButton = mediaButton(host.getString(R.string.speak_reply), R.drawable.ic_still_speak);
+        speakButton = mediaButton(ui.getString(R.string.speak_reply), R.drawable.ic_still_speak);
         speakButton.setId(R.id.voice_speak);
         // Two rows when stacked (narrow / large fonts); one row otherwise.
-        if (StillwaterReadable.shouldStack(host.settingsActivity())) {
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, host.settingsActivity(), 46,
+        if (StillwaterReadable.shouldStack(ui.settingsActivity())) {
+            StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 46,
                     photoButton, cameraButton, documentButton);
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, host.settingsActivity(), 46,
+            StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 46,
                     new float[]{1f, 1.2f}, recordButton, speakButton);
         } else {
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, host.settingsActivity(), 46,
+            StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 46,
                     new float[]{1f, 1f, 1f, 1.2f, 1.2f},
                     photoButton, cameraButton, documentButton, recordButton, speakButton);
         }
@@ -185,15 +185,15 @@ final class ChatShellSection {
     void paintModePill(boolean searchEnabled) {
         if (modePill == null) return;
         modePill.setText(searchEnabled
-                ? host.getString(R.string.mode_web_search)
-                : host.getString(R.string.mode_local));
+                ? ui.getString(R.string.mode_web_search)
+                : ui.getString(R.string.mode_local));
     }
 
     void setBrandTitle(CharSequence title) {
         if (brandTitle != null) brandTitle.setText(title);
     }
 
-    void setSettingsOpenVisible(boolean settingsOpen) {
+    void hideChatUiWhenSettingsOpen(boolean settingsOpen) {
         if (settingsOpenButton != null) {
             settingsOpenButton.setVisibility(settingsOpen ? View.GONE : View.VISIBLE);
         }
@@ -234,12 +234,12 @@ final class ChatShellSection {
     }
 
     private Button mediaButton(String title, int icon) {
-        Button button = host.button(title);
+        Button button = ui.button(title);
         StillwaterReadable.setTextSizeSp(button, 12);
         button.setCompoundDrawablesWithIntrinsicBounds(icon, 0, 0, 0);
-        button.setCompoundDrawablePadding(host.dp(4));
+        button.setCompoundDrawablePadding(ui.dp(4));
         StillwaterUi.quiet(button);
-        StillwaterReadable.prepareWrappingControl(button, host.dp(46));
+        StillwaterReadable.prepareWrappingControl(button, ui.dp(46));
         return button;
     }
 }

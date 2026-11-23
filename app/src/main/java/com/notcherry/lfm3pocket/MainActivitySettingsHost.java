@@ -8,22 +8,12 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
- * UI and lifecycle hooks the settings scroll sections need from {@link MainActivity},
- * without taking a hard reference to the activity class.
+ * Settings-scroll hooks the section controllers need from {@link MainActivity},
+ * without taking a hard reference to the activity class. Extends {@link SettingsUiFactory}
+ * for shared label/button/dp helpers; chat status is not on this contract (see
+ * {@link ChatShellSection} and ADR 0024 amended in #292).
  */
-interface MainActivitySettingsHost {
-    Activity settingsActivity();
-
-    int dp(int n);
-
-    TextView label(String s, int sp, int color);
-
-    Button button(String title);
-
-    String getString(int resId);
-
-    String getString(int resId, Object... formatArgs);
-
+interface MainActivitySettingsHost extends SettingsUiFactory {
     boolean isHostFinishing();
 
     Handler settingsMainHandler();

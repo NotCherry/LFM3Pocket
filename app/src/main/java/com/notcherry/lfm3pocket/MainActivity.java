@@ -448,6 +448,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 new ChatShellSection.ChatPanelDeps(this::send, this::stopActiveWork, this::onChatPanelNewChat,
                         this::onChatPanelRetryTurn, this::requestCompact)));
         chatShellSection.mountChrome(root, ink, inkMuted, accent);
+        status = chatShellSection.statusView();
 
         // --- Settings host (hidden by default) ---
         LinearLayout settingsRoot = new LinearLayout(this);
@@ -619,7 +620,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         // --- Chat shell (primary viewport) ---
         chatShellSection.mountViewport(root, surface);
         chatPanel = chatShellSection.chatPanel();
-        status = chatShellSection.statusView();
         photoButton = chatShellSection.photoButton();
         cameraButton = chatShellSection.cameraButton();
         documentButton = chatShellSection.documentButton();
@@ -665,7 +665,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             getIntent().removeExtra(EXTRA_OPEN_SETTINGS);
         }
         if (settingsHost != null) settingsHost.setVisibility(open ? View.VISIBLE : View.GONE);
-        if (chatShellSection != null) chatShellSection.setSettingsOpenVisible(open);
+        if (chatShellSection != null) chatShellSection.hideChatUiWhenSettingsOpen(open);
         if (open) syncInlineSettingsFields();
     }
 
@@ -764,7 +764,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             updateControls();
         });
     }
-
 
     private EditText settingInput(LinearLayout form, String title, String hint, int value, int id,
                                   int step, int min, int max) {
