@@ -14,7 +14,8 @@ public final class CactusWhistleModelDownloadTask implements ModelDownloadTask {
     private final CactusWhistleModelDownloader downloader;
 
     public CactusWhistleModelDownloadTask(Context context) {
-        this(new CactusWhistleModelStore(context), new CactusWhistleModelDownloader(new CactusWhistleModelStore(context)));
+        CactusWhistleModelStore store = new CactusWhistleModelStore(context);
+        this(store, new CactusWhistleModelDownloader(store));
     }
 
     CactusWhistleModelDownloadTask(CactusWhistleModelStore store, CactusWhistleModelDownloader downloader) {
@@ -54,6 +55,10 @@ public final class CactusWhistleModelDownloadTask implements ModelDownloadTask {
 
     @Override public void notifyUiError(String message) {
         CactusWhistleModelDownloader.notifyUiError(message);
+    }
+
+    @Override public void notifyUiCancelled() {
+        CactusWhistleModelDownloader.notifyUiCancelled();
     }
 
     @Override public void notifyUiProgress(String name, long written, long total) {

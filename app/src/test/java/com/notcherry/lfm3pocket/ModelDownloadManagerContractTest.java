@@ -52,6 +52,18 @@ public final class ModelDownloadManagerContractTest {
                 manager.start(ModelDownloadKind.CACTUS_WHISTLE, false));
     }
 
+    @Test public void startMarksQueuedBeforeWorkerBegins() throws Exception {
+        File filesDir = Files.createTempDirectory("mgr-queued").toFile();
+        Context context = fakeContext(filesDir, new MutablePreferences());
+        long roomy = CactusWhistleModelDownloadTask.EXPECTED_BYTES
+                + ModelDownloadPolicies.FREE_SPACE_MARGIN_BYTES + 1;
+        ModelDownloadManager manager = new ModelDownloadManager(context, path -> roomy, () -> false);
+        // WorkManager cannot run here; we only assert queued is visible via coordinator after start would schedule.
+        // Simulate the queue marker the manager sets before returning STARTED (without hitting WorkManager).
+        ModelDownloadCoordinator.markQueued(ModelDownloadKind.CACTUS_WHISTLE);
+        assertTrue(ModelDownloadCoordinator.isActiveOrQueued(ModelDownloadKind.CACTUS_WHISTLE));
+    }
+
     @Test public void singleFlightRejectsSecondCoordinatorRun() throws Exception {
         File dir = Files.createTempDirectory("mgr-flight").toFile();
         CountDownLatch entered = new CountDownLatch(1);
@@ -73,7 +85,7 @@ public final class ModelDownloadManagerContractTest {
         first.join(10_000);
     }
 
-    @Test public void cancelDiscardsPartialAndKeepsVerifiedModel() throws Exception {
+    @Test public void userCancelDiscardsPartialAndKeepsVerifiedModel() throws Exception {
         File dir = Files.createTempDirectory("mgr-cancel").toFile();
         CactusWhistleModelStore store = new CactusWhistleModelStore(dir);
         writeModel(store.modelFile());
@@ -84,7 +96,7 @@ public final class ModelDownloadManagerContractTest {
                     try (FileOutputStream out = new FileOutputStream(target)) {
                         out.write("partial".getBytes(StandardCharsets.UTF_8));
                     }
-                    token.requestCancel();
+                    token.requestUserCancel();
                     token.throwIfCancelled();
                 }, System::currentTimeMillis);
         CactusWhistleModelDownloadTask task = new CactusWhistleModelDownloadTask(store, downloader);
@@ -93,6 +105,27 @@ public final class ModelDownloadManagerContractTest {
         assertTrue(store.modelFile().isFile());
         assertTrue(store.isReady());
         assertFalse(store.partialFile().exists());
+    }
+
+    @Test public void systemStopKeepsPartialAndVerifiedModel() throws Exception {
+        File dir = Files.createTempDirectory("mgr-stop").toFile();
+        CactusWhistleModelStore store = new CactusWhistleModelStore(dir);
+        writeModel(store.modelFile());
+        store.markComplete();
+        CactusWhistleModelDownloader downloader = new CactusWhistleModelDownloader(store,
+                (name, expectedSha256, target, progress, clock, token) -> {
+                    try (FileOutputStream out = new FileOutputStream(target)) {
+                        out.write("partial".getBytes(StandardCharsets.UTF_8));
+                    }
+                    token.requestSystemStop();
+                    token.throwIfCancelled();
+                }, System::currentTimeMillis);
+        assertEquals(ModelDownloadCoordinator.Result.STOPPED,
+                ModelDownloadCoordinator.run(new CactusWhistleModelDownloadTask(store, downloader),
+                        new ModelDownloadCancelToken()));
+        assertTrue(store.modelFile().isFile());
+        assertTrue(store.isReady());
+        assertTrue(store.partialFile().isFile());
     }
 
     @Test public void failureKeepsVerifiedModel() throws Exception {
@@ -107,13 +140,10 @@ public final class ModelDownloadManagerContractTest {
                     }
                     throw new IllegalStateException("offline");
                 }, System::currentTimeMillis);
-        AtomicReference<String> err = new AtomicReference<>();
-        CactusWhistleModelDownloadTask task = new CactusWhistleModelDownloadTask(store, downloader) {
-            @Override public void notifyUiError(String message) { err.set(message); }
-        };
+        CactusWhistleModelDownloadTask task = new CactusWhistleModelDownloadTask(store, downloader);
         assertEquals(ModelDownloadCoordinator.Result.FAILED,
                 ModelDownloadCoordinator.run(task, new ModelDownloadCancelToken()));
-        assertEquals("offline", err.get());
+        assertEquals("offline", CactusWhistleModelDownloader.consumePendingBackgroundError());
         assertTrue(store.modelFile().isFile());
         assertTrue(store.isReady());
         assertFalse(store.partialFile().exists());

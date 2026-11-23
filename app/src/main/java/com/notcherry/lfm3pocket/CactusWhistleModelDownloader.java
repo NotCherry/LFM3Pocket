@@ -27,6 +27,7 @@ public final class CactusWhistleModelDownloader {
         void onProgress(String name, long written, long total);
         void onDone(File modelFile);
         void onError(String message);
+        void onCancelled();
     }
 
     private static final AtomicBoolean IN_FLIGHT = new AtomicBoolean();
@@ -48,7 +49,8 @@ public final class CactusWhistleModelDownloader {
     }
 
     public static boolean isDownloading() {
-        return IN_FLIGHT.get() || ModelDownloadCoordinator.isInFlight();
+        return IN_FLIGHT.get()
+                || ModelDownloadCoordinator.isActiveOrQueued(ModelDownloadKind.CACTUS_WHISTLE);
     }
 
     static void resetInFlightForTests() {
@@ -90,12 +92,12 @@ public final class CactusWhistleModelDownloader {
         }
     }
 
-    static void clearPendingBackgroundErrorForKind() {
+    static void notifyUiCancelled() {
+        UiCallbacks ui = boundUi;
+        if (ui != null) {
+            ui.onCancelled();
+        }
         pendingBackgroundError = null;
-    }
-
-    static void setPendingBackgroundError(String message) {
-        pendingBackgroundError = message;
     }
 
     public static String consumePendingBackgroundError() {
@@ -196,6 +198,7 @@ public final class CactusWhistleModelDownloader {
         connection.setConnectTimeout(30_000);
         connection.setReadTimeout(120_000);
         try {
+            if (cancel != null) cancel.bindHttpConnection(connection);
             connection.connect();
             int code = connection.getResponseCode();
             if (code < 200 || code >= 300) {

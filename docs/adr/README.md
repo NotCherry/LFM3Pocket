@@ -53,6 +53,8 @@ Older files (for example [0002](0002-interface-size-density.md) and [0006](0006-
 | [0018](0018-notification-list-opt-in.md) | Notification listing is opt-in, allowlisted, and untrusted | Accepted (reconstructed retrospectively) |
 | [0019](0019-explicit-conversation-compact.md) | Conversation compact is explicit; the transcript stays | Accepted (reconstructed retrospectively) |
 | [0020](0020-untrusted-local-documents.md) | Attached documents are untrusted and cannot propose tools | Accepted (reconstructed retrospectively) |
+| [0021](0021-optional-cactus-whistle-stt.md) | Optional Cactus Whistle STT and pinned in-app model download | Accepted |
+| [0022](0022-background-model-downloads.md) | Background model downloads (UIDT / WorkManager) | Accepted |
 
 ## Numbering gaps
 
@@ -68,6 +70,6 @@ Parallel work in November 2026 claimed numbers on branches that did not all land
 
 Two decisions from the same period already have their own topic docs, and this index does not copy them into a new number:
 
-- Optional Cactus Whistle speech-to-text, with Omni audio still the default: [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md) ([#224](https://github.com/NotCherry/LFM3Pocket/pull/224)).
+- Optional Cactus Whistle speech-to-text is recorded in [ADR 0021](0021-optional-cactus-whistle-stt.md) and [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md) ([#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [#272](https://github.com/NotCherry/LFM3Pocket/pull/272)). Background scheduling is [ADR 0022](0022-background-model-downloads.md) ([#271](https://github.com/NotCherry/LFM3Pocket/pull/271)).
 - Vulkan offload stays opt-in, with CPU fallback: [`VOICE_GPU_NPU_SPIKE_164.md`](../VOICE_GPU_NPU_SPIKE_164.md) ([#217](https://github.com/NotCherry/LFM3Pocket/pull/217)).
 

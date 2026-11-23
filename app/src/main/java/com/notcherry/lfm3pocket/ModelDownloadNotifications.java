@@ -1,5 +1,6 @@
 package com.notcherry.lfm3pocket;
 
+import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
@@ -14,7 +15,8 @@ public final class ModelDownloadNotifications {
 
     private ModelDownloadNotifications() {}
 
-    public static void showProgress(Context context, ModelDownloadKind kind, String title, String body, int percent) {
+    public static NotificationCompat.Builder build(Context context, ModelDownloadKind kind,
+                                                 String title, String body, int percent) {
         HanamiNotifications.ensureChannels(context);
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context,
                 HanamiNotifications.MODEL_DOWNLOAD_CHANNEL_ID)
@@ -30,8 +32,18 @@ public final class ModelDownloadNotifications {
         } else {
             builder.setProgress(0, 0, true);
         }
+        return builder;
+    }
+
+    public static Notification buildNotification(Context context, ModelDownloadKind kind,
+                                                 String title, String body, int percent) {
+        return build(context, kind, title, body, percent).build();
+    }
+
+    public static void showProgress(Context context, ModelDownloadKind kind, String title, String body, int percent) {
         try {
-            NotificationManagerCompat.from(context).notify(kind.notificationId(), builder.build());
+            NotificationManagerCompat.from(context).notify(kind.notificationId(),
+                    buildNotification(context, kind, title, body, percent));
         } catch (SecurityException ignored) {
             // POST_NOTIFICATIONS may be denied; download continues without shade progress.
         }

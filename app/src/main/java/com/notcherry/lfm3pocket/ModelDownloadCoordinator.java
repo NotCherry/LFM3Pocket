@@ -1,6 +1,8 @@
 package com.notcherry.lfm3pocket;
 
 import java.io.File;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -9,11 +11,20 @@ public final class ModelDownloadCoordinator {
     private static final AtomicBoolean IN_FLIGHT = new AtomicBoolean();
     private static final AtomicReference<ModelDownloadKind> ACTIVE = new AtomicReference<>();
     private static final AtomicReference<ModelDownloadCancelToken> CANCEL = new AtomicReference<>();
+    private static final Map<ModelDownloadKind, Boolean> QUEUED = new EnumMap<>(ModelDownloadKind.class);
 
     private ModelDownloadCoordinator() {}
 
     public static boolean isInFlight() {
         return IN_FLIGHT.get();
+    }
+
+    public static boolean isQueued(ModelDownloadKind kind) {
+        return Boolean.TRUE.equals(QUEUED.get(kind));
+    }
+
+    public static boolean isActiveOrQueued(ModelDownloadKind kind) {
+        return isQueued(kind) || isDownloading(kind);
     }
 
     public static ModelDownloadKind activeKind() {
@@ -28,6 +39,15 @@ public final class ModelDownloadCoordinator {
         IN_FLIGHT.set(false);
         ACTIVE.set(null);
         CANCEL.set(null);
+        QUEUED.clear();
+    }
+
+    public static void markQueued(ModelDownloadKind kind) {
+        QUEUED.put(kind, Boolean.TRUE);
+    }
+
+    public static void clearQueued(ModelDownloadKind kind) {
+        QUEUED.remove(kind);
     }
 
     /** Returns false when another download is already running. */
@@ -38,18 +58,23 @@ public final class ModelDownloadCoordinator {
         return true;
     }
 
-    public static void requestCancel(ModelDownloadKind kind) {
-        if (kind != ACTIVE.get()) return;
+    public static void requestUserCancel(ModelDownloadKind kind) {
         ModelDownloadCancelToken token = CANCEL.get();
-        if (token != null) token.requestCancel();
+        if (token != null && kind == ACTIVE.get()) {
+            token.requestUserCancel();
+        }
     }
 
-    public static ModelDownloadCancelToken cancelToken() {
-        return CANCEL.get();
+    public static void requestSystemStop(ModelDownloadKind kind) {
+        ModelDownloadCancelToken token = CANCEL.get();
+        if (token != null && kind == ACTIVE.get()) {
+            token.requestSystemStop();
+        }
     }
 
     /** Synchronous run used by the worker and JVM tests. */
     public static Result run(ModelDownloadTask task, ModelDownloadCancelToken cancel) {
+        clearQueued(task.kind());
         if (!tryBegin(task.kind(), cancel)) {
             return Result.ALREADY_RUNNING;
         }
@@ -58,9 +83,12 @@ public final class ModelDownloadCoordinator {
             task.execute(progress, cancel);
             return Result.SUCCESS;
         } catch (ModelDownloadCancelledException cancelled) {
-            task.discardPartialOnly();
-            task.notifyUiError("cancelled");
-            return Result.CANCELLED;
+            if (cancel.isUserCancel()) {
+                task.discardPartialOnly();
+                task.notifyUiCancelled();
+                return Result.CANCELLED;
+            }
+            return Result.STOPPED;
         } catch (Exception failed) {
             task.discardPartialOnly();
             String message = failed.getMessage() == null ? failed.toString() : failed.getMessage();
@@ -70,6 +98,7 @@ public final class ModelDownloadCoordinator {
             IN_FLIGHT.set(false);
             ACTIVE.set(null);
             CANCEL.set(null);
+            clearQueued(task.kind());
         }
     }
 
@@ -88,6 +117,7 @@ public final class ModelDownloadCoordinator {
         SUCCESS,
         FAILED,
         CANCELLED,
+        STOPPED,
         ALREADY_RUNNING
     }
 }

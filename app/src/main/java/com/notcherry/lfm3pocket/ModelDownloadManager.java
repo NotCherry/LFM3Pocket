@@ -9,10 +9,11 @@ import android.os.Build;
 import android.os.PersistableBundle;
 import android.os.StatFs;
 
+import androidx.work.Constraints;
 import androidx.work.Data;
 import androidx.work.ExistingWorkPolicy;
+import androidx.work.NetworkType;
 import androidx.work.OneTimeWorkRequest;
-import androidx.work.OutOfQuotaPolicy;
 import androidx.work.WorkManager;
 
 /** Schedules model downloads outside the Activity and survives backgrounding. */
@@ -21,7 +22,8 @@ public final class ModelDownloadManager {
         STARTED,
         ALREADY_RUNNING,
         INSUFFICIENT_SPACE,
-        METERED_NEEDS_CONFIRMATION
+        METERED_NEEDS_CONFIRMATION,
+        SCHEDULE_FAILED
     }
 
     private static volatile ModelDownloadManager instance;
@@ -72,7 +74,7 @@ public final class ModelDownloadManager {
     }
 
     public boolean isDownloading(ModelDownloadKind kind) {
-        return ModelDownloadCoordinator.isDownloading(kind);
+        return ModelDownloadCoordinator.isActiveOrQueued(kind);
     }
 
     public StartResult startWhistle(boolean meteredConfirmed) {
@@ -81,7 +83,7 @@ public final class ModelDownloadManager {
 
     public StartResult start(ModelDownloadKind kind, boolean meteredConfirmed) {
         ModelDownloadTask task = taskFor(appContext, kind);
-        if (task == null) return StartResult.ALREADY_RUNNING;
+        if (task == null) throw new IllegalArgumentException("Unsupported download kind: " + kind);
         if (ModelDownloadPolicies.shouldConfirmMetered(meteredNetwork, meteredConfirmed)) {
             return StartResult.METERED_NEEDS_CONFIRMATION;
         }
@@ -89,19 +91,30 @@ public final class ModelDownloadManager {
         if (!ModelDownloadPolicies.hasSufficientSpace(usableSpace, filesPath, task.expectedBytes())) {
             return StartResult.INSUFFICIENT_SPACE;
         }
-        if (ModelDownloadCoordinator.isInFlight()) {
+        if (ModelDownloadCoordinator.isActiveOrQueued(kind)) {
             return StartResult.ALREADY_RUNNING;
         }
-        if (Build.VERSION.SDK_INT >= 34) {
-            scheduleUserInitiatedJob(kind);
-        } else {
-            scheduleWorkManager(kind);
+        ModelDownloadCoordinator.markQueued(kind);
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                if (!scheduleUserInitiatedJob(kind, task, meteredConfirmed)) {
+                    ModelDownloadCoordinator.clearQueued(kind);
+                    return StartResult.SCHEDULE_FAILED;
+                }
+            } else if (!scheduleWorkManager(kind, meteredConfirmed)) {
+                ModelDownloadCoordinator.clearQueued(kind);
+                return StartResult.SCHEDULE_FAILED;
+            }
+        } catch (RuntimeException failed) {
+            ModelDownloadCoordinator.clearQueued(kind);
+            return StartResult.SCHEDULE_FAILED;
         }
         return StartResult.STARTED;
     }
 
     public void cancel(ModelDownloadKind kind) {
-        ModelDownloadCoordinator.requestCancel(kind);
+        ModelDownloadCoordinator.requestUserCancel(kind);
+        ModelDownloadCoordinator.clearQueued(kind);
         if (Build.VERSION.SDK_INT < 34) {
             WorkManager.getInstance(appContext).cancelUniqueWork(kind.workUniqueName());
         } else {
@@ -110,31 +123,44 @@ public final class ModelDownloadManager {
         }
     }
 
-    private void scheduleWorkManager(ModelDownloadKind kind) {
+    private boolean scheduleWorkManager(ModelDownloadKind kind, boolean meteredConfirmed) {
+        NetworkType network = meteredConfirmed ? NetworkType.CONNECTED : NetworkType.UNMETERED;
+        Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(network)
+                .build();
         Data input = new Data.Builder().putString(ModelDownloadWorker.KEY_KIND, kind.name()).build();
         OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(ModelDownloadWorker.class)
                 .setInputData(input)
-                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .setConstraints(constraints)
                 .build();
         WorkManager.getInstance(appContext).enqueueUniqueWork(
                 kind.workUniqueName(), ExistingWorkPolicy.KEEP, request);
+        return true;
     }
 
-    private void scheduleUserInitiatedJob(ModelDownloadKind kind) {
+    private boolean scheduleUserInitiatedJob(ModelDownloadKind kind, ModelDownloadTask task,
+                                             boolean meteredConfirmed) {
         JobScheduler scheduler = appContext.getSystemService(JobScheduler.class);
         if (scheduler == null) {
-            scheduleWorkManager(kind);
-            return;
+            return scheduleWorkManager(kind, meteredConfirmed);
         }
         PersistableBundle extras = new PersistableBundle();
         extras.putString(ModelDownloadWorker.KEY_KIND, kind.name());
-        JobInfo info = new JobInfo.Builder(jobId(kind),
+        int networkType = meteredConfirmed ? JobInfo.NETWORK_TYPE_ANY : JobInfo.NETWORK_TYPE_UNMETERED;
+        JobInfo.Builder builder = new JobInfo.Builder(jobId(kind),
                 new ComponentName(appContext, ModelDownloadJobService.class))
                 .setUserInitiated(true)
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-                .setExtras(extras)
-                .build();
-        scheduler.schedule(info);
+                .setRequiredNetworkType(networkType)
+                .setExtras(extras);
+        if (Build.VERSION.SDK_INT >= 34) {
+            builder.setEstimatedNetworkBytes(task.expectedBytes(), 0L);
+        }
+        try {
+            int result = scheduler.schedule(builder.build());
+            return result == JobScheduler.RESULT_SUCCESS;
+        } catch (SecurityException e) {
+            return false;
+        }
     }
 
     private static int jobId(ModelDownloadKind kind) {
@@ -142,11 +168,13 @@ public final class ModelDownloadManager {
         return 34_000 + kind.ordinal();
     }
 
-    public String insufficientSpaceMessage(ModelDownloadKind kind) {
+    public long insufficientSpaceRequiredBytes(ModelDownloadKind kind) {
         ModelDownloadTask task = taskFor(appContext, kind);
-        if (task == null) return "";
-        long required = task.expectedBytes() + ModelDownloadPolicies.FREE_SPACE_MARGIN_BYTES;
-        long usable = usableSpace.usableBytes(appContext.getFilesDir().getAbsolutePath());
-        return ModelDownloadPolicies.insufficientSpaceMessage(usable, required);
+        if (task == null) return 0L;
+        return task.expectedBytes() + ModelDownloadPolicies.FREE_SPACE_MARGIN_BYTES;
+    }
+
+    public long insufficientSpaceUsableBytes() {
+        return usableSpace.usableBytes(appContext.getFilesDir().getAbsolutePath());
     }
 }

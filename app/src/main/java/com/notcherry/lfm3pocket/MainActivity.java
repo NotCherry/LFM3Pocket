@@ -122,13 +122,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         @Override public void onError(String message) {
             runOnUiThread(() -> {
                 paintSpeechInputControls();
-                if (status != null) {
-                    if ("cancelled".equals(message)) {
-                        status.setText(getString(R.string.model_download_cancelled));
-                    } else {
-                        status.setText(message);
-                    }
-                }
+                if (status != null) status.setText(message);
+            });
+        }
+        @Override public void onCancelled() {
+            runOnUiThread(() -> {
+                paintSpeechInputControls();
+                if (status != null) status.setText(getString(R.string.model_download_cancelled));
             });
         }
     };
@@ -2740,10 +2740,24 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void handleWhistleDownloadStart(ModelDownloadManager.StartResult outcome, ModelDownloadManager manager) {
-        if (outcome == ModelDownloadManager.StartResult.INSUFFICIENT_SPACE && status != null) {
-            status.setText(manager.insufficientSpaceMessage(ModelDownloadKind.CACTUS_WHISTLE));
+        if (status == null) return;
+        if (outcome == ModelDownloadManager.StartResult.INSUFFICIENT_SPACE) {
+            status.setText(getString(R.string.model_download_insufficient_space,
+                    formatMb(manager.insufficientSpaceRequiredBytes(ModelDownloadKind.CACTUS_WHISTLE)),
+                    formatMb(manager.insufficientSpaceUsableBytes())));
+        } else if (outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
+            status.setText(R.string.model_download_already_running);
+        } else if (outcome == ModelDownloadManager.StartResult.SCHEDULE_FAILED) {
+            status.setText(R.string.model_download_schedule_failed);
         }
-        if (outcome == ModelDownloadManager.StartResult.STARTED) paintSpeechInputControls();
+        if (outcome == ModelDownloadManager.StartResult.STARTED
+                || outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
+            paintSpeechInputControls();
+        }
+    }
+
+    private static String formatMb(long bytes) {
+        return String.format(java.util.Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0));
     }
 
     private boolean bindingBackground;

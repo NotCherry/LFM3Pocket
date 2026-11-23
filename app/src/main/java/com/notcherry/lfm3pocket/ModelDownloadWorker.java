@@ -4,8 +4,8 @@ import android.content.Context;
 import android.content.pm.ServiceInfo;
 
 import androidx.annotation.NonNull;
-import androidx.core.app.NotificationCompat;
 import androidx.work.ForegroundInfo;
+import androidx.work.ListenableWorker;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
@@ -17,51 +17,52 @@ public final class ModelDownloadWorker extends Worker {
         super(context, params);
     }
 
-    @NonNull @Override public Result doWork() {
+    @NonNull @Override public ListenableWorker.Result doWork() {
         String raw = getInputData().getString(KEY_KIND);
-        if (raw == null) return Result.failure();
+        if (raw == null) return ListenableWorker.Result.failure();
         ModelDownloadKind kind;
         try {
             kind = ModelDownloadKind.valueOf(raw);
         } catch (IllegalArgumentException e) {
-            return Result.failure();
+            return ListenableWorker.Result.failure();
         }
         Context app = getApplicationContext();
         ModelDownloadTask task = ModelDownloadManager.taskFor(app, kind);
-        if (task == null) return Result.failure();
+        if (task == null) return ListenableWorker.Result.failure();
         ModelDownloadCancelToken cancel = new ModelDownloadCancelToken();
+        String title = app.getString(R.string.model_download_notification_title);
         ModelDownloadProgressRelay.setListener((k, label, percent) ->
-                ModelDownloadNotifications.showProgress(app, k,
-                        app.getString(R.string.model_download_notification_title), label, percent));
+                ModelDownloadNotifications.showProgress(app, k, title, label, percent));
         try {
-            setForegroundAsync(foregroundInfo(app, kind, app.getString(R.string.model_download_starting), -1));
+            ModelDownloadOutcomes.ForegroundPromotion promotion = ModelDownloadForeground.promote(
+                    () -> setForegroundAsync(foregroundInfo(app, kind, app.getString(R.string.model_download_starting), -1)));
+            if (promotion == ModelDownloadOutcomes.ForegroundPromotion.FAILED) {
+                return ListenableWorker.Result.failure();
+            }
             ModelDownloadCoordinator.Result outcome = ModelDownloadCoordinator.run(task, cancel);
-            return outcome == ModelDownloadCoordinator.Result.SUCCESS ? Result.success() : Result.failure();
-        } catch (Exception e) {
-            return Result.failure();
+            return ModelDownloadOutcomes.workManagerResult(outcome);
         } finally {
             ModelDownloadProgressRelay.setListener(null);
             ModelDownloadNotifications.dismiss(app, kind);
         }
     }
 
-    static ForegroundInfo foregroundInfo(Context context, ModelDownloadKind kind, String body, int percent) {
-        HanamiNotifications.ensureChannels(context);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context,
-                HanamiNotifications.MODEL_DOWNLOAD_CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_stat_runtime)
-                .setContentTitle(context.getString(R.string.model_download_notification_title))
-                .setContentText(body)
-                .setOngoing(true)
-                .setOnlyAlertOnce(true)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .addAction(ModelDownloadNotifications.buildCancelAction(context, kind));
-        if (percent >= 0) {
-            builder.setProgress(100, percent, false);
-        } else {
-            builder.setProgress(0, 0, true);
+    @NonNull @Override public ForegroundInfo getForegroundInfo() {
+        Context app = getApplicationContext();
+        String raw = getInputData().getString(KEY_KIND);
+        ModelDownloadKind kind = ModelDownloadKind.CACTUS_WHISTLE;
+        if (raw != null) {
+            try {
+                kind = ModelDownloadKind.valueOf(raw);
+            } catch (IllegalArgumentException ignored) { }
         }
-        int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
-        return new ForegroundInfo(kind.notificationId(), builder.build(), type);
+        return foregroundInfo(app, kind, app.getString(R.string.model_download_starting), -1);
+    }
+
+    static ForegroundInfo foregroundInfo(Context context, ModelDownloadKind kind, String body, int percent) {
+        return new ForegroundInfo(kind.notificationId(),
+                ModelDownloadNotifications.buildNotification(context, kind,
+                        context.getString(R.string.model_download_notification_title), body, percent),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
     }
 }

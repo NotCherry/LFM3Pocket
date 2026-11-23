@@ -27,5 +27,7 @@ public interface ModelDownloadTask {
 
     void notifyUiError(String message);
 
+    void notifyUiCancelled();
+
     void notifyUiProgress(String name, long written, long total);
 }
