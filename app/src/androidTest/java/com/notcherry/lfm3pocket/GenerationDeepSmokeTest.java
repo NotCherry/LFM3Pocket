@@ -9,9 +9,7 @@ import android.content.Context;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.Timeout;
 import org.junit.runner.RunWith;
 
 import java.io.File;
@@ -22,9 +20,6 @@ import java.util.concurrent.atomic.AtomicReference;
 /** Deep-tier JNI coverage moved out of the minimal PR smoke proof. */
 @RunWith(AndroidJUnit4.class)
 public final class GenerationDeepSmokeTest {
-    @Rule
-    public final Timeout perTestTimeout = InstrumentedTestTimeouts.HEAVY_JNI;
-
     @Test public void promptLookupCachedTurnAndSpeechRejectionRemainCorrect() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         String modelPath = InstrumentationRegistry.getArguments().getString("modelPath");

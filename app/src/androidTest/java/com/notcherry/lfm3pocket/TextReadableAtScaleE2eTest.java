@@ -22,9 +22,7 @@ import androidx.test.uiautomator.Until;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.Timeout;
 import org.junit.runner.RunWith;
 
 import java.io.File;
@@ -41,9 +39,6 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 @RunWith(AndroidJUnit4.class)
 public final class TextReadableAtScaleE2eTest {
-    @Rule
-    public final Timeout perTestTimeout = InstrumentedTestTimeouts.HEAVY_E2E;
-
     private static final long WAIT = 12000L;
     private static final float[] FONT_SCALES = {0.85f, 1.0f, 1.3f, 1.5f, 2.0f};
     private static final String[] LOCALES = {"en", "pl"};

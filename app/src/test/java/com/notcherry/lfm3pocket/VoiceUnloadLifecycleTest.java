@@ -15,8 +15,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-public final class VoiceUnloadLifecycleTest extends HanamiConcurrencyUnitTest {
-    @Test public void unloadDuringCommandCaptureStopsMicAndDeletesArtifacts() throws Exception {
+public final class VoiceUnloadLifecycleTest {
+    @Test(timeout = TestTimeouts.VOICE_UNLOAD_LIFECYCLE_MS)
+    public void unloadDuringCommandCaptureStopsMicAndDeletesArtifacts() throws Exception {
         for (String cause : unloadCauses()) {
             File dir = Files.createTempDirectory("voice-unload-command-" + cause).toFile();
             ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -46,7 +47,8 @@ public final class VoiceUnloadLifecycleTest extends HanamiConcurrencyUnitTest {
         }
     }
 
-    @Test public void unloadDuringConfirmCaptureRejectsOnceNeverApprovesAndCleans() throws Exception {
+    @Test(timeout = TestTimeouts.VOICE_UNLOAD_LIFECYCLE_MS)
+    public void unloadDuringConfirmCaptureRejectsOnceNeverApprovesAndCleans() throws Exception {
         for (String cause : unloadCauses()) {
             File dir = Files.createTempDirectory("voice-unload-confirm-" + cause).toFile();
             ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -84,7 +86,8 @@ public final class VoiceUnloadLifecycleTest extends HanamiConcurrencyUnitTest {
         }
     }
 
-    @Test public void queuedConfirmPassCannotApproveAfterUnloadCancel() throws Exception {
+    @Test(timeout = TestTimeouts.VOICE_UNLOAD_LIFECYCLE_MS)
+    public void queuedConfirmPassCannotApproveAfterUnloadCancel() throws Exception {
         File dir = Files.createTempDirectory("voice-unload-queued-confirm").toFile();
         VoiceActionRuntime runtime = null;
         TrackingCallbacks callbacks = null;

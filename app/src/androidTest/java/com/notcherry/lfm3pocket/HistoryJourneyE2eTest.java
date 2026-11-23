@@ -9,18 +9,13 @@ import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject2;
 import androidx.test.uiautomator.Until;
 import java.util.List;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.Timeout;
 import org.junit.runner.RunWith;
 import static org.junit.Assert.*;
 
 /** Complete persistent text/voice/tool history journey, also split around a force-stop in CI. */
 @RunWith(AndroidJUnit4.class)
 public final class HistoryJourneyE2eTest {
-    @Rule
-    public final Timeout perTestTimeout = InstrumentedTestTimeouts.HEAVY_E2E;
-
     private static final long TIMEOUT=12000;
     private static final String PRIMARY="h05-journey-primary";
     private static final String SECONDARY="h05-journey-secondary";

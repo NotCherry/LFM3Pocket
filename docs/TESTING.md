@@ -1,42 +1,43 @@
 # Test timeouts
 
-Hung or deadlocked tests must not burn an entire CI job. Limits are layered: Gradle task timeouts (whole suite), JUnit 4 `Timeout` rules (per test method), and workflow scripts (emulator E2E).
+Hung or deadlocked tests must not burn an entire CI job. Limits are layered: Gradle task timeouts (whole suite), JUnit 4 rules or `@Test(timeout=…)` (per test method), and workflow scripts (emulator E2E).
 
 ## Gradle (`app/build.gradle`)
 
-`tasks.withType(Test)` sets a wall clock per Gradle test task:
+| Task | Mechanism | Timeout | Rationale |
+| --- | --- | --- | --- |
+| JVM unit (`*UnitTest*`, Gradle `Test` type) | `tasks.withType(Test)` | 10 minutes | JVM job in `.github/workflows/build-apk.yml` fails fast around 12 minutes with jstack; Gradle kills the task first. |
+| Connected instrumentation (`connected*AndroidTest`) | `tasks.matching { … }` on `DefaultTask` | 48 minutes | `DeviceProviderInstrumentTestTask` is **not** a `Test` subtype. This mainly protects **local** `connectedSmokeDebugAndroidTest` runs. On CI, `.github/scripts/run-jni-smoke.sh` already wraps Gradle with `timeout 30m` (smoke) or `45m` (deep). |
 
-| Task name pattern | Timeout | Rationale |
-| --- | --- | --- |
-| `*UnitTest*` | 10 minutes | JVM job in `.github/workflows/build-apk.yml` fails fast around 12 minutes with jstack; Gradle kills the task first. |
-| `*AndroidTest*` | 48 minutes | Connected smoke/deep tiers use `timeout 30m` / `45m` in `.github/scripts/run-jni-smoke.sh`; Gradle allows headroom above the shell wrapper. |
-
-To raise a task limit, edit the `configureEach` block at the bottom of `app/build.gradle` and keep the workflow shell timeout at or below the Gradle value.
+To raise limits, edit the blocks at the bottom of `app/build.gradle` and keep shell/workflow timeouts aligned.
 
 ## JVM unit tests (JUnit 4)
 
-Shared rules live in `app/src/test/java/com/notcherry/lfm3pocket/TestTimeouts.java`:
+Shared constants live in `app/src/test/java/com/notcherry/lfm3pocket/TestTimeouts.java`:
 
-- **`TestTimeouts.UNIT_DEFAULT`** (2 minutes) — apply via `HanamiUnitTestBase` or an explicit `@Rule` on new tests.
-- **`TestTimeouts.CONCURRENCY_DEFAULT`** (30 seconds, `withLookingForStuckThread(true)`) — voice session, unload lifecycle, runtime policy, loopback API, and related deadlock-sensitive suites via `HanamiConcurrencyUnitTest` or a field rule.
+- **`CONCURRENCY_DEFAULT`** (30 seconds, `withLookingForStuckThread(true)`) — applied via `HanamiConcurrencyUnitTest` for voice session, loopback API, and voice preempt tests. The rule runs the test body on a **worker thread** (good for deadlock dumps; **not** for direct `RuntimePolicy` calls on the test thread).
+- **`VOICE_UNLOAD_LIFECYCLE_MS`** (90 seconds) — `@Test(timeout=…)` on `VoiceUnloadLifecycleTest` (same test thread; loops several timed unload paths).
+- **`RUNTIME_POLICY_INTERLEAVING_MS`** (30 seconds) — `@Test(timeout=…)` on the serialized interleaving test in `RuntimePolicyTest`.
 
-`TestTimeoutsSelfTest` sleeps past the 2-second self-check rule to prove timeouts fire in CI.
+`TestTimeoutsSelfTest` applies `SELF_CHECK_RULE` to a hanging `Statement` (no `@Rule` / no `expected=`) to prove the timeout fires in CI.
 
 ## Instrumented tests (`androidTest`)
 
-Per-method ceilings are in `InstrumentedTestTimeouts.java`:
+On-device UI tests must stay on the **instrumentation thread**. JUnit 4 `Timeout` rules run the test on another thread and are **not** used for emulator E2E.
 
-- **`DEFAULT`** — 5 minutes for typical emulator UI/contract tests (apply when adding new `@Test` methods that might hang).
-- **`HEAVY_JNI`** — 12 minutes on `GenerationSmokeTest` and `GenerationDeepSmokeTest`.
-- **`HEAVY_E2E`** — 15 minutes on `TextReadableAtScaleE2eTest`, `DiagnosticsStressE2eTest`, and similar stress paths.
-- **`CONCURRENCY`** — `LoopbackAgentApiInstrumentationTest`.
+Per-method ceilings rely on:
 
-Long-running PR smoke / deep E2E classes keep explicit higher `@Rule` values so intentionally slow coverage is not cut off.
+1. **CI shell** — `run-jni-smoke.sh` (`timeout 30m` smoke / `45m` deep).
+2. **Gradle** — `connected*AndroidTest` task timeout (48m, mostly for local runs).
+3. **Occasional `@Test(timeout=…)`** where already present (e.g. `PromptEncodingNativeTest`).
+
+Intentionally long smoke/deep classes (`GenerationSmokeTest`, `GenerationDeepSmokeTest`, matrix E2E) depend on the suite-level limits above, not per-class rules.
 
 ## Raising a limit
 
-1. Prefer a **per-class `@Rule`** with a named constant in `TestTimeouts` or `InstrumentedTestTimeouts` over disabling timeouts.
-2. If an entire suite is legitimately slow, bump the matching **Gradle task** timeout and the **workflow** step (`timeout-minutes` / `run-jni-smoke.sh`) together.
-3. Document the reason in the test class Javadoc or ADR if the change is permanent.
+1. **JVM concurrency** — bump `TestTimeouts` or extend `HanamiConcurrencyUnitTest`; never put a class-level `Timeout` rule on `RuntimePolicy` unit tests that call the policy on the test thread.
+2. **Voice unload loops** — raise `VOICE_UNLOAD_LIFECYCLE_MS`.
+3. **Connected suite** — bump `run-jni-smoke.sh`, the workflow job `timeout-minutes`, and optionally the `connected*AndroidTest` Gradle task together.
+4. Document permanent changes in the test class Javadoc or an ADR.
 
-The JVM workflow jstack loop in `build-apk.yml` remains a second line of defence after Gradle and JUnit limits.
+The JVM workflow jstack loop in `build-apk.yml` remains a second line of defence after Gradle and per-test limits.

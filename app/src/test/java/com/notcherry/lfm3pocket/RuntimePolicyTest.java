@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.Test;
 
-public final class RuntimePolicyTest extends HanamiConcurrencyUnitTest {
+public final class RuntimePolicyTest {
     private final RuntimePolicy policy = new RuntimePolicy();
 
     @Test public void listeningUsesMicrophoneCaptureFlag() {
@@ -219,7 +219,8 @@ public final class RuntimePolicyTest extends HanamiConcurrencyUnitTest {
         }
     }
 
-    @Test public void serializedInterleavingsKeepForegroundAndWakeEffectsConsistent() throws Exception {
+    @Test(timeout = TestTimeouts.RUNTIME_POLICY_INTERLEAVING_MS)
+    public void serializedInterleavingsKeepForegroundAndWakeEffectsConsistent() throws Exception {
         ExecutorService owner = Executors.newSingleThreadExecutor(r -> new Thread(r, "policy-owner"));
         ExecutorService producers = Executors.newFixedThreadPool(4);
         try {
