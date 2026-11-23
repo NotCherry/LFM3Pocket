@@ -270,7 +270,6 @@ jobs:
         continue-on-error: true
         env:
           EMULATOR_INFRA_ATTEMPT: 1
-          EMULATOR_CI_SIMULATE_INFRA_FAIL: "1"
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
