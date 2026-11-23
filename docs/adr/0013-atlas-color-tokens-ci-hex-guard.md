@@ -22,13 +22,18 @@ The Stage 1 unit job enforces the parts below. Both checks run there.
 
 Lines whose first non-space character is `//` or `*` are skipped. A same-line `ui-tokens: allow` is the escape hatch for a literal that is not a UI color choice. Unmarked literals fail the guard.
 
-Three files are allowlisted and may contain those literals: `AtlasColors.kt`, `StillwaterUi.java`, and `RuntimeNotifications.java`. The last of those is not a token source.
+Three files are allowlisted and may contain those literals: `AtlasColors.kt`, `StillwaterUi.java`, and `RuntimeNotifications.java` (notification accent at line 19, not a token source).
 
 The same script fails the build when soft chalk drifts: `AtlasColors.inkSoft`, `StillwaterUi.SOFT`, and `colors.xml` `still_soft` must agree with each other and with the soft-chalk value the script expects. Other `colors.xml` entries (`still_surface`, `still_ink`, `still_candle`, `still_overlay`, `still_highlight`, and the rest) are not compared. It also rejects the old tool-panel radius wording (6–8dp) and requires the DESIGN.md bordered-panel clause to say 0–2dp.
 
 ### Palette pin
 
-`AtlasPaletteSyncTest` pins the `StillwaterUi` constants to the DESIGN.md table values, copied into the test as hex literals. It does not read DESIGN.md or `colors.xml`. Editing the spec, or editing `colors.xml`, without editing `StillwaterUi` and those literals, does not fail this test. Compose `AtlasColors` is not on the pure JVM classpath, so this test does not pin it. Soft-chalk sync for `inkSoft` is the script above.
+`AtlasPaletteSyncTest` pins the `StillwaterUi` constants to hex literals hardcoded in the test (a hand copy of the DESIGN.md §2 table). It does not read DESIGN.md or `colors.xml`. Editing the spec, or editing `colors.xml`, without editing `StillwaterUi` and those test literals, does not fail this test. Compose `AtlasColors` is not on the pure JVM classpath, so this test does not pin it. Soft-chalk sync for `still_soft` is only in the script above.
+
+## Follow-ups
+
+- Extend `AtlasPaletteSyncTest` (or a sibling check) to read the DESIGN.md §2 color table and the full `colors.xml` `still_*` palette, so spec ↔ resource drift fails the build.
+- Extend `check-ui-tokens.py` to reject `"#RRGGBB"` string literals and `Color.parseColor` outside the same allowlist / `ui-tokens: allow` escape hatch.
 
 ## Consequences
 
@@ -41,4 +46,4 @@ The same script fails the build when soft chalk drifts: `AtlasColors.inkSoft`, `
 - **Checklist only.** This was the previous state: DESIGN.md asked for tokens, and review was the only check. Rejected: one-off hex could merge on a green build.
 - **Code tokens as the only source, with DESIGN.md as commentary.** Rejected. The spec’s hex values stay normative so a color change is visible in the design doc before it spreads through code. The machine checks pin `StillwaterUi` and soft chalk; they do not parse the spec.
 - **No escape hatch.** Rejected. A few literals are not UI color choices. A same-line `ui-tokens: allow` keeps those lines reviewable without turning the guard off.
-- **Parsing DESIGN.md and the whole of `colors.xml` in CI.** Not this decision. The checks above are the enforcement that landed in #258.
+- **Parsing DESIGN.md and the whole of `colors.xml` in CI.** Deferred to [Follow-ups](#follow-ups); not part of the enforcement that landed in #258.

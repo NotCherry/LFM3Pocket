@@ -287,7 +287,7 @@ Stillwater chrome must stay readable when the user enlarges text or display size
 
 ## 12. Implementation checklist (for PR authors)
 
-- [ ] Colors come from Atlas tokens / `PocketTheme`, not one-off hex in composables (except this doc’s source of truth). CI-enforced ([ADR 0013](adr/0013-atlas-color-tokens-ci-hex-guard.md)).
+- [ ] Colors come from Atlas tokens / `PocketTheme`, not one-off hex in composables (except this doc’s source of truth). Stage 1 CI partially enforces this ([ADR 0013](adr/0013-atlas-color-tokens-ci-hex-guard.md): 8-digit literals, soft chalk, `StillwaterUi` JVM pin — not the full spec ↔ palette matrix).
 - [ ] New interactive chrome either reuses a recipe above or extends DESIGN.md in the same PR.
 - [ ] E2E IDs preserved; flat transcript contract intact.
 - [ ] UT row(s) noted in PR; matrix updated when evidence lands.
@@ -315,3 +315,4 @@ existing benchmark controls (`settings_bench_run` / `settings_bench_result`).
 | [`ACCEPTANCE_MATRIX.md`](ACCEPTANCE_MATRIX.md) | Stage 1 AT-01..AT-09 (unchanged authority for product capability) |
 | [`adr/0012-two-tier-emulator-e2e-gating.md`](adr/0012-two-tier-emulator-e2e-gating.md) | PR smoke vs deep/nightly emulator E2E gates |
 | [`adr/0013-atlas-color-tokens-ci-hex-guard.md`](adr/0013-atlas-color-tokens-ci-hex-guard.md) | Normative Atlas color tokens and the CI hex guard |
+| [`ui-audit.md`](ui-audit.md) | Phase 1 usability / styling audit and backlog |
