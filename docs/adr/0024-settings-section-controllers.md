@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-23
-- Related: [#264](https://github.com/NotCherry/LFM3Pocket/issues/264), [#285](https://github.com/NotCherry/LFM3Pocket/pull/285), [#286](https://github.com/NotCherry/LFM3Pocket/pull/286), [#292](https://github.com/NotCherry/LFM3Pocket/pull/292), [ADR 0002](0002-interface-size-density.md), [`DESIGN.md`](../DESIGN.md)
+- Related: [#264](https://github.com/NotCherry/LFM3Pocket/issues/264), [#285](https://github.com/NotCherry/LFM3Pocket/pull/285), [#286](https://github.com/NotCherry/LFM3Pocket/pull/286), [#292](https://github.com/NotCherry/LFM3Pocket/pull/292), [#295](https://github.com/NotCherry/LFM3Pocket/pull/295), [ADR 0002](0002-interface-size-density.md), [`DESIGN.md`](../DESIGN.md)
 
 ## Context
 
@@ -45,3 +45,7 @@ Settings UI is a set of section controllers behind one settings section host.
 
 - **Chat status ownership.** The `chat_status` line is built and updated inside `ChatShellSection`. `MainActivity` routes every status write through `setChatStatus` (and `applyChatStatusDuringTurn` for runtime chat updates that hide the line during a turn). Settings sections use a `Consumer<CharSequence> chatStatus` wired to `MainActivity.setChatStatus`, not the host interface.
 - **Host contract.** `setChatStatus` is removed from `MainActivitySettingsHost`. Shared UI factories (`label`, `button`, `dp`, `getString`, `settingsActivity`) move to `SettingsUiFactory`, which the host extends. `ChatShellSection` depends on `SettingsUiFactory` only, not the full settings host.
+
+## Amended (#295)
+
+[#295](https://github.com/NotCherry/LFM3Pocket/pull/295) bundles two small, related settings scroll sections — default assistant and crash log — in one pull request when the combined diff stays small (~&lt;400 changed lines). Section-specific activity capabilities (for example `startActivity`) pass through `Deps`, not the settings host.
