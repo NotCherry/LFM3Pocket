@@ -16,7 +16,12 @@ public final class CactusWhistleModelStore {
     private final File revisionFile;
 
     public CactusWhistleModelStore(Context context) {
-        dir = new File(context.getFilesDir(), "cactus");
+        this(new File(context.getFilesDir(), "cactus"));
+    }
+
+    /** Package-visible for JVM contract tests (no Android Context). */
+    CactusWhistleModelStore(File dir) {
+        this.dir = dir;
         modelFile = new File(dir, CactusWhistleModelManifest.FILE_NAME);
         marker = new File(dir, ".whistle-download-complete");
         revisionFile = new File(dir, ".whistle-download-revision");
@@ -25,6 +30,15 @@ public final class CactusWhistleModelStore {
     File directory() { return dir; }
 
     public File modelFile() { return modelFile; }
+
+    File partialFile() {
+        return new File(dir, CactusWhistleModelManifest.FILE_NAME + ".partial");
+    }
+
+    /** Removes only a failed in-flight download, preserving any verified model on disk. */
+    void discardPartial() {
+        deleteFile(partialFile());
+    }
 
     public boolean isReady() {
         return marker.isFile()

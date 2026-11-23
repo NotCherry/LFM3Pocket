@@ -101,7 +101,30 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private Button speechInputOmniButton, speechInputWhistleButton;
     private TextView speechInputCactusStatus;
     private Button speechInputCactusDownloadButton, speechInputCactusPickButton, speechInputCactusClearButton;
-    private volatile boolean cactusWhistleDownloading;
+    private final CactusWhistleModelDownloader.UiCallbacks cactusWhistleDownloadUi = new CactusWhistleModelDownloader.UiCallbacks() {
+        @Override public void onProgress(String name, long written, long total) {
+            runOnUiThread(() -> {
+                if (speechInputCactusStatus != null) {
+                    String label = CactusWhistleModelDownloader.formatProgressLabel(name, written, total);
+                    speechInputCactusStatus.setText(getString(R.string.speech_input_cactus_downloading, label));
+                }
+            });
+        }
+        @Override public void onDone(java.io.File modelFile) {
+            runOnUiThread(() -> {
+                new RuntimePreferences(MainActivity.this).setCactusWhistleModelPath(modelFile.getAbsolutePath());
+                paintSpeechInputControls();
+                updateControls();
+                if (status != null) status.setText(getString(R.string.speech_input_cactus_status_ready));
+            });
+        }
+        @Override public void onError(String message) {
+            runOnUiThread(() -> {
+                paintSpeechInputControls();
+                if (status != null) status.setText(message);
+            });
+        }
+    };
     private Button interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton;
     private SeekBar interfaceSizeSlider;
     private TextView interfaceSizeValue;
@@ -219,6 +242,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     @Override protected void onResume() {
         super.onResume();
         InterfaceSize.recreateIfChanged(this, attachedInterfaceScale);
+        CactusWhistleModelDownloader.bindUi(cactusWhistleDownloadUi);
+        if (CactusWhistleModelDownloader.isDownloading()) paintSpeechInputControls();
+    }
+
+    @Override protected void onPause() {
+        CactusWhistleModelDownloader.unbindUi(cactusWhistleDownloadUi);
+        super.onPause();
     }
 
     @Override public void onCreate(Bundle state) {
@@ -2607,7 +2637,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         }
         String path = prefs.cactusWhistleModelPath();
         boolean hasPath = path != null && !path.trim().isEmpty();
-        if (speechInputCactusStatus != null && !cactusWhistleDownloading) {
+        if (hasPath && !new File(path).isFile()) {
+            prefs.setCactusWhistleModelPath("");
+            hasPath = false;
+        }
+        boolean downloading = CactusWhistleModelDownloader.isDownloading();
+        if (speechInputCactusStatus != null && !downloading) {
             SttAvailability availability = CactusWhistleBridge.availability(path);
             String label;
             if (!hasPath) {
@@ -2621,7 +2656,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         }
         if (speechInputCactusDownloadButton != null) {
             CactusWhistleModelStore store = new CactusWhistleModelStore(this);
-            speechInputCactusDownloadButton.setEnabled(!cactusWhistleDownloading && !store.isReady());
+            speechInputCactusDownloadButton.setEnabled(!downloading && !store.isReady());
         }
         if (speechInputCactusClearButton != null) {
             CactusWhistleModelStore store = new CactusWhistleModelStore(this);
@@ -2659,34 +2694,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void downloadCactusWhistleModel() {
-        cactusWhistleDownloading = true;
+        android.content.Context app = getApplicationContext();
+        if (!new CactusWhistleModelDownloader(new CactusWhistleModelStore(app)).startDownload(null)) return;
         paintSpeechInputControls();
-        new Thread(() -> new CactusWhistleModelDownloader(new CactusWhistleModelStore(this)).download(
-                new CactusWhistleModelDownloader.Progress() {
-                    @Override public void onFile(String name, long written, long total) {
-                        runOnUiThread(() -> {
-                            if (speechInputCactusStatus != null) {
-                                speechInputCactusStatus.setText(getString(R.string.speech_input_cactus_downloading, name));
-                            }
-                        });
-                    }
-                    @Override public void onDone(java.io.File modelFile) {
-                        runOnUiThread(() -> {
-                            cactusWhistleDownloading = false;
-                            new RuntimePreferences(MainActivity.this).setCactusWhistleModelPath(modelFile.getAbsolutePath());
-                            paintSpeechInputControls();
-                            updateControls();
-                            if (status != null) status.setText(getString(R.string.speech_input_cactus_status_ready));
-                        });
-                    }
-                    @Override public void onError(String message) {
-                        runOnUiThread(() -> {
-                            cactusWhistleDownloading = false;
-                            paintSpeechInputControls();
-                            if (status != null) status.setText(message);
-                        });
-                    }
-                }), "cactus-whistle-download").start();
     }
 
     private boolean bindingBackground;
