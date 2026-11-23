@@ -56,7 +56,6 @@ Older files (for example [0002](0002-interface-size-density.md) and [0006](0006-
 | [0021](0021-optional-cactus-whistle-stt.md) | Optional Cactus Whistle STT | Accepted |
 | [0022](0022-background-model-downloads.md) | Background model downloads (UIDT / WorkManager) | Accepted |
 | [0023](0023-layered-test-timeouts.md) | Layered test timeouts | Accepted |
-| [0024](0024-mainactivity-settings-sections.md) | MainActivity settings sections and minimal host | Accepted |
 
 ## Numbering gaps
 

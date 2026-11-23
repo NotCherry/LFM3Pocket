@@ -8,6 +8,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import java.util.concurrent.ExecutorService;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -17,7 +18,7 @@ final class InferenceSettingsSection {
     interface BundledImageSettings {
         ImageSettings readForBundledSave();
 
-        void persistBundled(ImageSettings next, boolean announce);
+        void persistBundledQuiet(ImageSettings next);
     }
 
     private final MainActivitySettingsHost host;
@@ -25,9 +26,9 @@ final class InferenceSettingsSection {
     private final Supplier<InferenceSettings> currentSettings;
     private final Consumer<InferenceSettings> onSettingsSaved;
     private final Consumer<InferenceSettings> configureEngine;
-    private final Supplier<Boolean> settingsLoaded;
-    private final Supplier<Boolean> activityBusy;
-    private final Supplier<Boolean> generating;
+    private final BooleanSupplier settingsLoaded;
+    private final BooleanSupplier activityBusy;
+    private final BooleanSupplier generating;
     private final Supplier<Long> modelHandle;
     private final ExecutorService worker;
     private final Runnable updateControls;
@@ -42,8 +43,8 @@ final class InferenceSettingsSection {
 
     InferenceSettingsSection(MainActivitySettingsHost host, InferenceSettingsStore store,
             Supplier<InferenceSettings> currentSettings, Consumer<InferenceSettings> onSettingsSaved,
-            Consumer<InferenceSettings> configureEngine, Supplier<Boolean> settingsLoaded,
-            Supplier<Boolean> activityBusy, Supplier<Boolean> generating, Supplier<Long> modelHandle,
+            Consumer<InferenceSettings> configureEngine, BooleanSupplier settingsLoaded,
+            BooleanSupplier activityBusy, BooleanSupplier generating, Supplier<Long> modelHandle,
             ExecutorService worker, Runnable updateControls, BundledImageSettings bundledImages) {
         this.host = host;
         this.store = store;
@@ -122,7 +123,7 @@ final class InferenceSettingsSection {
     }
 
     void syncFields() {
-        if (settingsContextField == null || !settingsLoaded.get()) return;
+        if (settingsContextField == null || !settingsLoaded.getAsBoolean()) return;
         InferenceSettings settings = currentSettings.get();
         settingsContextField.setText(Integer.toString(settings.contextTokens));
         settingsThreadsField.setText(Integer.toString(settings.threads));
@@ -135,7 +136,7 @@ final class InferenceSettingsSection {
     }
 
     void saveInline() {
-        if (activityBusy.get() || !settingsLoaded.get() || settingsContextField == null) return;
+        if (activityBusy.getAsBoolean() || !settingsLoaded.getAsBoolean() || settingsContextField == null) return;
         if (settingsInlineError != null) settingsInlineError.setText("");
         try {
             InferenceSettings next = readFieldsFromUi();
@@ -144,7 +145,9 @@ final class InferenceSettingsSection {
                 if (host.isHostFinishing()) return;
                 onSettingsSaved.accept(next);
                 configureEngine.accept(next);
-                bundledImages.persistBundled(nextImages, false);
+                // Quiet image persist so it cannot race and overwrite the inference summary
+                // that InferenceSettingsE2eTest matches exactly on chat_status.
+                bundledImages.persistBundledQuiet(nextImages);
                 updateControls.run();
                 host.setChatStatus(next.summary());
             }, failure -> {
@@ -170,7 +173,9 @@ final class InferenceSettingsSection {
     }
 
     private void runInlineBenchmark() {
-        if (host.isHostFinishing() || benchmarkRunning || activityBusy.get() || generating.get()) return;
+        if (host.isHostFinishing() || benchmarkRunning || activityBusy.getAsBoolean() || generating.getAsBoolean()) {
+            return;
+        }
         long handle = modelHandle.get();
         if (handle == 0L) {
             if (settingsBenchResult != null)
@@ -179,7 +184,7 @@ final class InferenceSettingsSection {
         }
         InferenceSettings limits = currentSettings.get();
         try {
-            if (settingsLoaded.get() && settingsContextField != null) {
+            if (settingsLoaded.getAsBoolean() && settingsContextField != null) {
                 limits = readFieldsFromUi();
             }
         } catch (RuntimeException ignored) {

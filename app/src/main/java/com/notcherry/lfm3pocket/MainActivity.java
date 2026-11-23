@@ -586,8 +586,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                                 ? imageSettings
                                 : imageSettingsSection.readForInlineInferenceSave();
                     }
-                    @Override public void persistBundled(ImageSettings next, boolean announce) {
-                        if (imageSettingsSection != null) imageSettingsSection.persist(next, announce);
+                    @Override public void persistBundledQuiet(ImageSettings next) {
+                        if (imageSettingsSection != null) imageSettingsSection.persist(next, false);
                     }
                 });
         inferenceSettingsSection.mount(configuration, ink, inkMuted);
