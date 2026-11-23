@@ -53,9 +53,7 @@ Older files (for example [0002](0002-interface-size-density.md) and [0006](0006-
 | [0018](0018-notification-list-opt-in.md) | Notification listing is opt-in, allowlisted, and untrusted | Accepted (reconstructed retrospectively) |
 | [0019](0019-explicit-conversation-compact.md) | Conversation compact is explicit; the transcript stays | Accepted (reconstructed retrospectively) |
 | [0020](0020-untrusted-local-documents.md) | Attached documents are untrusted and cannot propose tools | Accepted (reconstructed retrospectively) |
-| [0021](0021-optional-cactus-whistle-stt.md) | Optional Cactus Whistle STT | Accepted |
-
-Optional Cactus Whistle speech-to-text, with Omni audio still the default, is [0021](0021-optional-cactus-whistle-stt.md). Setup and the current pin stay in [`CACTUS_WHISTLE_STT.md`](../CACTUS_WHISTLE_STT.md) ([#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [#251](https://github.com/NotCherry/LFM3Pocket/pull/251)).
+| [0021](0021-optional-cactus-whistle-stt.md) | Optional Cactus Whistle STT | Accepted (partly reconstructed retrospectively) |
 
 ## Numbering gaps
 
