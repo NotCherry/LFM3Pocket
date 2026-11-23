@@ -279,7 +279,7 @@ jobs:
           force-avd-creation: false
           emulator-boot-timeout: 420
           disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           pre-emulator-launch-script: bash .github/scripts/emulator-pre-launch.sh 1
           script: bash .github/scripts/run-jni-smoke.sh "$E2E_TIER"
       - name: Decide emulator infrastructure retry (never retry real test failures)
@@ -299,7 +299,7 @@ jobs:
           force-avd-creation: false
           emulator-boot-timeout: 420
           disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           pre-emulator-launch-script: bash .github/scripts/emulator-pre-launch.sh 2
           script: bash .github/scripts/run-jni-smoke.sh "$E2E_TIER"
       - name: Assert emulator E2E outcome (infra retry bounded to 2 starts)
