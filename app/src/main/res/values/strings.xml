@@ -8,6 +8,14 @@
     <string name="notification_channel_model_runtime_desc">Shown while Hanami keeps a Liquid AI LFM3 model loaded on this phone.</string>
     <string name="notification_channel_reminders">Hanami reminders</string>
     <string name="notification_channel_reminders_desc">Shown when a scheduled reminder is due.</string>
+    <string name="notification_channel_model_download">Model downloads</string>
+    <string name="notification_channel_model_download_desc">Progress while optional speech models download in the background.</string>
+    <string name="model_download_notification_title">Downloading model</string>
+    <string name="model_download_starting">Starting download…</string>
+    <string name="model_download_cancel">Cancel download</string>
+    <string name="model_download_cancelled">Download cancelled</string>
+    <string name="model_download_metered_title">Use mobile data?</string>
+    <string name="model_download_metered_message">This download is large. Continue on a metered or cellular connection?</string>
     <string name="import_model">Import model</string>
     <string name="import_projector">Import projector</string>
     <string name="open_model_from_storage">Open model from storage</string>

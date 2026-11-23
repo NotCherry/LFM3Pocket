@@ -75,6 +75,7 @@
     <item name="settings_tiny_voca_remove" type="id"/>
     <item name="settings_tiny_voca_status" type="id"/>
     <item name="settings_cactus_whistle_download" type="id"/>
+    <item name="settings_cactus_whistle_cancel" type="id"/>
     <item name="settings_cactus_whistle_pick" type="id"/>
     <item name="settings_cactus_whistle_clear" type="id"/>
     <item name="settings_cactus_whistle_status" type="id"/>

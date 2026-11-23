@@ -100,7 +100,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private Button tinyVocaRemoveButton;
     private Button speechInputOmniButton, speechInputWhistleButton;
     private TextView speechInputCactusStatus;
-    private Button speechInputCactusDownloadButton, speechInputCactusPickButton, speechInputCactusClearButton;
+    private Button speechInputCactusDownloadButton, speechInputCactusCancelButton,
+            speechInputCactusPickButton, speechInputCactusClearButton;
     private final CactusWhistleModelDownloader.UiCallbacks cactusWhistleDownloadUi = new CactusWhistleModelDownloader.UiCallbacks() {
         @Override public void onProgress(String name, long written, long total) {
             runOnUiThread(() -> {
@@ -121,7 +122,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         @Override public void onError(String message) {
             runOnUiThread(() -> {
                 paintSpeechInputControls();
-                if (status != null) status.setText(message);
+                if (status != null) {
+                    if ("cancelled".equals(message)) {
+                        status.setText(getString(R.string.model_download_cancelled));
+                    } else {
+                        status.setText(message);
+                    }
+                }
             });
         }
     };
@@ -818,6 +825,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         StillwaterUi.quiet(speechInputCactusDownloadButton);
         speechInputCactusDownloadButton.setOnClickListener(v -> downloadCactusWhistleModel());
         configuration.addView(speechInputCactusDownloadButton, new LinearLayout.LayoutParams(-1, dp(44)));
+        speechInputCactusCancelButton = button(getString(R.string.model_download_cancel));
+        speechInputCactusCancelButton.setId(R.id.settings_cactus_whistle_cancel);
+        StillwaterUi.quiet(speechInputCactusCancelButton);
+        speechInputCactusCancelButton.setOnClickListener(v -> {
+            ModelDownloadManager.getInstance(this).cancel(ModelDownloadKind.CACTUS_WHISTLE);
+            paintSpeechInputControls();
+        });
+        configuration.addView(speechInputCactusCancelButton, new LinearLayout.LayoutParams(-1, dp(44)));
         speechInputCactusPickButton = button(getString(R.string.speech_input_cactus_pick));
         speechInputCactusPickButton.setId(R.id.settings_cactus_whistle_pick);
         StillwaterUi.quiet(speechInputCactusPickButton);
@@ -2084,7 +2099,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void pickWhistleModel() {
-        if (busy) return;
+        if (busy || CactusWhistleModelDownloader.isDownloading()) return;
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         pick.addCategory(Intent.CATEGORY_OPENABLE);
         pick.setType("*/*");
@@ -2665,6 +2680,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if (speechInputCactusDownloadButton != null) {
             speechInputCactusDownloadButton.setEnabled(!downloading && !store.isReady());
         }
+        if (speechInputCactusCancelButton != null) {
+            speechInputCactusCancelButton.setEnabled(downloading);
+            speechInputCactusCancelButton.setVisibility(downloading ? View.VISIBLE : View.GONE);
+        }
+        if (speechInputCactusPickButton != null) {
+            speechInputCactusPickButton.setEnabled(!downloading);
+        }
         if (speechInputCactusClearButton != null) {
             speechInputCactusClearButton.setEnabled(!downloading && (hasPath || store.isReady()));
         }
@@ -2700,9 +2722,28 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
 
     private void downloadCactusWhistleModel() {
-        android.content.Context app = getApplicationContext();
-        if (!new CactusWhistleModelDownloader(new CactusWhistleModelStore(app)).startDownload(null)) return;
-        paintSpeechInputControls();
+        ModelDownloadManager manager = ModelDownloadManager.getInstance(this);
+        ModelDownloadManager.StartResult outcome = manager.startWhistle(false);
+        if (outcome == ModelDownloadManager.StartResult.METERED_NEEDS_CONFIRMATION) {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.model_download_metered_title)
+                    .setMessage(R.string.model_download_metered_message)
+                    .setPositiveButton(android.R.string.ok, (d, w) -> {
+                        ModelDownloadManager.StartResult retry = manager.startWhistle(true);
+                        handleWhistleDownloadStart(retry, manager);
+                    })
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show();
+            return;
+        }
+        handleWhistleDownloadStart(outcome, manager);
+    }
+
+    private void handleWhistleDownloadStart(ModelDownloadManager.StartResult outcome, ModelDownloadManager manager) {
+        if (outcome == ModelDownloadManager.StartResult.INSUFFICIENT_SPACE && status != null) {
+            status.setText(manager.insufficientSpaceMessage(ModelDownloadKind.CACTUS_WHISTLE));
+        }
+        if (outcome == ModelDownloadManager.StartResult.STARTED) paintSpeechInputControls();
     }
 
     private boolean bindingBackground;

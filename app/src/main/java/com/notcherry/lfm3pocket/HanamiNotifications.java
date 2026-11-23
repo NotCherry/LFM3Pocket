@@ -13,6 +13,7 @@ import android.content.Context;
  */
 public final class HanamiNotifications {
     public static final String MODEL_RUNTIME_CHANNEL_ID = "model_runtime";
+    public static final String MODEL_DOWNLOAD_CHANNEL_ID = "model_download";
     public static final String REMINDER_CHANNEL_ID = "reminders";
 
     private HanamiNotifications() {}
@@ -27,6 +28,14 @@ public final class HanamiNotifications {
         channel.setDescription(context.getString(R.string.notification_channel_model_runtime_desc));
         channel.setShowBadge(false);
         manager.createNotificationChannel(channel);
+
+        NotificationChannel downloads = new NotificationChannel(
+                MODEL_DOWNLOAD_CHANNEL_ID,
+                context.getString(R.string.notification_channel_model_download),
+                NotificationManager.IMPORTANCE_LOW);
+        downloads.setDescription(context.getString(R.string.notification_channel_model_download_desc));
+        downloads.setShowBadge(false);
+        manager.createNotificationChannel(downloads);
 
         NotificationChannel reminders = new NotificationChannel(
                 REMINDER_CHANNEL_ID,

@@ -7,6 +7,14 @@
     <string name="notification_channel_model_runtime_desc">Pokazywane, gdy Hanami utrzymuje załadowany model Liquid AI LFM3 na tym telefonie.</string>
     <string name="notification_channel_reminders">Przypomnienia Hanami</string>
     <string name="notification_channel_reminders_desc">Pokazywane, gdy nadejdzie czas zaplanowanego przypomnienia.</string>
+    <string name="notification_channel_model_download">Pobieranie modeli</string>
+    <string name="notification_channel_model_download_desc">Postęp pobierania opcjonalnych modeli mowy w tle.</string>
+    <string name="model_download_notification_title">Pobieranie modelu</string>
+    <string name="model_download_starting">Rozpoczynanie pobierania…</string>
+    <string name="model_download_cancel">Anuluj pobieranie</string>
+    <string name="model_download_cancelled">Pobieranie anulowane</string>
+    <string name="model_download_metered_title">Użyć komórkowej transmisji danych?</string>
+    <string name="model_download_metered_message">To pobieranie jest duże. Kontynuować przez połączenie taryfowe lub komórkowe?</string>
     <string name="import_model">Importuj model</string>
     <string name="import_projector">Importuj projektor</string>
     <string name="open_model_from_storage">Otwórz model z pamięci telefonu</string>
