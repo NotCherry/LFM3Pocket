@@ -12,7 +12,7 @@ This document is the reproducible APK / model-import / test-gate recipe for Hana
 bash scripts/fetch-llama.sh
 ```
 
-4. **Optional tiny-voca dizione JNI** — English tiny-voca TTS uses `libhanami_dizione.so`, built from pinned voca sources when Rust and the NDK are available (`bash scripts/fetch-voca.sh`, then `scripts/build-dizione-jni.sh`). Local **debug** builds skip the library with a warning when tooling is missing. **Release** builds and CI set `HANAMI_REQUIRE_DIZIONE=1` (or Gradle `-Phanami.requireDizione=1`) so a missing phonemizer fails the build; Stage 1 CI also checks the packaged APK with `.github/scripts/assert-dizione-jni-in-apk.py`.
+4. **Optional tiny-voca dizione JNI** — English tiny-voca TTS uses `libhanami_dizione.so`, built from pinned voca sources when Rust and the NDK are available (`bash scripts/fetch-voca.sh`, then `scripts/build-dizione-jni.sh`). By default Gradle does **not** require it (`lintRelease`, F-Droid `assemblePhoneRelease`, and local debug keep working without Rust). GitHub release and Stage 1 CI set `HANAMI_REQUIRE_DIZIONE=1` or `-Phanami.requireDizione=1`; opt out with `-Phanami.requireDizione=0`. CI checks the packaged phone APK with `.github/scripts/assert-dizione-jni-in-apk.py` (rolling `latest` pre-release included).
 
 5. Build the ARM64 debug phone APK:
 

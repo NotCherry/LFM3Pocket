@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 import tempfile
 import zipfile
@@ -20,7 +21,11 @@ def assert_apk(apk_path: Path, abis: list[str]) -> list[str]:
         raise ValueError(f"APK missing or empty: {apk_path}")
     entries = expected_entries(abis)
     found: list[str] = []
-    with zipfile.ZipFile(apk_path) as archive:
+    try:
+        archive = zipfile.ZipFile(apk_path)
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"Not a valid APK/ZIP: {apk_path}") from exc
+    with archive:
         names = set(archive.namelist())
         for entry in entries:
             if entry not in names:
@@ -45,8 +50,9 @@ def self_test() -> None:
         apk.write_bytes(b"not-an-apk")
         try:
             assert_apk(apk, ["arm64-v8a"])
-        except (ValueError, zipfile.BadZipFile):
-            pass
+        except ValueError as exc:
+            if "Not a valid APK/ZIP" not in str(exc):
+                raise AssertionError(f"Unexpected error: {exc}") from exc
         else:
             raise AssertionError("Accepted a non-APK file")
 
@@ -71,18 +77,23 @@ def self_test() -> None:
         # Failure path for build-dizione-jni.sh: require flag must exit non-zero when cargo is absent.
         root = Path(__file__).resolve().parents[2]
         script = root / "scripts" / "build-dizione-jni.sh"
+        fixture = tmp_path / "fixture"
+        (fixture / "vendor/voca/crates/dizione").mkdir(parents=True)
+        (fixture / "scripts").mkdir()
+        shutil.copy2(script, fixture / "scripts" / "build-dizione-jni.sh")
         fake_bin = tmp_path / "nobin"
         fake_bin.mkdir()
         env = os.environ.copy()
         env["HANAMI_REQUIRE_DIZIONE"] = "1"
         env["HANAMI_BUILD_ABIS"] = "arm64-v8a"
+        env["HANAMI_SKIP_VOCA_FETCH"] = "1"
         env.pop("ANDROID_NDK_HOME", None)
         env.pop("ANDROID_NDK_ROOT", None)
         env.pop("ANDROID_HOME", None)
         env["PATH"] = f"{fake_bin}:/usr/bin:/bin"
         completed = subprocess.run(
-            ["bash", str(script)],
-            cwd=root,
+            ["bash", str(fixture / "scripts" / "build-dizione-jni.sh")],
+            cwd=fixture,
             env=env,
             capture_output=True,
             text=True,
@@ -125,5 +136,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main(sys.argv[1:]))
     except ValueError as failure:
-        print(str(failure), file=sys.stderr)
+        print(f"ERROR: {failure}", file=sys.stderr)
         raise SystemExit(1)

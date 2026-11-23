@@ -30,10 +30,6 @@ require_or_skip() {
   exit 0
 }
 
-# voca sources are pinned in vendor/VOCA_COMMIT; CI fetches before Gradle as well.
-if [[ ! -d "$ROOT/vendor/voca/crates/dizione" ]]; then
-  bash "$ROOT/scripts/fetch-voca.sh"
-fi
 if ! command -v cargo >/dev/null 2>&1; then
   require_or_skip "cargo not installed"
 fi
@@ -47,6 +43,13 @@ if [[ -z "$NDK" ]]; then
   require_or_skip "ANDROID_NDK_HOME not set"
 fi
 export ANDROID_NDK_HOME="$NDK"
+# voca sources are pinned in vendor/VOCA_COMMIT; CI fetches before Gradle as well.
+if [[ ! -d "$ROOT/vendor/voca/crates/dizione" ]]; then
+  if [[ "${HANAMI_SKIP_VOCA_FETCH:-}" == "1" ]]; then
+    require_or_skip "vendor/voca sources missing (HANAMI_SKIP_VOCA_FETCH=1)"
+  fi
+  bash "$ROOT/scripts/fetch-voca.sh"
+fi
 
 abi_wanted() {
   local want="$1"
@@ -104,6 +107,7 @@ for i in "${!TARGETS[@]}"; do
   rustup target add "$target" >/dev/null 2>&1 || true
   dest="$OUT/$abi"
   mkdir -p "$dest"
+  rm -f "$dest/libhanami_dizione.so"
   linker="$(clang21 "$abi")"
   if [[ ! -x "$linker" ]]; then
     if hanami_require_dizione; then
@@ -123,14 +127,17 @@ for i in "${!TARGETS[@]}"; do
       export CARGO_TARGET_X86_64_LINUX_ANDROID_AR="$("$ar_tool")"
       ;;
   esac
-  if ! (
-    if command -v cargo-ndk >/dev/null 2>&1; then
-      cd "$CRATE" && cargo ndk -t "$abi" -o "$dest" build --release
-    else
-      cd "$CRATE" && cargo build --release --target "$target"
-      cp "$CRATE/target/$target/release/libhanami_dizione.so" "$dest/"
+  build_failed=0
+  if command -v cargo-ndk >/dev/null 2>&1; then
+    if ! (cd "$CRATE" && cargo ndk -t "$abi" -o "$dest" build --release); then
+      build_failed=1
     fi
-  ); then
+  elif ! (cd "$CRATE" && cargo build --release --target "$target" \
+      && cp "$CRATE/target/$target/release/libhanami_dizione.so" "$dest/"); then
+    build_failed=1
+  fi
+  if [[ "$build_failed" -ne 0 ]]; then
+    rm -f "$dest/libhanami_dizione.so"
     if hanami_require_dizione; then
       echo "ERROR: cargo build failed for $abi (HANAMI_REQUIRE_DIZIONE=1)" >&2
       exit 1

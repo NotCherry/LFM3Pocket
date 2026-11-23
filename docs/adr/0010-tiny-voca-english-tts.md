@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-17
+- Amended: 2026-11-23 ([#281](https://github.com/NotCherry/LFM3Pocket/pull/281) GitHub release / Stage 1 CI require dizione JNI; local and F-Droid builds still compile without Rust)
 - Related: [n4ze3m/tiny-voca](https://github.com/n4ze3m/tiny-voca), voice epic [#167](https://github.com/NotCherry/LFM3Pocket/issues/167), plan PR [#149](https://github.com/NotCherry/LFM3Pocket/pull/149)
 
 ## Context
@@ -29,7 +30,7 @@ Hanami needs an **opt-in, off-by-default** Speak-reply path for that model. Text
 
 - English Speak reply can be faster on a weak phone once the pack is installed (a 4.5M model instead of another Omni speech decode). Non-English replies, including Polish, stay on Omni even when the setting is on.
 - Extra optional download and a second on-device inference stack (ONNX Runtime plus a small native phonemizer).
-- A build without Rust or the NDK still compiles. English then uses the system-TTS fallback.
+- A default local or F-Droid build without Rust or the NDK still compiles (`HANAMI_REQUIRE_DIZIONE` off). English then uses the system-TTS fallback. Published GitHub releases and Stage 1 CI set `HANAMI_REQUIRE_DIZIONE=1` so shipped phone APKs include `libhanami_dizione.so`.
 - If tiny-voca synthesis fails or yields no audio, that English utterance falls back to the system US English voice.
 - License: the app stays MIT. tiny-voca (code and weights) and dizione are Apache-2.0. ONNX Runtime is a separate dependency.
 
