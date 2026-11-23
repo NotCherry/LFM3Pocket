@@ -42,6 +42,7 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host, AutoClo
     }
 
     private final Callbacks callbacks;
+    private final BooleanSupplier micPermission;
     private final VoiceSpokenOutput spoken;
     private final VoiceListenSession listen;
     private final ScheduledExecutorService listenTimeout = Executors.newSingleThreadScheduledExecutor();
@@ -62,6 +63,7 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host, AutoClo
                        java.util.concurrent.Executor recordWorker, Consumer<Runnable> uiPoster,
                        RecordingController.Factory recordingFactory) {
         this.callbacks = callbacks;
+        this.micPermission = micPermission;
         this.spoken = new VoiceSpokenOutput(this);
         RecordingController.Factory factory = recordingFactory != null
                 ? recordingFactory
@@ -99,17 +101,7 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host, AutoClo
     }
 
     public void beginShadeTalk() {
-        if (callbacks.modelHandle() == 0L || callbacks.isGenerating()) return;
-        if (!((Lfm3PocketApplication) callbacks.app()).hasMicrophonePermission()) {
-            String message = callbacks.app().getString(R.string.voice_mic_required);
-            callbacks.onVoiceStatus().accept(message);
-            return;
-        }
-        if (!isEnabled()) {
-            String message = disabledReason();
-            callbacks.onVoiceStatus().accept(message);
-            return;
-        }
+        if (!prepareVoiceCommandStart()) return;
         preemptForNewCommand("shade talk");
         mode = Mode.COMMAND;
         listen.startTimed(VoiceListenLimits.TALK_TIMEOUT_MS);
@@ -117,17 +109,54 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host, AutoClo
 
     /** TalkBack toggle: same 8 s cap as shade Talk. */
     public boolean beginAccessibilityTalk() {
-        if (!isEnabled() || callbacks.modelHandle() == 0L || callbacks.isGenerating()) return false;
+        if (!prepareVoiceCommandStart()) return false;
         preemptForNewCommand("accessibility talk");
         mode = Mode.COMMAND;
         return listen.startTimed(VoiceListenLimits.TALK_TIMEOUT_MS);
     }
 
     public boolean pttPressed() {
-        if (!isEnabled() || callbacks.modelHandle() == 0L || callbacks.isGenerating()) return false;
+        if (!prepareVoiceCommandStart()) return false;
         preemptForNewCommand("ptt");
         mode = Mode.COMMAND;
         return listen.startPtt();
+    }
+
+    /**
+     * Shared gate for shade Talk, PTT, and accessibility Talk. Publishes a user-visible
+     * status when microphone permission or an in-flight chat reply blocks voice capture.
+     */
+    private boolean prepareVoiceCommandStart() {
+        if (callbacks.modelHandle() == 0L) return false;
+        if (!micPermission.getAsBoolean()) {
+            publishMicRequiredStatus();
+            return false;
+        }
+        if (callbacks.isGenerating()) {
+            publishReplyRunningStatus();
+            return false;
+        }
+        if (!isEnabled()) {
+            callbacks.onVoiceStatus().accept(disabledReason());
+            return false;
+        }
+        return true;
+    }
+
+    private void publishMicRequiredStatus() {
+        android.content.Context app = callbacks.app();
+        String message = app == null
+                ? "Microphone permission is required for Talk."
+                : app.getString(R.string.voice_mic_required);
+        callbacks.onVoiceStatus().accept(message);
+    }
+
+    private void publishReplyRunningStatus() {
+        android.content.Context app = callbacks.app();
+        String message = app == null
+                ? "Finish the current reply before using Talk."
+                : app.getString(R.string.voice_talk_reply_running);
+        callbacks.onVoiceStatus().accept(message);
     }
 
     public void pttReleased() {
