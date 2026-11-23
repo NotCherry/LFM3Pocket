@@ -17,6 +17,9 @@ def hanamiSigningReady = hanamiKeystore && hanamiStorePassword && hanamiKeyAlias
 def hanamiGgmlVulkan = (project.findProperty('hanami.ggmlVulkan')
         ?: System.getenv('HANAMI_GGML_VULKAN')
         ?: 'OFF').toString()
+// Release / CI phone builds require tiny-voca dizione JNI (scripts/build-dizione-jni.sh).
+def hanamiRequireDizioneProp = (project.findProperty('hanami.requireDizione')
+        ?: System.getenv('HANAMI_REQUIRE_DIZIONE'))
 
 android {
     // Source package stays put so the Java/Kotlin tree does not move.
@@ -137,7 +140,15 @@ tasks.register('buildHanamiDizioneJni', Exec) {
         jniAbis = 'arm64-v8a'
     }
     environment 'HANAMI_BUILD_ABIS', jniAbis
-    ignoreExitValue true
+    def requireDizione
+    if (hanamiRequireDizioneProp != null) {
+        requireDizione = hanamiRequireDizioneProp.toString() in ['1', 'true', 'TRUE', 'ON', 'on', 'yes', 'YES']
+    } else {
+        def wantsRelease = requestedTasks.any { it ==~ /(?i).*release.*/ }
+        requireDizione = wantsRelease
+    }
+    environment 'HANAMI_REQUIRE_DIZIONE', requireDizione ? '1' : '0'
+    ignoreExitValue = !requireDizione
 }
 
 tasks.named('preBuild').configure { dependsOn buildHanamiDizioneJni }

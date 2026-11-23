@@ -78,6 +78,7 @@ jobs:
           python3 .github/scripts/assert-instrumentation-result.py --self-test
           python3 .github/scripts/next-hanami-version.py --self-test
           python3 .github/scripts/assert-release-ci-gate.py --self-test
+          python3 .github/scripts/assert-dizione-jni-in-apk.py --self-test
       - name: Verify Stage 1 acceptance matrix completeness
         run: python3 .github/scripts/check-acceptance-matrix.py
       - name: Verify UI color tokens (no ad-hoc hex in UI packages)
@@ -234,7 +235,11 @@ jobs:
           restore-keys: |
             cargo-jni-${{ runner.os }}-
       - name: Assemble emulator app and instrumentation APKs
+        env:
+          HANAMI_REQUIRE_DIZIONE: '1'
         run: gradle :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
+      - name: Assert smoke APK packages dizione JNI (x86_64)
+        run: python3 .github/scripts/assert-dizione-jni-in-apk.py app/build/outputs/apk/smoke/debug/app-smoke-debug.apk --abis x86_64
       - name: Enable KVM access for Android emulator
         run: |
           test -e /dev/kvm
@@ -306,6 +311,13 @@ jobs:
         run: |
           bash scripts/fetch-llama.sh
           git -C third_party/llama.cpp rev-parse HEAD
+      - name: Cache voca sources
+        uses: actions/cache@v4
+        with:
+          path: vendor/voca
+          key: voca-${{ hashFiles('vendor/VOCA_COMMIT') }}
+      - name: Fetch voca phonemizer (tiny-voca)
+        run: bash scripts/fetch-voca.sh
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -320,14 +332,31 @@ jobs:
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Set up Rust for dizione JNI
+        run: rustup target add aarch64-linux-android
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Cache Cargo (dizione JNI)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            app/src/main/rust/hanami_dizione/target
+          key: cargo-jni-arm64-${{ runner.os }}-${{ hashFiles('app/src/main/rust/hanami_dizione/Cargo.lock', 'app/src/main/rust/hanami_dizione/Cargo.toml', 'vendor/VOCA_COMMIT') }}
+          restore-keys: |
+            cargo-jni-arm64-${{ runner.os }}-
       - name: Build ARM64 APK
+        env:
+          HANAMI_REQUIRE_DIZIONE: '1'
         run: gradle :app:assemblePhoneDebug :app:assembleDeviceCheckDebug :app:assembleDeviceCheckDebugAndroidTest --no-daemon --stacktrace
       - name: Assert ARM64 APK exists
         run: test -s app/build/outputs/apk/phone/debug/app-phone-debug.apk
+      - name: Assert phone APK packages dizione JNI (arm64-v8a)
+        run: python3 .github/scripts/assert-dizione-jni-in-apk.py app/build/outputs/apk/phone/debug/app-phone-debug.apk --abis arm64-v8a
       - name: Verify effective native CPU optimization
         run: |
           python3 .github/scripts/assert-native-optimization.py --self-test

@@ -217,6 +217,18 @@ jobs:
         run: |
           bash scripts/fetch-llama.sh
           git -C third_party/llama.cpp rev-parse HEAD
+      - name: Cache voca sources
+        if: steps.meta.outputs.source == 'build'
+        uses: actions/cache@v4
+        with:
+          path: vendor/voca
+          key: voca-${{ hashFiles('vendor/VOCA_COMMIT') }}
+      - name: Fetch voca phonemizer (tiny-voca)
+        if: steps.meta.outputs.source == 'build'
+        run: bash scripts/fetch-voca.sh
+      - name: Set up Rust for dizione JNI
+        if: steps.meta.outputs.source == 'build'
+        run: rustup target add aarch64-linux-android
 
       - name: Verify runner Android SDK
         if: steps.meta.outputs.source == 'build'
@@ -245,6 +257,7 @@ jobs:
           HANAMI_STORE_PASSWORD: ${{ secrets.HANAMI_STORE_PASSWORD }}
           HANAMI_KEY_ALIAS: ${{ secrets.HANAMI_KEY_ALIAS }}
           HANAMI_KEY_PASSWORD: ${{ secrets.HANAMI_KEY_PASSWORD }}
+          HANAMI_REQUIRE_DIZIONE: '1'
         run: |
           gradle :app:assemblePhoneRelease --no-daemon --stacktrace \
             -Phanami.versionName='${{ steps.version.outputs.version_name }}' \
@@ -254,6 +267,7 @@ jobs:
         if: steps.meta.outputs.mode == 'versioned' && steps.signing.outputs.mode == 'unsigned'
         env:
           HANAMI_RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          HANAMI_REQUIRE_DIZIONE: '1'
         run: |
           gradle :app:assemblePhoneRelease --no-daemon --stacktrace \
             -Phanami.versionName='${{ steps.version.outputs.version_name }}' \
@@ -285,6 +299,9 @@ jobs:
           if [ "$MODE" = 'versioned' ] && [ "$SIGNING" = 'signed' ]; then
             APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort | tail -n 1)"
             "$APKSIGNER" verify --print-certs "release-out/$ASSET" >/dev/null
+          fi
+          if [ "$MODE" = 'versioned' ]; then
+            python3 .github/scripts/assert-dizione-jni-in-apk.py "release-out/$ASSET" --abis arm64-v8a
           fi
           sha256sum "release-out/$ASSET" | tee "release-out/$ASSET.sha256"
           ls -lh "release-out/$ASSET"
