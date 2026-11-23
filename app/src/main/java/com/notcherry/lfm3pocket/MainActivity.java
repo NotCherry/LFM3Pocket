@@ -92,7 +92,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private SearchSettingsSection searchSettingsSection;
     private BackgroundSettingsSection backgroundSettingsSection;
     private IntegrationsSettingsSection integrationsSettingsSection;
-    private Button openModelUriButton, openProjectorUriButton, defaultAssistantButton;
+    private Button defaultAssistantButton;
     private boolean foreground;
     private boolean microphoneRequested;
     private boolean cameraRequested;
@@ -105,7 +105,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     boolean freshChatRequestedFromAssist;
 
     private ChatShellSection chatShellSection;
-    private ModelManagerPanel modelManager;
+    private ModelImportSettingsSection modelImportSection;
     private View settingsHost;
     private InferenceSettings inferenceSettings=InferenceSettings.DEFAULT;
     private InferenceSettingsStore settingsStore;
@@ -114,7 +114,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private boolean settingsLoaded;
     private boolean imageSettingsLoaded;
     private boolean settingsOpen;
-    private Button modelButton, mmprojButton;
     private Button photoButton, cameraButton, documentButton, recordButton, speakButton;
     private boolean searchEnabled = false;
     private String searchEndpoint = "";
@@ -481,29 +480,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         LinearLayout configuration = new LinearLayout(this);
         configuration.setOrientation(LinearLayout.VERTICAL);
         configuration.setPadding(0, 0, 0, dp(16));
-        modelButton = button(getString(R.string.import_model));
-        modelButton.setId(R.id.import_model);
-        StillwaterUi.quiet(modelButton);
-        modelButton.setTextColor(accent);
-        mmprojButton = button(getString(R.string.import_projector));
-        mmprojButton.setId(R.id.import_projector);
-        StillwaterUi.quiet(mmprojButton);
-        mmprojButton.setTextColor(accent);
-        StillwaterReadable.addFlexibleButtonRow(configuration, this, 48, modelButton, mmprojButton);
-        openModelUriButton = button(getString(R.string.open_model_from_storage));
-        openModelUriButton.setId(R.id.open_model_uri);
-        StillwaterUi.quiet(openModelUriButton);
-        openModelUriButton.setTextColor(accent);
-        openProjectorUriButton = button(getString(R.string.open_projector_from_storage));
-        openProjectorUriButton.setId(R.id.open_projector_uri);
-        StillwaterUi.quiet(openProjectorUriButton);
-        openProjectorUriButton.setTextColor(accent);
-        StillwaterReadable.addFlexibleButtonRow(configuration, this, 48,
-                openModelUriButton, openProjectorUriButton);
-        // Model manager stays near the top so Unload/Load remain on-screen for Stage 1.
-        modelManager = new ModelManagerPanel(this,
-                this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings);
-        configuration.addView(modelManager, new LinearLayout.LayoutParams(-1, -2));
+        modelImportSection = new ModelImportSettingsSection(this, new ModelImportSettingsSection.Deps(
+                this::pickModel, this::pickMmproj,
+                () -> pickExternalModel(OPEN_MODEL_URI),
+                () -> pickExternalModel(OPEN_MMPROJ_URI),
+                this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings));
+        modelImportSection.mount(configuration, accent);
 
         appearanceSettings = new AppearanceSettingsSection(this);
         appearanceSettings.mount(configuration, ink, inkMuted);
@@ -639,10 +621,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
         setContentView(root);
 
-        modelButton.setOnClickListener(v -> pickModel());
-        mmprojButton.setOnClickListener(v -> pickMmproj());
-        openModelUriButton.setOnClickListener(v -> pickExternalModel(OPEN_MODEL_URI));
-        openProjectorUriButton.setOnClickListener(v -> pickExternalModel(OPEN_MMPROJ_URI));
         photoButton.setOnClickListener(v -> pickPhoto());
         cameraButton.setOnClickListener(v -> takePhoto());
         documentButton.setOnClickListener(v -> pickDocument());
@@ -683,10 +661,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void updateControls() {
         if (searchSettingsSection != null) searchSettingsSection.paintWebSearchControl(busy);
         if (chatShellSection != null) chatShellSection.paintModePill(searchEnabled);
-        modelButton.setEnabled(!busy);
-        mmprojButton.setEnabled(!busy);
-        if (openModelUriButton != null) openModelUriButton.setEnabled(!busy);
-        if (openProjectorUriButton != null) openProjectorUriButton.setEnabled(!busy);
+        if (modelImportSection != null) modelImportSection.paintImportButtons(busy);
         photoButton.setEnabled(!busy);
         cameraButton.setEnabled(!busy);
         if (documentButton != null) documentButton.setEnabled(!busy);
@@ -729,15 +704,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 !busy || generating || transcribingVoiceInput,
                 canCompact);
 
-        if (modelManager != null) {
-            modelManager.showSettings(settingsLoaded ? inferenceSettings.summary() : "Loading inference settings...");
+        if (modelImportSection != null) {
             String model = pocketPreferences().getString("model", "");
             String projector = pocketPreferences().getString("mmproj", "");
             String description = currentChatStatus().toString();
-            modelManager.updateSelection(
+            modelImportSection.paintModelManager(
+                    settingsLoaded ? inferenceSettings.summary() : "Loading inference settings...",
                     model.isEmpty() ? "" : pocketPreferences().getString("model_name", new File(model).getName()),
                     projector.isEmpty() ? "" : pocketPreferences().getString("projector_name", new File(projector).getName()),
-                    busy, modelHandle() != 0, description.startsWith("Model error") || description.startsWith("Import failed"));
+                    busy, modelHandle() != 0,
+                    description.startsWith("Model error") || description.startsWith("Import failed"));
         }
     }
 
