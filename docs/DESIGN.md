@@ -305,7 +305,9 @@ Stillwater chrome must stay readable when the user enlarges text or display size
 
 ## 13. Inference performance (concept)
 
-Atlas UI does not surface decode algorithms; inference lives on the Settings host. Besides DOTPROD
+Atlas UI does not surface decode algorithms; inference lives on the Settings host. Each settings
+section owns its views, painting, and persistence, and talks to that host; the activity keeps
+lifecycle and wiring ([ADR 0024](adr/0024-settings-section-controllers.md)). Besides DOTPROD
 kernels and KV reuse (ADR 0001), Hanami may enable **llama.cpp ngram-mod prompt lookup** on text turns
 (ADR 0011): a Settings checkbox, default off until arm64 measurement, no extra model download. If hybrid
 memory cannot trim the prompt tail that lookup needs, that turn decodes sequentially. tok/s A/B is reported by the
@@ -327,4 +329,5 @@ existing benchmark controls (`settings_bench_run` / `settings_bench_result`).
 | [`adr/0003-turn-write-ahead.md`](adr/0003-turn-write-ahead.md) | Write the turn before inference; durable photo copy |
 | [`adr/0005-prepare-vision-images.md`](adr/0005-prepare-vision-images.md) | Prepare vision images before the projector |
 | [`adr/0022-background-model-downloads.md`](adr/0022-background-model-downloads.md) | Background downloads for optional pinned models |
+| [`adr/0024-settings-section-controllers.md`](adr/0024-settings-section-controllers.md) | Settings sections behind a settings host |
 | [`ui-audit.md`](ui-audit.md) | Phase 1 usability / styling audit and backlog |
