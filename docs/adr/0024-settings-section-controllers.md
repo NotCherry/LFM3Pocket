@@ -28,7 +28,7 @@ Settings UI is a set of section controllers behind one settings section host.
 
 - New settings behaviour is added on a section. A shared or activity-level need goes through the settings section host. A section-specific dependency is passed into the section.
 - The host stays a narrow contract. It grows only when more than one section needs the same activity-level hook. Otherwise the section takes the dependency via its constructor, as Image does after [#286](https://github.com/NotCherry/LFM3Pocket/pull/286).
-- Chat status (`chat_status`) lives on `ChatShellSection`; settings sections receive a `Consumer<CharSequence>` status sink via deps/constructors ([#292](https://github.com/NotCherry/LFM3Pocket/pull/292)). Unifying direct `status.setText` calls in the activity with `setChatStatus` remains a follow-up ([#264](https://github.com/NotCherry/LFM3Pocket/issues/264)).
+- Chat status (`chat_status`) lives on `ChatShellSection`; all activity updates go through `MainActivity.setChatStatus` (including turn visibility via `applyChatStatusDuringTurn`). Settings sections receive a `Consumer<CharSequence>` status sink wired to that method ([#292](https://github.com/NotCherry/LFM3Pocket/pull/292)).
 - E2E and design-system selectors keep working across the split because the ids do not change. A move pull request leaves behaviour and visuals as they are.
 - A settings change can be reviewed inside one section, against the host contract and the id contract.
 
@@ -43,6 +43,5 @@ Settings UI is a set of section controllers behind one settings section host.
 
 [#292](https://github.com/NotCherry/LFM3Pocket/pull/292) extracts the chat shell into `ChatShellSection` and closes the transitional `setChatStatus` hook on `MainActivitySettingsHost`.
 
-- **Chat status ownership.** The `chat_status` line is built and updated inside `ChatShellSection`. `MainActivity` may still call `status.setText` on the view returned by `statusView()` for lifecycle paths; settings sections use a `Consumer<CharSequence> chatStatus` (or equivalent constructor arg) wired to `MainActivity.setChatStatus`, not the host interface.
+- **Chat status ownership.** The `chat_status` line is built and updated inside `ChatShellSection`. `MainActivity` routes every status write through `setChatStatus` (and `applyChatStatusDuringTurn` for runtime chat updates that hide the line during a turn). Settings sections use a `Consumer<CharSequence> chatStatus` wired to `MainActivity.setChatStatus`, not the host interface.
 - **Host contract.** `setChatStatus` is removed from `MainActivitySettingsHost`. Shared UI factories (`label`, `button`, `dp`, `getString`, `settingsActivity`) move to `SettingsUiFactory`, which the host extends. `ChatShellSection` depends on `SettingsUiFactory` only, not the full settings host.
-- **Follow-up ([#264](https://github.com/NotCherry/LFM3Pocket/issues/264)).** Route remaining direct `status.setText` usage through one status API on the chat shell or activity helper in a later step.
