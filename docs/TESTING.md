@@ -1,6 +1,6 @@
 # Test timeouts
 
-Hung or deadlocked tests must not burn an entire CI job. Limits are layered: Gradle task timeouts (whole suite), JUnit 4 rules or `@Test(timeout=…)` (per test method), and workflow scripts (emulator E2E).
+Hung or deadlocked tests must not burn an entire CI job ([ADR 0023](adr/0023-layered-test-timeouts.md)). Limits are layered: Gradle task timeouts (whole suite), JUnit 4 rules or `@Test(timeout=…)` (per test method), and workflow scripts (emulator E2E).
 
 ## Gradle (`app/build.gradle`)
 

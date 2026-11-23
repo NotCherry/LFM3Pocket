@@ -55,6 +55,7 @@ Older files (for example [0002](0002-interface-size-density.md) and [0006](0006-
 | [0020](0020-untrusted-local-documents.md) | Attached documents are untrusted and cannot propose tools | Accepted (reconstructed retrospectively) |
 | [0021](0021-optional-cactus-whistle-stt.md) | Optional Cactus Whistle STT | Accepted |
 | [0022](0022-background-model-downloads.md) | Background model downloads (UIDT / WorkManager) | Accepted |
+| [0023](0023-layered-test-timeouts.md) | Layered test timeouts | Accepted |
 
 ## Numbering gaps
 
