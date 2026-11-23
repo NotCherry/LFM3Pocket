@@ -25,12 +25,14 @@ LFM3 Pocket can use **Cactus Whistle** as an optional, selectable on-device spee
 ## Download / packaging strategy
 
 - The app does **not** bundle Whistle weights or Cactus runtime binaries.
-- To use Whistle STT: obtain a verified `whistle.cact` and select it in **Settings → Speech → Speech input → Select Whistle model**. The selected file is copied into app-private storage (`files/cactus/`).
+- In-app download (explicit/user-initiated): **Settings → Speech → Speech input → Download Whistle model** fetches `whistle.cact` from the pinned upstream Hugging Face revision and verifies its SHA-256 before storing it in app-private storage (`files/cactus/`). No audio or transcript is uploaded and there is no cloud fallback for transcription.
+- Manual model: you can still obtain a verified `whistle.cact` yourself and use **Select Whistle model** to copy it into app-private storage (`files/cactus/`).
+- Pinned model revision: [`Cactus-Compute/whistle@88cb00eeb8928ddbcd410b491584f938ba030b07`](https://huggingface.co/Cactus-Compute/whistle/tree/88cb00eeb8928ddbcd410b491584f938ba030b07), file `whistle.cact`, SHA-256 `b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb` (see `CactusWhistleModelManifest`).
 - A build must include the Cactus native runtime for the target Android ABI for transcription to run. Without it, the provider reports "Cactus runtime is not available in this build" and the user can keep using the default LFM3-Omni audio path.
 
 ## Storage footprint
 
-- `whistle.cact`: ~16.9 MB (per upstream model card; verify for the pinned revision you ship).
+- `whistle.cact`: ~16.9 MB (pinned revision above).
 - Runtime/library footprint depends on the pinned Cactus Android artifact and ABI.
 
 ## Supported ABIs / build integration (feasibility)
@@ -43,7 +45,7 @@ LFM3 Pocket can use **Cactus Whistle** as an optional, selectable on-device spee
 ## Disable / remove
 
 - Set **Speech input** back to **LFM3-Omni audio** to disable Whistle transcription.
-- Use **Remove Whistle model** in Settings to clear the selected local model path; delete copied files from app-private storage by clearing app data or removing the model selection/file as needed.
+- Use **Remove Whistle model** in Settings to clear the selected local model path and remove the in-app downloaded Whistle model copy; user-provided files in app-private storage can also be removed by clearing app data or deleting the file as needed.
 - Uninstalling the app removes app-private model copies.
 
 ## Limitations / gaps
