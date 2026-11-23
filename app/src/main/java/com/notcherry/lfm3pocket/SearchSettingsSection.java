@@ -121,6 +121,5 @@ final class SearchSettingsSection {
                 ? host.getString(R.string.web_search_on)
                 : host.getString(R.string.web_search_off));
         searchButton.setEnabled(!busy);
-        searchButton.setOnClickListener(v -> deps.openSearchSettings.run());
     }
 }
