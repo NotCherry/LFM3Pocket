@@ -11,6 +11,8 @@ set -euo pipefail
 #   STRESS_RUNS           Override run count (default: arg1 or 10)
 #   STRESS_ARTIFACT_DIR   Directory for per-failure diagnostics and summary
 #   PKG                   Application package (default: com.notcherry.lfm3pocket)
+#   RUNNER                am instrument target (default:
+#                         dev.notcherry.hanami.test/com.notcherry.lfm3pocket.UiE2eTestRunner)
 #
 # Requires: adb-connected device/emulator and smoke debug + androidTest APKs
 # installed. On failure, captures instrument output, logcat tail, active
@@ -19,7 +21,7 @@ set -euo pipefail
 
 RUNS="${STRESS_RUNS:-${1:-10}}"
 PKG="${PKG:-com.notcherry.lfm3pocket}"
-RUNNER="${PKG}.test/androidx.test.runner.AndroidJUnitRunner"
+RUNNER="${RUNNER:-dev.notcherry.hanami.test/com.notcherry.lfm3pocket.UiE2eTestRunner}"
 ARTIFACT_DIR="${STRESS_ARTIFACT_DIR:-}"
 TESTS=(
   "com.notcherry.lfm3pocket.BackgroundNotificationE2eTest#loadedModelAndActiveReplyDriveTheOngoingNotification"
@@ -50,12 +52,14 @@ issue: 194
 run: ${run}/${RUNS}
 test: ${test}
 package: ${PKG}
+runner: ${RUNNER}
 utc: $(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
 EOF
   echo "Diagnostics captured in ${dir}" >&2
 }
 
 passed=0
+echo "Instrumentation target: ${RUNNER} (package ${PKG})"
 for i in $(seq 1 "$RUNS"); do
   echo "== stress run $i/$RUNS =="
   for test in "${TESTS[@]}"; do
