@@ -567,7 +567,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         backgroundSettingsSection.mount(configuration, ink, inkMuted);
         integrationsSettingsSection = new IntegrationsSettingsSection(this, new IntegrationsSettingsSection.Deps(
                 () -> new RuntimePreferences(this), this::updateControls, this::pickCalendarTarget,
-                this::pickWhistleModel, this::downloadCactusWhistleModel, this::downloadTinyVocaPack));
+                this::pickWhistleModel, this::downloadCactusWhistleModel, this::downloadTinyVocaPack,
+                this::runOnUiThread));
         integrationsSettingsSection.mount(configuration, ink, inkMuted);
 
         defaultAssistantButton = button(getString(R.string.default_assistant_button));

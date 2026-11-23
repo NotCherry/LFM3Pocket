@@ -14,6 +14,7 @@ import android.widget.TextView;
 
 import java.io.File;
 import java.util.LinkedHashSet;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /** Settings scroll section for network tools, notifications, calendar, and speech integrations. */
@@ -25,15 +26,18 @@ final class IntegrationsSettingsSection {
         final Runnable pickWhistleModel;
         final Runnable downloadCactusWhistleModel;
         final Runnable downloadTinyVocaPack;
+        final Consumer<Runnable> runOnUiThread;
 
         Deps(Supplier<RuntimePreferences> preferences, Runnable updateControls, Runnable pickCalendarTarget,
-                Runnable pickWhistleModel, Runnable downloadCactusWhistleModel, Runnable downloadTinyVocaPack) {
+                Runnable pickWhistleModel, Runnable downloadCactusWhistleModel, Runnable downloadTinyVocaPack,
+                Consumer<Runnable> runOnUiThread) {
             this.preferences = preferences;
             this.updateControls = updateControls;
             this.pickCalendarTarget = pickCalendarTarget;
             this.pickWhistleModel = pickWhistleModel;
             this.downloadCactusWhistleModel = downloadCactusWhistleModel;
             this.downloadTinyVocaPack = downloadTinyVocaPack;
+            this.runOnUiThread = runOnUiThread;
         }
     }
 
@@ -58,7 +62,7 @@ final class IntegrationsSettingsSection {
     private final CactusWhistleModelDownloader.UiCallbacks cactusWhistleDownloadUi =
             new CactusWhistleModelDownloader.UiCallbacks() {
                 @Override public void onProgress(String name, long written, long total) {
-                    host.settingsMainHandler().post(() -> {
+                    deps.runOnUiThread.accept(() -> {
                         if (speechInputCactusStatus != null) {
                             String label = CactusWhistleModelDownloader.formatProgressLabel(name, written, total);
                             speechInputCactusStatus.setText(
@@ -67,7 +71,7 @@ final class IntegrationsSettingsSection {
                     });
                 }
                 @Override public void onDone(File modelFile) {
-                    host.settingsMainHandler().post(() -> {
+                    deps.runOnUiThread.accept(() -> {
                         deps.preferences.get().setCactusWhistleModelPath(modelFile.getAbsolutePath());
                         paintSpeechInputControls();
                         deps.updateControls.run();
@@ -75,13 +79,13 @@ final class IntegrationsSettingsSection {
                     });
                 }
                 @Override public void onError(String message) {
-                    host.settingsMainHandler().post(() -> {
+                    deps.runOnUiThread.accept(() -> {
                         paintSpeechInputControls();
                         host.setChatStatus(message);
                     });
                 }
                 @Override public void onCancelled() {
-                    host.settingsMainHandler().post(() -> {
+                    deps.runOnUiThread.accept(() -> {
                         paintSpeechInputControls();
                         host.setChatStatus(host.getString(R.string.model_download_cancelled));
                     });
@@ -325,6 +329,7 @@ final class IntegrationsSettingsSection {
         paintTinyVocaPackStatus();
         paintSpeechInputControls();
         bindingFields = false;
+        refreshCalendarPickerStatus();
     }
 
     void refreshCalendarPickerStatus() {
