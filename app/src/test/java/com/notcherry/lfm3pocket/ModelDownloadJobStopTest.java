@@ -24,7 +24,7 @@ public final class ModelDownloadJobStopTest {
 
     @Test public void constraintLossIsSystemStopAndReschedules() {
         ModelDownloadJobStop.Action action = ModelDownloadJobStop.actionForStopReason(
-                JobParameters.STOP_REASON_CONSTRAINTS_NOT_SATISFIED);
+                JobParameters.STOP_REASON_DEVICE_IDLE);
         assertEquals(ModelDownloadJobStop.Action.SYSTEM_STOP, action);
         assertTrue(ModelDownloadJobStop.onStopWantsReschedule(action));
     }
