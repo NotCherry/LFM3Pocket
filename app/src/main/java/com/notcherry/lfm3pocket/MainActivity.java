@@ -25,7 +25,6 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.SeekBar;
 import android.widget.TextView;
 
 import java.io.File;
@@ -134,17 +133,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             });
         }
     };
-    private Button interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton;
-    private SeekBar interfaceSizeSlider;
-    private TextView interfaceSizeValue;
-    private boolean bindingInterfaceSize;
-    private boolean interfaceSliderTracking;
-    private float pendingInterfaceSliderScale = InterfaceSize.DEFAULT;
     private float attachedInterfaceScale = InterfaceSize.DEFAULT;
-    private final Runnable applyInterfaceSlider = () -> {
-        if (destroyed || bindingInterfaceSize || interfaceSliderTracking) return;
-        applyInterfaceSize(pendingInterfaceSliderScale);
-    };
+    private AppearanceSettingsSection appearanceSettings;
     private Button openModelUriButton, openProjectorUriButton, defaultAssistantButton;
     private boolean foreground;
     private boolean microphoneRequested;
@@ -421,7 +411,25 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private long modelHandle() { return runtime == null ? 0L : runtime.handle(); }
 
-    private int dp(int n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
+    int dp(int n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
+
+    TextView createLabel(String s, int sp, int color) {
+        return label(s, sp, color);
+    }
+
+    Button createButton(String title) {
+        return button(title);
+    }
+
+    boolean isDestroyedFlag() {
+        return destroyed;
+    }
+
+    void prepareSettingsRecreateForInterfaceSize() {
+        if (getIntent() != null) getIntent().putExtra(EXTRA_OPEN_SETTINGS, true);
+        settingsOpen = true;
+        recreate();
+    }
 
     private TextView label(String s, int sp, int color) {
         TextView v = new TextView(this);
@@ -561,7 +569,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings);
         configuration.addView(modelManager, new LinearLayout.LayoutParams(-1, -2));
 
-        addAppearanceSettingsSection(configuration, ink, inkMuted);
+        appearanceSettings = new AppearanceSettingsSection(this, mainHandler);
+        appearanceSettings.mount(configuration, ink, inkMuted);
 
         TextView inferenceHeading = label(getString(R.string.inference_heading), 11, inkMuted);
         inferenceHeading.setTypeface(StillwaterUi.sansMedium(this));
@@ -1378,117 +1387,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         setSettingsOpen(true);
         syncInlineSettingsFields();
         if (searchEndpointField != null) searchEndpointField.requestFocus();
-    }
-
-    private void addAppearanceSettingsSection(LinearLayout configuration, int ink, int inkMuted) {
-        LinearLayout section = new LinearLayout(this);
-        section.setId(R.id.settings_appearance);
-        section.setOrientation(LinearLayout.VERTICAL);
-        TextView heading = label(getString(R.string.appearance_heading), 11, inkMuted);
-        heading.setTypeface(StillwaterUi.sansMedium(this));
-        heading.setLetterSpacing(0.12f);
-        heading.setPadding(0, dp(16), 0, dp(4));
-        section.addView(heading);
-        TextView title = label(getString(R.string.interface_size_label), 14, ink);
-        StillwaterReadable.prepareWrappingLabel(title);
-        section.addView(title);
-        TextView help = label(getString(R.string.interface_size_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(help);
-        section.addView(help);
-
-        interfaceCompactButton = interfacePreset(getString(R.string.interface_size_compact),
-                InterfaceSize.COMPACT, R.id.settings_interface_compact);
-        interfaceDefaultButton = interfacePreset(getString(R.string.interface_size_default),
-                InterfaceSize.DEFAULT, R.id.settings_interface_default);
-        interfaceLargeButton = interfacePreset(getString(R.string.interface_size_large),
-                InterfaceSize.LARGE, R.id.settings_interface_large);
-        LinearLayout presets = StillwaterReadable.addFlexibleButtonRow(section, this, 44,
-                interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton);
-        presets.setId(R.id.settings_interface_size);
-
-        interfaceSizeValue = label("", 12, inkMuted);
-        interfaceSizeValue.setId(R.id.settings_interface_value);
-        StillwaterReadable.prepareWrappingLabel(interfaceSizeValue);
-        interfaceSizeValue.setPadding(0, dp(8), 0, dp(2));
-        section.addView(interfaceSizeValue);
-
-        interfaceSizeSlider = new SeekBar(this);
-        interfaceSizeSlider.setId(R.id.settings_interface_slider);
-        interfaceSizeSlider.setMax(50); // 80..130 in 1% steps
-        interfaceSizeSlider.setMinimumHeight(InterfaceSize.minTouchPx(this));
-        interfaceSizeSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                float scale = InterfaceSize.fromPercent(80 + progress);
-                interfaceSizeValue.setText(getString(R.string.interface_size_percent, InterfaceSize.percent(scale)));
-                if (!fromUser || bindingInterfaceSize) return;
-                highlightInterfaceSize(scale);
-                // TalkBack / D-pad change progress without start/stop tracking. Debounce those
-                // writes so finger drags still apply only on stop.
-                if (!interfaceSliderTracking) {
-                    pendingInterfaceSliderScale = scale;
-                    mainHandler.removeCallbacks(applyInterfaceSlider);
-                    mainHandler.postDelayed(applyInterfaceSlider, 350);
-                }
-            }
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {
-                interfaceSliderTracking = true;
-                mainHandler.removeCallbacks(applyInterfaceSlider);
-            }
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {
-                interfaceSliderTracking = false;
-                if (bindingInterfaceSize) return;
-                applyInterfaceSize(InterfaceSize.fromPercent(80 + seekBar.getProgress()));
-            }
-        });
-        section.addView(interfaceSizeSlider, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        configuration.addView(section);
-        syncInterfaceSizeControls();
-    }
-
-    private Button interfacePreset(String title, float scale, int id) {
-        Button button = button(title);
-        button.setId(id);
-        StillwaterUi.quiet(button);
-        button.setOnClickListener(v -> {
-            if (bindingInterfaceSize) return;
-            applyInterfaceSize(scale);
-        });
-        return button;
-    }
-
-    private void applyInterfaceSize(float scale) {
-        float next = InterfaceSize.clamp(scale);
-        if (Math.abs(next - InterfaceSize.read(this)) < 0.001f) {
-            syncInterfaceSizeControls();
-            return;
-        }
-        InterfaceSize.write(this, next);
-        if (getIntent() != null) getIntent().putExtra(EXTRA_OPEN_SETTINGS, true);
-        settingsOpen = true;
-        recreate();
-    }
-
-    private void syncInterfaceSizeControls() {
-        if (interfaceSizeSlider == null) return;
-        bindingInterfaceSize = true;
-        float scale = InterfaceSize.read(this);
-        interfaceSizeSlider.setProgress(InterfaceSize.percent(scale) - 80);
-        interfaceSizeValue.setText(getString(R.string.interface_size_percent, InterfaceSize.percent(scale)));
-        highlightInterfaceSize(scale);
-        bindingInterfaceSize = false;
-    }
-
-    private void highlightInterfaceSize(float scale) {
-        styleInterfacePreset(interfaceCompactButton, InterfaceSize.isCompact(scale));
-        styleInterfacePreset(interfaceDefaultButton, InterfaceSize.isDefault(scale));
-        styleInterfacePreset(interfaceLargeButton, InterfaceSize.isLarge(scale));
-    }
-
-    private void styleInterfacePreset(Button button, boolean selected) {
-        if (button == null) return;
-        if (selected) StillwaterUi.primary(button);
-        else StillwaterUi.quiet(button);
     }
 
     private void addImagesSettingsSection(LinearLayout configuration, int ink, int inkMuted) {
@@ -3010,6 +2908,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         pendingDocuments.clear();
         if (settingsStore != null) settingsStore.close();
         if (imageSettingsStore != null) imageSettingsStore.close();
+        if (appearanceSettings != null) appearanceSettings.dispose();
         mainHandler.removeCallbacksAndMessages(null);
         if (importCancellation != null) importCancellation.set(true);
         if (recordingController != null) recordingController.close();
