@@ -6,10 +6,10 @@ This document is the reproducible APK / model-import / test-gate recipe for Hana
 
 1. Install JDK 17, Android SDK + NDK, and Gradle 8.13.
 2. Clone this repository.
-3. Check out the pinned llama.cpp tree (not bundled in git):
+3. Check out the pinned llama.cpp tree (not bundled in git). The pin is the commit named in `vendor/LLAMA_CPP_COMMIT` (a `v0.8.0` revision; the file is the source of truth, not the branch tip):
 
 ```bash
-git clone --branch v0.8.0 --depth 1 https://github.com/ggml-org/llama.cpp.git third_party/llama.cpp
+bash scripts/fetch-llama.sh
 ```
 
 4. Build the ARM64 debug phone APK:
@@ -70,15 +70,15 @@ Notes:
 - Emulator CameraX / fake-mic journeys prove app wiring, not model visual or speech quality.
 - Spoken response playback (V05) and the full voice journey E2E (V06) may still be PARTIAL/MISSING in the acceptance matrix when this document ships.
 - Optional SearXNG web search is user-configured HTTPS only; core chat must work offline with search disabled.
-- No telemetry; diagnostics stay on-device (`docs/DIAGNOSTICS.md`, `files/diagnostics.ndjson`).
-- Persistent AI memory / reminders are Stage 2 — Stage 1 history is local transcripts only.
+- No telemetry; diagnostics stay on-device (`docs/DIAGNOSTICS.md`, `files/diagnostics.ndjson`, crash log in [ADR 0004](adr/0004-local-crash-log.md)).
+- Local notification reminders are inexact and on-device ([ADR 0007](adr/0007-voice-reminders-workmanager.md)). Conversation history is local transcripts, with an explicit user-visible compact summary. There is no automatic long-term memory and no cloud memory.
 
 ## License notices
 
 | Component | License |
 | --- | --- |
 | Hanami application source | MIT (`LICENSE`) |
-| llama.cpp (pinned `v0.8.0`) | MIT (upstream) |
+| llama.cpp (commit pinned in `vendor/LLAMA_CPP_COMMIT`, from `v0.8.0`) | MIT (upstream) |
 | Liquid AI LFM3 / LFM3-Omni GGUF weights | Liquid AI model license (not redistributed in the APK) |
 
 Publishers must keep model license notices with any redistributed weights; this project never embeds those weights in CI APKs.

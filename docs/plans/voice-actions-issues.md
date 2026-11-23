@@ -6,6 +6,20 @@ Created from the execution plan in [`voice-actions.md`](voice-actions.md).
 **Plan PR:** [#149 Plan: voice actions (Omni audio-in + first tool set)](https://github.com/NotCherry/LFM3Pocket/pull/149) (merged 2026-11-18)
 **V1 implementation PR:** [#180 Voice V1: hands-free loop (listen, Omni audio-in, speech, confirm)](https://github.com/NotCherry/LFM3Pocket/pull/180) (merged 2026-11-17)
 
+## Update (2026-11-23 docs audit)
+
+The table below is the 2026-11-18 snapshot. It is not rewritten. Since that date:
+
+- [#159](https://github.com/NotCherry/LFM3Pocket/issues/159) reminders landed in [#219](https://github.com/NotCherry/LFM3Pocket/pull/219). The decision on `main` is inexact WorkManager, not exact alarms ([ADR 0007](../adr/0007-voice-reminders-workmanager.md)).
+- [#160](https://github.com/NotCherry/LFM3Pocket/issues/160) messages landed in [#216](https://github.com/NotCherry/LFM3Pocket/pull/216) ([ADR 0017](../adr/0017-message-tools-open-composer.md)).
+- [#161](https://github.com/NotCherry/LFM3Pocket/issues/161) calendar tools landed in [#222](https://github.com/NotCherry/LFM3Pocket/pull/222) ([ADR 0014](../adr/0014-calendar-tools-picked-calendar.md)).
+- [#162](https://github.com/NotCherry/LFM3Pocket/issues/162) notification listing landed in [#220](https://github.com/NotCherry/LFM3Pocket/pull/220) ([ADR 0018](../adr/0018-notification-list-opt-in.md)).
+- [#163](https://github.com/NotCherry/LFM3Pocket/issues/163) assistant gesture landed in [#218](https://github.com/NotCherry/LFM3Pocket/pull/218) ([ADR 0006](../adr/0006-voice-actions-loop.md)).
+- [#164](https://github.com/NotCherry/LFM3Pocket/issues/164) Vulkan spike landed in [#217](https://github.com/NotCherry/LFM3Pocket/pull/217). CPU stays the default ([`VOICE_GPU_NPU_SPIKE_164.md`](../VOICE_GPU_NPU_SPIKE_164.md)).
+- [#165](https://github.com/NotCherry/LFM3Pocket/issues/165) compact landed in [#221](https://github.com/NotCherry/LFM3Pocket/pull/221) ([ADR 0019](../adr/0019-explicit-conversation-compact.md)).
+- [#166](https://github.com/NotCherry/LFM3Pocket/issues/166) local documents landed in [#223](https://github.com/NotCherry/LFM3Pocket/pull/223) ([ADR 0020](../adr/0020-untrusted-local-documents.md)).
+- [#204](https://github.com/NotCherry/LFM3Pocket/pull/204) merged. A failed confirm pass cannot approve, and unload cancels listen and confirmation before the model is released ([ADR 0006](../adr/0006-voice-actions-loop.md)).
+
 ## Audit snapshot (2026-11-18, branch `ao/voice-epic/root`)
 
 | # | Title | Phase | State | Notes |
@@ -31,7 +45,9 @@ Created from the execution plan in [`voice-actions.md`](voice-actions.md).
 
 ## Related open work (not epic child PRs)
 
-These open PRs touch voice/runtime reliability and may affect V1 behavior or follow-on voice work; review/merge/close as appropriate before relying on V1 in production:
+This list is the 2026-11-18 snapshot. #204, #206, #207, and #208 have since merged. See the 2026-11-23 update.
+
+Snapshot of PRs that were open on that date:
 
 - [#204 Fix critical voice authorization and runtime lifecycle issues](https://github.com/NotCherry/LFM3Pocket/pull/204) (draft) — mentions #190/#191/#192/#193/#196/#200/#201.
 - [#206 Reject voice confirmation when inference fails](https://github.com/NotCherry/LFM3Pocket/pull/206) — references #192.
@@ -49,8 +65,10 @@ No open PRs were found targeting child issues #159–#166 at audit time.
 
 ## What remains to close epic #167
 
-- Complete, review, and merge child work for #159–#166 (V2 reminders, V3 messages, V4 calendar, V5 notifications, V6 default assistant, and next-phase items #164–#166 as scoped).
-- Resolve/land related voice correctness/reliability fixes (e.g. #204/#206/#207/#208 and linked audit issues) so shipped V1 behavior matches safety expectations.
-- Produce arm64 on-device evidence for VL-01–VL-06 (currently unrecorded) and update checklist/epic with outcomes.
-- Apply owner-managed labels/milestones and keep this index/epic task list synchronized with issue/PR reality.
+The 2026-11-23 update above covers reminders (#159 / #219), calendar (#161 / #222), messages (#160 / #216), notification listing (#162 / #220), the assistant gesture (#163 / #218), the Vulkan spike note (#164 / #217), explicit compact (#165 / #221), local documents (#166 / #223), and the confirm/unload fixes in #204 (also #206). #207 and #208 have also merged.
+
+What remains is evidence and housekeeping, not those child implementations:
+
+- Produce arm64 on-device evidence for VL-01–VL-06 (currently unrecorded) and update the checklist and epic with outcomes.
+- Apply owner-managed labels and milestones, and keep this index synchronized with issue and PR reality.
 

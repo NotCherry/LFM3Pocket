@@ -21,7 +21,7 @@ adb shell run-as com.notcherry.lfm3pocket cat files/diagnostics.ndjson
 
 ## Crash log (local only)
 
-Hanami also keeps `files/crash-log.txt`:
+Decision: [ADR 0004](adr/0004-local-crash-log.md). Hanami also keeps `files/crash-log.txt`:
 
 - Last uncaught Java exception (thread name + stack)
 - On Android 11+, recent `ApplicationExitInfo` reasons (including native abort / low memory / ANR)

@@ -40,7 +40,7 @@ Physical qualification for F01 / AT-04. DeviceCheck package
 
 ## Missing / out of Stage 1 scope
 
-- Persistent AI memory / reminders (Stage 2)
+- Automatic long-term AI memory (not in this evidence set). Local inexact reminders exist ([ADR 0007](adr/0007-voice-reminders-workmanager.md)) and were not part of this Omni session.
 - Cloud ASR / cloud TTS fallbacks (explicitly excluded)
 - Combined gallery+mic UI journey on physical hardware
 

@@ -164,7 +164,7 @@ Atlas prefers **borders over shadows**.
 
 ### Voice actions (V1)
 
-Hands-free voice rides the same **ModelRuntime** residency and **ToolCoordinator** consent as shade Approve/Reject. Push-to-talk and notification **Talk** feed 16 kHz WAV into one Omni `generateWithMedia` pass (`VoiceActionRuntime`); tool JSON still arrives only via `MODEL_PROPOSAL`. Spoken confirm uses exact describe read-back plus a closed tak/nie lexicon—never free-form model judgment. Mic FGS type is asserted only during listen windows. Details: [ADR 0006](adr/0006-voice-actions-loop.md).
+Hands-free voice rides the same model residency and tool consent as shade Approve/Reject. Push-to-talk and notification **Talk** default to one LFM3-Omni audio pass; tool JSON still arrives only as a model proposal. Settings may instead select optional Cactus Whistle STT, in which case command and confirm transcription run through the text pipeline ([#224](https://github.com/NotCherry/LFM3Pocket/pull/224), [`CACTUS_WHISTLE_STT.md`](CACTUS_WHISTLE_STT.md)). Spoken confirm uses the exact action read-back plus a closed tak/nie (yes/no) lexicon. A failed or cancelled confirm pass rejects, even if the partial text contains an approval word. Mic capture is a foreground type only during listen windows, and unload cancels listen and confirmation before the model goes away. Later tools — local reminders ([ADR 0007](adr/0007-voice-reminders-workmanager.md)) and calendar read/write ([ADR 0014](adr/0014-calendar-tools-picked-calendar.md)) — use that same consent. Details: [ADR 0006](adr/0006-voice-actions-loop.md).
 
 ### 6.5 Composer (U11)
 
@@ -177,6 +177,7 @@ Hands-free voice rides the same **ModelRuntime** residency and **ToolCoordinator
 
 - Small preview thumbnail + remove control (`image_preview`, `image_remove`, etc.).
 - Border `border`; no floating sticker overlay on the transcript hero.
+- A photo sent with a turn is copied completely into private storage before inference, so Retry after process death can use it. An incomplete copy is discarded and does not replace a previous file ([ADR 0003](adr/0003-turn-write-ahead.md)).
 
 ### 6.7 Settings row (U13)
 
@@ -184,6 +185,9 @@ Hands-free voice rides the same **ModelRuntime** residency and **ToolCoordinator
 - Row: `label` + control (stepper, switch, field) aligned; `mono` for numeric/endpoint values where appropriate.
 - Keep IDs: `settings_context`, `settings_threads`, `settings_tokens`, `search_*`, `import_*`.
 - **Speech (optional tiny-voca):** Section `SPEECH` / `MOWA` with English-only checkbox (`settings_tiny_voca_tts`), download/remove pack actions (`settings_tiny_voca_download`, `settings_tiny_voca_remove`), and status line (`settings_tiny_voca_status`). Help text must state that the option is English-only, that a missing pack uses system TTS for English, and that non-English replies keep the Omni voice (ADR 0010).
+- **Images:** Preparation is on by default (longest-side cap, optional square crop, JPEG quality). The user’s source file is never rewritten ([ADR 0005](adr/0005-prepare-vision-images.md)).
+- **Calendar:** Writes require a calendar the user picked here. There is no silent default ([ADR 0014](adr/0014-calendar-tools-picked-calendar.md)).
+- **Loopback:** Prompt-in from the same phone is off by default, token-gated, and cannot approve a tool ([ADR 0015](adr/0015-loopback-api-local-only.md)).
 
 ### 6.8 History list + reader (U12)
 
@@ -207,6 +211,8 @@ Hands-free voice rides the same **ModelRuntime** residency and **ToolCoordinator
 - **New chat** (Home, History, and the chat top bar) starts a new conversation and a new history entry.
 - **Clear** empties the transcript and keeps the same conversation.
 - Starting a new chat while a reply is generating asks for confirmation, the same guard as switching conversations from History.
+- **Compact** is a separate, user-visible step. It shortens the live prompt with a rolling summary stored on the conversation and restored when that conversation is opened again. The stored transcript stays intact ([ADR 0019](adr/0019-explicit-conversation-compact.md)).
+- An attached document is untrusted context. That turn does not turn the reply into tool proposals ([ADR 0020](adr/0020-untrusted-local-documents.md)).
 - The chat top-bar **New chat** action (`chat_new_chat`) uses an accent label and meets the Interface size minimum touch target (section 11). TalkBack announces its visible label.
 - User-visible strings for these actions, including the default title of an untitled conversation, ship in English and Polish.
 
@@ -300,7 +306,8 @@ Stillwater chrome must stay readable when the user enlarges text or display size
 
 Atlas UI does not surface decode algorithms; inference lives on the Settings host. Besides DOTPROD
 kernels and KV reuse (ADR 0001), Hanami may enable **llama.cpp ngram-mod prompt lookup** on text turns
-(ADR 0011): a Settings checkbox, default off until arm64 measurement, no extra model download. tok/s A/B is reported by the
+(ADR 0011): a Settings checkbox, default off until arm64 measurement, no extra model download. If hybrid
+memory cannot trim the prompt tail that lookup needs, that turn decodes sequentially. tok/s A/B is reported by the
 existing benchmark controls (`settings_bench_run` / `settings_bench_result`).
 
 ## 14. References
@@ -315,4 +322,7 @@ existing benchmark controls (`settings_bench_run` / `settings_bench_result`).
 | [`ACCEPTANCE_MATRIX.md`](ACCEPTANCE_MATRIX.md) | Stage 1 AT-01..AT-09 (unchanged authority for product capability) |
 | [`adr/0012-two-tier-emulator-e2e-gating.md`](adr/0012-two-tier-emulator-e2e-gating.md) | PR smoke vs deep/nightly emulator E2E gates |
 | [`adr/0013-atlas-color-tokens-ci-hex-guard.md`](adr/0013-atlas-color-tokens-ci-hex-guard.md) | Normative Atlas color tokens and the CI hex guard |
+| [`adr/README.md`](adr/README.md) | ADR index, including unused numbers 0008 and 0009 |
+| [`adr/0003-turn-write-ahead.md`](adr/0003-turn-write-ahead.md) | Write the turn before inference; durable photo copy |
+| [`adr/0005-prepare-vision-images.md`](adr/0005-prepare-vision-images.md) | Prepare vision images before the projector |
 | [`ui-audit.md`](ui-audit.md) | Phase 1 usability / styling audit and backlog |
