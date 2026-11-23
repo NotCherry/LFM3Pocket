@@ -38,8 +38,13 @@ public final class CactusWhistleModelDownloaderContractTest {
                 (name, expectedSha256, target, progress, clock) -> {
                     try (ByteArrayInputStream input = new ByteArrayInputStream(payload)) {
                         CactusWhistleModelDownloader.writeAndVerifySha256(input, digest, name, target,
-                                payload.length, progress == null ? null : (n, written, total) ->
-                                        writtenSnapshots.add(written), clock);
+                                payload.length, progress == null ? null : new CactusWhistleModelDownloader.Progress() {
+                                    @Override public void onFile(String n, long written, long total) {
+                                        writtenSnapshots.add(written);
+                                    }
+                                    @Override public void onDone(File modelFile) { }
+                                    @Override public void onError(String message) { }
+                                }, clock);
                     }
                 }, () -> now.addAndGet(50));
         assertTrue(downloader.download(null));
