@@ -37,7 +37,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public final class MainActivity extends androidx.activity.ComponentActivity {
+public final class MainActivity extends androidx.activity.ComponentActivity implements MainActivitySettingsHost {
     public static final String EXTRA_HISTORY_CONVERSATION_ID="history_conversation_id";
     public static final String EXTRA_HISTORY_TITLE="history_title";
     public static final String EXTRA_OPEN_SETTINGS = "open_settings";
@@ -135,6 +135,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     };
     private float attachedInterfaceScale = InterfaceSize.DEFAULT;
     private AppearanceSettingsSection appearanceSettings;
+    private ImageSettingsSection imageSettingsSection;
     private Button openModelUriButton, openProjectorUriButton, defaultAssistantButton;
     private boolean foreground;
     private boolean microphoneRequested;
@@ -161,11 +162,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean settingsLoaded;
     private boolean imageSettingsLoaded;
     private boolean settingsOpen;
-    private boolean bindingImageSettings;
-    private CheckBox imagePrepareBox;
-    private CheckBox imageCropBox;
-    private EditText imageQualityField;
-    private Button imageMax384Button, imageMax512Button, imageMax768Button, imageMax1024Button, imageMaxOriginalButton;
     private Button modelButton, mmprojButton;
     private Button searchButton, photoButton, cameraButton, documentButton, recordButton, speakButton;
     private Button settingsOpenButton;
@@ -296,11 +292,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         imageSettingsStore.load(settings -> {
             if (destroyed) return;
             imageSettings=settings;imageSettingsLoaded=true;
-            syncImageSettingsFields();
+            if (imageSettingsSection != null) imageSettingsSection.syncFields();
         }, error -> {
             if (destroyed) return;
             imageSettings=ImageSettings.DEFAULT;imageSettingsLoaded=true;
-            syncImageSettingsFields();
+            if (imageSettingsSection != null) imageSettingsSection.syncFields();
             status.setText("Image settings unavailable; using defaults: "+error);
         });
         String previous = pocketPreferences().getString("model", "");
@@ -411,19 +407,36 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     private long modelHandle() { return runtime == null ? 0L : runtime.handle(); }
 
-    int dp(int n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
+    @Override public Activity settingsActivity() {
+        return this;
+    }
 
-    boolean isHostFinishing() {
+    @Override public int dp(int n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
+
+    @Override public boolean isHostFinishing() {
         return destroyed;
     }
 
-    void prepareSettingsRecreateForInterfaceSize() {
+    @Override public Handler settingsMainHandler() {
+        return mainHandler;
+    }
+
+    @Override public void prepareSettingsRecreateForInterfaceSize() {
         if (getIntent() != null) getIntent().putExtra(EXTRA_OPEN_SETTINGS, true);
         settingsOpen = true;
         recreate();
     }
 
-    TextView label(String s, int sp, int color) {
+    @Override public void setChatStatus(CharSequence message) {
+        if (status != null) status.setText(message);
+    }
+
+    @Override public EditText addSettingInput(LinearLayout form, String title, String hint, int value, int id,
+            int step, int min, int max) {
+        return settingInput(form, title, hint, value, id, step, min, max);
+    }
+
+    @Override public TextView label(String s, int sp, int color) {
         TextView v = new TextView(this);
         v.setText(s);
         v.setTextSize(sp);
@@ -435,7 +448,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         return v;
     }
 
-    Button button(String title) {
+    @Override public Button button(String title) {
         Button b = new Button(this);
         b.setText(title);
         b.setAllCaps(false);
@@ -561,8 +574,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings);
         configuration.addView(modelManager, new LinearLayout.LayoutParams(-1, -2));
 
-        appearanceSettings = new AppearanceSettingsSection(this, mainHandler);
+        appearanceSettings = new AppearanceSettingsSection(this);
         appearanceSettings.mount(configuration, ink, inkMuted);
+        imageSettingsSection = new ImageSettingsSection(this, imageSettingsStore,
+                () -> imageSettings, validated -> {
+            imageSettings = validated;
+            imageSettingsLoaded = true;
+        });
 
         TextView inferenceHeading = label(getString(R.string.inference_heading), 11, inkMuted);
         inferenceHeading.setTypeface(StillwaterUi.sansMedium(this));
@@ -651,7 +669,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         searchButton.setOnClickListener(v -> showSearchSettings());
         StillwaterReadable.addFlexibleFullWidth(configuration, searchButton, 44);
 
-        addImagesSettingsSection(configuration, ink, inkMuted);
+        imageSettingsSection.mount(configuration, ink, inkMuted);
 
         TextView backgroundHeading = label(getString(R.string.background_heading), 11, inkMuted);
         backgroundHeading.setTypeface(StillwaterUi.sansMedium(this));
@@ -1263,18 +1281,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     Integer.parseInt(settingsThreadsField.getText().toString()),
                     Integer.parseInt(settingsTokensField.getText().toString()),
                     promptLookupBox == null || promptLookupBox.isChecked());
-            ImageSettings nextImages = new ImageSettings(
-                    imagePrepareBox == null || imagePrepareBox.isChecked(),
-                    imageSettings.maxSide,
-                    imageCropBox != null && imageCropBox.isChecked(),
-                    readImageQualityField());
+            ImageSettings nextImages = imageSettingsSection == null
+                    ? imageSettings
+                    : imageSettingsSection.readForInlineInferenceSave();
             settingsStore.save(next, () -> {
                 if (destroyed) return;
                 inferenceSettings = next;
                 inferenceEngine.configure(next);
                 // Quiet image persist so it cannot race and overwrite the inference summary
                 // that InferenceSettingsE2eTest matches exactly on chat_status.
-                persistImageSettings(nextImages, false);
+                if (imageSettingsSection != null) imageSettingsSection.persist(nextImages, false);
                 updateControls();
                 status.setText(next.summary());
             }, failure -> {
@@ -1379,143 +1395,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         setSettingsOpen(true);
         syncInlineSettingsFields();
         if (searchEndpointField != null) searchEndpointField.requestFocus();
-    }
-
-    private void addImagesSettingsSection(LinearLayout configuration, int ink, int inkMuted) {
-        LinearLayout section = new LinearLayout(this);
-        section.setId(R.id.settings_images);
-        section.setOrientation(LinearLayout.VERTICAL);
-        TextView heading = label(getString(R.string.settings_images_heading).toUpperCase(java.util.Locale.US), 11, inkMuted);
-        heading.setTypeface(StillwaterUi.sansMedium(this));
-        heading.setLetterSpacing(0.12f);
-        heading.setPadding(0, dp(16), 0, dp(4));
-        section.addView(heading);
-
-        imagePrepareBox = new CheckBox(this);
-        imagePrepareBox.setId(R.id.settings_image_prepare);
-        imagePrepareBox.setText(R.string.settings_image_prepare);
-        StillwaterUi.styleCheck(imagePrepareBox);
-        imagePrepareBox.setOnCheckedChangeListener((button, checked) -> {
-            if (bindingImageSettings) return;
-            persistImageSettings(new ImageSettings(checked, imageSettings.maxSide,
-                    imageSettings.cropToSquare, readImageQualityField()), true);
-        });
-        section.addView(imagePrepareBox);
-        section.addView(label(getString(R.string.settings_image_prepare_help), 12, inkMuted));
-
-        TextView maxTitle = label(getString(R.string.settings_image_max_size), 16, ink);
-        maxTitle.setPadding(0, dp(10), 0, 0);
-        section.addView(maxTitle);
-        section.addView(label(getString(R.string.settings_image_max_help), 12, inkMuted));
-
-        imageMax384Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_384, R.id.settings_image_max_384);
-        imageMax512Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_512, R.id.settings_image_max_512);
-        imageMax768Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_768, R.id.settings_image_max_768);
-        LinearLayout maxRow1 = StillwaterReadable.addFlexibleButtonRow(section, this, 44,
-                imageMax384Button, imageMax512Button, imageMax768Button);
-        maxRow1.setId(R.id.settings_image_max_size);
-
-        imageMax1024Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_1024, R.id.settings_image_max_1024);
-        imageMaxOriginalButton = imageMaxChoice(ImageSettings.MaxSide.ORIGINAL, R.id.settings_image_max_original);
-        StillwaterReadable.addFlexibleButtonRow(section, this, 44,
-                imageMax1024Button, imageMaxOriginalButton);
-
-        imageCropBox = new CheckBox(this);
-        imageCropBox.setId(R.id.settings_image_crop);
-        imageCropBox.setText(R.string.settings_image_crop);
-        StillwaterUi.styleCheck(imageCropBox);
-        imageCropBox.setOnCheckedChangeListener((button, checked) -> {
-            if (bindingImageSettings) return;
-            persistImageSettings(new ImageSettings(imageSettings.enabled, imageSettings.maxSide,
-                    checked, readImageQualityField()), true);
-        });
-        section.addView(imageCropBox);
-        section.addView(label(getString(R.string.settings_image_crop_help), 12, inkMuted));
-
-        imageQualityField = settingInput(section, getString(R.string.settings_image_quality),
-                getString(R.string.settings_image_quality_help),
-                imageSettings.jpegQuality, R.id.settings_image_quality, 5, 40, 95);
-        imageQualityField.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus || bindingImageSettings) return;
-            try {
-                int quality = Integer.parseInt(imageQualityField.getText().toString().trim());
-                persistImageSettings(new ImageSettings(imageSettings.enabled, imageSettings.maxSide,
-                        imageSettings.cropToSquare, quality), true);
-            } catch (RuntimeException invalid) {
-                syncImageSettingsFields();
-                if (status != null) status.setText(invalid.getMessage());
-            }
-        });
-        configuration.addView(section);
-        syncImageSettingsFields();
-    }
-
-    private Button imageMaxChoice(ImageSettings.MaxSide side, int id) {
-        Button button = button(side.label);
-        button.setId(id);
-        StillwaterUi.quiet(button);
-        button.setOnClickListener(v -> {
-            if (bindingImageSettings) return;
-            persistImageSettings(new ImageSettings(imageSettings.enabled, side,
-                    imageSettings.cropToSquare, readImageQualityField()), true);
-        });
-        return button;
-    }
-
-    private int readImageQualityField() {
-        if (imageQualityField == null) return imageSettings.jpegQuality;
-        try {
-            return Integer.parseInt(imageQualityField.getText().toString().trim());
-        } catch (NumberFormatException ignored) {
-            return imageSettings.jpegQuality;
-        }
-    }
-
-    private void syncImageSettingsFields() {
-        if (imagePrepareBox == null) return;
-        bindingImageSettings = true;
-        imagePrepareBox.setChecked(imageSettings.enabled);
-        if (imageCropBox != null) imageCropBox.setChecked(imageSettings.cropToSquare);
-        if (imageQualityField != null)
-            imageQualityField.setText(Integer.toString(imageSettings.jpegQuality));
-        highlightImageMax(imageSettings.maxSide);
-        bindingImageSettings = false;
-    }
-
-    private void highlightImageMax(ImageSettings.MaxSide selected) {
-        styleImageMax(imageMax384Button, selected == ImageSettings.MaxSide.SIDE_384);
-        styleImageMax(imageMax512Button, selected == ImageSettings.MaxSide.SIDE_512);
-        styleImageMax(imageMax768Button, selected == ImageSettings.MaxSide.SIDE_768);
-        styleImageMax(imageMax1024Button, selected == ImageSettings.MaxSide.SIDE_1024);
-        styleImageMax(imageMaxOriginalButton, selected == ImageSettings.MaxSide.ORIGINAL);
-    }
-
-    private void styleImageMax(Button button, boolean selected) {
-        if (button == null) return;
-        button.setTextColor(selected ? StillwaterUi.CANDLE : StillwaterUi.SOFT);
-        button.setAlpha(selected ? 1f : 0.75f);
-    }
-
-    private void persistImageSettings(ImageSettings next, boolean announce) {
-        if (imageSettingsStore == null) return;
-        try {
-            ImageSettings validated = new ImageSettings(next.enabled, next.maxSide,
-                    next.cropToSquare, next.jpegQuality);
-            imageSettingsStore.save(validated, () -> {
-                if (destroyed) return;
-                imageSettings = validated;
-                imageSettingsLoaded = true;
-                syncImageSettingsFields();
-                if (announce && status != null) status.setText(validated.summary());
-            }, failure -> {
-                if (destroyed) return;
-                if (status != null) status.setText("Image settings were not saved: " + failure);
-                syncImageSettingsFields();
-            });
-        } catch (IllegalArgumentException invalid) {
-            if (status != null) status.setText(invalid.getMessage());
-            syncImageSettingsFields();
-        }
     }
 
     private void pickPhoto() {
