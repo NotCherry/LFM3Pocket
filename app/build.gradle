@@ -17,7 +17,7 @@ def hanamiSigningReady = hanamiKeystore && hanamiStorePassword && hanamiKeyAlias
 def hanamiGgmlVulkan = (project.findProperty('hanami.ggmlVulkan')
         ?: System.getenv('HANAMI_GGML_VULKAN')
         ?: 'OFF').toString()
-// Release / CI builds opt in via HANAMI_REQUIRE_DIZIONE or -Phanami.requireDizione=1 (F-Droid/local debug default off).
+// Release / CI opt in: HANAMI_REQUIRE_DIZIONE or -Phanami.requireDizione=1 (-Phanami.requireDizione=0 to skip; F-Droid/default off).
 def hanamiRequireDizioneProp = (project.findProperty('hanami.requireDizione')
         ?: System.getenv('HANAMI_REQUIRE_DIZIONE'))
 
