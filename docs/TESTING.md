@@ -15,9 +15,9 @@ To raise limits, edit the blocks at the bottom of `app/build.gradle` and keep sh
 
 Shared constants live in `app/src/test/java/com/notcherry/lfm3pocket/TestTimeouts.java`:
 
-- **`CONCURRENCY_DEFAULT`** (30 seconds, `withLookingForStuckThread(true)`) — applied via `HanamiConcurrencyUnitTest` for voice session, loopback API, and voice preempt tests. The rule runs the test body on a **worker thread** (good for deadlock dumps; **not** for direct `RuntimePolicy` calls on the test thread).
-- **`VOICE_UNLOAD_LIFECYCLE_MS`** (90 seconds) — `@Test(timeout=…)` on `VoiceUnloadLifecycleTest` (same test thread; loops several timed unload paths).
-- **`RUNTIME_POLICY_INTERLEAVING_MS`** (30 seconds) — `@Test(timeout=…)` on the serialized interleaving test in `RuntimePolicyTest`.
+- **`CONCURRENCY_DEFAULT`** (30 seconds, `withLookingForStuckThread(true)`) — applied via `HanamiConcurrencyUnitTest` for voice session, loopback API, and voice preempt tests. The rule runs the test body on a **worker thread** (good for deadlock dumps; **not** for direct `RuntimePolicy` calls that assume the JVM test runner’s starting thread).
+- **`VOICE_UNLOAD_LIFECYCLE_MS`** (90 seconds) — `@Test(timeout=…)` on `VoiceUnloadLifecycleTest`. In JUnit 4 this **also** runs the test body on a separate timer thread (like the `Timeout` rule), not the thread that started the test. That is acceptable here because the tests drive `VoiceActionRuntime` through its own worker and timed waits.
+- **`RUNTIME_POLICY_INTERLEAVING_MS`** (30 seconds) — `@Test(timeout=…)` only on `serializedInterleavingsKeepForegroundAndWakeEffectsConsistent`. Same separate-thread behaviour as above; this method is safe because every `RuntimePolicy` mutation goes through the dedicated **policy-owner** executor, not the JUnit timer thread.
 
 `TestTimeoutsSelfTest` applies `SELF_CHECK_RULE` to a hanging `Statement` (no `@Rule` / no `expected=`) to prove the timeout fires in CI.
 
@@ -35,7 +35,7 @@ Intentionally long smoke/deep classes (`GenerationSmokeTest`, `GenerationDeepSmo
 
 ## Raising a limit
 
-1. **JVM concurrency** — bump `TestTimeouts` or extend `HanamiConcurrencyUnitTest`; never put a class-level `Timeout` rule on `RuntimePolicy` unit tests that call the policy on the test thread.
+1. **JVM concurrency** — bump `TestTimeouts` or extend `HanamiConcurrencyUnitTest`. Do not use a class-level `Timeout` rule or `@Test(timeout=…)` on `RuntimePolicyTest` methods that invoke `RuntimePolicy` directly on the calling thread; use an owner executor (as the interleaving test does) or leave those methods without a per-method wall clock (Gradle still caps the suite).
 2. **Voice unload loops** — raise `VOICE_UNLOAD_LIFECYCLE_MS`.
 3. **Connected suite** — bump `run-jni-smoke.sh`, the workflow job `timeout-minutes`, and optionally the `connected*AndroidTest` Gradle task together.
 4. Document permanent changes in the test class Javadoc or an ADR.
