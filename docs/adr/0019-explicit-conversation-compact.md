@@ -13,7 +13,7 @@ A long chat exceeds the context the phone can prefill. Dropping older turns sile
 Compact is a separate, user-visible step. It asks the loaded model for a short rolling summary of the conversation so far and then uses that summary, plus the most recent turns, as the live prompt.
 
 - The private transcript is not deleted or rewritten. History still has the full conversation.
-- A successful compact updates `conversations.summary` and `summarizedMessageCount` in Room via `saveCompactSummary`. When the conversation is opened again, that summary and count reload into the live prompt window ([#221](https://github.com/NotCherry/LFM3Pocket/pull/221)).
+- A successful compact stores the summary and the count of summarized messages on that conversation. Opening the conversation again restores them into the live prompt ([#221](https://github.com/NotCherry/LFM3Pocket/pull/221)). Deleting the conversation deletes them with that row. Clear empties the live session only; it does not erase the stored summary.
 - If the summary fails, is cancelled, or comes back empty, the previous prompt window and the previous stored summary stay as they were.
 - Compact does not run by itself at the end of an ordinary reply.
 

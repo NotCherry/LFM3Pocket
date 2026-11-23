@@ -211,7 +211,7 @@ Hands-free voice rides the same model residency and tool consent as shade Approv
 - **New chat** (Home, History, and the chat top bar) starts a new conversation and a new history entry.
 - **Clear** empties the transcript and keeps the same conversation.
 - Starting a new chat while a reply is generating asks for confirmation, the same guard as switching conversations from History.
-- **Compact** is a separate, user-visible step. It shortens the live prompt with a rolling summary and leaves the stored transcript intact ([ADR 0019](adr/0019-explicit-conversation-compact.md)).
+- **Compact** is a separate, user-visible step. It shortens the live prompt with a rolling summary stored on the conversation and restored when that conversation is opened again. The stored transcript stays intact ([ADR 0019](adr/0019-explicit-conversation-compact.md)).
 - An attached document is untrusted context. That turn does not turn the reply into tool proposals ([ADR 0020](adr/0020-untrusted-local-documents.md)).
 - The chat top-bar **New chat** action (`chat_new_chat`) uses an accent label and meets the Interface size minimum touch target (section 11). TalkBack announces its visible label.
 - User-visible strings for these actions, including the default title of an untitled conversation, ship in English and Polish.

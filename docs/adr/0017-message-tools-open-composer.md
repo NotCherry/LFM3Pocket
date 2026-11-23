@@ -10,8 +10,8 @@ Voice and chat can prepare a text message. Sending it from inside Hanami would n
 
 ## Decision
 
-1. **Two steps.** `draft_message` stores an in-memory draft (SMS, or a share to an allowlisted app). `send_message` takes that draft’s id only. It cannot supply a new body.
-2. **No silent send.** SMS opens the system composer. Share opens the allowlisted app’s composer. The user sends or abandons the message there. If that app is missing, the action fails and nothing is sent.
+1. **Two steps.** `draft_message` only stores an in-memory draft (SMS, or a share to an allowlisted app). It does not open another app. `send_message` takes that draft’s id only and is what opens the composer. It cannot supply a new body.
+2. **No silent send.** For SMS, `send_message` opens the system composer. For a share, it opens the allowlisted app’s composer. The user sends or abandons the message there. If that app is missing, the action fails and nothing is sent.
 3. **Consent.** Both steps are confirmations, same as other side effects ([ADR 0006](0006-voice-actions-loop.md)).
 4. **Not history.** Drafts are not part of the conversation store. They are dropped with the process.
 
