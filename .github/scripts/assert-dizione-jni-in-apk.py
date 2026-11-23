@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Fail when an APK was packaged without libhanami_dizione.so for the expected ABI(s)."""
+"""Fail when an APK was packaged without libhanami_dizione.so for the expected ABI(s).
+Used by Stage 1 CI, release.yml, and assert --self-test negative controls."""
 from __future__ import annotations
 
 import argparse
