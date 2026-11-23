@@ -44,8 +44,7 @@ collect_diagnostics() {
 }
 trap 'collect_diagnostics "$?"' EXIT
 
-adb wait-for-device
-test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
+bash .github/scripts/wait-for-emulator-ready.sh
 adb logcat -c || true
 
 # When APKs are already assembled (CI pre-assemble step), install them directly
@@ -67,6 +66,8 @@ fi
 
 run_connected() {
   local timeout_s="$1"
+  : > app/build/ci-artifacts/e2e-tests-started
+  date -u +%Y-%m-%dT%H:%M:%SZ | tee -a app/build/ci-artifacts/e2e-tests-started
   if [ "$SMOKE_APKS_PREBUILT" = "true" ]; then
     timeout "${timeout_s}" gradle :app:connectedSmokeDebugAndroidTest \
       -Pandroid.testInstrumentationRunnerArguments.class="$TIER_CLASSES" \

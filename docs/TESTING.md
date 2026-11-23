@@ -2,6 +2,12 @@
 
 Hung or deadlocked tests must not burn an entire CI job ([ADR 0023](adr/0023-layered-test-timeouts.md)). Limits are layered: Gradle task timeouts (whole suite), JUnit 4 rules or `@Test(timeout=…)` (per test method), and workflow scripts (emulator E2E).
 
+## Emulator E2E infrastructure readiness (CI)
+
+Stage 1 `.github/workflows/build-apk.yml` may start the API 30 emulator twice (at most) when the failure is **pre-test infrastructure** only—e.g. `adb: device offline` or `ServiceNotFoundException` for `input` before connected tests run. Real test failures are never retried.
+
+Before installing APKs or Gradle `connected*AndroidTest`, `.github/scripts/wait-for-emulator-ready.sh` waits for `sys.boot_completed=1`, checks published system services (`input`, `package`, `activity`, `window`), and recovers from offline adb (`adb reconnect`, `adb kill-server` / `start-server`) within a bounded timeout. Job and Gradle `timeout` layers in ADR 0023 are unchanged.
+
 ## Gradle (`app/build.gradle`)
 
 | Task | Mechanism | Timeout | Rationale |
