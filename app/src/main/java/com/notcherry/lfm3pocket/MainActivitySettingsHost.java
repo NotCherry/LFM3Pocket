@@ -30,8 +30,6 @@ interface MainActivitySettingsHost {
 
     void prepareSettingsRecreateForInterfaceSize();
 
-    void setChatStatus(CharSequence message);
-
     EditText addSettingInput(LinearLayout form, String title, String hint, int value, int id,
             int step, int min, int max);
 }

@@ -15,6 +15,7 @@ final class ImageSettingsSection {
     private final ImageSettingsStore store;
     private final Supplier<ImageSettings> currentSettings;
     private final Consumer<ImageSettings> onSettingsSaved;
+    private final Consumer<CharSequence> chatStatus;
     private boolean bindingImageSettings;
     private CheckBox imagePrepareBox;
     private CheckBox imageCropBox;
@@ -26,11 +27,13 @@ final class ImageSettingsSection {
     private Button imageMaxOriginalButton;
 
     ImageSettingsSection(MainActivitySettingsHost host, ImageSettingsStore store,
-            Supplier<ImageSettings> currentSettings, Consumer<ImageSettings> onSettingsSaved) {
+            Supplier<ImageSettings> currentSettings, Consumer<ImageSettings> onSettingsSaved,
+            Consumer<CharSequence> chatStatus) {
         this.host = host;
         this.store = store;
         this.currentSettings = currentSettings;
         this.onSettingsSaved = onSettingsSaved;
+        this.chatStatus = chatStatus;
     }
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
@@ -96,7 +99,7 @@ final class ImageSettingsSection {
                 persist(new ImageSettings(current.enabled, current.maxSide, current.cropToSquare, quality), true);
             } catch (RuntimeException invalid) {
                 syncFields();
-                host.setChatStatus(invalid.getMessage());
+                chatStatus.accept(invalid.getMessage());
             }
         });
         configuration.addView(section);
@@ -133,14 +136,14 @@ final class ImageSettingsSection {
                 if (host.isHostFinishing()) return;
                 onSettingsSaved.accept(validated);
                 syncFields();
-                if (announce) host.setChatStatus(validated.summary());
+                if (announce) chatStatus.accept(validated.summary());
             }, failure -> {
                 if (host.isHostFinishing()) return;
-                host.setChatStatus("Image settings were not saved: " + failure);
+                chatStatus.accept("Image settings were not saved: " + failure);
                 syncFields();
             });
         } catch (IllegalArgumentException invalid) {
-            host.setChatStatus(invalid.getMessage());
+            chatStatus.accept(invalid.getMessage());
             syncFields();
         }
     }

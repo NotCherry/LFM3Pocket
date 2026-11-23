@@ -22,10 +22,11 @@ final class SearchSettingsSection {
         final Runnable updateControls;
         final BooleanSupplier activityBusy;
         final Runnable openSearchSettings;
+        final Consumer<CharSequence> chatStatus;
 
         Deps(Supplier<String> endpoint, BooleanSupplier enabled, SearchPersist persist,
                 Consumer<Boolean> setChatIdleMode, Runnable updateControls, BooleanSupplier activityBusy,
-                Runnable openSearchSettings) {
+                Runnable openSearchSettings, Consumer<CharSequence> chatStatus) {
             this.endpoint = endpoint;
             this.enabled = enabled;
             this.persist = persist;
@@ -33,6 +34,7 @@ final class SearchSettingsSection {
             this.updateControls = updateControls;
             this.activityBusy = activityBusy;
             this.openSearchSettings = openSearchSettings;
+            this.chatStatus = chatStatus;
         }
     }
 
@@ -106,7 +108,7 @@ final class SearchSettingsSection {
         if (searchEndpointField == null) return;
         String value = searchEndpointField.getText().toString().trim();
         if (!SearchEndpointPolicy.accepts(value)) {
-            host.setChatStatus("Use an HTTPS SearXNG search endpoint.");
+            deps.chatStatus.accept("Use an HTTPS SearXNG search endpoint.");
             return;
         }
         boolean enabled = SearchEndpointPolicy.enabled(searchEnabledBox.isChecked(), value);

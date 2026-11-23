@@ -9,6 +9,7 @@ import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
@@ -19,13 +20,15 @@ final class BackgroundSettingsSection {
         final BackgroundApply apply;
         final Supplier<String> loopbackToken;
         final IntSupplier loopbackPort;
+        final Consumer<CharSequence> chatStatus;
 
         Deps(Supplier<RuntimePreferences> preferences, BackgroundApply apply,
-                Supplier<String> loopbackToken, IntSupplier loopbackPort) {
+                Supplier<String> loopbackToken, IntSupplier loopbackPort, Consumer<CharSequence> chatStatus) {
             this.preferences = preferences;
             this.apply = apply;
             this.loopbackToken = loopbackToken;
             this.loopbackPort = loopbackPort;
+            this.chatStatus = chatStatus;
         }
     }
 
@@ -118,7 +121,7 @@ final class BackgroundSettingsSection {
                             (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
                     if (clipboard != null) {
                         clipboard.setPrimaryClip(ClipData.newPlainText("Hanami loopback token", token));
-                        host.setChatStatus(host.getString(R.string.loopback_token_copied));
+                        deps.chatStatus.accept(host.getString(R.string.loopback_token_copied));
                     }
                 })
                 .setNegativeButton(android.R.string.cancel, null)
