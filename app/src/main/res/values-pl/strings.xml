@@ -157,6 +157,7 @@
     <string name="speech_input_cactus_status_missing">Cactus Whistle STT nieskonfigurowane</string>
     <string name="voice_system_tts_fallback">Głos systemowy (oznaczony TTS)</string>
     <string name="voice_mic_required">Do funkcji Mów potrzebne jest uprawnienie mikrofonu.</string>
+    <string name="voice_talk_reply_running">Zakończ bieżącą odpowiedź, zanim użyjesz funkcji Mów.</string>
     <string name="voice_record_talkback">Polecenie głosowe. Dwukrotne stuknięcie włącza lub wyłącza nasłuch; można też przytrzymać.</string>
     <string name="notification_action_review">Przejrzyj</string>
     <string name="notification_action_approve">Zatwierdź</string>
