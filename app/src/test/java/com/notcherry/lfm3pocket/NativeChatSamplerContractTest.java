@@ -44,7 +44,7 @@ public final class NativeChatSamplerContractTest {
     }
 
     private static String read(Path path) throws IOException {
-        return Files.readString(path, StandardCharsets.UTF_8);
+        return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
     }
 
     private static Path repoRoot() {
