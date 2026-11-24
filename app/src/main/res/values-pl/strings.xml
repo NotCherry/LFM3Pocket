@@ -148,12 +148,14 @@
     <string name="speech_input_cactus_download">Pobierz model Whistle</string>
     <string name="speech_input_cactus_clear">Usuń model Whistle</string>
     <string name="speech_input_cactus_downloading">Pobieranie %1$s…</string>
-    <string name="speech_input_cactus_help">Opcjonalne STT na urządzeniu (Whistle .cact ~16,9 MB, Apache-2.0). Naciśnij Pobierz, aby pobrać przypięty model z Hugging Face, albo wybierz własny plik .cact z pamięci lokalnej. Wymaga kompilacji z runtime Cactus dla ABI Androida. Początkowa konfiguracja aplikacji jest anglojęzyczna.</string>
+    <string name="speech_input_cactus_help">Opcjonalne STT na urządzeniu (Whistle .cact ~16,9 MB, Apache-2.0). Naciśnij Pobierz, aby pobrać przypięty model z Hugging Face, albo wybierz własny plik .cact z pamięci lokalnej. Po wybraniu Cactus Whistle STT stuknij Wejście głosowe w czacie, aby nagrać, i stuknij ponownie, aby dokonać transkrypcji i wysłać (obsługuje angielski, polski, niemiecki, francuski, hiszpański, włoski i niderlandzki).</string>
     <string name="speech_input_cactus_unavailable">Cactus Whistle STT niedostępne: %1$s</string>
     <string name="speech_input_transcribing">Lokalna transkrypcja mowy…</string>
+    <string name="speech_input_transcribed_draft">Transkrypcja gotowa. Załaduj model, aby wysłać.</string>
     <string name="speech_input_transcript_empty">Nie wykryto mowy. Spróbuj ponownie.</string>
     <string name="speech_input_transcript_failed">Transkrypcja mowy nie powiodła się: %1$s</string>
     <string name="speech_input_cactus_status_ready">Cactus Whistle STT gotowe</string>
+    <string name="speech_input_cactus_ready_select_mode">Gotowe — stuknij Cactus Whistle STT powyżej, aby używać w czacie</string>
     <string name="speech_input_cactus_status_missing">Cactus Whistle STT nieskonfigurowane</string>
     <string name="voice_system_tts_fallback">Głos systemowy (oznaczony TTS)</string>
     <string name="voice_mic_required">Do funkcji Mów potrzebne jest uprawnienie mikrofonu.</string>

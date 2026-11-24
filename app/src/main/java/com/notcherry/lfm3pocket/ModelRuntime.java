@@ -160,6 +160,9 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     }
 
     public VoiceActionRuntime voice() { return voiceActions; }
+    public void refreshVoiceAvailability() {
+        dispatchPolicy(() -> policy.onVoiceTalkAvailable(voiceActions.isEnabled()));
+    }
     @Override public long modelHandle() { return handle; }
     public long handle() { return handle; }
     @Override public InferenceEngine engine() { return engine; }

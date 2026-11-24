@@ -160,12 +160,14 @@ com.whatsapp</string>
     <string name="speech_input_cactus_download">Download Whistle model</string>
     <string name="speech_input_cactus_clear">Remove Whistle model</string>
     <string name="speech_input_cactus_downloading">Downloading %1$s…</string>
-    <string name="speech_input_cactus_help">Optional on-device STT (Whistle .cact ~16.9 MB, Apache-2.0). Tap Download to fetch a pinned model from Hugging Face, or select your own .cact file from local storage. Requires a build that includes the Cactus runtime for your Android ABI. English-only is the initial app configuration.</string>
+    <string name="speech_input_cactus_help">Optional on-device STT (Whistle .cact ~16.9 MB, Apache-2.0). Tap Download to fetch a pinned model from Hugging Face, or select your own .cact file from local storage. When Cactus Whistle STT is selected, tap Voice input in chat to record and tap again to transcribe and send (supports English, Polish, German, French, Spanish, Italian, and Dutch).</string>
     <string name="speech_input_cactus_unavailable">Cactus Whistle STT is unavailable: %1$s</string>
     <string name="speech_input_transcribing">Transcribing speech locally…</string>
+    <string name="speech_input_transcribed_draft">Transcribed locally. Load a model to send.</string>
     <string name="speech_input_transcript_empty">No speech detected. Try again.</string>
     <string name="speech_input_transcript_failed">Speech transcription failed: %1$s</string>
     <string name="speech_input_cactus_status_ready">Cactus Whistle STT ready</string>
+    <string name="speech_input_cactus_ready_select_mode">Ready — tap Cactus Whistle STT above to use in chat</string>
     <string name="speech_input_cactus_status_missing">Cactus Whistle STT not configured</string>
     <string name="voice_system_tts_fallback">System voice (labelled TTS)</string>
     <string name="voice_mic_required">Microphone permission is required for Talk.</string>

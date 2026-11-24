@@ -16,11 +16,29 @@ public final class CactusWhistleBridge {
     private static volatile String loadedModelPath = "";
     private static volatile boolean modelLoaded;
 
+    /** Test-only seam for JVM and instrumentation tests when native Cactus is stubbed. */
+    interface TestHook {
+        SttAvailability availability(String modelPath);
+        SttResult transcribe(String modelPath, float[] pcm16kMono, AtomicBoolean cancelled);
+    }
+
+    static volatile TestHook testHook;
+
     private CactusWhistleBridge() {}
 
     public static boolean isNativeAvailable() {
+        TestHook hook = testHook;
+        if (hook != null) return true;
         ensureLoaded();
         return nativeAvailable;
+    }
+
+    /** Clears cached loaded-model state when the user removes or replaces the Whistle file. */
+    public static synchronized void resetLoadedModel() {
+        synchronized (LOCK) {
+            modelLoaded = false;
+            loadedModelPath = "";
+        }
     }
 
     /** Mirrors native DOTPROD guard (docs/adr/0001-arm64-dotprod-and-kv-residency.md). */
@@ -34,6 +52,8 @@ public final class CactusWhistleBridge {
     }
 
     public static synchronized SttAvailability availability(String modelPath) {
+        TestHook hook = testHook;
+        if (hook != null) return hook.availability(modelPath);
         ensureLoaded();
         if (!nativeAvailable) {
             return SttAvailability.unavailable("Cactus runtime is not available in this build");
@@ -49,6 +69,8 @@ public final class CactusWhistleBridge {
     }
 
     public static synchronized SttResult transcribe(String modelPath, float[] pcm16kMono, AtomicBoolean cancelled) {
+        TestHook hook = testHook;
+        if (hook != null) return hook.transcribe(modelPath, pcm16kMono, cancelled);
         ensureLoaded();
         if (!nativeAvailable) {
             return SttResult.unavailable("Cactus runtime is not available in this build");
@@ -97,7 +119,12 @@ public final class CactusWhistleBridge {
                 String err = nativeLastError();
                 return err == null || err.trim().isEmpty() ? "Could not load Cactus Whistle model" : err;
             }
-            nativeInit("", "", null);
+            // Whistle is a speech-only .cact model (cactus_init is for Needle text models and returns -1).
+            try {
+                nativeSetThreads(CpuTopology.recommendedDecodeThreads());
+            } catch (Throwable ignored) {
+                // Keep runtime defaults if thread tuning is unavailable.
+            }
             return null;
         } catch (IOException e) {
             return "Could not read Cactus Whistle model: " + e.getMessage();
@@ -115,6 +142,8 @@ public final class CactusWhistleBridge {
             if (loadedAttempted) return;
             loadedAttempted = true;
             try {
+                // Load liblfm3pocket explicitly so availability() works even before NativeBridge loads a GGUF.
+                System.loadLibrary("lfm3pocket");
                 // Implemented in liblfm3pocket when built with HANAMI_CACTUS_WHISTLE.
                 nativeAvailable = nativeProbe() && cactusCpuSupported();
             } catch (Throwable ignored) {
@@ -156,7 +185,7 @@ public final class CactusWhistleBridge {
 
     private static native boolean nativeProbe();
     private static native int nativeLoad(byte[] modelBytes);
-    private static native int nativeInit(String systemPrompt, String toolsJson, String toolIndexPath);
+    private static native void nativeSetThreads(int threads);
     private static native String nativeLastError();
     private static native String nativeTranscribe(float[] pcm, int samples, String language, String keywords, boolean wordTimestamps);
 }

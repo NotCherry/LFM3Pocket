@@ -263,6 +263,7 @@ final class IntegrationsSettingsSection {
         speechInputCactusClearButton.setOnClickListener(v -> {
             deps.preferences.get().setCactusWhistleModelPath("");
             new CactusWhistleModelStore(host.settingsActivity()).clear();
+            CactusWhistleBridge.resetLoadedModel();
             paintSpeechInputControls();
             deps.updateControls.run();
         });
@@ -352,12 +353,16 @@ final class IntegrationsSettingsSection {
         RuntimePreferences prefs = deps.preferences.get();
         SpeechInputMode mode = prefs.speechInputMode();
         if (speechInputOmniButton != null) {
-            speechInputOmniButton.setSelected(mode == SpeechInputMode.OMNI_AUDIO);
-            speechInputOmniButton.setAlpha(mode == SpeechInputMode.OMNI_AUDIO ? 1f : 0.7f);
+            boolean selected = mode == SpeechInputMode.OMNI_AUDIO;
+            speechInputOmniButton.setSelected(selected);
+            if (selected) StillwaterUi.primary(speechInputOmniButton);
+            else StillwaterUi.quiet(speechInputOmniButton);
         }
         if (speechInputWhistleButton != null) {
-            speechInputWhistleButton.setSelected(mode == SpeechInputMode.CACTUS_WHISTLE_STT);
-            speechInputWhistleButton.setAlpha(mode == SpeechInputMode.CACTUS_WHISTLE_STT ? 1f : 0.7f);
+            boolean selected = mode == SpeechInputMode.CACTUS_WHISTLE_STT;
+            speechInputWhistleButton.setSelected(selected);
+            if (selected) StillwaterUi.primary(speechInputWhistleButton);
+            else StillwaterUi.quiet(speechInputWhistleButton);
         }
         CactusWhistleModelStore store = new CactusWhistleModelStore(host.settingsActivity());
         String path = prefs.cactusWhistleModelPath();
@@ -372,17 +377,28 @@ final class IntegrationsSettingsSection {
             hasPath = true;
         }
         boolean downloading = CactusWhistleModelDownloader.isDownloading();
-        if (speechInputCactusStatus != null && !downloading) {
-            SttAvailability availability = CactusWhistleBridge.availability(path);
-            String label;
-            if (!hasPath) {
-                label = host.getString(R.string.speech_input_cactus_model_none);
+        if (speechInputCactusStatus != null) {
+            if (downloading) {
+                CharSequence current = speechInputCactusStatus.getText();
+                String currentStr = current == null ? "" : current.toString();
+                if (!currentStr.contains("%")) {
+                    speechInputCactusStatus.setText(host.getString(R.string.model_download_starting));
+                }
             } else {
-                label = new File(path).getName() + " · " + (availability.available
-                        ? host.getString(R.string.speech_input_cactus_status_ready)
-                        : availability.message);
+                SttAvailability availability = CactusWhistleBridge.availability(path);
+                String label;
+                if (!hasPath) {
+                    label = host.getString(R.string.speech_input_cactus_model_none);
+                } else if (availability.available) {
+                    String readyMsg = mode == SpeechInputMode.CACTUS_WHISTLE_STT
+                            ? host.getString(R.string.speech_input_cactus_status_ready)
+                            : host.getString(R.string.speech_input_cactus_ready_select_mode);
+                    label = new File(path).getName() + " · " + readyMsg;
+                } else {
+                    label = new File(path).getName() + " · " + availability.message;
+                }
+                speechInputCactusStatus.setText(label);
             }
-            speechInputCactusStatus.setText(label);
         }
         if (speechInputCactusDownloadButton != null) {
             speechInputCactusDownloadButton.setEnabled(!downloading && !store.isReady());

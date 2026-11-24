@@ -529,7 +529,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 () -> runtime.loopbackToken(), () -> runtime.loopbackPort(), this::setChatStatus));
         backgroundSettingsSection.mount(configuration, ink, inkMuted);
         integrationsSettingsSection = new IntegrationsSettingsSection(this, new IntegrationsSettingsSection.Deps(
-                () -> new RuntimePreferences(this), this::updateControls, this::pickCalendarTarget,
+                () -> new RuntimePreferences(this), () -> {
+                    if (runtime != null) runtime.refreshVoiceAvailability();
+                    updateControls();
+                }, this::pickCalendarTarget,
                 this::pickWhistleModel, this::downloadCactusWhistleModel, this::downloadTinyVocaPack,
                 this::runOnUiThread, this::setChatStatus));
         integrationsSettingsSection.mount(configuration, ink, inkMuted);
@@ -587,11 +590,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             }
         });
         recordButton.setOnClickListener(v -> {
-            if (runtime.voice().isEnabled() && voicePtt.onClick(v)) return;
-            if (runtime.voice().isEnabled()) return;
+            if (useVoicePttInChat() && voicePtt.onClick(v)) return;
+            if (useVoicePttInChat()) return;
             toggleRecording();
         });
-        recordButton.setOnTouchListener((v, event) -> runtime.voice().isEnabled() && voicePtt.onTouch(v, event));
+        recordButton.setOnTouchListener((v, event) -> useVoicePttInChat() && voicePtt.onTouch(v, event));
         speakButton.setOnClickListener(v -> toggleSpokenReply());
         // Keep Settings open across interface-size recreate via EXTRA_OPEN_SETTINGS only.
         // Do not persist settings_open in savedInstanceState — InferenceSettingsE2eTest and
@@ -600,6 +603,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             setSettingsOpen(true);
         }
         applyDraft(getIntent());
+    }
+
+    /**
+     * In Cactus Whistle STT mode, Chat's Voice input button always uses tap-to-record -> local STT
+     * -> normal text chat pipeline so transcribed turns appear in Chat and History. Hold-to-talk
+     * VoicePttCoordinator stays active only for LFM3-Omni voice actions.
+     */
+    private boolean useVoicePttInChat() {
+        if (SpeechInputProviders.usesSttTextPipeline(this)) return false;
+        return runtime != null && runtime.voice().isEnabled();
     }
 
     private void setSettingsOpen(boolean open) {
@@ -622,12 +635,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         cameraButton.setEnabled(!busy);
         if (documentButton != null) documentButton.setEnabled(!busy);
         RecordingController.State capture = recordingController.state();
-        boolean voiceMic = runtime.voice().isEnabled();
-        boolean voiceListening = voiceMic && runtime.voice().isListening();
+        boolean voiceMic = useVoicePttInChat();
+        boolean voiceListening = runtime != null && runtime.voice().isEnabled() && runtime.voice().isListening();
         recordButton.setText(capture == RecordingController.State.STOPPING ? getString(R.string.finishing)
                 : voiceListening ? getString(R.string.voice_listening)
                 : recordingActive() ? getString(R.string.stop_recording) : getString(R.string.voice_input));
-        if (voiceMic) {
+        if (voiceMic || voiceListening) {
             String description = (voiceUiStatus != null && !voiceUiStatus.isEmpty())
                     ? voiceUiStatus
                     : (voiceListening ? getString(R.string.voice_listening)
@@ -1115,6 +1128,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void toggleRecording() {
         if (recordingActive()) { recordingController.stop(); return; }
         if (busy || !foreground) return;
+        if (!ensureSttInputReadyIfSelected()) return;
         if (!((Lfm3PocketApplication)getApplication()).hasMicrophonePermission()) {
             microphoneRequested = true;
             requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQUEST_AUDIO);
@@ -1122,6 +1136,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         }
         voiceSttCancelled.set(false);
         recordingController.start();
+    }
+
+    private boolean ensureSttInputReadyIfSelected() {
+        if (!SpeechInputProviders.usesSttTextPipeline(this)) return true;
+        SttAvailability availability = SpeechInputProviders.current(this).availability(this);
+        if (availability.available) return true;
+        String detail = availability.message == null || availability.message.isEmpty()
+                ? getString(R.string.speech_input_cactus_status_missing)
+                : availability.message;
+        setChatStatus(getString(R.string.speech_input_cactus_unavailable, detail));
+        return false;
     }
 
     private void handleCompletedRecordingAsStt(File wav) {
@@ -1165,6 +1190,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                     return;
                 }
                 updateControls();
+                if (modelHandle() == 0L || !settingsLoaded || busy) {
+                    if (chatPanel != null) chatPanel.setDraft(stt.text);
+                    setChatStatus(getString(R.string.speech_input_transcribed_draft));
+                    return;
+                }
                 // Route recognized text into the existing text/inference pipeline (same as typed text).
                 send(stt.text);
             });
@@ -1202,9 +1232,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 maybeStartPendingAssistantVoiceSession();
                 return;
             }
-            if (granted
-                    && foreground && !destroyed && !busy) recordingController.start();
-            else setChatStatus("Microphone access is needed for voice input.");
+            if (granted && foreground && !destroyed && !busy) {
+                if (ensureSttInputReadyIfSelected()) recordingController.start();
+            } else {
+                setChatStatus("Microphone access is needed for voice input.");
+            }
             if (!granted) pendingAssistantVoiceSession = false;
             return;
         }
@@ -1476,7 +1508,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 File saved = dest;
                 runOnUiThread(() -> {
                     if (destroyed) return;
+                    CactusWhistleBridge.resetLoadedModel();
                     new RuntimePreferences(this).setCactusWhistleModelPath(saved.getAbsolutePath());
+                    if (runtime != null) runtime.refreshVoiceAvailability();
                     if (integrationsSettingsSection != null) integrationsSettingsSection.paintSpeechInputControls();
                     busy = false;
                     setChatStatus(saved.getName() + " selected for Cactus Whistle STT.");
