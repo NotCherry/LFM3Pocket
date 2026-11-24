@@ -77,14 +77,14 @@ public final class BackgroundNotificationE2eTest {
             assertNotNull("Settings control unavailable from chat; " + runtimeState(), settings);
             settings.click();
             assertNotNull("Settings did not open", device.wait(Until.hasObject(By.res(pkg, "settings_back")), UI_WAIT));
-            scrollToSetting("settings_keep_loaded");
+            SettingsScrollHelper.scrollToViewId(scenario, device, R.id.settings_keep_loaded);
             UiObject2 keep = device.wait(Until.findObject(By.res(pkg, "settings_keep_loaded")), UI_WAIT);
             assertNotNull("Keep-loaded control missing in settings", keep);
             assertTrue("Keep-loaded should be enabled by default", keep.isChecked());
-            scrollToSetting("settings_idle_unload");
+            SettingsScrollHelper.scrollToViewId(scenario, device, R.id.settings_idle_unload);
             assertNotNull("Idle unload control missing in settings",
                     device.wait(Until.findObject(By.res(pkg, "settings_idle_unload")), UI_WAIT));
-            scrollToSetting("settings_lock_preview");
+            SettingsScrollHelper.scrollToViewId(scenario, device, R.id.settings_lock_preview);
             assertNotNull("Lock preview control missing in settings",
                     device.wait(Until.findObject(By.res(pkg, "settings_lock_preview")), UI_WAIT));
             if (captureShots) shoot("settings_background.png");
@@ -173,17 +173,6 @@ public final class BackgroundNotificationE2eTest {
         } catch (Throwable t) {
             return "runtime[unavailable:" + t.getClass().getSimpleName() + "]";
         }
-    }
-
-    private void scrollToSetting(String resourceId) {
-        try {
-            UiScrollable scroll = new UiScrollable(new UiSelector().resourceId(pkg + ":id/model_configuration_scroll"));
-            scroll.setAsVerticalList();
-            scroll.scrollIntoView(new UiSelector().resourceId(pkg + ":id/" + resourceId));
-        } catch (Exception ignored) {
-            // Best-effort scroll; the explicit find/wait that follows will fail with context if needed.
-        }
-        device.waitForIdle(250);
     }
 
     private void shootShade(String name) {

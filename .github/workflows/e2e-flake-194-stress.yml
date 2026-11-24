@@ -62,16 +62,30 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Cache smoke native/CMake outputs
+      - name: Set up ccache
+        run: |
+          if ! command -v ccache >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ccache
+          fi
+          mkdir -p "$HOME/.ccache"
+          {
+            echo "HANAMI_USE_CCACHE=1"
+            echo "CCACHE_DIR=$HOME/.ccache"
+            echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
+            echo "CCACHE_NOHASHDIR=true"
+            echo "CCACHE_COMPILERCHECK=string:ndk-27.2.12479018"
+            echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime"
+            echo "CCACHE_COMPRESS=true"
+            echo "CCACHE_MAXSIZE=500M"
+          } >> "$GITHUB_ENV"
+      - name: Cache ccache (x86_64 native)
         uses: actions/cache@v4
         with:
-          path: |
-            app/.cxx
-            app/build/intermediates/cxx
-            app/build/intermediates/cmake
-          key: smoke-native-${{ runner.os }}-ndk27.2.12479018-cmake3.22.1-bt35.0.0-api35-x86_64-vulkan-off-${{ hashFiles('vendor/LLAMA_CPP_COMMIT', 'vendor/VOCA_COMMIT', 'app/src/main/cpp/**', 'app/build.gradle', 'gradle.properties', 'scripts/build-dizione-jni.sh', 'scripts/fetch-llama.sh', 'scripts/fetch-voca.sh') }}
+          path: ~/.ccache
+          key: ccache-smoke-${{ runner.os }}-ndk27.2.12479018-x86_64-vulkan-off-${{ hashFiles('vendor/LLAMA_CPP_COMMIT', 'app/src/main/cpp/**', 'app/build.gradle') }}
           restore-keys: |
-            smoke-native-${{ runner.os }}-ndk27.2.12479018-cmake3.22.1-bt35.0.0-api35-x86_64-vulkan-off-
+            ccache-smoke-${{ runner.os }}-ndk27.2.12479018-x86_64-vulkan-off-
       - name: Cache checksum-verified smoke GGUF
         uses: actions/cache@v4
         with:
@@ -91,43 +105,28 @@ jobs:
           restore-keys: |
             cargo-jni-${{ runner.os }}-
       - name: Assemble emulator app and instrumentation APKs
-        run: gradle :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
+        run: |
+          ccache -z || true
+          gradle :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
+          ccache -s || true
       - name: Enable KVM access for Android emulator
         run: |
           test -e /dev/kvm
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Cache AVD snapshot
-        id: avd-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-ubuntu-api30-google_apis-x86_64-v3
-      - name: Create AVD and generate snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: false
-          emulator-boot-timeout: 600
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: echo "Generated AVD snapshot for caching."
       - name: Run repeated #194 stress tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
           target: google_apis
           arch: x86_64
+          cores: 4
+          ram-size: 4096M
           force-avd-creation: false
           emulator-boot-timeout: 600
           disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: |
             set -Eeuo pipefail
             mkdir -p app/build/ci-artifacts/stress-194

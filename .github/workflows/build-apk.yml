@@ -39,20 +39,6 @@ jobs:
     steps:
       - name: Checkout application
         uses: actions/checkout@v4
-      - name: Cache llama.cpp sources
-        uses: actions/cache@v4
-        with:
-          path: third_party/llama.cpp
-          key: llama-cpp-${{ hashFiles('vendor/LLAMA_CPP_COMMIT') }}
-      - name: Fetch llama.cpp (LFM3-capable)
-        run: bash scripts/fetch-llama.sh
-      - name: Cache voca sources
-        uses: actions/cache@v4
-        with:
-          path: vendor/voca
-          key: voca-${{ hashFiles('vendor/VOCA_COMMIT') }}
-      - name: Fetch voca phonemizer (tiny-voca)
-        run: bash scripts/fetch-voca.sh
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -90,32 +76,35 @@ jobs:
           bash -n .github/scripts/collect-arm64-omni-evidence.sh
           bash .github/scripts/collect-arm64-omni-evidence.sh --self-test
       - name: Execute JVM JUnit tests
-        # Hang diagnostics: background Gradle, periodic jstack. Fail fast (~12m) instead of
-        # burning the full 30m job timeout when a unit test deadlocks (seen after #233).
-        # Log is tailed into the job stream so failed test names stay visible; exit status
-        # comes from the Gradle PID (not a tee pipeline).
+        # Hang diagnostics: background Gradle, periodic jstack every 90s while running.
+        # Fail fast (~12m) instead of burning the full 30m job timeout when a unit test
+        # deadlocks (seen after #233). Poll at 1s so we exit immediately when Gradle finishes.
         timeout-minutes: 15
         run: |
           set -euo pipefail
           mkdir -p ci-diag
           : > gradle-jvm-tests.log
-          gradle :app:testSmokeDebugUnitTest --no-daemon --stacktrace > gradle-jvm-tests.log 2>&1 &
+          gradle :app:testSmokeDebugUnitTest -Phanami.skipNative=true --no-daemon --stacktrace > gradle-jvm-tests.log 2>&1 &
           GRADLE_PID=$!
           tail -n +1 -F gradle-jvm-tests.log &
           TAIL_PID=$!
           echo "Gradle PID: $GRADLE_PID"
           status=0
-          for i in 1 2 3 4 5 6 7 8; do
-            sleep 90
-            if ! kill -0 "$GRADLE_PID" 2>/dev/null; then
-              break
+          elapsed=0
+          next_dump=90
+          max_wait=720
+          while kill -0 "$GRADLE_PID" 2>/dev/null && [ "$elapsed" -lt "$max_wait" ]; do
+            sleep 1
+            elapsed=$((elapsed + 1))
+            if [ "$elapsed" -ge "$next_dump" ] && kill -0 "$GRADLE_PID" 2>/dev/null; then
+              echo "--- Thread dump at +${elapsed}s ---" | tee -a ci-diag/thread-dumps.log
+              jps -l | tee -a ci-diag/thread-dumps.log || true
+              for pid in $(jps -q); do
+                echo "--- jstack $pid ---" | tee -a ci-diag/thread-dumps.log
+                jstack "$pid" >> ci-diag/thread-dumps.log 2>&1 || true
+              done
+              next_dump=$((next_dump + 90))
             fi
-            echo "--- Thread dump at +$((i*90/60))m ---" | tee -a ci-diag/thread-dumps.log
-            jps -l | tee -a ci-diag/thread-dumps.log || true
-            for pid in $(jps -q); do
-              echo "--- jstack $pid ---" | tee -a ci-diag/thread-dumps.log
-              jstack "$pid" >> ci-diag/thread-dumps.log 2>&1 || true
-            done
           done
           if kill -0 "$GRADLE_PID" 2>/dev/null; then
             echo "ERROR: JVM unit tests still running after ~12m; dumping threads and aborting" | tee -a ci-diag/thread-dumps.log
@@ -203,16 +192,30 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Cache smoke native/CMake outputs
+      - name: Set up ccache
+        run: |
+          if ! command -v ccache >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ccache
+          fi
+          mkdir -p "$HOME/.ccache"
+          {
+            echo "HANAMI_USE_CCACHE=1"
+            echo "CCACHE_DIR=$HOME/.ccache"
+            echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
+            echo "CCACHE_NOHASHDIR=true"
+            echo "CCACHE_COMPILERCHECK=string:ndk-27.2.12479018"
+            echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime"
+            echo "CCACHE_COMPRESS=true"
+            echo "CCACHE_MAXSIZE=500M"
+          } >> "$GITHUB_ENV"
+      - name: Cache ccache (x86_64 native)
         uses: actions/cache@v4
         with:
-          path: |
-            app/.cxx
-            app/build/intermediates/cxx
-            app/build/intermediates/cmake
-          key: smoke-native-${{ runner.os }}-ndk27.2.12479018-cmake3.22.1-bt35.0.0-api35-x86_64-vulkan-off-${{ hashFiles('vendor/LLAMA_CPP_COMMIT', 'vendor/VOCA_COMMIT', 'app/src/main/cpp/**', 'app/build.gradle', 'gradle.properties', 'scripts/build-dizione-jni.sh', 'scripts/fetch-llama.sh', 'scripts/fetch-voca.sh') }}
+          path: ~/.ccache
+          key: ccache-smoke-${{ runner.os }}-ndk27.2.12479018-x86_64-vulkan-off-${{ hashFiles('vendor/LLAMA_CPP_COMMIT', 'app/src/main/cpp/**', 'app/build.gradle') }}
           restore-keys: |
-            smoke-native-${{ runner.os }}-ndk27.2.12479018-cmake3.22.1-bt35.0.0-api35-x86_64-vulkan-off-
+            ccache-smoke-${{ runner.os }}-ndk27.2.12479018-x86_64-vulkan-off-
       - name: Cache checksum-verified smoke GGUF
         uses: actions/cache@v4
         with:
@@ -241,7 +244,10 @@ jobs:
       - name: Assemble emulator app and instrumentation APKs
         env:
           HANAMI_REQUIRE_DIZIONE: '1'
-        run: gradle :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
+        run: |
+          ccache -z || true
+          gradle :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
+          ccache -s || true
       - name: Assert smoke APK packages dizione JNI (x86_64)
         run: python3 .github/scripts/assert-dizione-jni-in-apk.py app/build/outputs/apk/smoke/debug/app-smoke-debug.apk --abis x86_64
       - name: Enable KVM access for Android emulator
@@ -250,26 +256,6 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Cache AVD snapshot
-        id: avd-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-ubuntu-api30-google_apis-x86_64-v3
-      - name: Create AVD and generate snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: false
-          emulator-boot-timeout: 600
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: echo "Generated AVD snapshot for caching."
       - name: Execute connected JNI smoke and real UI E2E tests (attempt 1/2)
         id: emulator-e2e-1
         continue-on-error: true
@@ -280,6 +266,8 @@ jobs:
           api-level: 30
           target: google_apis
           arch: x86_64
+          cores: 4
+          ram-size: 4096M
           force-avd-creation: false
           emulator-boot-timeout: 420
           disable-animations: true
@@ -300,6 +288,8 @@ jobs:
           api-level: 30
           target: google_apis
           arch: x86_64
+          cores: 4
+          ram-size: 4096M
           force-avd-creation: false
           emulator-boot-timeout: 420
           disable-animations: true
@@ -375,11 +365,35 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
       - name: Set up Rust for dizione JNI
-        run: rustup target add aarch64-linux-android x86_64-linux-android
+        run: rustup target add aarch64-linux-android
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Set up ccache
+        run: |
+          if ! command -v ccache >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ccache
+          fi
+          mkdir -p "$HOME/.ccache"
+          {
+            echo "HANAMI_USE_CCACHE=1"
+            echo "CCACHE_DIR=$HOME/.ccache"
+            echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
+            echo "CCACHE_NOHASHDIR=true"
+            echo "CCACHE_COMPILERCHECK=string:ndk-27.2.12479018"
+            echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime"
+            echo "CCACHE_COMPRESS=true"
+            echo "CCACHE_MAXSIZE=500M"
+          } >> "$GITHUB_ENV"
+      - name: Cache ccache (arm64-v8a native)
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-phone-${{ runner.os }}-ndk27.2.12479018-arm64-v8a-vulkan-off-${{ hashFiles('vendor/LLAMA_CPP_COMMIT', 'vendor/CACTUS_ANDROID_ARM64.sha256', 'app/src/main/cpp/**', 'app/build.gradle') }}
+          restore-keys: |
+            ccache-phone-${{ runner.os }}-ndk27.2.12479018-arm64-v8a-vulkan-off-
       - name: Cache Cargo (dizione JNI)
         uses: actions/cache@v4
         with:
@@ -395,7 +409,10 @@ jobs:
         env:
           HANAMI_REQUIRE_DIZIONE: '1'
           HANAMI_REQUIRE_CACTUS: 'ON'
-        run: gradle :app:assemblePhoneDebug :app:assembleDeviceCheckDebug :app:assembleDeviceCheckDebugAndroidTest --no-daemon --stacktrace -Phanami.requireCactus=ON
+        run: |
+          ccache -z || true
+          gradle :app:assemblePhoneDebug :app:assembleDeviceCheckDebug :app:assembleDeviceCheckDebugAndroidTest --no-daemon --stacktrace -Phanami.requireCactus=ON -Phanami.deviceCheckAbis=arm64-v8a
+          ccache -s || true
       - name: Assert ARM64 APK exists
         run: test -s app/build/outputs/apk/phone/debug/app-phone-debug.apk
       - name: Assert phone APK packages dizione JNI (arm64-v8a)

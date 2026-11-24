@@ -17,11 +17,10 @@ name: Publish GitHub Release
 #   HANAMI_KEYSTORE_BASE64, HANAMI_STORE_PASSWORD, HANAMI_KEY_ALIAS, HANAMI_KEY_PASSWORD
 # Missing secrets → unsigned APK with a clear note in the release body. Main stays green.
 on:
+  workflow_run:
+    workflows: ["Android Stage 1 CI"]
+    types: [completed]
   push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
     tags:
       - 'v*'
   workflow_dispatch:
@@ -36,18 +35,26 @@ permissions:
   actions: read
 
 concurrency:
-  group: publish-github-release-${{ github.event_name }}-${{ github.ref }}
+  group: publish-github-release-${{ github.event_name }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
   cancel-in-progress: false
 
 jobs:
   publish:
     name: Attach APK to GitHub Release
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
     steps:
       - name: Checkout application
         uses: actions/checkout@v4
         with:
+          ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
           # Need a token that can push the auto-release tag.
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -55,15 +62,23 @@ jobs:
       - name: Verify Android Stage 1 CI succeeded for release commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
+          if [ "$EVENT_NAME" = 'workflow_run' ]; then
+            attempts=5
+            sleep_s=5
+          else
+            attempts=180
+            sleep_s=30
+          fi
           python3 .github/scripts/assert-release-ci-gate.py wait \
             --repo "$GITHUB_REPOSITORY" \
             --workflow build-apk.yml \
-            --sha "$GITHUB_SHA" \
+            --sha "$RELEASE_SHA" \
             --api-url "$GITHUB_API_URL" \
             --token-env GH_TOKEN \
-            --attempts 180 \
-            --sleep 30
+            --attempts "$attempts" \
+            --sleep "$sleep_s"
 
       - name: Prove version bump logic
         run: python3 .github/scripts/next-hanami-version.py --self-test
@@ -75,7 +90,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           REF_TYPE: ${{ github.ref_type }}
           DISPATCH_TAG: ${{ inputs.tag }}
-          PUSH_SHA: ${{ github.sha }}
+          PUSH_SHA: ${{ env.RELEASE_SHA }}
         run: |
           set -euo pipefail
           short_sha() { echo "$1" | cut -c1-7; }
@@ -89,7 +104,15 @@ jobs:
             echo "make_latest=true" >> "$GITHUB_OUTPUT"
             echo "sha=$PUSH_SHA" >> "$GITHUB_OUTPUT"
             echo "source=build" >> "$GITHUB_OUTPUT"
-          elif [ "$EVENT_NAME" = 'push' ] && [ "$REF_NAME" = 'main' ]; then
+          elif [ "$EVENT_NAME" = 'workflow_run' ] || { [ "$EVENT_NAME" = 'push' ] && [ "$REF_NAME" = 'main' ]; }; then
+            existing_tag="$(git tag --points-at "$PUSH_SHA" --list 'v[0-9]*.[0-9]*.[0-9]*' | head -n 1 || true)"
+            if [ -n "$existing_tag" ]; then
+              echo "Commit $PUSH_SHA is already tagged as $existing_tag; skipping duplicate auto-release."
+              echo "mode=skip" >> "$GITHUB_OUTPUT"
+              echo "create_tag=false" >> "$GITHUB_OUTPUT"
+              echo "source=skip" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             eval "$(python3 .github/scripts/next-hanami-version.py | sed 's/^/export /')"
             test -n "${tag:-}"
             if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
@@ -259,6 +282,48 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Set up ccache
+        if: steps.meta.outputs.source == 'build'
+        run: |
+          if ! command -v ccache >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ccache
+          fi
+          mkdir -p "$HOME/.ccache"
+          {
+            echo "HANAMI_USE_CCACHE=1"
+            echo "CCACHE_DIR=$HOME/.ccache"
+            echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
+            echo "CCACHE_NOHASHDIR=true"
+            echo "CCACHE_COMPILERCHECK=string:ndk-27.2.12479018"
+            echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime"
+            echo "CCACHE_COMPRESS=true"
+            echo "CCACHE_MAXSIZE=500M"
+          } >> "$GITHUB_ENV"
+
+      - name: Cache ccache (arm64-v8a release native)
+        if: steps.meta.outputs.source == 'build'
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-release-${{ runner.os }}-ndk27.2.12479018-arm64-v8a-vulkan-off-${{ hashFiles('vendor/LLAMA_CPP_COMMIT', 'vendor/CACTUS_ANDROID_ARM64.sha256', 'app/src/main/cpp/**', 'app/build.gradle') }}
+          restore-keys: |
+            ccache-release-${{ runner.os }}-ndk27.2.12479018-arm64-v8a-vulkan-off-
+            ccache-phone-${{ runner.os }}-ndk27.2.12479018-arm64-v8a-vulkan-off-
+
+      - name: Cache Cargo (dizione JNI)
+        if: steps.meta.outputs.source == 'build'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            app/src/main/rust/hanami_dizione/target
+          key: cargo-jni-arm64-${{ runner.os }}-${{ hashFiles('app/src/main/rust/hanami_dizione/Cargo.lock', 'app/src/main/rust/hanami_dizione/Cargo.toml', 'vendor/VOCA_COMMIT') }}
+          restore-keys: |
+            cargo-jni-arm64-${{ runner.os }}-
+
       - name: Build signed ARM64 release APK
         if: steps.meta.outputs.mode == 'versioned' && steps.signing.outputs.mode == 'signed'
         env:
@@ -270,10 +335,12 @@ jobs:
           HANAMI_REQUIRE_DIZIONE: '1'
           HANAMI_REQUIRE_CACTUS: 'ON'
         run: |
+          ccache -z || true
           gradle :app:assemblePhoneRelease --no-daemon --stacktrace \
             -Phanami.versionName='${{ steps.version.outputs.version_name }}' \
             -Phanami.versionCode='${{ steps.version.outputs.version_code }}' \
             -Phanami.requireCactus=ON
+          ccache -s || true
 
       - name: Build unsigned ARM64 release APK
         if: steps.meta.outputs.mode == 'versioned' && steps.signing.outputs.mode == 'unsigned'
@@ -282,19 +349,25 @@ jobs:
           HANAMI_REQUIRE_DIZIONE: '1'
           HANAMI_REQUIRE_CACTUS: 'ON'
         run: |
+          ccache -z || true
           gradle :app:assemblePhoneRelease --no-daemon --stacktrace \
             -Phanami.versionName='${{ steps.version.outputs.version_name }}' \
             -Phanami.versionCode='${{ steps.version.outputs.version_code }}' \
             -Phanami.requireCactus=ON
+          ccache -s || true
 
       - name: Build ARM64 debug APK
         if: steps.meta.outputs.mode == 'latest' && steps.meta.outputs.source == 'build'
         env:
           HANAMI_REQUIRE_DIZIONE: '1'
           HANAMI_REQUIRE_CACTUS: 'ON'
-        run: gradle :app:assemblePhoneDebug --no-daemon --stacktrace -Phanami.requireCactus=ON
+        run: |
+          ccache -z || true
+          gradle :app:assemblePhoneDebug --no-daemon --stacktrace -Phanami.requireCactus=ON
+          ccache -s || true
 
       - name: Stage release APK
+        if: steps.meta.outputs.mode != 'skip'
         env:
           MODE: ${{ steps.meta.outputs.mode }}
           SIGNING: ${{ steps.signing.outputs.mode }}
@@ -325,6 +398,7 @@ jobs:
           ls -lh "release-out/$ASSET"
 
       - name: Publish GitHub Release
+        if: steps.meta.outputs.mode != 'skip'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MODE: ${{ steps.meta.outputs.mode }}

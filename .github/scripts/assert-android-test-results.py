@@ -84,6 +84,7 @@ DEEP_REQUIRED_CLASSES = (
 # fakes, fixtures). Every value must be a short justification for the exclusion.
 EXCLUDED_CLASSES: dict[str, str] = {
     "ImportDocumentsProvider": "SAF DocumentsProvider fixture packaged in the test APK",
+    "SettingsScrollHelper": "Deterministic ScrollView helper for Settings UI E2E tests; not a JUnit class",
     "TestGgufFixtures": "GGUF byte fixtures for preflight tests; not a JUnit class",
     "TestLfm3PocketApplication": "Fake Application wired by UiE2eTestRunner for UI E2E",
     "UiE2eTestRunner": "AndroidJUnitRunner that installs TestLfm3PocketApplication",

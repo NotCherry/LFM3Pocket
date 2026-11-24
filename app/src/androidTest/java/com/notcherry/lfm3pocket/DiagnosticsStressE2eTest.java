@@ -65,20 +65,14 @@ public final class DiagnosticsStressE2eTest {
         return object;
     }
 
-    private void clickText(String text) throws Exception {
-        // Model manager controls may sit just below the fold on the CI emulator.
-        try {
-            UiScrollable scroll = new UiScrollable(
-                    new UiSelector().resourceId(pkg + ":id/model_configuration_scroll"));
-            scroll.setAsVerticalList();
-            scroll.scrollIntoView(new UiSelector().text(text));
-        } catch (Exception ignored) { }
-        UiObject2 button = device.wait(Until.findObject(By.text(text).enabled(true)), UI_TIMEOUT_MS);
+    private void clickText(ActivityScenario<MainActivity> scenario, String text) {
+        UiObject2 button = SettingsScrollHelper.scrollToText(scenario, device, text, true, UI_TIMEOUT_MS);
         assertNotNull("Expected control: " + text, button);
         button.click();
     }
 
     private void openSettings() {
+        if (device.findObject(By.res(pkg, "model_configuration_scroll")) != null) return;
         UiObject2 open = device.wait(Until.findObject(By.res(pkg, "settings_open").enabled(true)), 2000);
         if (open != null) open.click();
         assertNotNull(device.wait(Until.findObject(By.res(pkg, "model_configuration_scroll")), UI_TIMEOUT_MS));
@@ -101,11 +95,11 @@ public final class DiagnosticsStressE2eTest {
             for (int i = 0; i < 3; i++) {
                 // Unload/Load live on the Atlas Settings host (U10/U15), not the chat viewport.
                 openSettings();
-                clickText("Unload model");
+                clickText(scenario, "Unload model");
                 backToChat();
                 assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_send").enabled(false)), UI_TIMEOUT_MS));
                 openSettings();
-                clickText("Load model");
+                clickText(scenario, "Load model");
                 backToChat();
                 waitEnabled("chat_send");
                 app.diagnostics().record(LocalDiagnostics.Kind.STRESS, 0, "unload-reload-" + i);

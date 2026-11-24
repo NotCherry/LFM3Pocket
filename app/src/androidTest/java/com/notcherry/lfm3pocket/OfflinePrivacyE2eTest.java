@@ -101,21 +101,19 @@ public final class OfflinePrivacyE2eTest {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             waitEnabled("chat_send");
             openSettings();
-            UiObject2 search = scrollTo("web_search");
+            UiObject2 search = scrollTo(scenario, "web_search", R.id.web_search);
             assertTrue(search.getText().contains("Web search: off"));
             search.click();
-            UiObject2 endpoint = device.wait(Until.findObject(By.res(pkg, "search_endpoint")), UI_TIMEOUT_MS);
-            assertNotNull(endpoint);
+            UiObject2 endpoint = scrollTo(scenario, "search_endpoint", R.id.search_endpoint);
             endpoint.setText("http://searx.example/search");
-            UiObject2 enabled = device.wait(Until.findObject(By.res(pkg, "search_enabled")), UI_TIMEOUT_MS);
-            assertNotNull(enabled);
+            UiObject2 enabled = scrollTo(scenario, "search_enabled", R.id.search_enabled);
             if (!enabled.isChecked()) enabled.click();
             UiObject2 save = device.wait(Until.findObject(By.res(pkg, "search_save").enabled(true)), UI_TIMEOUT_MS);
             assertNotNull("search_save", save);
             save.click();
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_status")
                     .textContains("Use an HTTPS SearXNG search endpoint")), UI_TIMEOUT_MS));
-            search = scrollTo("web_search");
+            search = scrollTo(scenario, "web_search", R.id.web_search);
             assertTrue("Cleartext endpoint must leave search disabled",
                     search.getText().contains("Web search: off"));
             assertFalse(context.getSharedPreferences("MainActivity", Context.MODE_PRIVATE)
@@ -181,14 +179,14 @@ public final class OfflinePrivacyE2eTest {
     }
 
     private void openSettings() {
+        if (device.findObject(By.res(pkg, "model_configuration_scroll")) != null) return;
         UiObject2 open = device.wait(Until.findObject(By.res(pkg, "settings_open").enabled(true)), 2000);
         if (open != null) open.click();
         assertNotNull(device.wait(Until.findObject(By.res(pkg, "model_configuration_scroll")), UI_TIMEOUT_MS));
     }
 
-    private UiObject2 scrollTo(String id) throws Exception {
-        new UiScrollable(new UiSelector().resourceId(pkg + ":id/model_configuration_scroll"))
-                .scrollIntoView(new UiSelector().resourceId(pkg + ":id/" + id));
+    private UiObject2 scrollTo(ActivityScenario<MainActivity> scenario, String id, int viewId) {
+        SettingsScrollHelper.scrollToViewId(scenario, device, viewId);
         UiObject2 object = device.wait(Until.findObject(By.res(pkg, id)), UI_TIMEOUT_MS);
         assertNotNull("Expected scrolled control: " + id, object);
         return object;

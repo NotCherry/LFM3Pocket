@@ -21,12 +21,12 @@ public final class ModelImportE2eTest {
         UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         String pkg = context.getPackageName();
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            choose(device, pkg, "valid.gguf");
+            choose(scenario, device, pkg, "valid.gguf");
             backToChat(device, pkg);
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_send").enabled(true)), WAIT));
             String selected = context.getSharedPreferences("MainActivity", 0).getString("model", "");
             assertEquals(1024 * 1024, new File(selected).length());
-            choose(device, pkg, "damaged.gguf");
+            choose(scenario, device, pkg, "damaged.gguf");
             assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_status").textContains("Import failed")), WAIT));
             assertEquals(selected, context.getSharedPreferences("MainActivity", 0).getString("model", ""));
             assertTrue(new File(selected).isFile());
@@ -44,21 +44,22 @@ public final class ModelImportE2eTest {
         UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         String pkg = context.getPackageName();
         try(ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            choose(device,pkg,"projector.gguf");
+            choose(scenario,device,pkg,"projector.gguf");
             assertNotNull(device.wait(Until.findObject(By.res(pkg,"chat_status").textContains("Model error")),WAIT));
             assertEquals("",context.getSharedPreferences("MainActivity",0).getString("model",""));
-            choose(device,pkg,"valid.gguf");
+            choose(scenario,device,pkg,"valid.gguf");
             backToChat(device, pkg);
             assertNotNull(device.wait(Until.findObject(By.res(pkg,"chat_send").enabled(true)),WAIT));
-            choose(device,pkg,"wrong-family.gguf","import_projector");
+            choose(scenario,device,pkg,"wrong-family.gguf","import_projector",R.id.import_projector);
             assertNotNull(device.wait(Until.findObject(By.res(pkg,"chat_status").textContains("Cannot verify matching")),WAIT));
             assertEquals("",context.getSharedPreferences("MainActivity",0).getString("mmproj",""));
-            choose(device,pkg,"projector.gguf","import_projector");
+            choose(scenario,device,pkg,"projector.gguf","import_projector",R.id.import_projector);
             assertNotNull(device.wait(Until.findObject(By.res(pkg,"chat_status").textContains("Model and projector loaded")),WAIT));
             assertFalse(context.getSharedPreferences("MainActivity",0).getString("mmproj","").isEmpty());
         }
     }
     private void openSettings(UiDevice device, String pkg) {
+        if (device.findObject(By.res(pkg, "model_configuration_scroll")) != null) return;
         UiObject2 open = device.wait(Until.findObject(By.res(pkg, "settings_open").enabled(true)), 2000);
         if (open != null) open.click();
         assertNotNull(device.wait(Until.findObject(By.res(pkg, "model_configuration_scroll")), WAIT));
@@ -68,13 +69,12 @@ public final class ModelImportE2eTest {
         if (back != null) back.click();
         assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_send")), WAIT));
     }
-    private void choose(UiDevice device, String pkg, String name) throws Exception {
-        choose(device,pkg,name,"import_model");
+    private void choose(ActivityScenario<MainActivity> scenario, UiDevice device, String pkg, String name) throws Exception {
+        choose(scenario, device, pkg, name, "import_model", R.id.import_model);
     }
-    private void choose(UiDevice device, String pkg, String name,String control) throws Exception {
+    private void choose(ActivityScenario<MainActivity> scenario, UiDevice device, String pkg, String name, String control, int controlId) throws Exception {
         openSettings(device, pkg);
-        new UiScrollable(new UiSelector().resourceId(pkg + ":id/model_configuration_scroll"))
-                .scrollIntoView(new UiSelector().resourceId(pkg + ":id/" + control));
+        SettingsScrollHelper.scrollToViewId(scenario, device, controlId);
         UiObject2 button = device.wait(Until.findObject(By.res(pkg, control).enabled(true)), WAIT);
         assertNotNull(button); button.click();
         UiObject2 file = device.wait(Until.findObject(By.text(name)), 1500);
