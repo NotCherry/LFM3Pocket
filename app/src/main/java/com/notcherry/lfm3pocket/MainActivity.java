@@ -275,30 +275,42 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             mainHandler.post(() -> handlePendingNewChatRequests(getIntent()));
         } else {
             // Resume path: re-apply persisted history if async restore raced with startup/model load.
-            final String resumeId = historyConversationId;
-            mainHandler.postDelayed(() -> {
-                if (destroyed || runtime == null) return;
-                if (resumeId == null || resumeId.isEmpty()) return;
-                if (!resumeId.equals(runtime.conversationId())) return;
-                if (runtime.isGenerating()) return;
-                runtime.restoreOpenConversation();
-            }, 1200);
-            mainHandler.postDelayed(() -> {
-                if (destroyed || runtime == null) return;
-                if (resumeId == null || resumeId.isEmpty()) return;
-                if (!resumeId.equals(runtime.conversationId())) return;
-                if (runtime.isGenerating()) return;
-                runtime.restoreOpenConversation();
-            }, 3500);
+            scheduleResumeRestores(historyConversationId);
         }
         if (pendingSwitchId != null) confirmSwitchConversation();
         maybeStartPendingAssistantVoiceSession();
     }
 
+    private final java.util.List<Runnable> pendingResumeRestores = new java.util.ArrayList<>();
     private String pendingSwitchId;
     private String pendingSwitchTitle;
 
+    private void scheduleResumeRestores(String resumeId) {
+        cancelPendingResumeRestores();
+        if (resumeId == null || resumeId.isEmpty()) return;
+        long[] delays = { 1200L, 3500L };
+        for (long delay : delays) {
+            Runnable task = () -> {
+                if (destroyed || runtime == null) return;
+                if (!resumeId.equals(historyConversationId)) return;
+                if (!resumeId.equals(runtime.conversationId())) return;
+                if (runtime.isGenerating()) return;
+                runtime.restoreOpenConversation();
+            };
+            pendingResumeRestores.add(task);
+            mainHandler.postDelayed(task, delay);
+        }
+    }
+
+    private void cancelPendingResumeRestores() {
+        for (Runnable task : pendingResumeRestores) {
+            mainHandler.removeCallbacks(task);
+        }
+        pendingResumeRestores.clear();
+    }
+
     private void adoptConversation(Intent intent) {
+        cancelPendingResumeRestores();
         String requested = intent == null ? null : intent.getStringExtra(EXTRA_HISTORY_CONVERSATION_ID);
         String requestedTitle = intent == null ? null : intent.getStringExtra(EXTRA_HISTORY_TITLE);
         boolean explicit = requested != null && !requested.isBlank();
@@ -331,7 +343,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         historyConversationId = id;
         historyTitle = title == null || title.isBlank() ? getString(R.string.new_conversation_title) : title;
         runtime.setConversation(historyConversationId, historyTitle);
-        runtime.restoreOpenConversation();
+        if (!newChatIntent) {
+            runtime.restoreOpenConversation();
+        }
     }
 
     private void confirmSwitchConversation() {
@@ -421,6 +435,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void onChatPanelNewChat() {
+        cancelPendingResumeRestores();
         voiceSttCancelled.set(true);
         HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
         HistoryMediaCleanup.deleteAttachment(this, pendingAudioPath);
@@ -1701,6 +1716,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void startFreshChat(boolean fromSystemAssist) {
+        cancelPendingResumeRestores();
         HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
         HistoryMediaCleanup.deleteAttachment(this, pendingAudioPath);
         pendingImagePath = "";
@@ -1721,6 +1737,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 : getString(R.string.new_chat_ready);
         setChatStatus(freshStatus);
         if (chatPanel != null) {
+            chatPanel.renderSnapshot(new ChatSnapshot(java.util.Collections.emptyList(), freshStatus, false));
             chatPanel.render(FlatTranscriptFormatter.EMPTY_TRANSCRIPT, freshStatus);
         }
         updateControls();

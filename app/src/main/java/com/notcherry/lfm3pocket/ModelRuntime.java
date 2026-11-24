@@ -77,6 +77,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private boolean serviceStartRequested;
     private boolean unloading;
     private int sessionEpoch;
+    private final AtomicInteger conversationEpoch = new AtomicInteger();
     private String pendingQuestion = "";
     private int pendingMax = 512;
     private String lastTranscript = "";
@@ -215,7 +216,10 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     }
 
     public void setConversation(String id, String title) {
-        if (id != null && !id.isBlank()) conversationId = id;
+        if (id != null && !id.isBlank() && !id.equals(conversationId)) {
+            conversationId = id;
+            conversationEpoch.incrementAndGet();
+        }
         if (title != null && !title.isBlank()) historyTitle = title;
         // commit: the next screen and instrumentation read this file immediately.
         preferences.raw().edit()
@@ -384,6 +388,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     }
 
     public void clearConversation() {
+        conversationEpoch.incrementAndGet();
         if (session != null) session.clear();
         lastAssistant = "";
         if (session != null) {
@@ -416,6 +421,16 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         return session.retryInterrupted(turnId, tokens);
     }
 
+    /** Pure staleness check for async Room restores against conversation switches and clears. */
+    static boolean shouldApplyRestore(String requestedId, String activeId,
+                                      int requestedConversationEpoch, int activeConversationEpoch,
+                                      int requestedSessionEpoch, int activeSessionEpoch) {
+        if (requestedId == null || requestedId.isBlank()) return false;
+        if (requestedSessionEpoch != activeSessionEpoch) return false;
+        if (requestedConversationEpoch != activeConversationEpoch) return false;
+        return requestedId.equals(activeId);
+    }
+
     /**
      * Force a Room rehydrate after conversation id changes on a cold process.
      * Room work runs on the runtime worker; the live session is updated on the main thread.
@@ -424,9 +439,13 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         ensureSession();
         final String id = conversationId;
         final int born = sessionEpoch;
+        final int restoreEpoch = conversationEpoch.get();
+        if (id == null || id.isBlank()) return;
         worker.execute(() -> {
+            if (!shouldApplyRestore(id, conversationId, restoreEpoch, conversationEpoch.get(), born, sessionEpoch)) {
+                return;
+            }
             if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
-            if (id == null || id.isBlank()) return;
             java.util.List<HistoryRepository.StoredMessage> rows;
             try {
                 rows = history.messages(id);
@@ -447,7 +466,10 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             final String summary = summaryState == null ? "" : summaryState.getSummary();
             final int summarizedCount = summaryState == null ? 0 : (int) Math.min(Integer.MAX_VALUE, summaryState.getSummarizedMessageCount());
             main.post(() -> {
-                if (born != sessionEpoch || session == null) return;
+                if (session == null || !shouldApplyRestore(
+                        id, conversationId, restoreEpoch, conversationEpoch.get(), born, sessionEpoch)) {
+                    return;
+                }
                 if (session.isGenerating()) return;
                 ChatSnapshot existing = session.snapshot();
                 if (existing != null && !existing.turns.isEmpty()) return;
@@ -662,6 +684,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     public void discardForTest() {
         if (ui != null && ui.isUsable()) return;
         sessionEpoch++;
+        conversationEpoch.incrementAndGet();
         ChatSession old = session;
         session = null;
         speechCancel = true;
