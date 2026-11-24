@@ -37,6 +37,13 @@ bool drop_last_prompt_token_from_kv(llama_context * ctx, llama_seq_id seq_id, si
 
 size_t kv_token_count(llama_context * ctx, llama_seq_id seq_id);
 
+/**
+ * Shared chat text sampler chain matching Liquid AI's published LFM3 llama.cpp defaults:
+ * top_k=50 -> penalties(last_n=64, repeat_penalty=1.1) -> temp=0.1 -> dist.
+ * Placing top_k before penalties follows llama.h's guidance to avoid scanning the full vocab.
+ */
+llama_sampler * make_chat_sampler(const llama_vocab * vocab);
+
 // Target-model ngram-mod speculative decode (no draft GGUF, no llama-common dependency).
 // KV must contain prompt minus last token.
 bool generate_ngram_mod(

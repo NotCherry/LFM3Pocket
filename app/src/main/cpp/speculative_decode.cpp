@@ -1,4 +1,5 @@
 #include "speculative_decode.h"
+#include "repetition_guard.h"
 #include "ngram-mod.h"
 
 #include <jni.h>
@@ -12,8 +13,16 @@ constexpr int kNgramMaxDraft = 12;
 constexpr int kNgramMinDraft = 2;
 constexpr size_t kNgramTableEntries = 1024 * 1024; // 4 MB open-address table (int32_t entries)
 
+// Liquid AI LFM3 llama.cpp chat sampling defaults (docs.liquid.ai/deployment/on-device/llama-cpp/chat).
+constexpr int32_t kChatTopK = 50;
+constexpr int32_t kChatPenaltyLastN = 64;
+constexpr float kChatRepeatPenalty = 1.1f;
+constexpr float kChatTemp = 0.1f;
+
 static_assert(sizeof(llama_token) == sizeof(common_ngram_mod::entry_t),
               "llama_token must match common_ngram_mod::entry_t");
+static_assert(sizeof(llama_token) == sizeof(int32_t),
+              "llama_token must match int32_t for repetition_guard");
 
 class NgramModDrafter {
 public:
@@ -115,15 +124,6 @@ struct BatchDeleter {
 using SamplerPtr = std::unique_ptr<llama_sampler, SamplerDeleter>;
 using BatchPtr = std::unique_ptr<llama_batch_ext, BatchDeleter>;
 
-SamplerPtr make_chat_sampler() {
-    llama_sampler * smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
-    if (!smpl) return SamplerPtr(nullptr);
-    llama_sampler_chain_add(smpl, llama_sampler_init_top_k(50));
-    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.1f));
-    llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
-    return SamplerPtr(smpl);
-}
-
 std::vector<llama_token> sample_and_accept_n(
         llama_sampler * smpl,
         llama_context * ctx,
@@ -218,6 +218,20 @@ void emit_token(const llama_vocab * vocab, llama_token id, hanami::TokenDelivery
 
 namespace hanami {
 
+llama_sampler * make_chat_sampler(const llama_vocab * vocab) {
+    llama_sampler * smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    if (!smpl) return nullptr;
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_k(kChatTopK));
+    const int32_t n_vocab = vocab ? llama_vocab_n_tokens(vocab) : 0;
+    if (n_vocab > 0) {
+        llama_sampler_chain_add(smpl, llama_sampler_init_penalties(
+                n_vocab, kChatPenaltyLastN, kChatRepeatPenalty, 0.0f, 0.0f));
+    }
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(kChatTemp));
+    llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    return smpl;
+}
+
 size_t kv_token_count(llama_context * ctx, llama_seq_id seq_id) {
     llama_memory_t mem = llama_get_memory(ctx);
     if (!mem) return 0;
@@ -280,7 +294,7 @@ bool generate_sequential(
         std::atomic<bool> * cancelled,
         std::vector<llama_token> & generated,
         std::string & error) {
-    SamplerPtr sampler = make_chat_sampler();
+    SamplerPtr sampler(make_chat_sampler(vocab));
     if (!sampler) {
         error = "Failed to initialize sampler";
         return false;
@@ -306,6 +320,7 @@ bool generate_sequential(
         if (llama_vocab_is_eog(vocab, next)) break;
         llama_sampler_accept(sampler.get(), next);
         generated.push_back(next);
+        if (has_verbatim_token_loop(generated)) break;
         if (position + static_cast<int>(generated.size()) >= context_tokens) break;
         if (static_cast<int>(generated.size()) >= max_new_tokens) break;
         setup_one(next, position + static_cast<int>(generated.size()) - 1);
@@ -347,7 +362,7 @@ bool generate_ngram_mod(
         }
     }
 
-    SamplerPtr smpl = make_chat_sampler();
+    SamplerPtr smpl(make_chat_sampler(vocab));
     if (!smpl) {
         error = "Failed to initialize sampler for prompt lookup";
         return false;
@@ -480,7 +495,8 @@ bool generate_ngram_mod(
                 if (delivery->error && !delivery->error->empty()) break;
             }
 
-            if (static_cast<int>(generated.size()) >= max_new_tokens) {
+            if (static_cast<int>(generated.size()) >= max_new_tokens
+                    || has_verbatim_token_loop(generated)) {
                 has_eos = true;
                 n_past = batch_id_last_pos + i + 1;
                 trim_kv_tail(n_past);

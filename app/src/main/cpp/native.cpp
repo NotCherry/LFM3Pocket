@@ -2,6 +2,7 @@
 #include "llama.h"
 #include "mtmd.h"
 #include "mtmd-helper.h"
+#include "repetition_guard.h"
 #include "speculative_decode.h"
 
 #include <algorithm>
@@ -596,10 +597,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     }
     if ((!use_ngram || ngram_fallback_sequential) && error.empty() && prompt_ready && state->ctx &&
         !state->cancelled.load()) {
-        llama_sampler * sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
-        llama_sampler_chain_add(sampler, llama_sampler_init_top_k(50));
-        llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.1f));
-        llama_sampler_chain_add(sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+        llama_sampler * sampler = hanami::make_chat_sampler(vocab);
 
         for (int i = 0; sampler && !state->cancelled.load() &&
                         i < max_tokens && position + i < context_tokens; ++i) {
@@ -628,6 +626,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
             }
             generated.push_back(next);
             if (static_cast<int>(generated.size()) >= max_tokens) break;
+            if (hanami::has_verbatim_token_loop(generated)) break;
         }
         if (sampler) llama_sampler_free(sampler);
     }
