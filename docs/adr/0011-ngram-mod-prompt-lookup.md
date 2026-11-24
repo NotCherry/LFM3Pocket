@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-17
 - Amended: 2026-11-23 ([#212](https://github.com/NotCherry/LFM3Pocket/pull/212) hybrid fallback)
+- Amended: 2026-11-24 ([#305](https://github.com/NotCherry/LFM3Pocket/issues/305) compile only `common/ngram-mod.cpp` directly with `LLAMA_BUILD_COMMON=OFF` instead of linking the full `llama-common` library)
 
 ## Context
 

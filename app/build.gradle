@@ -86,9 +86,13 @@ android {
                               '-DGGML_BACKEND_DL=OFF',
                               '-DGGML_CPU_ALL_VARIANTS=OFF',
                               '-DGGML_CPU_KLEIDIAI=OFF',
+                              '-DLLAMA_BUILD_COMMON=OFF',
                               '-DLLAMA_BUILD_TESTS=OFF',
                               '-DLLAMA_BUILD_EXAMPLES=OFF',
                               '-DLLAMA_BUILD_SERVER=OFF',
+                              '-DLLAMA_BUILD_APP=OFF',
+                              '-DLLAMA_SUBPROCESS=OFF',
+                              '-DMTMD_VIDEO=OFF',
                               "-DHANAMI_GGML_VULKAN=${hanamiGgmlVulkan}",
                               "-DHANAMI_REQUIRE_CACTUS=${hanamiRequireCactus}"
                     ]

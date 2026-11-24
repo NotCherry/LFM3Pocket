@@ -1,8 +1,6 @@
 #pragma once
 
-#include "common.h"
 #include "llama.h"
-#include "sampling.h"
 
 #include <jni.h>
 
@@ -30,10 +28,6 @@ struct TokenDelivery {
     std::string * error = nullptr;
 };
 
-void configure_phone_ngram_spec(common_params_speculative & spec);
-
-common_sampler * make_chat_sampler(const llama_model * model);
-
 /**
  * Drop the last prompt token from KV so the ngram-mod driver can evaluate it exactly once
  * (Hanami prefills the full prompt before calling this).
@@ -43,7 +37,8 @@ bool drop_last_prompt_token_from_kv(llama_context * ctx, llama_seq_id seq_id, si
 
 size_t kv_token_count(llama_context * ctx, llama_seq_id seq_id);
 
-// Target-model ngram-mod speculative decode (no draft GGUF). KV must contain prompt minus last token.
+// Target-model ngram-mod speculative decode (no draft GGUF, no llama-common dependency).
+// KV must contain prompt minus last token.
 bool generate_ngram_mod(
         llama_context * ctx,
         const llama_vocab * vocab,
