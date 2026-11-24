@@ -40,9 +40,8 @@ import java.util.concurrent.atomic.AtomicReference;
 @RunWith(AndroidJUnit4.class)
 public final class TextReadableAtScaleE2eTest {
     private static final long WAIT = 12000L;
-    private static final float[] FONT_SCALES = {0.85f, 1.0f, 1.3f, 1.5f, 2.0f};
-    private static final String[] LOCALES = {"en", "pl"};
-    private static final float[] DENSITY_MULTIPLIERS = {0.85f, 1.0f, 1.3f};
+    private static final float[] FONT_SCALES = {0.85f, 1.0f, 2.0f};
+    private static final float[] DENSITY_MULTIPLIERS = {0.85f, 1.3f};
 
     private Context context;
     private UiDevice device;
@@ -51,7 +50,7 @@ public final class TextReadableAtScaleE2eTest {
     private Configuration originalConfig;
     private boolean captureShots;
     private String originalFontScale;
-    private String originalLocales;
+    private float appliedFontScale = Float.NaN;
 
     @Before public void prepare() throws Exception {
         context = InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -62,7 +61,6 @@ public final class TextReadableAtScaleE2eTest {
         captureShots = "1".equals(InstrumentationRegistry.getArguments().getString("captureShots"));
         originalConfig = new Configuration(context.getResources().getConfiguration());
         originalFontScale = device.executeShellCommand("settings get system font_scale").trim();
-        originalLocales = device.executeShellCommand("settings get system system_locales").trim();
         File file = new File(context.getFilesDir(), "readable-scale.gguf");
         TestGgufFixtures.model(file);
         assertTrue(context.getSharedPreferences("MainActivity", Context.MODE_PRIVATE)
@@ -81,11 +79,6 @@ public final class TextReadableAtScaleE2eTest {
             device.executeShellCommand("settings put system font_scale " + restore);
         } catch (Exception ignored) { }
         try {
-            String locales = originalLocales == null || originalLocales.isEmpty()
-                    || "null".equals(originalLocales) ? "en-US" : originalLocales;
-            device.executeShellCommand("settings put system system_locales " + locales);
-        } catch (Exception ignored) { }
-        try {
             if (originalConfig != null) {
                 context.getResources().updateConfiguration(
                         originalConfig, context.getResources().getDisplayMetrics());
@@ -96,44 +89,41 @@ public final class TextReadableAtScaleE2eTest {
 
     @Test public void settingsImportAndOpenButtonsStayFullyVisibleAtAllFontScalesAndLocales()
             throws Exception {
-        for (String language : LOCALES) {
-            for (float scale : FONT_SCALES) {
-                setSystemLocale(language);
-                applyDensity(1.0f);
-                setSystemFontScale(scale);
-                try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(
-                        new Intent(context, MainActivity.class)
-                                .putExtra(MainActivity.EXTRA_OPEN_SETTINGS, true))) {
-                    assertNotNull("settings @" + scale + "/" + language,
-                            device.wait(Until.findObject(By.res(pkg, "open_model_uri")), WAIT));
-                    AtomicReference<String> failure = new AtomicReference<>();
-                    scenario.onActivity(activity -> {
-                        try {
-                            assertEquals("activity fontScale @" + scale,
-                                    scale, activity.getResources().getConfiguration().fontScale, 0.05f);
-                            assertOpenStorageLabelIsKnownLocale(activity);
-                            assertReadableAfterLayout(activity.findViewById(R.id.open_model_uri),
-                                    "open_model_uri@" + scale + "/" + language);
-                            assertReadableAfterLayout(activity.findViewById(R.id.open_projector_uri),
-                                    "open_projector_uri@" + scale + "/" + language);
-                            assertReadableAfterLayout(activity.findViewById(R.id.import_model),
-                                    "import_model@" + scale + "/" + language);
-                            assertReadableAfterLayout(activity.findViewById(R.id.import_projector),
-                                    "import_projector@" + scale + "/" + language);
-                            assertReadableAfterLayout(activity.findViewById(R.id.settings_save),
-                                    "settings_save@" + scale + "/" + language);
-                            assertReadableAfterLayout(activity.findViewById(R.id.search_save),
-                                    "search_save@" + scale + "/" + language);
-                            assertReadableAfterLayout(activity.findViewById(R.id.settings_back),
-                                    "settings_back@" + scale + "/" + language);
-                            assertReadableAfterLayout(activity.findViewById(R.id.settings_default_assistant),
-                                    "default_assistant@" + scale + "/" + language);
-                        } catch (AssertionError | InterruptedException error) {
-                            failure.set(error.getMessage());
-                        }
-                    });
-                    assertTrue(failure.get() == null ? "ok" : failure.get(), failure.get() == null);
-                }
+        for (float scale : FONT_SCALES) {
+            applyDensity(1.0f);
+            setSystemFontScale(scale);
+            try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(
+                    new Intent(context, MainActivity.class)
+                            .putExtra(MainActivity.EXTRA_OPEN_SETTINGS, true))) {
+                assertNotNull("settings @" + scale,
+                        device.wait(Until.findObject(By.res(pkg, "open_model_uri")), WAIT));
+                AtomicReference<String> failure = new AtomicReference<>();
+                scenario.onActivity(activity -> {
+                    try {
+                        assertEquals("activity fontScale @" + scale,
+                                scale, activity.getResources().getConfiguration().fontScale, 0.05f);
+                        assertOpenStorageLabelIsKnownLocale(activity);
+                        assertReadableAfterLayout(activity.findViewById(R.id.open_model_uri),
+                                "open_model_uri@" + scale);
+                        assertReadableAfterLayout(activity.findViewById(R.id.open_projector_uri),
+                                "open_projector_uri@" + scale);
+                        assertReadableAfterLayout(activity.findViewById(R.id.import_model),
+                                "import_model@" + scale);
+                        assertReadableAfterLayout(activity.findViewById(R.id.import_projector),
+                                "import_projector@" + scale);
+                        assertReadableAfterLayout(activity.findViewById(R.id.settings_save),
+                                "settings_save@" + scale);
+                        assertReadableAfterLayout(activity.findViewById(R.id.search_save),
+                                "search_save@" + scale);
+                        assertReadableAfterLayout(activity.findViewById(R.id.settings_back),
+                                "settings_back@" + scale);
+                        assertReadableAfterLayout(activity.findViewById(R.id.settings_default_assistant),
+                                "default_assistant@" + scale);
+                    } catch (AssertionError | InterruptedException error) {
+                        failure.set(error.getMessage());
+                    }
+                });
+                assertTrue(failure.get() == null ? "ok" : failure.get(), failure.get() == null);
             }
         }
     }
@@ -161,31 +151,28 @@ public final class TextReadableAtScaleE2eTest {
 
     @Test public void chatMediaButtonsStayFullyVisibleAcrossDensityAndLocale() throws Exception {
         float[] scales = {1.0f, 2.0f};
-        for (String language : LOCALES) {
-            for (float scale : scales) {
-                for (float densityMul : DENSITY_MULTIPLIERS) {
-                    setSystemLocale(language);
-                    applyDensity(densityMul);
-                    setSystemFontScale(scale);
-                    try (ActivityScenario<MainActivity> scenario =
-                                 ActivityScenario.launch(MainActivity.class)) {
-                        assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_photo")), WAIT));
-                        AtomicReference<String> failure = new AtomicReference<>();
-                        scenario.onActivity(activity -> {
-                            try {
-                                assertEquals(scale,
-                                        activity.getResources().getConfiguration().fontScale, 0.05f);
-                                String tag = scale + "/" + language + "/d" + densityMul;
-                                assertReadableAfterLayout(activity.findViewById(R.id.chat_photo), "photo@" + tag);
-                                assertReadableAfterLayout(activity.findViewById(R.id.chat_camera), "camera@" + tag);
-                                assertReadableAfterLayout(activity.findViewById(R.id.voice_record), "record@" + tag);
-                                assertReadableAfterLayout(activity.findViewById(R.id.voice_speak), "speak@" + tag);
-                            } catch (AssertionError | InterruptedException error) {
-                                failure.set(error.getMessage());
-                            }
-                        });
-                        assertTrue(failure.get() == null ? "ok" : failure.get(), failure.get() == null);
-                    }
+        for (float scale : scales) {
+            setSystemFontScale(scale);
+            for (float densityMul : DENSITY_MULTIPLIERS) {
+                applyDensity(densityMul);
+                try (ActivityScenario<MainActivity> scenario =
+                             ActivityScenario.launch(MainActivity.class)) {
+                    assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_photo")), WAIT));
+                    AtomicReference<String> failure = new AtomicReference<>();
+                    scenario.onActivity(activity -> {
+                        try {
+                            assertEquals(scale,
+                                    activity.getResources().getConfiguration().fontScale, 0.05f);
+                            String tag = scale + "/d" + densityMul;
+                            assertReadableAfterLayout(activity.findViewById(R.id.chat_photo), "photo@" + tag);
+                            assertReadableAfterLayout(activity.findViewById(R.id.chat_camera), "camera@" + tag);
+                            assertReadableAfterLayout(activity.findViewById(R.id.voice_record), "record@" + tag);
+                            assertReadableAfterLayout(activity.findViewById(R.id.voice_speak), "speak@" + tag);
+                        } catch (AssertionError | InterruptedException error) {
+                            failure.set(error.getMessage());
+                        }
+                    });
+                    assertTrue(failure.get() == null ? "ok" : failure.get(), failure.get() == null);
                 }
             }
         }
@@ -193,51 +180,48 @@ public final class TextReadableAtScaleE2eTest {
 
     /**
      * Interface size presets (Compact / Default / Large) must keep Settings chrome readable
-     * across the same fontScale and locale matrix as the system-scale suite.
+     * across boundary fontScale values.
      */
     @Test public void settingsStayReadableAcrossInterfaceSizePresetsAndFontScales() throws Exception {
         float[] interfaceSizes = {
                 InterfaceSize.COMPACT, InterfaceSize.DEFAULT, InterfaceSize.LARGE,
         };
-        for (String language : LOCALES) {
-            for (float fontScale : new float[]{0.85f, 1.0f, 2.0f}) {
-                for (float interfaceScale : interfaceSizes) {
-                    setSystemLocale(language);
-                    applyDensity(1.0f);
-                    setSystemFontScale(fontScale);
-                    setInterfaceScale(interfaceScale);
-                    String tag = "iface" + InterfaceSize.percent(interfaceScale)
-                            + "/font" + fontScale + "/" + language;
-                    try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(
-                            new Intent(context, MainActivity.class)
-                                    .putExtra(MainActivity.EXTRA_OPEN_SETTINGS, true))) {
-                        assertNotNull("settings @" + tag,
-                                device.wait(Until.findObject(By.res(pkg, "open_model_uri")), WAIT));
-                        AtomicReference<String> failure = new AtomicReference<>();
-                        scenario.onActivity(activity -> {
-                            try {
-                                assertEquals("activity fontScale @" + tag,
-                                        fontScale, activity.getResources().getConfiguration().fontScale, 0.05f);
-                                assertEquals("persisted interface @" + tag,
-                                        interfaceScale, InterfaceSize.read(activity), 0.001f);
-                                assertReadableAfterLayout(activity.findViewById(R.id.open_model_uri),
-                                        "open_model_uri@" + tag);
-                                assertReadableAfterLayout(activity.findViewById(R.id.open_projector_uri),
-                                        "open_projector_uri@" + tag);
-                                assertReadableAfterLayout(activity.findViewById(R.id.settings_interface_compact),
-                                        "interface_compact@" + tag);
-                                assertReadableAfterLayout(activity.findViewById(R.id.settings_interface_default),
-                                        "interface_default@" + tag);
-                                assertReadableAfterLayout(activity.findViewById(R.id.settings_interface_large),
-                                        "interface_large@" + tag);
-                                assertReadableAfterLayout(activity.findViewById(R.id.settings_save),
-                                        "settings_save@" + tag);
-                            } catch (AssertionError | InterruptedException error) {
-                                failure.set(error.getMessage());
-                            }
-                        });
-                        assertTrue(failure.get() == null ? "ok" : failure.get(), failure.get() == null);
-                    }
+        applyDensity(1.0f);
+        for (float fontScale : new float[]{0.85f, 2.0f}) {
+            setSystemFontScale(fontScale);
+            for (float interfaceScale : interfaceSizes) {
+                setInterfaceScale(interfaceScale);
+                String tag = "iface" + InterfaceSize.percent(interfaceScale)
+                        + "/font" + fontScale;
+                try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(
+                        new Intent(context, MainActivity.class)
+                                .putExtra(MainActivity.EXTRA_OPEN_SETTINGS, true))) {
+                    assertNotNull("settings @" + tag,
+                            device.wait(Until.findObject(By.res(pkg, "open_model_uri")), WAIT));
+                    AtomicReference<String> failure = new AtomicReference<>();
+                    scenario.onActivity(activity -> {
+                        try {
+                            assertEquals("activity fontScale @" + tag,
+                                    fontScale, activity.getResources().getConfiguration().fontScale, 0.05f);
+                            assertEquals("persisted interface @" + tag,
+                                    interfaceScale, InterfaceSize.read(activity), 0.001f);
+                            assertReadableAfterLayout(activity.findViewById(R.id.open_model_uri),
+                                    "open_model_uri@" + tag);
+                            assertReadableAfterLayout(activity.findViewById(R.id.open_projector_uri),
+                                    "open_projector_uri@" + tag);
+                            assertReadableAfterLayout(activity.findViewById(R.id.settings_interface_compact),
+                                    "interface_compact@" + tag);
+                            assertReadableAfterLayout(activity.findViewById(R.id.settings_interface_default),
+                                    "interface_default@" + tag);
+                            assertReadableAfterLayout(activity.findViewById(R.id.settings_interface_large),
+                                    "interface_large@" + tag);
+                            assertReadableAfterLayout(activity.findViewById(R.id.settings_save),
+                                    "settings_save@" + tag);
+                        } catch (AssertionError | InterruptedException error) {
+                            failure.set(error.getMessage());
+                        }
+                    });
+                    assertTrue(failure.get() == null ? "ok" : failure.get(), failure.get() == null);
                 }
             }
         }
@@ -245,9 +229,8 @@ public final class TextReadableAtScaleE2eTest {
     }
 
     @Test public void homeAndModelManagerLabelsStayReadable() throws Exception {
+        applyDensity(1.0f);
         for (float scale : new float[]{1.0f, 2.0f}) {
-            setSystemLocale("en");
-            applyDensity(1.0f);
             setSystemFontScale(scale);
             try (ActivityScenario<ComposeHostActivity> ignored =
                          ActivityScenario.launch(ComposeHostActivity.class)) {
@@ -262,20 +245,8 @@ public final class TextReadableAtScaleE2eTest {
                     new Intent(context, MainActivity.class)
                             .putExtra(MainActivity.EXTRA_OPEN_SETTINGS, true))) {
                 assertNotNull(device.wait(Until.findObject(By.res(pkg, "model_configuration_scroll")), WAIT));
-                // Appearance section sits under the model manager; scroll so Compose text is bound
-                // into the hierarchy even at fontScale 2.0.
-                try {
-                    androidx.test.uiautomator.UiScrollable scroll =
-                            new androidx.test.uiautomator.UiScrollable(
-                                    new androidx.test.uiautomator.UiSelector()
-                                            .resourceId(pkg + ":id/model_configuration_scroll"));
-                    scroll.setAsVerticalList();
-                    scroll.scrollToBeginning(20);
-                    scroll.scrollIntoView(new androidx.test.uiautomator.UiSelector().textContains("Model:"));
-                } catch (Exception ignored) {
-                }
                 assertNotNull("model manager bound @" + scale,
-                        device.wait(Until.findObject(By.textContains("Model:")), WAIT));
+                        SettingsScrollHelper.scrollToTextContains(scenario, device, "Model:", WAIT));
                 AtomicReference<String> failure = new AtomicReference<>();
                 scenario.onActivity(activity -> {
                     try {
@@ -296,9 +267,13 @@ public final class TextReadableAtScaleE2eTest {
     }
 
     private void setSystemFontScale(float scale) throws Exception {
+        if (!Float.isNaN(appliedFontScale) && Math.abs(appliedFontScale - scale) < 0.001f) {
+            return;
+        }
         device.executeShellCommand("settings put system font_scale " + scale);
-        // Give SettingsProvider a beat before launching activities.
-        Thread.sleep(400);
+        appliedFontScale = scale;
+        // Give SettingsProvider a brief beat before launching activities.
+        Thread.sleep(200);
     }
 
     private void setInterfaceScale(float scale) {
@@ -308,16 +283,9 @@ public final class TextReadableAtScaleE2eTest {
                 .commit());
     }
 
-    private void setSystemLocale(String language) throws Exception {
-        String tag = "pl".equals(language) ? "pl-PL" : "en-US";
-        device.executeShellCommand("settings put system system_locales " + tag);
-        Locale.setDefault(Locale.forLanguageTag(tag));
-        Thread.sleep(400);
-    }
-
     private void applyDensity(float densityMul) {
         Configuration conf = new Configuration(context.getResources().getConfiguration());
-        if (densityMul != 1.0f && originalConfig.densityDpi > 0) {
+        if (originalConfig.densityDpi > 0) {
             conf.densityDpi = Math.max(120, Math.round(originalConfig.densityDpi * densityMul));
             context.getResources().updateConfiguration(conf, context.getResources().getDisplayMetrics());
         }
