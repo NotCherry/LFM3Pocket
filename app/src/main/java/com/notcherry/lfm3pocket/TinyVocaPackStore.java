@@ -19,11 +19,19 @@ public final class TinyVocaPackStore {
     private final File marker;
 
     public TinyVocaPackStore(Context context) {
-        root = new File(context.getFilesDir(), "tiny-voca");
-        marker = new File(root, ".pack-complete");
+        this(new File(context.getFilesDir(), "tiny-voca"));
+    }
+
+    TinyVocaPackStore(File root) {
+        this.root = root;
+        this.marker = new File(root, ".pack-complete");
     }
 
     File root() { return root; }
+
+    File stagingDir() { return new File(root, ".staging"); }
+
+    void discardStaging() { deleteTree(stagingDir()); }
 
     File onnxModel() { return new File(root, "onnx/model.onnx"); }
 

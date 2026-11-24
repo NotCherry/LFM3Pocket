@@ -28,11 +28,13 @@
     <string name="network_tools_help">Off by default. When on, the weather tool may call Open-Meteo. Treat tool output as untrusted.</string>
     <string name="speech_heading">SPEECH</string>
     <string name="tiny_voca_tts_label">Use tiny-voca for English replies (on-device, English only)</string>
-    <string name="tiny_voca_tts_help">Off by default. Downloads a pinned ~27 MB pack from Hugging Face when you tap Download. Polish and other languages still use LFM3-Omni speech. English without the pack uses the system US English voice.</string>
+    <string name="tiny_voca_tts_help">Off by default. Downloads a pinned ~27 MB pack from Hugging Face when you tap Download. English replies use tiny-voca when installed (or system voice if missing); non-English replies use LFM3-Omni when available, or system voice on text-only models.</string>
     <string name="tiny_voca_download">Download tiny-voca pack</string>
     <string name="tiny_voca_remove">Remove tiny-voca pack</string>
     <string name="tiny_voca_status_missing">tiny-voca pack not installed</string>
     <string name="tiny_voca_status_ready">tiny-voca pack ready</string>
+    <string name="tiny_voca_status_ready_enable">tiny-voca pack installed (enable the checkbox above to use it)</string>
+    <string name="tiny_voca_status_no_phonemizer">tiny-voca pack installed, but native English phonemizer is missing in this build (will use system voice)</string>
     <string name="tiny_voca_downloading">Downloading %1$s…</string>
     <string name="default_assistant_button">Set as default assistant</string>
     <string name="default_assistant_help">Opens the system picker so the assistant gesture (for example, long-press power) can open Hanami and start a voice session. Actions from the model still need your confirmation.</string>

@@ -37,12 +37,15 @@ public final class TinyVocaOnnxRuntime implements AutoCloseable {
             throw new IllegalStateException("English phonemizer is unavailable on this build");
         }
         JSONObject config = store.readConfig();
-        int maxTokens = config.optJSONObject("model").optInt("max_tokens", 512);
+        JSONObject modelConfig = config.optJSONObject("model");
+        int maxTokens = modelConfig == null ? 512 : modelConfig.optInt("max_tokens", 512);
         int sampleRate = config.optInt("sample_rate", 24000);
         OrtEnvironment environment = environment();
-        OrtSession session = environment.createSession(store.onnxModel().getAbsolutePath(),
-                new OrtSession.SessionOptions());
-        return new TinyVocaOnnxRuntime(session, maxTokens, sampleRate);
+        try (OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
+            options.setIntraOpNumThreads(CpuTopology.recommendedDecodeThreads());
+            OrtSession session = environment.createSession(store.onnxModel().getAbsolutePath(), options);
+            return new TinyVocaOnnxRuntime(session, maxTokens, sampleRate);
+        }
     }
 
     public int sampleRateHz() { return sampleRate; }

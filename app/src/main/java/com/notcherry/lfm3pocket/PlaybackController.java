@@ -11,6 +11,8 @@ public final class PlaybackController implements AutoCloseable {
     public interface Track extends AutoCloseable {
         void start(int sampleRateHz, int channels, int bitsPerSample) throws Exception;
         void write(byte[] interleavedLittleEndianPcm) throws Exception;
+        /** Wait for buffered PCM to play out naturally before closing. */
+        default void drain() throws Exception { }
         void stop();
         void close();
     }
@@ -102,9 +104,11 @@ public final class PlaybackController implements AutoCloseable {
 
     private void play(long turn, byte[] pcm, int sampleRateHz, int channels, int bitsPerSample) {
         boolean focusHeld = false;
+        boolean aborted = false;
         Track track = null;
         try {
             if (stopping) {
+                aborted = true;
                 finish(turn, State.IDLE, "Spoken response cancelled");
                 return;
             }
@@ -112,6 +116,7 @@ public final class PlaybackController implements AutoCloseable {
                 throw new IllegalStateException("Audio focus was denied");
             focusHeld = true;
             if (stopping) {
+                aborted = true;
                 finish(turn, State.IDLE, "Spoken response cancelled");
                 return;
             }
@@ -126,15 +131,25 @@ public final class PlaybackController implements AutoCloseable {
                 System.arraycopy(pcm, offset, piece, 0, n);
                 track.write(piece);
             }
-            if (stopping) finish(turn, State.IDLE, "Spoken response stopped.");
-            else finish(turn, State.IDLE, "Spoken response finished.");
+            if (!stopping) {
+                track.drain();
+            }
+            if (stopping) {
+                aborted = true;
+                finish(turn, State.IDLE, "Spoken response stopped.");
+            } else {
+                finish(turn, State.IDLE, "Spoken response finished.");
+            }
         } catch (Exception e) {
+            aborted = true;
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             finish(turn, State.ERROR, "Spoken playback failed: " + e.getMessage());
         } finally {
             activeTrack = null;
             if (track != null) {
-                try { track.stop(); } catch (RuntimeException ignored) {}
+                if (aborted || stopping) {
+                    try { track.stop(); } catch (RuntimeException ignored) {}
+                }
                 try { track.close(); } catch (RuntimeException ignored) {}
             }
             if (focusHeld) {

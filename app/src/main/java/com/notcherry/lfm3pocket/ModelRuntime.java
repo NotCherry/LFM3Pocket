@@ -452,6 +452,18 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 ChatSnapshot existing = session.snapshot();
                 if (existing != null && !existing.turns.isEmpty()) return;
                 session.restore(restored, summary, summarizedCount);
+                String restoredReply = "";
+                for (int i = restored.size() - 1; i >= 0; i--) {
+                    ChatSession.RestoredMessage item = restored.get(i);
+                    if ("assistant".equalsIgnoreCase(item.role)) {
+                        String cleaned = ThinkingSanitizer.clean(item.text).answer;
+                        if (!cleaned.isBlank()) {
+                            restoredReply = cleaned;
+                            break;
+                        }
+                    }
+                }
+                lastAssistant = restoredReply;
                 lastSnapshot = session.snapshot();
                 lastTranscript = FlatTranscript.format(lastSnapshot);
                 lastStatus = lastSnapshot == null ? "" : lastSnapshot.status;
@@ -460,6 +472,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 if (target != null && target.isUsable()) {
                     if (lastSnapshot != null) target.onSnapshot(lastSnapshot);
                     target.onChat(lastTranscript, lastStatus, lastGenerating);
+                    if (!lastAssistant.isEmpty()) target.onAssistantReply(lastAssistant);
                 }
             });
         });
@@ -482,7 +495,8 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             if (ui != null && ui.isUsable()) ui.onSpeech(true, "Stopping spoken response...");
             return;
         }
-        if (handle == 0L) return;
+        boolean lightweightTts = preferences.tinyVocaEnglishTtsEnabled();
+        if (handle == 0L && !lightweightTts) return;
         String reply = SpeechPrompt.spokenText(replyText == null ? "" : replyText);
         if (reply.isBlank()) {
             if (ui != null && ui.isUsable()) ui.onSpeech(false, "Nothing speakable in the last reply.");
@@ -501,7 +515,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             }
             SpeechReplyBackend backend = speechRouter.select(spoken);
             if (backend == SpeechReplyBackend.SYSTEM_TTS) {
-                generateSystemSpeech(spoken);
+                generateSystemSpeech(spoken, localeForSpokenText(spoken));
                 return;
             }
             if (backend == SpeechReplyBackend.TINY_VOCA) {
@@ -509,6 +523,17 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                     if (ui != null && ui.isUsable()) ui.onSpeech(true, "Speaking with English tiny-voca…");
                 });
                 generateTinyVocaSpeech(spoken);
+                return;
+            }
+            if (handle == 0L) {
+                if (preferences.tinyVocaEnglishTtsEnabled()) {
+                    generateSystemSpeech(spoken, localeForSpokenText(spoken));
+                } else {
+                    main.post(() -> {
+                        dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+                        if (ui != null && ui.isUsable()) ui.onSpeech(false, "Load a model to speak replies.");
+                    });
+                }
                 return;
             }
             main.post(() -> {
@@ -702,7 +727,14 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         });
     }
 
-    private void generateSystemSpeech(String reply) {
+    private static java.util.Locale localeForSpokenText(String text) {
+        if (text != null && text.matches("(?s).*[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ].*")) {
+            return new java.util.Locale("pl");
+        }
+        return java.util.Locale.US;
+    }
+
+    private void generateSystemSpeech(String reply, java.util.Locale locale) {
         if (speechCancel) {
             main.post(() -> {
                 dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
@@ -713,7 +745,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         main.post(() -> {
             if (ui != null && ui.isUsable()) ui.onSpeech(true, "Speaking with system voice…");
         });
-        systemSpeech.speak(java.util.Locale.US, reply, new AndroidSystemSpeechSynthesizer.Callback() {
+        systemSpeech.speak(locale == null ? java.util.Locale.US : locale, reply, new AndroidSystemSpeechSynthesizer.Callback() {
             @Override public void onDone() {
                 main.post(() -> {
                     dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
@@ -746,6 +778,10 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         byte[] pcm = audio;
         int rate = sampleRate;
         String error = failure;
+        if (!cancelled && (error != null || pcm.length == 0)) {
+            app.diagnostics().record(LocalDiagnostics.Kind.STRESS, 0L,
+                    "tiny-voca failed: " + (error == null ? "empty audio" : error));
+        }
         main.post(() -> {
             if (cancelled) {
                 dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
@@ -756,9 +792,9 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 if (ui != null && ui.isUsable()) {
                     ui.onSpeech(true, error == null
                             ? "tiny-voca produced no audio; using system voice…"
-                            : "tiny-voca failed; using system voice…");
+                            : "tiny-voca failed (" + error + "); using system voice…");
                 }
-                worker.execute(() -> generateSystemSpeech(reply));
+                worker.execute(() -> generateSystemSpeech(reply, localeForSpokenText(reply)));
                 return;
             }
             if (!playback.play(pcm, rate, 1, 16)) {
@@ -813,6 +849,13 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 return;
             }
             if (failure != null || audio.length == 0) {
+                if (preferences.tinyVocaEnglishTtsEnabled()) {
+                    if (ui != null && ui.isUsable()) {
+                        ui.onSpeech(true, "Omni speech unavailable; using system voice…");
+                    }
+                    worker.execute(() -> generateSystemSpeech(reply, localeForSpokenText(reply)));
+                    return;
+                }
                 dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
                 if (ui != null && ui.isUsable()) ui.onSpeech(false, failure != null
                         ? "Spoken response failed: " + failure : "Spoken response produced no audio.");

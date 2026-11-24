@@ -135,7 +135,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             chatPanel.renderSnapshot(snapshot);
         }
         @Override public void onAssistantReply(String text) {
-            if (text != null && !text.isBlank()) lastAssistantReply = text;
+            if (text != null && !text.isBlank()) {
+                lastAssistantReply = text;
+                updateControls();
+            }
         }
         @Override public void onHistoryTitle(String title) {
             if (title == null || title.isBlank()) return;
@@ -180,15 +183,20 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         InterfaceSize.recreateIfChanged(this, attachedInterfaceScale);
         if (integrationsSettingsSection != null) {
             CactusWhistleModelDownloader.bindUi(integrationsSettingsSection.cactusWhistleDownloadUi());
+            TinyVocaPackDownloader.bindUi(integrationsSettingsSection.tinyVocaDownloadUi());
             if (CactusWhistleModelDownloader.isDownloading()) integrationsSettingsSection.paintSpeechInputControls();
+            if (TinyVocaPackDownloader.isDownloading()) integrationsSettingsSection.paintTinyVocaPackStatus();
         }
         String pendingWhistleError = CactusWhistleModelDownloader.consumePendingBackgroundError();
         if (pendingWhistleError != null) setChatStatus(pendingWhistleError);
+        String pendingTinyVocaError = TinyVocaPackDownloader.consumePendingBackgroundError();
+        if (pendingTinyVocaError != null) setChatStatus(pendingTinyVocaError);
     }
 
     @Override protected void onPause() {
         if (integrationsSettingsSection != null) {
             CactusWhistleModelDownloader.unbindUi(integrationsSettingsSection.cactusWhistleDownloadUi());
+            TinyVocaPackDownloader.unbindUi(integrationsSettingsSection.tinyVocaDownloadUi());
         }
         super.onPause();
     }
@@ -664,8 +672,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         speakButton.setText(playback == PlaybackController.State.STOPPING
                 ? getString(R.string.stopping_speech)
                 : (playbackActive() || speaking) ? getString(R.string.stop_speech) : getString(R.string.speak_reply));
-        speakButton.setEnabled((!busy || playbackActive() || speaking) && (playbackActive() || speaking
-                || (modelHandle() != 0L && settingsLoaded && !lastAssistantReply.isBlank())));
+        boolean canSpeakReply = !lastAssistantReply.isBlank()
+                && ((modelHandle() != 0L && settingsLoaded) || canSpeakWithoutOmniModel());
+        speakButton.setEnabled((!busy || playbackActive() || speaking)
+                && (playbackActive() || speaking || canSpeakReply));
         boolean canCompact = !busy && !speaking && !recordingActive() && !playbackActive()
                 && importCancellation == null && modelHandle() != 0L && settingsLoaded;
         chatPanel.updateControls(!busy && modelHandle() != 0L && settingsLoaded,
@@ -1201,12 +1211,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         });
     }
 
+    private boolean canSpeakWithoutOmniModel() {
+        return new RuntimePreferences(this).tinyVocaEnglishTtsEnabled();
+    }
+
     private void toggleSpokenReply() {
         if (playbackActive() || speaking) {
             runtime.speak(lastAssistantReply);
             return;
         }
-        if (busy || !foreground || modelHandle() == 0L || lastAssistantReply.isBlank()) return;
+        if (busy || !foreground || lastAssistantReply.isBlank()) return;
+        if (modelHandle() == 0L && !canSpeakWithoutOmniModel()) return;
         busy = true;
         speaking = true;
         updateControls();
@@ -1774,37 +1789,39 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void downloadTinyVocaPack() {
-        if (integrationsSettingsSection == null) return;
-        integrationsSettingsSection.beginTinyVocaDownload();
-        new Thread(() -> new TinyVocaPackDownloader(new TinyVocaPackStore(this)).download(
-                new TinyVocaPackDownloader.Progress() {
-                    @Override public void onFile(String path, long written, long total) {
-                        runOnUiThread(() -> {
-                            if (integrationsSettingsSection != null) {
-                                integrationsSettingsSection.onTinyVocaDownloadProgress(path);
-                            }
-                        });
-                    }
-                    @Override public void onDone() {
-                        TinyVocaPackStore pack = new TinyVocaPackStore(MainActivity.this);
-                        new Thread(() -> TinyVocaPhonemizerBridge.ensureLoaded(pack.phonemizerDir()),
-                                "tiny-voca-phonemizer-warmup").start();
-                        runOnUiThread(() -> {
-                            if (integrationsSettingsSection != null) {
-                                integrationsSettingsSection.paintTinyVocaPackStatus();
-                            }
-                            setChatStatus(getString(R.string.tiny_voca_status_ready));
-                        });
-                    }
-                    @Override public void onError(String message) {
-                        runOnUiThread(() -> {
-                            if (integrationsSettingsSection != null) {
-                                integrationsSettingsSection.paintTinyVocaPackStatus();
-                            }
-                            setChatStatus(message);
-                        });
-                    }
-                }), "tiny-voca-download").start();
+        requestNotificationPermissionForModelDownloadIfNeeded();
+        ModelDownloadManager manager = ModelDownloadManager.getInstance(this);
+        ModelDownloadManager.StartResult outcome = manager.startTinyVoca(false);
+        if (outcome == ModelDownloadManager.StartResult.METERED_NEEDS_CONFIRMATION) {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.model_download_metered_title)
+                    .setMessage(R.string.model_download_metered_message)
+                    .setPositiveButton(android.R.string.ok, (d, w) -> {
+                        ModelDownloadManager.StartResult retry = manager.startTinyVoca(true);
+                        handleTinyVocaDownloadStart(retry, manager);
+                    })
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show();
+            return;
+        }
+        handleTinyVocaDownloadStart(outcome, manager);
+    }
+
+    private void handleTinyVocaDownloadStart(ModelDownloadManager.StartResult outcome, ModelDownloadManager manager) {
+        if (chatShellSection == null) return;
+        if (outcome == ModelDownloadManager.StartResult.INSUFFICIENT_SPACE) {
+            setChatStatus(R.string.model_download_insufficient_space,
+                    formatMb(manager.insufficientSpaceRequiredBytes(ModelDownloadKind.TINY_VOCA)),
+                    formatMb(manager.insufficientSpaceUsableBytes()));
+        } else if (outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
+            setChatStatus(R.string.model_download_already_running);
+        } else if (outcome == ModelDownloadManager.StartResult.SCHEDULE_FAILED) {
+            setChatStatus(R.string.model_download_schedule_failed);
+        }
+        if (outcome == ModelDownloadManager.StartResult.STARTED
+                || outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
+            if (integrationsSettingsSection != null) integrationsSettingsSection.paintTinyVocaPackStatus();
+        }
     }
 
     private void requestNotificationPermissionForModelDownloadIfNeeded() {

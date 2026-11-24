@@ -12,6 +12,7 @@ import java.util.concurrent.Executors;
  */
 public final class ModelDownloadJobService extends JobService {
     public static final int JOB_ID_WHISTLE = 34_001;
+    public static final int JOB_ID_TINY_VOCA = 34_002;
 
     private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
 

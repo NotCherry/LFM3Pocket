@@ -135,4 +135,23 @@ public class PlaybackControllerTest {
         assertEquals(0,opened.get());
         assertEquals(PlaybackController.State.IDLE,c.state());
     }
+
+    @Test public void naturalCompletionDrainsTrackWithoutCallingStop(){
+        AtomicInteger drains=new AtomicInteger();
+        AtomicInteger stops=new AtomicInteger();
+        PlaybackController c=new PlaybackController(() -> new PlaybackController.Track(){
+            public void start(int sampleRateHz,int channels,int bitsPerSample){}
+            public void write(byte[] pcm){ written.addAndGet(pcm.length); }
+            public void drain(){ drains.incrementAndGet(); }
+            public void stop(){ stops.incrementAndGet(); }
+            public void close(){ released.incrementAndGet(); }
+        }, () -> true, focusAbandons::incrementAndGet, worker::add, Runnable::run,
+                (state,message)->states.add(state));
+        assertTrue(c.play(new byte[]{1,0,2,0,3,0,4,0},24000,1,16));
+        drain();
+        assertEquals(1,drains.get());
+        assertEquals("Natural completion must drain instead of aborting via stop()",0,stops.get());
+        assertEquals(1,released.get());
+        assertEquals(PlaybackController.State.IDLE,c.state());
+    }
 }

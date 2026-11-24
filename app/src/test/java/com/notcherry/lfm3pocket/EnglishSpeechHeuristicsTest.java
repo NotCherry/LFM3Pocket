@@ -16,4 +16,20 @@ public class EnglishSpeechHeuristicsTest {
         assertEquals(EnglishSpeechHeuristics.LikelyLanguage.ENGLISH,
                 EnglishSpeechHeuristics.classify("Hello from Hanami."));
     }
+
+    @Test
+    public void digitsOnlyCountsAsEnglish() {
+        assertEquals(EnglishSpeechHeuristics.LikelyLanguage.ENGLISH,
+                EnglishSpeechHeuristics.classify("42"));
+        assertEquals(EnglishSpeechHeuristics.LikelyLanguage.ENGLISH,
+                EnglishSpeechHeuristics.classify("$3.50"));
+    }
+
+    @Test
+    public void nonLatinWithDigitsRemainsNonEnglish() {
+        assertEquals(EnglishSpeechHeuristics.LikelyLanguage.NON_ENGLISH,
+                EnglishSpeechHeuristics.classify("Привет 123"));
+        assertEquals(EnglishSpeechHeuristics.LikelyLanguage.EMPTY,
+                EnglishSpeechHeuristics.classify("   "));
+    }
 }

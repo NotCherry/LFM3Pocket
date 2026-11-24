@@ -27,11 +27,13 @@
     <string name="network_tools_help">Domyślnie wyłączone. Po włączeniu narzędzie pogodowe może wywołać Open-Meteo. Traktuj wynik narzędzia jako niezaufany.</string>
     <string name="speech_heading">MOWA</string>
     <string name="tiny_voca_tts_label">Użyj tiny-voca do angielskich odpowiedzi (na urządzeniu, tylko angielski)</string>
-    <string name="tiny_voca_tts_help">Domyślnie wyłączone. Pobiera przypiętą paczkę (~27 MB) z Hugging Face po naciśnięciu Pobierz. Polski i inne języki nadal używają mowy LFM3-Omni. Angielski bez paczki korzysta z systemowego głosu EN-US.</string>
+    <string name="tiny_voca_tts_help">Domyślnie wyłączone. Pobiera przypiętą paczkę (~27 MB) z Hugging Face po naciśnięciu Pobierz. Angielskie odpowiedzi używają tiny-voca po instalacji (lub głosu systemowego bez paczki); pozostałe języki używają LFM3-Omni lub głosu systemowego na modelach tekstowych.</string>
     <string name="tiny_voca_download">Pobierz paczkę tiny-voca</string>
     <string name="tiny_voca_remove">Usuń paczkę tiny-voca</string>
     <string name="tiny_voca_status_missing">Brak paczki tiny-voca</string>
     <string name="tiny_voca_status_ready">Paczka tiny-voca gotowa</string>
+    <string name="tiny_voca_status_ready_enable">Paczka tiny-voca zainstalowana (zaznacz pole powyżej, aby jej używać)</string>
+    <string name="tiny_voca_status_no_phonemizer">Paczka tiny-voca zainstalowana, ale brak natywnego fonemizera w tej kompilacji (użyty zostanie głos systemowy)</string>
     <string name="tiny_voca_downloading">Pobieranie %1$s…</string>
     <string name="default_assistant_button">Ustaw jako domyślnego asystenta</string>
     <string name="default_assistant_help">Otwiera systemowy selektor, aby gest asystenta (np. długie naciśnięcie zasilania) otwierał Hanami i uruchamiał sesję głosową. Akcje zaproponowane przez model nadal wymagają Twojego potwierdzenia.</string>
