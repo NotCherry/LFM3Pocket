@@ -314,7 +314,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         }
         String status = failure == null
                 ? (projector == null || projector.isEmpty()
-                    ? "Text model ready \u0007 offline"
+                    ? "Text model ready · offline"
                     : "Model and projector loaded • offline")
                 : "Model error: " + failure;
         main.post(() -> {

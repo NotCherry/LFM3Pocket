@@ -57,11 +57,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private static final int REQUEST_AUDIO = 46;
     private static final int REQUEST_CAMERA = 47;
     private static final int OPEN_MODEL_URI = 48;
-    private static final int PICK_DOCUMENT = 49;
     private static final int OPEN_MMPROJ_URI = 49;
     private static final int PICK_WHISTLE_MODEL = 50;
     private static final int REQUEST_READ_CALENDAR = 51;
     private static final int REQUEST_POST_NOTIFICATIONS_WHISTLE = 52;
+    private static final int PICK_DOCUMENT = 53;
+    private static final int REQUEST_ASSISTANT_ROLE = 54;
 
 
     private ExecutorService worker;
@@ -534,7 +535,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         integrationsSettingsSection.mount(configuration, ink, inkMuted);
 
         new DefaultAssistantSettingsSection(this, new DefaultAssistantSettingsSection.Deps(
-                this::startActivity, this::setChatStatus)).mount(configuration, inkMuted);
+                this::startActivity, intent -> startActivityForResult(intent, REQUEST_ASSISTANT_ROLE),
+                this::setChatStatus)).mount(configuration, inkMuted);
         new CrashLogSettingsSection(this, new CrashLogSettingsSection.Deps(this::setChatStatus))
                 .mount(configuration, ink, inkMuted);
 
@@ -1272,6 +1274,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         }
         if (code == TAKE_PHOTO && result != RESULT_OK) {
             setChatStatus("Camera closed without taking a photo.");
+            return;
+        }
+        if (code == PICK_DOCUMENT && result == RESULT_OK && data != null) {
+            importSelectedDocuments(data);
             return;
         }
         if ((code == OPEN_MODEL_URI || code == OPEN_MMPROJ_URI)
