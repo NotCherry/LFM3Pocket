@@ -1,15 +1,151 @@
 #include "speculative_decode.h"
-#include "speculative.h"
+#include "ngram-mod.h"
 
 #include <jni.h>
 #include <algorithm>
-#include <mutex>
+#include <memory>
 
 namespace {
-std::once_flag g_common_init_once;
+// Phone-tuned ngram-mod parameters (see docs/adr/0011-ngram-mod-prompt-lookup.md).
+constexpr uint16_t kNgramMatch = 16;
+constexpr int kNgramMaxDraft = 12;
+constexpr int kNgramMinDraft = 2;
+constexpr size_t kNgramTableEntries = 1024 * 1024; // 4 MB open-address table (int32_t entries)
 
-void ensure_common_init() {
-    std::call_once(g_common_init_once, [] { common_init(); });
+static_assert(sizeof(llama_token) == sizeof(common_ngram_mod::entry_t),
+              "llama_token must match common_ngram_mod::entry_t");
+
+class NgramModDrafter {
+public:
+    NgramModDrafter() : mod_(kNgramMatch, kNgramTableEntries) {}
+
+    void begin(const std::vector<llama_token> & prompt) {
+        i_last_ = 0;
+        n_draft_last_ = 0;
+        n_low_ = 0;
+        const size_t n = mod_.get_n();
+        if (prompt.size() < n) return;
+        for (size_t i = 0; i < prompt.size() - n; ++i) {
+            mod_.add(prompt.data() + i);
+        }
+        i_last_ = prompt.size() - n;
+        const double occupancy = static_cast<double>(mod_.get_used()) / static_cast<double>(mod_.size());
+        if (occupancy > 0.25) {
+            mod_.reset();
+        }
+    }
+
+    void draft(llama_token id_last, const std::vector<llama_token> & prompt,
+               int max_draft, std::vector<llama_token> & result) {
+        result.clear();
+        n_draft_last_ = 0;
+        const size_t n = mod_.get_n();
+        const size_t cur_len = prompt.size();
+        const int limit = std::min(max_draft, kNgramMaxDraft);
+        if (cur_len < n || limit < kNgramMinDraft) return;
+
+        // Add new n-grams in chunks matching upstream common_speculative_impl_ngram_mod.
+        if (i_last_ + 32 < cur_len) {
+            for (size_t i = i_last_; i < cur_len - n; ++i) {
+                mod_.add(prompt.data() + i);
+            }
+            i_last_ = cur_len - n;
+        }
+
+        result.resize(n + static_cast<size_t>(limit));
+        for (size_t i = 0; i < n - 1; ++i) {
+            result[i] = prompt[cur_len - n + 1 + i];
+        }
+        result[n - 1] = id_last;
+
+        for (int i = 0; i < limit; ++i) {
+            const llama_token token = mod_.get(result.data() + i);
+            if (token == common_ngram_mod::EMPTY) {
+                if (i < kNgramMinDraft) {
+                    result.clear();
+                    return;
+                }
+                result.resize(n + static_cast<size_t>(i));
+                break;
+            }
+            result[n + static_cast<size_t>(i)] = token;
+        }
+
+        for (size_t i = 0; n + i < result.size(); ++i) {
+            result[i] = result[n + i];
+        }
+        result.resize(result.size() - n);
+        n_draft_last_ = result.size();
+    }
+
+    void accept(size_t n_accepted) {
+        if (n_draft_last_ == 0) return;
+        const double ratio = static_cast<double>(n_accepted) / static_cast<double>(n_draft_last_);
+        if (ratio < 0.25) {
+            n_low_++;
+            if (n_low_ >= 5) {
+                mod_.reset();
+                n_low_ = 0;
+                i_last_ = 0;
+            }
+        } else {
+            n_low_ = 0;
+        }
+    }
+
+private:
+    common_ngram_mod mod_;
+    size_t i_last_ = 0;
+    size_t n_draft_last_ = 0;
+    int n_low_ = 0;
+};
+
+struct SamplerDeleter {
+    void operator()(llama_sampler * s) const {
+        if (s) llama_sampler_free(s);
+    }
+};
+
+struct BatchDeleter {
+    void operator()(llama_batch_ext * b) const {
+        if (b) llama_batch_ext_free(b);
+    }
+};
+
+using SamplerPtr = std::unique_ptr<llama_sampler, SamplerDeleter>;
+using BatchPtr = std::unique_ptr<llama_batch_ext, BatchDeleter>;
+
+SamplerPtr make_chat_sampler() {
+    llama_sampler * smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    if (!smpl) return SamplerPtr(nullptr);
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_k(50));
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.1f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    return SamplerPtr(smpl);
+}
+
+std::vector<llama_token> sample_and_accept_n(
+        llama_sampler * smpl,
+        llama_context * ctx,
+        const llama_vocab * vocab,
+        const std::vector<llama_token> & draft) {
+    std::vector<llama_token> result;
+    result.reserve(draft.size() + 1);
+    size_t i = 0;
+    for (; i < draft.size(); ++i) {
+        const llama_token id = llama_sampler_sample(smpl, ctx, static_cast<int32_t>(i));
+        llama_sampler_accept(smpl, id);
+        result.push_back(id);
+        if (draft[i] != id || (llama_vocab_is_eog(vocab, id) && i + 1 < draft.size())) {
+            break;
+        }
+    }
+    if (i == draft.size()) {
+        const llama_token id = llama_sampler_sample(smpl, ctx, static_cast<int32_t>(i));
+        llama_sampler_accept(smpl, id);
+        result.push_back(id);
+    }
+    return result;
 }
 
 bool deliver_piece(JNIEnv * env, jobject sink, jmethodID on_token, std::string & pending,
@@ -26,6 +162,7 @@ bool deliver_piece(JNIEnv * env, jobject sink, jmethodID on_token, std::string &
         error = "Java callback failed";
         return false;
     }
+    (void) pending;
     return true;
 }
 
@@ -72,9 +209,10 @@ void emit_token(const llama_vocab * vocab, llama_token id, hanami::TokenDelivery
     }
     delivery->pending->append(piece, static_cast<size_t>(n));
     const std::u16string chunk = decode_utf8_prefix(*delivery->pending);
-  if (!chunk.empty() && delivery->env)
+    if (!chunk.empty() && delivery->env) {
         deliver_piece(delivery->env, delivery->sink, delivery->on_token, *delivery->pending, chunk,
                       *delivery->error);
+    }
 }
 } // namespace
 
@@ -131,23 +269,6 @@ bool drop_last_prompt_token_from_kv(llama_context * ctx, llama_seq_id seq_id, si
     return true;
 }
 
-void configure_phone_ngram_spec(common_params_speculative & spec) {
-    spec.types = { COMMON_SPECULATIVE_TYPE_NGRAM_MOD };
-    spec.ngram_mod.n_match = 16;
-    spec.ngram_mod.n_max = 12;
-    spec.ngram_mod.n_min = 2;
-}
-
-common_sampler * make_chat_sampler(const llama_model * model) {
-    ensure_common_init();
-    common_params_sampling sp;
-    sp.samplers = { COMMON_SAMPLER_TYPE_TOP_K, COMMON_SAMPLER_TYPE_TEMPERATURE };
-    sp.top_k = 50;
-    sp.temp = 0.1f;
-    sp.seed = LLAMA_DEFAULT_SEED;
-    return common_sampler_init(model, sp);
-}
-
 bool generate_sequential(
         llama_context * ctx,
         llama_batch_ext * batch,
@@ -159,10 +280,11 @@ bool generate_sequential(
         std::atomic<bool> * cancelled,
         std::vector<llama_token> & generated,
         std::string & error) {
-    llama_sampler * sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
-    llama_sampler_chain_add(sampler, llama_sampler_init_top_k(50));
-    llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.1f));
-    llama_sampler_chain_add(sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    SamplerPtr sampler = make_chat_sampler();
+    if (!sampler) {
+        error = "Failed to initialize sampler";
+        return false;
+    }
 
     auto setup_one = [&](llama_token tok, int pos) {
         llama_batch_ext_clear(batch);
@@ -178,23 +300,20 @@ bool generate_sequential(
     for (int i = 0; i < max_new_tokens && position + i < context_tokens; ++i) {
         if (cancelled && cancelled->load()) {
             error.clear();
-            llama_sampler_free(sampler);
             return false;
         }
-        const llama_token next = llama_sampler_sample(sampler, ctx, -1);
+        const llama_token next = llama_sampler_sample(sampler.get(), ctx, -1);
         if (llama_vocab_is_eog(vocab, next)) break;
-        llama_sampler_accept(sampler, next);
+        llama_sampler_accept(sampler.get(), next);
         generated.push_back(next);
         if (position + static_cast<int>(generated.size()) >= context_tokens) break;
         if (static_cast<int>(generated.size()) >= max_new_tokens) break;
         setup_one(next, position + static_cast<int>(generated.size()) - 1);
         if (llama_process(ctx, LLAMA_PROCESS_TYPE_DECODE, batch) != 0) {
             error = "Model failed while decoding response";
-            llama_sampler_free(sampler);
             return false;
         }
     }
-    llama_sampler_free(sampler);
     return error.empty();
 }
 
@@ -211,8 +330,6 @@ bool generate_ngram_mod(
         std::vector<llama_token> * session_tokens,
         SpecDecodeStats * stats,
         std::string & error) {
-    ensure_common_init();
-
     if (prompt_tokens.empty()) {
         error = "Empty prompt for speculative decode";
         return false;
@@ -230,24 +347,22 @@ bool generate_ngram_mod(
         }
     }
 
-    common_params_speculative params_spec;
-    configure_phone_ngram_spec(params_spec);
-
-    common_speculative * spec = common_speculative_init(params_spec, 1);
-    if (!spec) {
-        error = "Failed to initialize ngram-mod speculation";
+    SamplerPtr smpl = make_chat_sampler();
+    if (!smpl) {
+        error = "Failed to initialize sampler for prompt lookup";
+        return false;
+    }
+    BatchPtr batch_tgt(llama_batch_ext_init(ctx));
+    if (!batch_tgt) {
+        error = "Failed to allocate decode batch for prompt lookup";
         return false;
     }
 
-    const llama_model * model = llama_get_model(ctx);
-    common_sampler_ptr smpl(make_chat_sampler(model));
-
-    const bool use_ckpt_tgt =
-            common_context_can_seq_rm(ctx) == COMMON_CONTEXT_SEQ_RM_TYPE_FULL;
     (void) mrope;
-
     const llama_seq_id seq_id = 0;
-    llama_tokens prompt_tgt;
+    const int max_batch_draft = std::max(0, static_cast<int>(llama_n_batch(ctx)) - 1);
+
+    std::vector<llama_token> prompt_tgt;
     if (prompt_tokens.size() > 1) {
         prompt_tgt.assign(prompt_tokens.begin(), prompt_tokens.end() - 1);
     }
@@ -255,18 +370,23 @@ bool generate_ngram_mod(
     llama_token id_last = prompt_tokens.back();
     int n_past = static_cast<int>(prompt_tokens.size()) - 1;
 
-    common_speculative_begin(spec, seq_id, prompt_tgt);
+    NgramModDrafter drafter;
+    drafter.begin(prompt_tgt);
 
-    common_batch batch_tgt(ctx);
-    llama_tokens draft;
-    common_prompt_checkpoint ckpt;
-
+    std::vector<llama_token> draft;
     bool has_eos = false;
     generated.clear();
     llama_memory_t mem = llama_get_memory(ctx);
 
     auto trim_kv_tail = [&](int from_pos) {
         if (mem) llama_memory_seq_rm(mem, seq_id, from_pos, -1);
+    };
+
+    auto add_token = [&](llama_token tok, int pos) {
+        const int32_t idx = llama_batch_ext_add_token(batch_tgt.get(), seq_id, tok);
+        const llama_pos positions[4] = { pos, 0, 0, 0 };
+        llama_batch_ext_set_pos(batch_tgt.get(), idx, positions);
+        llama_batch_ext_set_output_logits(batch_tgt.get(), idx, true);
     };
 
     auto finish_session = [&]() {
@@ -297,50 +417,26 @@ bool generate_ngram_mod(
         *session_tokens = build_layout(false);
         if (session_tokens->empty() && np == 0) return;
         if (session_tokens->size() != np) *session_tokens = build_layout(true);
-        (void) kv;
-        (void) stats;
     };
 
     while (!has_eos && static_cast<int>(generated.size()) < max_new_tokens) {
         if (cancelled && cancelled->load()) {
             error.clear();
-            common_speculative_free(spec);
             return false;
         }
 
-        if (draft.empty()) {
-            if (use_ckpt_tgt) {
-                ckpt.update_pos(
-                        static_cast<int64_t>(prompt_tgt.size() + 1),
-                        llama_memory_seq_pos_min(mem, seq_id),
-                        llama_memory_seq_pos_max(mem, seq_id));
-            }
+        int n_draft_max = context_tokens - n_past - 2;
+        n_draft_max = std::min(n_draft_max, max_new_tokens - static_cast<int>(generated.size()) - 1);
+        n_draft_max = std::max(0, std::min(n_draft_max, max_batch_draft));
+        drafter.draft(id_last, prompt_tgt, n_draft_max, draft);
 
-            int n_draft_max = context_tokens - n_past - 2;
-            n_draft_max = std::max(0, std::min(n_draft_max, max_new_tokens - static_cast<int>(generated.size()) - 1));
-
-            common_speculative_get_draft_params(spec, seq_id) = {
-                /* .drafting   = */ true,
-                /* .n_max      = */ n_draft_max,
-                /* .pos0       = */ n_past,
-                /* .id_last    = */ id_last,
-                /* .prompt     = */ &prompt_tgt,
-                /* .result     = */ &draft,
-            };
-            common_speculative_draft(spec);
-
-            if (!draft.empty() && use_ckpt_tgt) {
-                ckpt.update_tgt(ctx, seq_id, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
-            }
-        }
-
-        batch_tgt.clear();
+        llama_batch_ext_clear(batch_tgt.get());
         const int batch_id_last_pos = n_past;
-        batch_tgt.add(id_last, batch_id_last_pos, seq_id, true);
+        add_token(id_last, batch_id_last_pos);
         if (stats) stats->n_eval_tokens += 1;
         n_past += 1;
         for (size_t i = 0; i < draft.size(); ++i) {
-            batch_tgt.add(draft[i], n_past + static_cast<int>(i), seq_id, true);
+            add_token(draft[i], n_past + static_cast<int>(i));
             if (stats) stats->n_eval_tokens += 1;
         }
 
@@ -349,39 +445,20 @@ bool generate_ngram_mod(
             break;
         }
 
-        if (!common_speculative_process(spec, batch_tgt)) {
-            error = "Speculative state update failed";
-            break;
-        }
-
-        common_sampler_ptr smpl_save;
-        if (use_ckpt_tgt) {
-            smpl_save.reset(common_sampler_clone(smpl.get()));
-        }
-
         const size_t n_draft = draft.size();
-        auto ids = common_sampler_sample_and_accept_n(smpl.get(), ctx, draft);
+        std::vector<llama_token> ids = sample_and_accept_n(smpl.get(), ctx, vocab, draft);
         if (ids.empty()) {
             error = "Sampling failed during speculation";
             break;
         }
 
+        const size_t n_accepted = ids.size() - 1;
         if (stats) {
             stats->n_drafted += static_cast<int>(n_draft);
-            stats->n_accept += static_cast<int>(ids.size()) - 1;
+            stats->n_accept += static_cast<int>(n_accepted);
         }
 
-        if (use_ckpt_tgt && ids.size() - 1 < n_draft) {
-            draft = std::move(ids);
-            GGML_ASSERT(ckpt.load_tgt(ctx, seq_id, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY));
-            llama_memory_seq_rm(mem, seq_id, ckpt.pos_max + 1, -1);
-            prompt_tgt.resize(static_cast<size_t>(ckpt.n_tokens));
-            smpl = std::move(smpl_save);
-            n_past = static_cast<int>(prompt_tgt.size());
-            continue;
-        }
-
-        common_speculative_accept(spec, seq_id, static_cast<uint16_t>(ids.size() - 1));
+        drafter.accept(n_accepted);
 
         const int n_committed = static_cast<int>(ids.size());
         int n_output = 0;
@@ -420,8 +497,6 @@ bool generate_ngram_mod(
 
         if (stats) stats->n_predict += n_output;
     }
-
-    common_speculative_free(spec);
 
     if (stats) stats->n_predict = static_cast<int>(generated.size());
 

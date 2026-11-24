@@ -11,6 +11,8 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # See docs/adr/0001-arm64-dotprod-and-kv-residency.md.
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     add_compile_options(
+        -ffunction-sections
+        -fdata-sections
         "$<$<CONFIG:Debug>:-O3>"
         "$<$<CONFIG:Release>:-O3>"
         "$<$<CONFIG:RelWithDebInfo>:-O3>")
@@ -29,13 +31,19 @@ else()
     endif()
 endif()
 
-set(LLAMA_BUILD_COMMON ON CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_APP OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_MTMD ON CACHE BOOL "" FORCE)
+set(LLAMA_SUBPROCESS OFF CACHE BOOL "" FORCE)
+set(MTMD_VIDEO OFF CACHE BOOL "" FORCE)
 set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
+set(LLAMA_OPENSSL OFF CACHE BOOL "" FORCE)
+set(LLAMA_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
+set(GGML_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
 set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
 set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
 set(GGML_LLAMAFILE OFF CACHE BOOL "" FORCE)
@@ -57,8 +65,18 @@ if(NOT EXISTS "${LLAMA_DIR}/CMakeLists.txt")
 endif()
 add_subdirectory("${LLAMA_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/llama-build" EXCLUDE_FROM_ALL)
 
-add_library(lfm3pocket SHARED native.cpp speculative_decode.cpp cactus_whistle_jni.cpp)
+# Compile only llama.cpp's self-contained 65-line ngram-mod table directly rather than
+# building all ~55+ translation units in llama-common (Jinja, parsers, httplib, CLI args).
+add_library(lfm3pocket SHARED
+    native.cpp
+    speculative_decode.cpp
+    cactus_whistle_jni.cpp
+    "${LLAMA_DIR}/common/ngram-mod.cpp"
+)
 target_compile_options(lfm3pocket PRIVATE "$<$<CONFIG:Debug>:-O3>" "$<$<CONFIG:Release>:-O3>")
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_link_options(lfm3pocket PRIVATE -Wl,--gc-sections)
+endif()
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     target_compile_options(lfm3pocket PRIVATE -march=armv8.2-a+dotprod)
     target_compile_definitions(lfm3pocket PRIVATE HANAMI_ARM_DOTPROD=1)
@@ -67,11 +85,9 @@ if(GGML_VULKAN)
     target_compile_definitions(lfm3pocket PRIVATE HANAMI_ENABLE_VULKAN_OFFLOAD=1)
     message(STATUS "Hanami: experimental GGML_VULKAN enabled (spike #164); runtime will attempt GPU offload with CPU fallback")
 endif()
-# NDK Gradle does not always propagate llama-common INTERFACE includes to JNI sources.
 target_include_directories(lfm3pocket PRIVATE
     "${LLAMA_DIR}/common"
     "${LLAMA_DIR}/include"
-    "${LLAMA_DIR}/vendor"
 )
 
 # Optional: Cactus Whistle STT runtime (Android native artifacts from Cactus release).
@@ -110,4 +126,4 @@ if(HANAMI_REQUIRE_CACTUS AND ANDROID_ABI STREQUAL "arm64-v8a" AND NOT _hanami_ca
         "Run scripts/fetch-cactus.sh (pinned in vendor/CACTUS_RELEASE) before assembling the phone APK.")
 endif()
 
-target_link_libraries(lfm3pocket PRIVATE llama llama-common mtmd android log)
+target_link_libraries(lfm3pocket PRIVATE llama mtmd android log)

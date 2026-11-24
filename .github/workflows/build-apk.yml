@@ -425,6 +425,10 @@ jobs:
         run: |
           python3 .github/scripts/assert-native-optimization.py --self-test
           python3 .github/scripts/assert-native-optimization.py app/.cxx
+      - name: Verify release R8 minification and ProGuard rules
+        run: |
+          gradle :app:minifyPhoneReleaseWithR8 -Phanami.skipNative=true --no-daemon --stacktrace
+          ls -lh app/build/intermediates/dex/phoneRelease/minifyPhoneReleaseWithR8/ || true
       - name: Upload compiled ARM64 APK
         if: success()
         uses: actions/upload-artifact@v4
