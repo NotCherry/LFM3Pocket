@@ -35,6 +35,20 @@ def requestedGradleTasks = gradle.startParameter.taskNames.collect { it.toString
 def isUnitTestOnlyInvocation = !requestedGradleTasks.isEmpty()
         && requestedGradleTasks.every { it ==~ /(?i).*unittest.*/ }
 def skipNativeBuild = hanamiSkipNativeFlag || isUnitTestOnlyInvocation
+// Opt-in ccache compiler launcher for CMake native builds (used in CI to cache llama.cpp objects
+// by content hash across ephemeral runners without mtime invalidation).
+def hanamiUseCcacheProp = (project.findProperty('hanami.useCcache')
+        ?: System.getenv('HANAMI_USE_CCACHE'))
+def hanamiUseCcache = hanamiUseCcacheProp != null
+        && hanamiUseCcacheProp.toString() in ['1', 'true', 'TRUE', 'ON', 'on', 'yes', 'YES']
+// Default deviceCheck packages both arm64-v8a and x86_64 for local emulator/device probes;
+// CI ARM64 jobs pass -Phanami.deviceCheckAbis=arm64-v8a to avoid duplicate x86_64 builds.
+def deviceCheckAbisProp = (project.findProperty('hanami.deviceCheckAbis')
+        ?: System.getenv('HANAMI_DEVICE_CHECK_ABIS')
+        ?: 'arm64-v8a,x86_64').toString()
+def deviceCheckAbisList = deviceCheckAbisProp.split(',')
+        .collect { it.trim() }
+        .findAll { !it.isEmpty() }
 
 android {
     // Source package stays put so the Java/Kotlin tree does not move.
@@ -62,7 +76,8 @@ android {
                     // (same as llama.cpp docs/android.md and PocketPal/llama.rn).
                     // GGML_CPU_ARM_ARCH is set in CMakeLists.txt for arm64-v8a only
                     // (armv8.2-a+dotprod — PocketPal's preferred CPU ladder step).
-                    arguments '-DANDROID_STL=c++_shared',
+                    def cmakeArgs = [
+                              '-DANDROID_STL=c++_shared',
                               '-DGGML_NATIVE=OFF',
                               '-DGGML_OPENMP=OFF',
                               '-DGGML_LLAMAFILE=OFF',
@@ -76,6 +91,12 @@ android {
                               '-DLLAMA_BUILD_SERVER=OFF',
                               "-DHANAMI_GGML_VULKAN=${hanamiGgmlVulkan}",
                               "-DHANAMI_REQUIRE_CACTUS=${hanamiRequireCactus}"
+                    ]
+                    if (hanamiUseCcache) {
+                        cmakeArgs.add('-DCMAKE_C_COMPILER_LAUNCHER=ccache')
+                        cmakeArgs.add('-DCMAKE_CXX_COMPILER_LAUNCHER=ccache')
+                    }
+                    arguments(*cmakeArgs)
                     cppFlags '-std=c++17'
                 }
             }
@@ -96,7 +117,7 @@ android {
             applicationIdSuffix '.devicecheck'
             manifestPlaceholders = [appLabel: 'Hanami device test']
             testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
-            ndk { abiFilters 'arm64-v8a', 'x86_64' }
+            ndk { abiFilters(*deviceCheckAbisList) }
         }
     }
     if (!skipNativeBuild) {
@@ -152,15 +173,15 @@ tasks.register('buildHanamiDizioneJni', Exec) {
     def wantsDeviceCheck = requestedTasks.any { it ==~ /(?i).*devicecheck.*/ }
     def wantsSmoke = requestedTasks.any { it ==~ /(?i).*smoke.*/ }
     def wantsPhone = requestedTasks.any { it ==~ /(?i).*phone.*/ }
-    def jniAbis
-    if (wantsDeviceCheck || (wantsSmoke && wantsPhone) || requestedTasks.isEmpty()
-            || (!wantsDeviceCheck && !wantsSmoke && !wantsPhone)) {
-        jniAbis = 'x86_64,arm64-v8a'
-    } else if (wantsSmoke) {
-        jniAbis = 'x86_64'
+    def jniAbisSet = new LinkedHashSet<String>()
+    if (requestedTasks.isEmpty() || (!wantsDeviceCheck && !wantsSmoke && !wantsPhone)) {
+        jniAbisSet.addAll(['x86_64', 'arm64-v8a'])
     } else {
-        jniAbis = 'arm64-v8a'
+        if (wantsSmoke) jniAbisSet.add('x86_64')
+        if (wantsPhone) jniAbisSet.add('arm64-v8a')
+        if (wantsDeviceCheck) jniAbisSet.addAll(deviceCheckAbisList)
     }
+    def jniAbis = jniAbisSet.join(',')
     environment 'HANAMI_BUILD_ABIS', jniAbis
     def requireDizione = hanamiRequireDizioneProp != null
             && hanamiRequireDizioneProp.toString() in ['1', 'true', 'TRUE', 'ON', 'on', 'yes', 'YES']

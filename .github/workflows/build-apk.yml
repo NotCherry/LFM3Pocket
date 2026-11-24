@@ -192,16 +192,30 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Cache smoke native/CMake outputs
+      - name: Set up ccache
+        run: |
+          if ! command -v ccache >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ccache
+          fi
+          mkdir -p "$HOME/.ccache"
+          {
+            echo "HANAMI_USE_CCACHE=1"
+            echo "CCACHE_DIR=$HOME/.ccache"
+            echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
+            echo "CCACHE_NOHASHDIR=true"
+            echo "CCACHE_COMPILERCHECK=string:ndk-27.2.12479018"
+            echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime"
+            echo "CCACHE_COMPRESS=true"
+            echo "CCACHE_MAXSIZE=500M"
+          } >> "$GITHUB_ENV"
+      - name: Cache ccache (x86_64 native)
         uses: actions/cache@v4
         with:
-          path: |
-            app/.cxx
-            app/build/intermediates/cxx
-            app/build/intermediates/cmake
-          key: smoke-native-${{ runner.os }}-ndk27.2.12479018-cmake3.22.1-bt35.0.0-api35-x86_64-vulkan-off-${{ hashFiles('vendor/LLAMA_CPP_COMMIT', 'vendor/VOCA_COMMIT', 'app/src/main/cpp/**', 'app/build.gradle', 'gradle.properties', 'scripts/build-dizione-jni.sh', 'scripts/fetch-llama.sh', 'scripts/fetch-voca.sh') }}
+          path: ~/.ccache
+          key: ccache-smoke-${{ runner.os }}-ndk27.2.12479018-x86_64-vulkan-off-${{ hashFiles('vendor/LLAMA_CPP_COMMIT', 'app/src/main/cpp/**', 'app/build.gradle') }}
           restore-keys: |
-            smoke-native-${{ runner.os }}-ndk27.2.12479018-cmake3.22.1-bt35.0.0-api35-x86_64-vulkan-off-
+            ccache-smoke-${{ runner.os }}-ndk27.2.12479018-x86_64-vulkan-off-
       - name: Cache checksum-verified smoke GGUF
         uses: actions/cache@v4
         with:
@@ -230,7 +244,10 @@ jobs:
       - name: Assemble emulator app and instrumentation APKs
         env:
           HANAMI_REQUIRE_DIZIONE: '1'
-        run: gradle :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
+        run: |
+          ccache -z || true
+          gradle :app:assembleSmokeDebug :app:assembleSmokeDebugAndroidTest --no-daemon --stacktrace
+          ccache -s || true
       - name: Assert smoke APK packages dizione JNI (x86_64)
         run: python3 .github/scripts/assert-dizione-jni-in-apk.py app/build/outputs/apk/smoke/debug/app-smoke-debug.apk --abis x86_64
       - name: Enable KVM access for Android emulator
@@ -364,11 +381,35 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
       - name: Set up Rust for dizione JNI
-        run: rustup target add aarch64-linux-android x86_64-linux-android
+        run: rustup target add aarch64-linux-android
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Set up ccache
+        run: |
+          if ! command -v ccache >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ccache
+          fi
+          mkdir -p "$HOME/.ccache"
+          {
+            echo "HANAMI_USE_CCACHE=1"
+            echo "CCACHE_DIR=$HOME/.ccache"
+            echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
+            echo "CCACHE_NOHASHDIR=true"
+            echo "CCACHE_COMPILERCHECK=string:ndk-27.2.12479018"
+            echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime"
+            echo "CCACHE_COMPRESS=true"
+            echo "CCACHE_MAXSIZE=500M"
+          } >> "$GITHUB_ENV"
+      - name: Cache ccache (arm64-v8a native)
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-phone-${{ runner.os }}-ndk27.2.12479018-arm64-v8a-vulkan-off-${{ hashFiles('vendor/LLAMA_CPP_COMMIT', 'vendor/CACTUS_ANDROID_ARM64.sha256', 'app/src/main/cpp/**', 'app/build.gradle') }}
+          restore-keys: |
+            ccache-phone-${{ runner.os }}-ndk27.2.12479018-arm64-v8a-vulkan-off-
       - name: Cache Cargo (dizione JNI)
         uses: actions/cache@v4
         with:
@@ -384,7 +425,10 @@ jobs:
         env:
           HANAMI_REQUIRE_DIZIONE: '1'
           HANAMI_REQUIRE_CACTUS: 'ON'
-        run: gradle :app:assemblePhoneDebug :app:assembleDeviceCheckDebug :app:assembleDeviceCheckDebugAndroidTest --no-daemon --stacktrace -Phanami.requireCactus=ON
+        run: |
+          ccache -z || true
+          gradle :app:assemblePhoneDebug :app:assembleDeviceCheckDebug :app:assembleDeviceCheckDebugAndroidTest --no-daemon --stacktrace -Phanami.requireCactus=ON -Phanami.deviceCheckAbis=arm64-v8a
+          ccache -s || true
       - name: Assert ARM64 APK exists
         run: test -s app/build/outputs/apk/phone/debug/app-phone-debug.apk
       - name: Assert phone APK packages dizione JNI (arm64-v8a)

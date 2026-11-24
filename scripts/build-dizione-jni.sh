@@ -107,9 +107,9 @@ for i in "${!TARGETS[@]}"; do
   rustup target add "$target" >/dev/null 2>&1 || true
   dest="$OUT/$abi"
   mkdir -p "$dest"
-  rm -f "$dest/libhanami_dizione.so"
   linker="$(clang21 "$abi")"
   if [[ ! -x "$linker" ]]; then
+    rm -f "$dest/libhanami_dizione.so"
     if hanami_require_dizione; then
       echo "ERROR: missing NDK linker for $abi (HANAMI_REQUIRE_DIZIONE=1)" >&2
       exit 1
@@ -129,12 +129,19 @@ for i in "${!TARGETS[@]}"; do
   esac
   build_failed=0
   if command -v cargo-ndk >/dev/null 2>&1; then
+    rm -f "$dest/libhanami_dizione.so"
     if ! (cd "$CRATE" && cargo ndk -t "$abi" -o "$dest" build --release); then
       build_failed=1
     fi
-  elif ! (cd "$CRATE" && cargo build --release --target "$target" \
-      && cp "$CRATE/target/$target/release/libhanami_dizione.so" "$dest/"); then
+  elif ! (cd "$CRATE" && cargo build --release --target "$target"); then
     build_failed=1
+  else
+    built_so="$CRATE/target/$target/release/libhanami_dizione.so"
+    if [[ ! -s "$built_so" ]]; then
+      build_failed=1
+    elif [[ ! -s "$dest/libhanami_dizione.so" ]] || ! cmp -s "$built_so" "$dest/libhanami_dizione.so"; then
+      cp "$built_so" "$dest/libhanami_dizione.so"
+    fi
   fi
   if [[ "$build_failed" -ne 0 ]]; then
     rm -f "$dest/libhanami_dizione.so"
