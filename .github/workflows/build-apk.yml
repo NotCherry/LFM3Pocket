@@ -39,20 +39,6 @@ jobs:
     steps:
       - name: Checkout application
         uses: actions/checkout@v4
-      - name: Cache llama.cpp sources
-        uses: actions/cache@v4
-        with:
-          path: third_party/llama.cpp
-          key: llama-cpp-${{ hashFiles('vendor/LLAMA_CPP_COMMIT') }}
-      - name: Fetch llama.cpp (LFM3-capable)
-        run: bash scripts/fetch-llama.sh
-      - name: Cache voca sources
-        uses: actions/cache@v4
-        with:
-          path: vendor/voca
-          key: voca-${{ hashFiles('vendor/VOCA_COMMIT') }}
-      - name: Fetch voca phonemizer (tiny-voca)
-        run: bash scripts/fetch-voca.sh
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -90,32 +76,35 @@ jobs:
           bash -n .github/scripts/collect-arm64-omni-evidence.sh
           bash .github/scripts/collect-arm64-omni-evidence.sh --self-test
       - name: Execute JVM JUnit tests
-        # Hang diagnostics: background Gradle, periodic jstack. Fail fast (~12m) instead of
-        # burning the full 30m job timeout when a unit test deadlocks (seen after #233).
-        # Log is tailed into the job stream so failed test names stay visible; exit status
-        # comes from the Gradle PID (not a tee pipeline).
+        # Hang diagnostics: background Gradle, periodic jstack every 90s while running.
+        # Fail fast (~12m) instead of burning the full 30m job timeout when a unit test
+        # deadlocks (seen after #233). Poll at 1s so we exit immediately when Gradle finishes.
         timeout-minutes: 15
         run: |
           set -euo pipefail
           mkdir -p ci-diag
           : > gradle-jvm-tests.log
-          gradle :app:testSmokeDebugUnitTest --no-daemon --stacktrace > gradle-jvm-tests.log 2>&1 &
+          gradle :app:testSmokeDebugUnitTest -Phanami.skipNative=true --no-daemon --stacktrace > gradle-jvm-tests.log 2>&1 &
           GRADLE_PID=$!
           tail -n +1 -F gradle-jvm-tests.log &
           TAIL_PID=$!
           echo "Gradle PID: $GRADLE_PID"
           status=0
-          for i in 1 2 3 4 5 6 7 8; do
-            sleep 90
-            if ! kill -0 "$GRADLE_PID" 2>/dev/null; then
-              break
+          elapsed=0
+          next_dump=90
+          max_wait=720
+          while kill -0 "$GRADLE_PID" 2>/dev/null && [ "$elapsed" -lt "$max_wait" ]; do
+            sleep 1
+            elapsed=$((elapsed + 1))
+            if [ "$elapsed" -ge "$next_dump" ] && kill -0 "$GRADLE_PID" 2>/dev/null; then
+              echo "--- Thread dump at +${elapsed}s ---" | tee -a ci-diag/thread-dumps.log
+              jps -l | tee -a ci-diag/thread-dumps.log || true
+              for pid in $(jps -q); do
+                echo "--- jstack $pid ---" | tee -a ci-diag/thread-dumps.log
+                jstack "$pid" >> ci-diag/thread-dumps.log 2>&1 || true
+              done
+              next_dump=$((next_dump + 90))
             fi
-            echo "--- Thread dump at +$((i*90/60))m ---" | tee -a ci-diag/thread-dumps.log
-            jps -l | tee -a ci-diag/thread-dumps.log || true
-            for pid in $(jps -q); do
-              echo "--- jstack $pid ---" | tee -a ci-diag/thread-dumps.log
-              jstack "$pid" >> ci-diag/thread-dumps.log 2>&1 || true
-            done
           done
           if kill -0 "$GRADLE_PID" 2>/dev/null; then
             echo "ERROR: JVM unit tests still running after ~12m; dumping threads and aborting" | tee -a ci-diag/thread-dumps.log

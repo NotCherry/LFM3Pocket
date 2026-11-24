@@ -25,13 +25,25 @@ def hanamiRequireDizioneProp = (project.findProperty('hanami.requireDizione')
 def hanamiRequireCactus = (project.findProperty('hanami.requireCactus')
         ?: System.getenv('HANAMI_REQUIRE_CACTUS')
         ?: 'OFF').toString()
+// Skip NDK/CMake/Rust work when running pure JVM unit tests or when -Phanami.skipNative=true
+// is passed, preventing Gradle from auto-downloading the NDK or compiling .so files unused by JVM tests.
+def hanamiSkipNativeProp = (project.findProperty('hanami.skipNative')
+        ?: System.getenv('HANAMI_SKIP_NATIVE'))
+def hanamiSkipNativeFlag = hanamiSkipNativeProp != null
+        && hanamiSkipNativeProp.toString() in ['1', 'true', 'TRUE', 'ON', 'on', 'yes', 'YES']
+def requestedGradleTasks = gradle.startParameter.taskNames.collect { it.toString() }
+def isUnitTestOnlyInvocation = !requestedGradleTasks.isEmpty()
+        && requestedGradleTasks.every { it ==~ /(?i).*unittest.*/ }
+def skipNativeBuild = hanamiSkipNativeFlag || isUnitTestOnlyInvocation
 
 android {
     // Source package stays put so the Java/Kotlin tree does not move.
     // Install id is applicationId below.
     namespace 'com.notcherry.lfm3pocket'
     compileSdk 35
-    ndkVersion '27.2.12479018'
+    if (!skipNativeBuild) {
+        ndkVersion '27.2.12479018'
+    }
 
     defaultConfig {
         // New install id. Existing com.notcherry.lfm3pocket installs will not upgrade in place.
@@ -42,28 +54,30 @@ android {
         versionName project.hanamiVersionName
         testInstrumentationRunner 'com.notcherry.lfm3pocket.UiE2eTestRunner'
         manifestPlaceholders = [appLabel: 'Hanami']
-        externalNativeBuild {
-            cmake {
-                // GGML_NATIVE=OFF required for cross-compile (F-Droid / CI).
-                // GGML_OPENMP=OFF: Android NDK OpenMP is not supported by llama.cpp yet
-                // (same as llama.cpp docs/android.md and PocketPal/llama.rn).
-                // GGML_CPU_ARM_ARCH is set in CMakeLists.txt for arm64-v8a only
-                // (armv8.2-a+dotprod — PocketPal's preferred CPU ladder step).
-                arguments '-DANDROID_STL=c++_shared',
-                          '-DGGML_NATIVE=OFF',
-                          '-DGGML_OPENMP=OFF',
-                          '-DGGML_LLAMAFILE=OFF',
-                          '-DLLAMA_CURL=OFF',
-                          '-DLLAMA_OPENSSL=OFF',
-                          '-DGGML_BACKEND_DL=OFF',
-                          '-DGGML_CPU_ALL_VARIANTS=OFF',
-                          '-DGGML_CPU_KLEIDIAI=OFF',
-                          '-DLLAMA_BUILD_TESTS=OFF',
-                          '-DLLAMA_BUILD_EXAMPLES=OFF',
-                          '-DLLAMA_BUILD_SERVER=OFF',
-                          "-DHANAMI_GGML_VULKAN=${hanamiGgmlVulkan}",
-                          "-DHANAMI_REQUIRE_CACTUS=${hanamiRequireCactus}"
-                cppFlags '-std=c++17'
+        if (!skipNativeBuild) {
+            externalNativeBuild {
+                cmake {
+                    // GGML_NATIVE=OFF required for cross-compile (F-Droid / CI).
+                    // GGML_OPENMP=OFF: Android NDK OpenMP is not supported by llama.cpp yet
+                    // (same as llama.cpp docs/android.md and PocketPal/llama.rn).
+                    // GGML_CPU_ARM_ARCH is set in CMakeLists.txt for arm64-v8a only
+                    // (armv8.2-a+dotprod — PocketPal's preferred CPU ladder step).
+                    arguments '-DANDROID_STL=c++_shared',
+                              '-DGGML_NATIVE=OFF',
+                              '-DGGML_OPENMP=OFF',
+                              '-DGGML_LLAMAFILE=OFF',
+                              '-DLLAMA_CURL=OFF',
+                              '-DLLAMA_OPENSSL=OFF',
+                              '-DGGML_BACKEND_DL=OFF',
+                              '-DGGML_CPU_ALL_VARIANTS=OFF',
+                              '-DGGML_CPU_KLEIDIAI=OFF',
+                              '-DLLAMA_BUILD_TESTS=OFF',
+                              '-DLLAMA_BUILD_EXAMPLES=OFF',
+                              '-DLLAMA_BUILD_SERVER=OFF',
+                              "-DHANAMI_GGML_VULKAN=${hanamiGgmlVulkan}",
+                              "-DHANAMI_REQUIRE_CACTUS=${hanamiRequireCactus}"
+                    cppFlags '-std=c++17'
+                }
             }
         }
     }
@@ -85,10 +99,12 @@ android {
             ndk { abiFilters 'arm64-v8a', 'x86_64' }
         }
     }
-    externalNativeBuild {
-        cmake {
-            path file('src/main/cpp/CMakeLists.txt')
-            version '3.22.1'
+    if (!skipNativeBuild) {
+        externalNativeBuild {
+            cmake {
+                path file('src/main/cpp/CMakeLists.txt')
+                version '3.22.1'
+            }
         }
     }
     compileOptions {
@@ -152,7 +168,9 @@ tasks.register('buildHanamiDizioneJni', Exec) {
     ignoreExitValue = !requireDizione
 }
 
-tasks.named('preBuild').configure { dependsOn buildHanamiDizioneJni }
+if (!skipNativeBuild) {
+    tasks.named('preBuild').configure { dependsOn buildHanamiDizioneJni }
+}
 
 dependencies {
     def camerax_version = '1.5.3'
