@@ -118,7 +118,60 @@ public final class VoiceSpokenOutput {
         String spoken = SpeechPrompt.spokenText(exactText);
         host.policySpeechStarted();
         host.onSpeechUi(true, uiStatus != null ? uiStatus : "Generating spoken response locally…");
-        host.worker().execute(() -> generateOmni(spoken, language, voice, onComplete));
+        final long utteranceGeneration = activeUtteranceGeneration;
+        host.worker().execute(() -> routeAndSpeak(spoken, language, voice, onComplete, utteranceGeneration));
+    }
+
+    private void routeAndSpeak(String spoken, String language, String voice, Runnable onComplete,
+                               long utteranceGeneration) {
+        if (utteranceGeneration != speechGeneration.get()) {
+            postToMain(this::utteranceFailedCleanup);
+            return;
+        }
+        SpeechReplyBackend backend = SpeechReplyBackend.OMNI;
+        android.content.Context context = host.app();
+        if (context != null) {
+            RuntimePreferences prefs = new RuntimePreferences(context);
+            if (prefs.tinyVocaEnglishTtsEnabled()) {
+                backend = new SpeechReplyRouter(prefs, new TinyVocaPackStore(context)).select(spoken);
+            }
+        }
+        if (backend == SpeechReplyBackend.TINY_VOCA) {
+            generateTinyVoca(spoken, language, onComplete, utteranceGeneration);
+            return;
+        }
+        if (backend == SpeechReplyBackend.SYSTEM_TTS) {
+            postToMain(() -> fallbackSystem(spoken, language, null, onComplete));
+            return;
+        }
+        if (host.modelHandle() == 0L) {
+            postToMain(() -> fallbackSystem(spoken, language, "No local Omni model loaded", onComplete));
+            return;
+        }
+        generateOmni(spoken, language, voice, onComplete);
+    }
+
+    private void generateTinyVoca(String spoken, String language, Runnable onComplete, long utteranceGeneration) {
+        byte[] audio = new byte[0];
+        int sampleRate = 24_000;
+        String error = null;
+        boolean cancelled = false;
+        try (TinyVocaOnnxRuntime synth = TinyVocaOnnxRuntime.open(host.app())) {
+            sampleRate = synth.sampleRateHz();
+            audio = synth.synthesizePcm16(spoken, "F2", () -> utteranceGeneration != speechGeneration.get());
+        } catch (SpeechSynthesisCancelled c) {
+            cancelled = true;
+        } catch (Throwable thrown) {
+            error = thrown.getMessage() == null ? thrown.toString() : thrown.getMessage();
+        }
+        if (cancelled || utteranceGeneration != speechGeneration.get()) {
+            postToMain(this::utteranceFailedCleanup);
+            return;
+        }
+        byte[] pcm = audio;
+        int[] format = new int[] { sampleRate, 1, 16 };
+        String fail = error;
+        postToMain(() -> finishPcm("tiny_voca", fail, pcm, format, spoken, language, onComplete));
     }
 
     private void generateOmni(String spoken, String language, String voice, Runnable onComplete) {
@@ -148,7 +201,7 @@ public final class VoiceSpokenOutput {
         }
         byte[] audio = pcm.toByteArray();
         String fail = error;
-        postToMain(() -> finishOmni(fail, audio, format, spoken, language, onComplete));
+        postToMain(() -> finishPcm("omni", fail, audio, format, spoken, language, onComplete));
     }
 
     private void postToMain(Runnable runnable) {
@@ -157,14 +210,14 @@ public final class VoiceSpokenOutput {
         else runnable.run();
     }
 
-    private void finishOmni(String fail, byte[] audio, int[] format, String spoken, String language,
-                            Runnable onComplete) {
+    private void finishPcm(String path, String fail, byte[] audio, int[] format, String spoken, String language,
+                           Runnable onComplete) {
         if (activeUtteranceGeneration != speechGeneration.get()) {
             utteranceFailedCleanup();
             return;
         }
         if (fail == null && audio.length > 0) {
-            lastPath = "omni";
+            lastPath = path;
             if (host.playback().play(audio, format[0], format[1], format[2])) {
                 host.onPlaybackPolicy(true);
                 host.onSpeechUi(false, "Playing reply");
@@ -176,7 +229,7 @@ public final class VoiceSpokenOutput {
                 }
                 return;
             }
-            fail = "Could not start Omni speech playback";
+            fail = "Could not start " + path + " speech playback";
         }
         fallbackSystem(spoken, language, fail, onComplete);
     }

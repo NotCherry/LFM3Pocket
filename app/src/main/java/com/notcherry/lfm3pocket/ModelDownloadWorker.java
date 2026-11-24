@@ -38,8 +38,7 @@ public final class ModelDownloadWorker extends Worker {
                     () -> setForegroundAsync(foregroundInfo(app, kind, app.getString(R.string.model_download_starting), -1)));
             if (promotion == ModelDownloadOutcomes.ForegroundPromotion.FAILED) {
                 ModelDownloadCoordinator.clearQueued(kind);
-                CactusWhistleModelDownloader.notifyUiError(
-                        app.getString(R.string.model_download_foreground_failed));
+                task.notifyUiError(app.getString(R.string.model_download_foreground_failed));
                 return ListenableWorker.Result.failure();
             }
             ModelDownloadCoordinator.Result outcome = ModelDownloadCoordinator.run(task, cancel);

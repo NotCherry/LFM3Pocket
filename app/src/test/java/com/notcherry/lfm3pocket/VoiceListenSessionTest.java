@@ -25,6 +25,7 @@ public final class VoiceListenSessionTest extends HanamiConcurrencyUnitTest {
         dir.mkdirs();
         LinkedBlockingQueue<Runnable> workerTasks = new LinkedBlockingQueue<>();
         List<VoiceListenSession.State> states = new ArrayList<>();
+        List<String> events = new ArrayList<>();
         AtomicInteger samples = new AtomicInteger(4096);
         RecordingController.Factory factory = () -> new RecordingController.Source() {
             public void start() {}
@@ -40,8 +41,10 @@ public final class VoiceListenSessionTest extends HanamiConcurrencyUnitTest {
                 new VoiceListenSession.Listener() {
                     @Override public void changed(VoiceListenSession.State state, String message) {
                         states.add(state);
+                        events.add("state:" + state.name());
                     }
                     @Override public void wavReady(File wav) {
+                        events.add("wavReady");
                         assertTrue(wav.isFile());
                         wav.delete();
                     }
@@ -53,6 +56,10 @@ public final class VoiceListenSessionTest extends HanamiConcurrencyUnitTest {
             session.stopPtt();
             while (!workerTasks.isEmpty()) workerTasks.poll().run();
             assertTrue(states.contains(VoiceListenSession.State.READY));
+            int idleIndex = events.lastIndexOf("state:IDLE");
+            int wavReadyIndex = events.indexOf("wavReady");
+            assertTrue("wavReady must run after IDLE transition so status is not clobbered: " + events,
+                    idleIndex >= 0 && wavReadyIndex > idleIndex);
         } finally {
             session.close();
             timeoutExec.shutdownNow();

@@ -15,10 +15,17 @@ import java.util.function.Consumer;
 final class DefaultAssistantSettingsSection {
     static final class Deps {
         final Consumer<Intent> launchActivity;
+        final Consumer<Intent> launchActivityForResult;
         final Consumer<CharSequence> chatStatus;
 
         Deps(Consumer<Intent> launchActivity, Consumer<CharSequence> chatStatus) {
+            this(launchActivity, launchActivity, chatStatus);
+        }
+
+        Deps(Consumer<Intent> launchActivity, Consumer<Intent> launchActivityForResult,
+                Consumer<CharSequence> chatStatus) {
             this.launchActivity = launchActivity;
+            this.launchActivityForResult = launchActivityForResult;
             this.chatStatus = chatStatus;
         }
     }
@@ -48,7 +55,7 @@ final class DefaultAssistantSettingsSection {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 RoleManager roles = activity.getSystemService(RoleManager.class);
                 if (roles != null && roles.isRoleAvailable(RoleManager.ROLE_ASSISTANT)) {
-                    deps.launchActivity.accept(roles.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT));
+                    deps.launchActivityForResult.accept(roles.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT));
                     return;
                 }
             }

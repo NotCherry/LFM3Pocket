@@ -120,11 +120,11 @@ for i in "${!TARGETS[@]}"; do
   case "$target" in
     aarch64-linux-android)
       export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$linker"
-      export CARGO_TARGET_AARCH64_LINUX_ANDROID_AR="$("$ar_tool")"
+      export CARGO_TARGET_AARCH64_LINUX_ANDROID_AR="$(ar_tool)"
       ;;
     x86_64-linux-android)
       export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$linker"
-      export CARGO_TARGET_X86_64_LINUX_ANDROID_AR="$("$ar_tool")"
+      export CARGO_TARGET_X86_64_LINUX_ANDROID_AR="$(ar_tool)"
       ;;
   esac
   build_failed=0

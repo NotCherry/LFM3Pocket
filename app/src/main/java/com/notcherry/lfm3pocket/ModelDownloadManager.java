@@ -70,6 +70,9 @@ public final class ModelDownloadManager {
         if (kind == ModelDownloadKind.CACTUS_WHISTLE) {
             return new CactusWhistleModelDownloadTask(context);
         }
+        if (kind == ModelDownloadKind.TINY_VOCA) {
+            return new TinyVocaPackDownloadTask(context);
+        }
         return null;
     }
 
@@ -79,6 +82,10 @@ public final class ModelDownloadManager {
 
     public StartResult startWhistle(boolean meteredConfirmed) {
         return start(ModelDownloadKind.CACTUS_WHISTLE, meteredConfirmed);
+    }
+
+    public StartResult startTinyVoca(boolean meteredConfirmed) {
+        return start(ModelDownloadKind.TINY_VOCA, meteredConfirmed);
     }
 
     public StartResult start(ModelDownloadKind kind, boolean meteredConfirmed) {
@@ -165,6 +172,7 @@ public final class ModelDownloadManager {
 
     private static int jobId(ModelDownloadKind kind) {
         if (kind == ModelDownloadKind.CACTUS_WHISTLE) return ModelDownloadJobService.JOB_ID_WHISTLE;
+        if (kind == ModelDownloadKind.TINY_VOCA) return ModelDownloadJobService.JOB_ID_TINY_VOCA;
         return 34_000 + kind.ordinal();
     }
 

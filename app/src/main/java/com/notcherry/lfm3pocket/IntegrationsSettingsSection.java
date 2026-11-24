@@ -53,6 +53,7 @@ final class IntegrationsSettingsSection {
     private CheckBox tinyVocaTtsBox;
     private TextView tinyVocaStatus;
     private Button tinyVocaDownloadButton;
+    private Button tinyVocaCancelButton;
     private Button tinyVocaRemoveButton;
     private Button speechInputOmniButton;
     private Button speechInputWhistleButton;
@@ -93,6 +94,36 @@ final class IntegrationsSettingsSection {
                     });
                 }
             };
+    private final TinyVocaPackDownloader.UiCallbacks tinyVocaDownloadUi =
+            new TinyVocaPackDownloader.UiCallbacks() {
+                @Override public void onProgress(String name, long written, long total) {
+                    deps.runOnUiThread.accept(() -> {
+                        if (tinyVocaStatus != null) {
+                            String label = CactusWhistleModelDownloader.formatProgressLabel(name, written, total);
+                            tinyVocaStatus.setText(host.getString(R.string.tiny_voca_downloading, label));
+                        }
+                    });
+                }
+                @Override public void onDone() {
+                    deps.runOnUiThread.accept(() -> {
+                        paintTinyVocaPackStatus();
+                        deps.updateControls.run();
+                        deps.chatStatus.accept(host.getString(R.string.tiny_voca_status_ready));
+                    });
+                }
+                @Override public void onError(String message) {
+                    deps.runOnUiThread.accept(() -> {
+                        paintTinyVocaPackStatus();
+                        deps.chatStatus.accept(message);
+                    });
+                }
+                @Override public void onCancelled() {
+                    deps.runOnUiThread.accept(() -> {
+                        paintTinyVocaPackStatus();
+                        deps.chatStatus.accept(host.getString(R.string.model_download_cancelled));
+                    });
+                }
+            };
 
     IntegrationsSettingsSection(MainActivitySettingsHost host, Deps deps) {
         this.host = host;
@@ -101,6 +132,10 @@ final class IntegrationsSettingsSection {
 
     CactusWhistleModelDownloader.UiCallbacks cactusWhistleDownloadUi() {
         return cactusWhistleDownloadUi;
+    }
+
+    TinyVocaPackDownloader.UiCallbacks tinyVocaDownloadUi() {
+        return tinyVocaDownloadUi;
     }
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
@@ -263,6 +298,7 @@ final class IntegrationsSettingsSection {
         speechInputCactusClearButton.setOnClickListener(v -> {
             deps.preferences.get().setCactusWhistleModelPath("");
             new CactusWhistleModelStore(host.settingsActivity()).clear();
+            CactusWhistleBridge.resetLoadedModel();
             paintSpeechInputControls();
             deps.updateControls.run();
         });
@@ -278,6 +314,8 @@ final class IntegrationsSettingsSection {
         tinyVocaTtsBox.setOnCheckedChangeListener((button, checked) -> {
             if (bindingFields) return;
             deps.preferences.get().setTinyVocaEnglishTtsEnabled(checked);
+            paintTinyVocaPackStatus();
+            deps.updateControls.run();
         });
         configuration.addView(tinyVocaTtsBox);
         TextView tinyVocaHelp = host.label(host.getString(R.string.tiny_voca_tts_help), 12, inkMuted);
@@ -285,18 +323,29 @@ final class IntegrationsSettingsSection {
         configuration.addView(tinyVocaHelp);
         tinyVocaStatus = host.label(host.getString(R.string.tiny_voca_status_missing), 13, ink);
         tinyVocaStatus.setId(R.id.settings_tiny_voca_status);
+        StillwaterReadable.prepareWrappingLabel(tinyVocaStatus);
         configuration.addView(tinyVocaStatus);
         tinyVocaDownloadButton = host.button(host.getString(R.string.tiny_voca_download));
         tinyVocaDownloadButton.setId(R.id.settings_tiny_voca_download);
         StillwaterUi.quiet(tinyVocaDownloadButton);
         tinyVocaDownloadButton.setOnClickListener(v -> deps.downloadTinyVocaPack.run());
         configuration.addView(tinyVocaDownloadButton, new LinearLayout.LayoutParams(-1, host.dp(44)));
+        tinyVocaCancelButton = host.button(host.getString(R.string.model_download_cancel));
+        tinyVocaCancelButton.setId(R.id.settings_tiny_voca_cancel);
+        StillwaterUi.quiet(tinyVocaCancelButton);
+        tinyVocaCancelButton.setOnClickListener(v -> {
+            ModelDownloadManager.getInstance(host.settingsActivity()).cancel(ModelDownloadKind.TINY_VOCA);
+            paintTinyVocaPackStatus();
+        });
+        configuration.addView(tinyVocaCancelButton, new LinearLayout.LayoutParams(-1, host.dp(44)));
         tinyVocaRemoveButton = host.button(host.getString(R.string.tiny_voca_remove));
         tinyVocaRemoveButton.setId(R.id.settings_tiny_voca_remove);
         StillwaterUi.quiet(tinyVocaRemoveButton);
         tinyVocaRemoveButton.setOnClickListener(v -> {
             new TinyVocaPackStore(host.settingsActivity()).clear();
+            TinyVocaPhonemizerBridge.resetLoadedState();
             paintTinyVocaPackStatus();
+            deps.updateControls.run();
         });
         configuration.addView(tinyVocaRemoveButton, new LinearLayout.LayoutParams(-1, host.dp(44)));
     }
@@ -352,12 +401,16 @@ final class IntegrationsSettingsSection {
         RuntimePreferences prefs = deps.preferences.get();
         SpeechInputMode mode = prefs.speechInputMode();
         if (speechInputOmniButton != null) {
-            speechInputOmniButton.setSelected(mode == SpeechInputMode.OMNI_AUDIO);
-            speechInputOmniButton.setAlpha(mode == SpeechInputMode.OMNI_AUDIO ? 1f : 0.7f);
+            boolean selected = mode == SpeechInputMode.OMNI_AUDIO;
+            speechInputOmniButton.setSelected(selected);
+            if (selected) StillwaterUi.primary(speechInputOmniButton);
+            else StillwaterUi.quiet(speechInputOmniButton);
         }
         if (speechInputWhistleButton != null) {
-            speechInputWhistleButton.setSelected(mode == SpeechInputMode.CACTUS_WHISTLE_STT);
-            speechInputWhistleButton.setAlpha(mode == SpeechInputMode.CACTUS_WHISTLE_STT ? 1f : 0.7f);
+            boolean selected = mode == SpeechInputMode.CACTUS_WHISTLE_STT;
+            speechInputWhistleButton.setSelected(selected);
+            if (selected) StillwaterUi.primary(speechInputWhistleButton);
+            else StillwaterUi.quiet(speechInputWhistleButton);
         }
         CactusWhistleModelStore store = new CactusWhistleModelStore(host.settingsActivity());
         String path = prefs.cactusWhistleModelPath();
@@ -372,17 +425,28 @@ final class IntegrationsSettingsSection {
             hasPath = true;
         }
         boolean downloading = CactusWhistleModelDownloader.isDownloading();
-        if (speechInputCactusStatus != null && !downloading) {
-            SttAvailability availability = CactusWhistleBridge.availability(path);
-            String label;
-            if (!hasPath) {
-                label = host.getString(R.string.speech_input_cactus_model_none);
+        if (speechInputCactusStatus != null) {
+            if (downloading) {
+                CharSequence current = speechInputCactusStatus.getText();
+                String currentStr = current == null ? "" : current.toString();
+                if (!currentStr.contains("%")) {
+                    speechInputCactusStatus.setText(host.getString(R.string.model_download_starting));
+                }
             } else {
-                label = new File(path).getName() + " · " + (availability.available
-                        ? host.getString(R.string.speech_input_cactus_status_ready)
-                        : availability.message);
+                SttAvailability availability = CactusWhistleBridge.availability(path);
+                String label;
+                if (!hasPath) {
+                    label = host.getString(R.string.speech_input_cactus_model_none);
+                } else if (availability.available) {
+                    String readyMsg = mode == SpeechInputMode.CACTUS_WHISTLE_STT
+                            ? host.getString(R.string.speech_input_cactus_status_ready)
+                            : host.getString(R.string.speech_input_cactus_ready_select_mode);
+                    label = new File(path).getName() + " · " + readyMsg;
+                } else {
+                    label = new File(path).getName() + " · " + availability.message;
+                }
+                speechInputCactusStatus.setText(label);
             }
-            speechInputCactusStatus.setText(label);
         }
         if (speechInputCactusDownloadButton != null) {
             speechInputCactusDownloadButton.setEnabled(!downloading && !store.isReady());
@@ -402,20 +466,28 @@ final class IntegrationsSettingsSection {
     void paintTinyVocaPackStatus() {
         if (tinyVocaStatus == null) return;
         boolean ready = new TinyVocaPackStore(host.settingsActivity()).isReady();
-        tinyVocaStatus.setText(ready ? host.getString(R.string.tiny_voca_status_ready)
-                : host.getString(R.string.tiny_voca_status_missing));
-        if (tinyVocaDownloadButton != null) tinyVocaDownloadButton.setEnabled(!ready);
-        if (tinyVocaRemoveButton != null) tinyVocaRemoveButton.setEnabled(ready);
-    }
-
-    void beginTinyVocaDownload() {
-        if (tinyVocaDownloadButton != null) tinyVocaDownloadButton.setEnabled(false);
-    }
-
-    void onTinyVocaDownloadProgress(String path) {
-        if (tinyVocaStatus != null) {
-            tinyVocaStatus.setText(host.getString(R.string.tiny_voca_downloading, path));
+        boolean downloading = TinyVocaPackDownloader.isDownloading();
+        if (downloading) {
+            CharSequence current = tinyVocaStatus.getText();
+            String currentStr = current == null ? "" : current.toString();
+            if (!currentStr.contains("%")) {
+                tinyVocaStatus.setText(host.getString(R.string.model_download_starting));
+            }
+        } else if (!ready) {
+            tinyVocaStatus.setText(host.getString(R.string.tiny_voca_status_missing));
+        } else if (!TinyVocaPhonemizerBridge.isNativeLibraryAvailable()) {
+            tinyVocaStatus.setText(host.getString(R.string.tiny_voca_status_no_phonemizer));
+        } else if (!deps.preferences.get().tinyVocaEnglishTtsEnabled()) {
+            tinyVocaStatus.setText(host.getString(R.string.tiny_voca_status_ready_enable));
+        } else {
+            tinyVocaStatus.setText(host.getString(R.string.tiny_voca_status_ready));
         }
+        if (tinyVocaDownloadButton != null) tinyVocaDownloadButton.setEnabled(!downloading && !ready);
+        if (tinyVocaCancelButton != null) {
+            tinyVocaCancelButton.setEnabled(downloading);
+            tinyVocaCancelButton.setVisibility(downloading ? View.VISIBLE : View.GONE);
+        }
+        if (tinyVocaRemoveButton != null) tinyVocaRemoveButton.setEnabled(!downloading && ready);
     }
 
     private void saveNotificationAllowlist() {

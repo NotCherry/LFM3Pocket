@@ -16,6 +16,28 @@ public final class TinyVocaPhonemizerBridge {
         return nativeReady && dataDir != null && dataDir.isDirectory();
     }
 
+    /** True when libhanami_dizione.so is packaged and loadable on this ABI. */
+    public static boolean isNativeLibraryAvailable() {
+        synchronized (LOAD_LOCK) {
+            if (libraryLoaded) return true;
+            try {
+                System.loadLibrary("hanami_dizione");
+                libraryLoaded = true;
+                return true;
+            } catch (Throwable unavailable) {
+                return false;
+            }
+        }
+    }
+
+    /** Clears cached phonemizer readiness (e.g. after removing the pack). */
+    public static void resetLoadedState() {
+        synchronized (LOAD_LOCK) {
+            nativeReady = false;
+            dataDir = null;
+        }
+    }
+
     /** Load the native library (once) and initialize dizione for the given phonemizer directory. */
     public static boolean ensureLoaded(File phonemizerDir) {
         if (phonemizerDir == null || !phonemizerDir.isDirectory()) {

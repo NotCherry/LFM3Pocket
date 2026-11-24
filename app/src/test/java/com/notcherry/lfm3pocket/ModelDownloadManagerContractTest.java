@@ -31,6 +31,9 @@ public final class ModelDownloadManagerContractTest {
         CactusWhistleModelDownloader.resetInFlightForTests();
         CactusWhistleModelDownloader.resetPendingBackgroundErrorForTests();
         CactusWhistleModelDownloader.clearBoundUiForTests();
+        TinyVocaPackDownloader.resetInFlightForTests();
+        TinyVocaPackDownloader.resetPendingBackgroundErrorForTests();
+        TinyVocaPackDownloader.clearBoundUiForTests();
     }
 
     @Test public void refusesStartWhenFreeSpaceBelowExpectedPlusMargin() throws Exception {
@@ -215,6 +218,105 @@ public final class ModelDownloadManagerContractTest {
                 ModelDownloadCoordinator.run(task, new ModelDownloadCancelToken()));
         assertTrue(store.isReady());
         assertEquals(store.modelFile().getAbsolutePath(), new RuntimePreferences(context).cactusWhistleModelPath());
+    }
+
+    @Test public void tinyVocaRefusesStartWhenFreeSpaceInsufficient() throws Exception {
+        File filesDir = Files.createTempDirectory("tv-space").toFile();
+        Context context = fakeContext(filesDir, new MutablePreferences());
+        ModelDownloadManager manager = new ModelDownloadManager(context, path -> 1024L, () -> false);
+        assertEquals(ModelDownloadManager.StartResult.INSUFFICIENT_SPACE,
+                manager.startTinyVoca(true));
+    }
+
+    @Test public void tinyVocaRequiresMeteredConfirmationUnlessConfirmed() throws Exception {
+        File filesDir = Files.createTempDirectory("tv-metered").toFile();
+        Context context = fakeContext(filesDir, new MutablePreferences());
+        long roomy = TinyVocaPackDownloadTask.EXPECTED_BYTES
+                + ModelDownloadPolicies.FREE_SPACE_MARGIN_BYTES + 1;
+        ModelDownloadManager manager = new ModelDownloadManager(context, path -> roomy, () -> true);
+        assertEquals(ModelDownloadManager.StartResult.METERED_NEEDS_CONFIRMATION,
+                manager.startTinyVoca(false));
+    }
+
+    @Test public void tinyVocaFailureDiscardsStagingAndPreservesVerifiedPack() throws Exception {
+        File root = Files.createTempDirectory("tv-fail").toFile();
+        TinyVocaPackStore store = new TinyVocaPackStore(root);
+        seedCompleteTinyVocaPack(store);
+        assertTrue(store.isReady());
+        TinyVocaPackDownloader downloader = new TinyVocaPackDownloader(store,
+                (relative, expectedSha256, displayName, target, progress, clock, cancel) -> {
+                    try (FileOutputStream out = new FileOutputStream(target)) {
+                        out.write("partial".getBytes(StandardCharsets.UTF_8));
+                    }
+                    throw new IllegalStateException("offline");
+                }, System::currentTimeMillis);
+        TinyVocaPackDownloadTask task = new TinyVocaPackDownloadTask(store, downloader);
+        assertEquals(ModelDownloadCoordinator.Result.FAILED,
+                ModelDownloadCoordinator.run(task, new ModelDownloadCancelToken()));
+        assertEquals("offline", TinyVocaPackDownloader.consumePendingBackgroundError());
+        assertTrue("Existing verified pack must survive a failed re-download", store.isReady());
+        assertFalse(store.stagingDir().exists());
+    }
+
+    @Test public void tinyVocaUserCancelDiscardsStagingAndNotifiesUi() throws Exception {
+        File root = Files.createTempDirectory("tv-cancel").toFile();
+        TinyVocaPackStore store = new TinyVocaPackStore(root);
+        seedCompleteTinyVocaPack(store);
+        java.util.concurrent.atomic.AtomicBoolean cancelledUi = new java.util.concurrent.atomic.AtomicBoolean();
+        TinyVocaPackDownloader.bindUi(new TinyVocaPackDownloader.UiCallbacks() {
+            @Override public void onProgress(String name, long written, long total) { }
+            @Override public void onDone() { }
+            @Override public void onError(String message) { }
+            @Override public void onCancelled() { cancelledUi.set(true); }
+        });
+        TinyVocaPackDownloader downloader = new TinyVocaPackDownloader(store,
+                (relative, expectedSha256, displayName, target, progress, clock, cancel) -> {
+                    try (FileOutputStream out = new FileOutputStream(target)) {
+                        out.write("partial".getBytes(StandardCharsets.UTF_8));
+                    }
+                    cancel.requestUserCancel();
+                    cancel.throwIfCancelled();
+                }, System::currentTimeMillis);
+        assertEquals(ModelDownloadCoordinator.Result.CANCELLED,
+                ModelDownloadCoordinator.run(new TinyVocaPackDownloadTask(store, downloader),
+                        new ModelDownloadCancelToken()));
+        assertTrue(cancelledUi.get());
+        assertTrue(store.isReady());
+        assertFalse(store.stagingDir().exists());
+    }
+
+    @Test public void tinyVocaSuccessfulRunPromotesStagedFilesAndMarksComplete() throws Exception {
+        File root = Files.createTempDirectory("tv-ok").toFile();
+        TinyVocaPackStore store = new TinyVocaPackStore(root);
+        byte[] largeModel = bytesOfLength(1_200_000);
+        byte[] smallFile = "{\"sample_rate\":24000,\"model\":{\"max_tokens\":512}}".getBytes(StandardCharsets.UTF_8);
+        TinyVocaPackDownloader downloader = new TinyVocaPackDownloader(store,
+                (relative, expectedSha256, displayName, target, progress, clock, cancel) -> {
+                    byte[] payload = "onnx/model.onnx".equals(relative) ? largeModel : smallFile;
+                    String digest = sha256(payload);
+                    try (ByteArrayInputStream input = new ByteArrayInputStream(payload)) {
+                        CactusWhistleModelDownloader.writeAndVerifySha256(
+                                input, digest, displayName, target, payload.length, progress, clock, cancel);
+                    }
+                }, System::currentTimeMillis);
+        assertEquals(ModelDownloadCoordinator.Result.SUCCESS,
+                ModelDownloadCoordinator.run(new TinyVocaPackDownloadTask(store, downloader),
+                        new ModelDownloadCancelToken()));
+        assertTrue(store.isReady());
+        assertFalse(store.stagingDir().exists());
+    }
+
+    private static void seedCompleteTinyVocaPack(TinyVocaPackStore store) throws Exception {
+        for (String relative : TinyVocaPackManifest.expectedSha256().keySet()) {
+            File f = new File(store.root(), relative);
+            f.getParentFile().mkdirs();
+            try (FileOutputStream out = new FileOutputStream(f)) {
+                out.write("onnx/model.onnx".equals(relative)
+                        ? bytesOfLength(1_200_000)
+                        : "{}".getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        store.markComplete();
     }
 
     private static Context fakeContext(File filesDir, MutablePreferences preferences) {

@@ -121,16 +121,34 @@ public final class VoiceSpokenOutputDeferralTest {
         }
     }
 
+    @Test public void zeroModelHandleSkipsOmniAndRunsOnComplete() {
+        StubHost host = new StubHost();
+        host.handle = 0L;
+        VoiceSpokenOutput spoken = new VoiceSpokenOutput(host);
+        AtomicBoolean completed = new AtomicBoolean();
+        spoken.speakExact("Hello world", Locale.US, () -> completed.set(true));
+        assertEquals(0, host.omniSpeechCalls.get());
+        assertEquals("system_tts", spoken.lastSpokenPath());
+        assertTrue(completed.get());
+    }
+
     private static final class StubHost implements VoiceSpokenOutput.Host {
         final AtomicBoolean speakRequested = new AtomicBoolean();
+        final java.util.concurrent.atomic.AtomicInteger omniSpeechCalls = new java.util.concurrent.atomic.AtomicInteger();
+        long handle = 1L;
 
-        @Override public long modelHandle() { return 1L; }
+        @Override public long modelHandle() { return handle; }
         @Override public InferenceEngine engine() {
             return new InferenceEngine() {
                 @Override public long loadModel(String modelPath, String projectorPath) { return 0; }
                 @Override public void unloadModel(long handle) { }
                 @Override public String generate(long handle, String prompt, String mediaPath, int maxTokens,
                         TokenSink sink) { return null; }
+                @Override public String generateSpeech(long handle, String prompt, SpeechOptions options,
+                        AudioSink sink) {
+                    omniSpeechCalls.incrementAndGet();
+                    return "no audio";
+                }
                 @Override public void stop() { }
                 @Override public void resetStop() { }
             };

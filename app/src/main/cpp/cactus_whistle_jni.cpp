@@ -105,6 +105,17 @@ Java_com_notcherry_lfm3pocket_CactusWhistleBridge_nativeInit(JNIEnv * env, jclas
 #endif
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_notcherry_lfm3pocket_CactusWhistleBridge_nativeSetThreads(JNIEnv *, jclass, jint threads) {
+#if defined(HANAMI_CACTUS_WHISTLE)
+    if (threads < 1) threads = 1;
+    std::lock_guard<std::mutex> lock(g_mutex);
+    cactus_set_threads(static_cast<int>(threads));
+#else
+    (void) threads;
+#endif
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_notcherry_lfm3pocket_CactusWhistleBridge_nativeLastError(JNIEnv * env, jclass) {
     return make_jstring(env, last_error_string());
@@ -132,10 +143,9 @@ Java_com_notcherry_lfm3pocket_CactusWhistleBridge_nativeTranscribe(JNIEnv * env,
     const char * lang = language ? env->GetStringUTFChars(language, nullptr) : nullptr;
     const char * keys = keywords ? env->GetStringUTFChars(keywords, nullptr) : nullptr;
 
-    // Output is typically JSON text; allocate generously (similar to upstream Python wrapper).
-    int capacity = std::max(4096, static_cast<int>(samples / 16000) * 4096);
-    if (capacity < 8192) capacity = 8192;
-    std::vector<char> out(static_cast<size_t>(capacity));
+    // Output is JSON text; reserve generously like upstream whistle.py (>= 64 KiB + 4 KiB/s).
+    int capacity = std::max(65536, static_cast<int>(samples / 16000) * 4096 + 8192);
+    std::vector<char> out(static_cast<size_t>(capacity), '\0');
 
     std::string result;
     int rc = -1;

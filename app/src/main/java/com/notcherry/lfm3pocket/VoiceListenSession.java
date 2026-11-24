@@ -189,10 +189,10 @@ public final class VoiceListenSession implements AutoCloseable {
                     return;
                 }
                 state = State.READY;
-                listener.wavReady(completed);
                 listener.changed(State.READY, "Capture ready");
                 state = State.IDLE;
                 listener.changed(State.IDLE, "Idle");
+                listener.wavReady(completed);
                 return;
             }
             if (recState == RecordingController.State.IDLE) {

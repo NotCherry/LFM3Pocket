@@ -9,6 +9,10 @@ public final class EnglishSpeechHeuristics {
             Pattern.compile("[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]");
     private static final Pattern LATIN_LETTER =
             Pattern.compile("[A-Za-z]");
+    private static final Pattern ASCII_DIGIT =
+            Pattern.compile("[0-9]");
+    private static final Pattern NON_ASCII_LETTER =
+            Pattern.compile("[\\p{L}&&[^A-Za-z]]");
 
     private EnglishSpeechHeuristics() {}
 
@@ -18,8 +22,11 @@ public final class EnglishSpeechHeuristics {
     public static LikelyLanguage classify(String text) {
         if (text == null || text.isBlank()) return LikelyLanguage.EMPTY;
         if (POLISH.matcher(text).find()) return LikelyLanguage.NON_ENGLISH;
-        if (!LATIN_LETTER.matcher(text).find()) return LikelyLanguage.NON_ENGLISH;
-        return LikelyLanguage.ENGLISH;
+        if (LATIN_LETTER.matcher(text).find()) return LikelyLanguage.ENGLISH;
+        if (ASCII_DIGIT.matcher(text).find() && !NON_ASCII_LETTER.matcher(text).find()) {
+            return LikelyLanguage.ENGLISH;
+        }
+        return LikelyLanguage.NON_ENGLISH;
     }
 
     public static String normalizeForTts(String reply) {

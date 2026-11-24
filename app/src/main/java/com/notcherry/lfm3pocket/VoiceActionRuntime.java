@@ -79,7 +79,9 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host, AutoClo
                                 rejectPendingConfirm();
                             }
                         }
-                        callbacks.onVoiceStatus().accept(message);
+                        if (state != VoiceListenSession.State.READY && state != VoiceListenSession.State.IDLE) {
+                            callbacks.onVoiceStatus().accept(message);
+                        }
                     }
 
                     @Override public void wavReady(File wav) {
