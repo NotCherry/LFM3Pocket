@@ -596,7 +596,15 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     }
 
     public void serviceGone(ModelRuntimeService stopped) {
-        if (service == stopped) service = null;
+        if (service == stopped) {
+            service = null;
+            serviceStartRequested = false;
+        }
+    }
+
+    public void serviceStartRefused(ModelRuntimeService failed) {
+        if (service == failed) service = null;
+        serviceStartRequested = false;
     }
 
     public void onServiceAction(String action, String proposalId) {
@@ -1062,9 +1070,8 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             return;
         }
         if (!serviceStartRequested) {
-            serviceStartRequested = true;
             Intent intent = new Intent(app, ModelRuntimeService.class);
-            RuntimeServiceStarter.start(app, intent);
+            serviceStartRequested = RuntimeServiceStarter.start(app, intent);
         }
     }
 

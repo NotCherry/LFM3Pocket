@@ -25,14 +25,35 @@ final class RuntimeServiceStarter {
         return !plainStartRefused;
     }
 
-    static void start(Context app, Intent intent) {
+    @FunctionalInterface
+    interface Starter {
+        void start();
+    }
+
+    static boolean start(Context app, Intent intent) {
+        return start(
+                () -> app.startService(intent),
+                () -> {
+                    if (Build.VERSION.SDK_INT >= 26) app.startForegroundService(intent);
+                },
+                Build.VERSION.SDK_INT);
+    }
+
+    static boolean start(Starter plainStarter, Starter foregroundStarter, int sdkInt) {
         try {
-            app.startService(intent);
-        } catch (IllegalStateException background) {
+            plainStarter.start();
+            return true;
+        } catch (IllegalStateException | SecurityException background) {
             // preferPlainStart(true) is false: plain start was refused.
-            if (preferPlainStart(true)) throw background;
-            if (Build.VERSION.SDK_INT >= 26) app.startForegroundService(intent);
-            else throw background;
+            if (preferPlainStart(true) || sdkInt < 26) return false;
+            try {
+                foregroundStarter.start();
+                return true;
+            } catch (IllegalStateException | SecurityException refused) {
+                // Android 12+ throws ForegroundServiceStartNotAllowedException (subclass of
+                // IllegalStateException) when background-restricted; refuse cleanly instead of crashing.
+                return false;
+            }
         }
     }
 }

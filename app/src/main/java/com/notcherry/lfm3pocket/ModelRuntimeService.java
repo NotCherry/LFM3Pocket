@@ -7,6 +7,8 @@ import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
 
+import java.util.function.IntConsumer;
+
 /** Foreground holder for {@link ModelRuntime}. The process keeps the model mapped while this runs. */
 public final class ModelRuntimeService extends Service {
     static final String ACTION_STOP = "com.notcherry.lfm3pocket.action.STOP_TURN";
@@ -23,7 +25,8 @@ public final class ModelRuntimeService extends Service {
 
     @Override public void onCreate() {
         super.onCreate();
-        // Satisfy a foreground start before any other work.
+        // Satisfy a foreground start before any other work. If Android denies foreground
+        // promotion here (mAllowStartForeground == false), onStartCommand handles fallback cleanly.
         RuntimeNotice starting = RuntimeNotice.of(RuntimeNotice.Kind.LOADING, "Model runtime",
                 "Starting…", false, 0, 0, "", false, RuntimeNotice.Action.OPEN);
         promote(RuntimeNotifications.build(this, starting, "", ""), starting);
@@ -36,8 +39,14 @@ public final class ModelRuntimeService extends Service {
             notice = RuntimeNotice.of(RuntimeNotice.Kind.LOADING, "Model runtime", "Starting…",
                     false, 0, 0, "", false, RuntimeNotice.Action.OPEN);
         }
-        promote(RuntimeNotifications.build(this, notice, runtime.conversationId(), runtime.historyTitle()), notice);
-        runtime.serviceReady(this);
+        boolean active = promote(
+                RuntimeNotifications.build(this, notice, runtime.conversationId(), runtime.historyTitle()),
+                notice);
+        if (active) {
+            runtime.serviceReady(this);
+        } else {
+            runtime.serviceStartRefused(this);
+        }
         if (intent != null && intent.getAction() != null) {
             String ask = null;
             if (ACTION_ASK.equals(intent.getAction())) {
@@ -48,6 +57,9 @@ public final class ModelRuntimeService extends Service {
                 }
             }
             runtime.onServiceAction(intent.getAction(), intent.getStringExtra(EXTRA_PROPOSAL_ID), ask);
+        }
+        if (!active && !promoted) {
+            stopSelf(startId);
         }
         return START_NOT_STICKY;
     }
@@ -67,7 +79,9 @@ public final class ModelRuntimeService extends Service {
     }
 
     void render(Notification notification, RuntimeNotice notice) {
-        promote(notification, notice == null ? RuntimeNotice.hidden() : notice);
+        if (!promote(notification, notice == null ? RuntimeNotice.hidden() : notice) && !promoted) {
+            stopSelf();
+        }
     }
 
     void stopNow() {
@@ -78,15 +92,73 @@ public final class ModelRuntimeService extends Service {
         stopSelf();
     }
 
-    private void promote(Notification notification, RuntimeNotice notice) {
+    private boolean promote(Notification notification, RuntimeNotice notice) {
+        final boolean ok;
         if (Build.VERSION.SDK_INT >= 34) {
-            int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
-            if (notice.mediaPlayback) type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK;
-            if (notice.microphoneCapture) type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
-            startForeground(RuntimeNotifications.NOTIFICATION_ID, notification, type);
+            int requestedType = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
+            if (notice != null) {
+                if (notice.mediaPlayback) requestedType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK;
+                if (notice.microphoneCapture) requestedType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+            }
+            ok = promoteWithFallback(
+                    Build.VERSION.SDK_INT,
+                    requestedType,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+                    type -> startForeground(RuntimeNotifications.NOTIFICATION_ID, notification, type),
+                    () -> startForeground(RuntimeNotifications.NOTIFICATION_ID, notification));
         } else {
-            startForeground(RuntimeNotifications.NOTIFICATION_ID, notification);
+            ok = promoteWithFallback(
+                    Build.VERSION.SDK_INT,
+                    0,
+                    0,
+                    type -> startForeground(RuntimeNotifications.NOTIFICATION_ID, notification),
+                    () -> startForeground(RuntimeNotifications.NOTIFICATION_ID, notification));
         }
-        promoted = true;
+        if (ok) {
+            promoted = true;
+        } else {
+            recordPromotionRefused();
+        }
+        return ok;
+    }
+
+    /**
+     * Promotes to foreground while guarding against Android 12+
+     * {@code ForegroundServiceStartNotAllowedException} (extends {@link IllegalStateException})
+     * and Android 14+ {@link SecurityException} on restricted FGS types.
+     */
+    static boolean promoteWithFallback(int sdkInt, int requestedType, int fallbackType,
+                                       IntConsumer startWithType, Runnable startLegacy) {
+        if (sdkInt >= 34) {
+            try {
+                startWithType.accept(requestedType);
+                return true;
+            } catch (IllegalStateException | SecurityException refused) {
+                if (requestedType != fallbackType) {
+                    try {
+                        startWithType.accept(fallbackType);
+                        return true;
+                    } catch (IllegalStateException | SecurityException fallbackRefused) {
+                        return false;
+                    }
+                }
+                return false;
+            }
+        }
+        try {
+            startLegacy.run();
+            return true;
+        } catch (IllegalStateException | SecurityException refused) {
+            return false;
+        }
+    }
+
+    private void recordPromotionRefused() {
+        try {
+            ((Lfm3PocketApplication) getApplication()).diagnostics().record(
+                    LocalDiagnostics.Kind.STRESS, 0L, "fgs startForeground refused");
+        } catch (Throwable ignored) {
+            // Diagnostics must never mask service lifecycle handling.
+        }
     }
 }
