@@ -3,6 +3,7 @@ package com.notcherry.lfm3pocket;
 import android.app.ActivityManager;
 import android.app.ApplicationExitInfo;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Build;
 
 import java.io.BufferedReader;
@@ -15,6 +16,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -26,8 +28,28 @@ import java.util.TimeZone;
  */
 public final class CrashLog {
     static final String FILE_NAME = "crash-log.txt";
+    private static final String PREFS_NAME = "hanami_crash_log";
+    private static final String KEY_LAST_EXIT_TS = "last_exit_timestamp";
     private static final int MAX_CHARS = 48_000;
     private static final Object LOCK = new Object();
+
+    static final class ExitEntry {
+        final String reason;
+        final int status;
+        final int importance;
+        final long timestamp;
+        final String description;
+        final String trace;
+
+        ExitEntry(String reason, int status, int importance, long timestamp, String description, String trace) {
+            this.reason = reason;
+            this.status = status;
+            this.importance = importance;
+            this.timestamp = timestamp;
+            this.description = description;
+            this.trace = trace;
+        }
+    }
 
     private CrashLog() {}
 
@@ -49,7 +71,7 @@ public final class CrashLog {
         });
     }
 
-    /** Append recent process-exit reasons (API 30+). No-op on older devices. */
+    /** Append only unseen process-exit reasons (API 30+). No-op on older devices or when unchanged. */
     public static void captureExitInfo(Context context) {
         if (Build.VERSION.SDK_INT < 30) return;
         try {
@@ -57,27 +79,90 @@ public final class CrashLog {
             if (am == null) return;
             List<ApplicationExitInfo> exits = am.getHistoricalProcessExitReasons(null, 0, 8);
             if (exits == null || exits.isEmpty()) return;
-            StringBuilder block = new StringBuilder();
-            block.append("--- process exits @ ").append(isoNow()).append(" ---\n");
-            for (ApplicationExitInfo info : exits) {
-                block.append("reason=").append(reasonLabel(info.getReason()))
-                        .append(" status=").append(info.getStatus())
-                        .append(" importance=").append(info.getImportance())
-                        .append(" timestamp=").append(info.getTimestamp())
-                        .append(" description=").append(nullToEmpty(info.getDescription()))
-                        .append('\n');
-                if (Build.VERSION.SDK_INT >= 31) {
-                    String trace = info.getTraceInputStream() == null ? null
-                            : readLimited(info.getTraceInputStream(), 8_000);
-                    if (trace != null && !trace.isBlank()) {
-                        block.append("trace:\n").append(trace).append('\n');
-                    }
-                }
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            long lastTs = prefs.getLong(KEY_LAST_EXIT_TS, 0L);
+            if (lastTs == 0L) {
+                lastTs = maxLoggedExitTimestamp(read(context));
             }
-            append(context, block.toString());
+            List<ExitEntry> unseen = new ArrayList<>();
+            for (ApplicationExitInfo info : exits) {
+                if (info.getTimestamp() <= lastTs) continue;
+                String trace = null;
+                if (Build.VERSION.SDK_INT >= 31 && info.getTraceInputStream() != null) {
+                    trace = readLimited(info.getTraceInputStream(), 8_000);
+                }
+                unseen.add(new ExitEntry(
+                        reasonLabel(info.getReason()),
+                        info.getStatus(),
+                        info.getImportance(),
+                        info.getTimestamp(),
+                        nullToEmpty(info.getDescription()),
+                        trace));
+            }
+            long updatedTs = recordNewExits(file(context), lastTs, unseen);
+            if (updatedTs > prefs.getLong(KEY_LAST_EXIT_TS, 0L)) {
+                prefs.edit().putLong(KEY_LAST_EXIT_TS, updatedTs).apply();
+            }
         } catch (Throwable ignored) {
             // Exit-info collection is best-effort.
         }
+    }
+
+    /**
+     * Test seam: append only exit entries newer than {@code lastRecordedTimestamp} and return
+     * the updated high-water timestamp. Returns {@code lastRecordedTimestamp} without writing
+     * when no new entries exist.
+     */
+    static long recordNewExits(File target, long lastRecordedTimestamp, List<ExitEntry> exits) {
+        if (exits == null || exits.isEmpty()) return lastRecordedTimestamp;
+        long maxTs = lastRecordedTimestamp;
+        StringBuilder block = new StringBuilder();
+        int count = 0;
+        for (ExitEntry info : exits) {
+            if (info == null || info.timestamp <= lastRecordedTimestamp) continue;
+            if (count == 0) {
+                block.append("--- process exits @ ").append(isoNow()).append(" ---\n");
+            }
+            count++;
+            if (info.timestamp > maxTs) maxTs = info.timestamp;
+            block.append("reason=").append(nullToEmpty(info.reason))
+                    .append(" status=").append(info.status)
+                    .append(" importance=").append(info.importance)
+                    .append(" timestamp=").append(info.timestamp)
+                    .append(" description=").append(nullToEmpty(info.description))
+                    .append('\n');
+            if (info.trace != null && !info.trace.isBlank()) {
+                block.append("trace:\n").append(info.trace).append('\n');
+            }
+        }
+        if (count > 0) {
+            appendFile(target, block.toString());
+        }
+        return maxTs;
+    }
+
+    /** Parse the largest recorded {@code timestamp=} value from an existing crash log. */
+    static long maxLoggedExitTimestamp(String logText) {
+        if (logText == null || logText.isEmpty()) return 0L;
+        long maxTs = 0L;
+        final String needle = "timestamp=";
+        int idx = 0;
+        while ((idx = logText.indexOf(needle, idx)) >= 0) {
+            int start = idx + needle.length();
+            int end = start;
+            while (end < logText.length() && Character.isDigit(logText.charAt(end))) {
+                end++;
+            }
+            if (end > start) {
+                try {
+                    long ts = Long.parseLong(logText.substring(start, end));
+                    if (ts > maxTs) maxTs = ts;
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            idx = end;
+        }
+        return maxTs;
     }
 
     public static File file(Context context) {
@@ -134,10 +219,6 @@ public final class CrashLog {
                 target.delete();
             }
         }
-    }
-
-    private static void append(Context context, String block) {
-        appendFile(file(context), block);
     }
 
     private static void appendFile(File target, String block) {
