@@ -41,10 +41,11 @@ final class DefaultAssistantSettingsSection {
     void mount(LinearLayout configuration, int inkMuted) {
         Button defaultAssistantButton = ui.button(ui.getString(R.string.default_assistant_button));
         defaultAssistantButton.setId(R.id.settings_default_assistant);
-        StillwaterUi.quiet(defaultAssistantButton);
+        StillwaterUi.outlined(defaultAssistantButton);
         defaultAssistantButton.setOnClickListener(v -> openDefaultAssistantPicker());
         StillwaterReadable.addFlexibleFullWidth(configuration, defaultAssistantButton, 48);
         TextView defaultAssistantHelp = ui.label(ui.getString(R.string.default_assistant_help), 12, inkMuted);
+        defaultAssistantHelp.setPadding(0, ui.dp(4), 0, 0);
         StillwaterReadable.prepareWrappingLabel(defaultAssistantHelp);
         configuration.addView(defaultAssistantHelp);
     }

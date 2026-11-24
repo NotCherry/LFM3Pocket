@@ -1,11 +1,13 @@
 package com.notcherry.lfm3pocket;
 
+import android.content.Intent;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.Locale;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -51,6 +53,7 @@ final class ChatShellSection {
     private final SettingsUiFactory ui;
     private final Deps deps;
     private View topBarView;
+    private View topDividerView;
     private TextView brandTitle;
     private TextView modePill;
     private Button settingsOpenButton;
@@ -69,68 +72,106 @@ final class ChatShellSection {
     }
 
     void mountChrome(LinearLayout root, int ink, int inkMuted, int accent) {
+        int minTouch = InterfaceSize.minTouchPx(ui.settingsActivity());
+
         LinearLayout topBar = new LinearLayout(ui.settingsActivity());
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
+        topBar.setPadding(0, ui.dp(2), 0, ui.dp(4));
+
         LinearLayout titles = new LinearLayout(ui.settingsActivity());
         titles.setOrientation(LinearLayout.VERTICAL);
-        brandTitle = ui.label(deps.historyTitle.get(), 17, ink);
+        brandTitle = ui.label(deps.historyTitle.get(), 18, ink);
         brandTitle.setTypeface(StillwaterUi.serif(ui.settingsActivity()));
         StillwaterReadable.prepareWrappingLabel(brandTitle);
         titles.addView(brandTitle);
-        modePill = ui.label(deps.searchEnabled.getAsBoolean()
-                        ? ui.getString(R.string.mode_web_search)
-                        : ui.getString(R.string.mode_local),
-                11, inkMuted);
-        modePill.setTypeface(StillwaterUi.sans(ui.settingsActivity()));
+
+        // Subtle search indicator only when web search is active (avoids duplicating composer mode line).
+        modePill = ui.label(ui.getString(R.string.mode_web_search_short), 11, accent);
+        modePill.setTypeface(StillwaterUi.sansMedium(ui.settingsActivity()));
         StillwaterReadable.prepareWrappingLabel(modePill);
+        modePill.setVisibility(deps.searchEnabled.getAsBoolean() ? View.VISIBLE : View.GONE);
         titles.addView(modePill);
-        topBar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        LinearLayout.LayoutParams titlesParams = new LinearLayout.LayoutParams(0, -2, 1f);
+        titlesParams.rightMargin = ui.dp(6);
+        topBar.addView(titles, titlesParams);
+
         Button newChat = ui.button(ui.getString(R.string.new_chat));
         newChat.setId(R.id.chat_new_chat);
-        StillwaterUi.quiet(newChat);
-        newChat.setTextColor(accent);
+        StillwaterUi.accentOutlined(newChat);
+        StillwaterReadable.setTextSizeSp(newChat, 12);
+        newChat.setPadding(ui.dp(10), ui.dp(4), ui.dp(10), ui.dp(4));
         newChat.setOnClickListener(v -> deps.requestNewChat.run());
-        newChat.setMinimumWidth(InterfaceSize.minTouchPx(ui.settingsActivity()));
-        newChat.setMinimumHeight(InterfaceSize.minTouchPx(ui.settingsActivity()));
-        StillwaterReadable.prepareWrappingControl(newChat, ui.dp(44));
-        topBar.addView(newChat, new LinearLayout.LayoutParams(-2, -2));
+        newChat.setMinWidth(minTouch);
+        newChat.setMinimumWidth(minTouch);
+        newChat.setMinHeight(minTouch);
+        newChat.setMinimumHeight(minTouch);
+        StillwaterReadable.prepareWrappingControl(newChat, minTouch);
+        LinearLayout.LayoutParams newChatParams = new LinearLayout.LayoutParams(-2, -2);
+        newChatParams.rightMargin = ui.dp(2);
+        topBar.addView(newChat, newChatParams);
+
         settingsOpenButton = ui.button("");
         settingsOpenButton.setId(R.id.settings_open);
         settingsOpenButton.setContentDescription(ui.getString(R.string.settings_title));
-        settingsOpenButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_still_gear, 0, 0, 0);
+        settingsOpenButton.setCompoundDrawablesWithIntrinsicBounds(0, R.drawable.ic_still_gear, 0, 0);
+        settingsOpenButton.setCompoundDrawablePadding(0);
+        settingsOpenButton.setGravity(Gravity.CENTER);
+        settingsOpenButton.setPadding(ui.dp(12), ui.dp(14), ui.dp(12), ui.dp(14));
         StillwaterUi.quiet(settingsOpenButton);
+        StillwaterUi.tintStatefulIcon(settingsOpenButton);
         settingsOpenButton.setOnClickListener(v -> deps.openSettings.run());
-        LinearLayout.LayoutParams settingsIconParams = new LinearLayout.LayoutParams(ui.dp(36), ui.dp(36));
-        settingsOpenButton.setMinimumWidth(InterfaceSize.minTouchPx(ui.settingsActivity()));
-        settingsOpenButton.setMinimumHeight(InterfaceSize.minTouchPx(ui.settingsActivity()));
-        topBar.addView(settingsOpenButton, settingsIconParams);
+        settingsOpenButton.setMinWidth(minTouch);
+        settingsOpenButton.setMinimumWidth(minTouch);
+        settingsOpenButton.setMinHeight(minTouch);
+        settingsOpenButton.setMinimumHeight(minTouch);
+        // WRAP_CONTENT + overridden TextView minWidth (default 88dp) -> exact 48dp touch square.
+        topBar.addView(settingsOpenButton, new LinearLayout.LayoutParams(-2, -2));
+
         Button overflow = ui.button("⋮");
         overflow.setId(R.id.chat_overflow);
+        overflow.setContentDescription(ui.getString(R.string.chat_more_options));
+        StillwaterReadable.setTextSizeSp(overflow, 18);
+        overflow.setGravity(Gravity.CENTER);
+        overflow.setPadding(ui.dp(10), ui.dp(4), ui.dp(10), ui.dp(4));
         StillwaterUi.quiet(overflow);
-        overflow.setTextColor(inkMuted);
         overflow.setOnClickListener(v -> {
             android.view.ContextThemeWrapper menuContext =
                     new android.view.ContextThemeWrapper(ui.settingsActivity(), R.style.Theme_Stillwater);
             android.widget.PopupMenu menu = new android.widget.PopupMenu(menuContext, v);
-            menu.getMenu().add(0, 1, 0, ui.getString(R.string.settings_title));
-            menu.getMenu().add(0, 2, 1, "Web search");
+            menu.getMenu().add(0, 1, 0, ui.getString(R.string.history));
+            menu.getMenu().add(0, 2, 1, ui.getString(R.string.web_search_menu));
+            menu.getMenu().add(0, 3, 2, ui.getString(R.string.settings_title));
             menu.setOnMenuItemClickListener(item -> {
-                if (item.getItemId() == 1) deps.openSettings.run();
-                else if (item.getItemId() == 2) deps.showSearchSettings.run();
+                if (item.getItemId() == 1) {
+                    ui.settingsActivity().startActivity(
+                            new Intent(ui.settingsActivity(), HistoryActivity.class));
+                } else if (item.getItemId() == 2) {
+                    deps.showSearchSettings.run();
+                } else if (item.getItemId() == 3) {
+                    deps.openSettings.run();
+                }
                 return true;
             });
             menu.show();
         });
-        overflow.setMinimumWidth(InterfaceSize.minTouchPx(ui.settingsActivity()));
-        overflow.setMinimumHeight(InterfaceSize.minTouchPx(ui.settingsActivity()));
-        topBar.addView(overflow, new LinearLayout.LayoutParams(ui.dp(36), ui.dp(36)));
+        overflow.setMinWidth(minTouch);
+        overflow.setMinimumWidth(minTouch);
+        overflow.setMinHeight(minTouch);
+        overflow.setMinimumHeight(minTouch);
+        topBar.addView(overflow, new LinearLayout.LayoutParams(-2, -2));
+
         topBarView = topBar;
         root.addView(topBar);
 
+        topDividerView = new View(ui.settingsActivity());
+        topDividerView.setBackgroundColor(StillwaterUi.LINE);
+        root.addView(topDividerView, new LinearLayout.LayoutParams(-1, Math.max(1, ui.dp(1))));
+
         status = ui.label(ui.getString(R.string.starting), 12, inkMuted);
         status.setId(R.id.chat_status);
-        status.setPadding(0, ui.dp(4), 0, ui.dp(4));
+        status.setPadding(0, ui.dp(5), 0, ui.dp(4));
         StillwaterReadable.prepareWrappingLabel(status);
         root.addView(status);
     }
@@ -140,13 +181,13 @@ final class ChatShellSection {
         chatRoot.setOrientation(LinearLayout.VERTICAL);
         ChatPanelDeps panel = deps.chatPanel;
         chatPanel = new ChatPanel(ui.settingsActivity(), panel.send, panel.stopActiveWork,
-                panel.onNewChat, panel.onRetryTurn, panel.requestCompact);
+                panel.onNewChat, panel.onRetryTurn, panel.requestCompact, deps.openSettings);
         chatRoot.addView(chatPanel, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         LinearLayout mediaHost = new LinearLayout(ui.settingsActivity());
         mediaHost.setOrientation(LinearLayout.VERTICAL);
         mediaHost.setBackgroundColor(surface);
-        mediaHost.setPadding(0, ui.dp(2), 0, ui.dp(2));
+        mediaHost.setPadding(0, ui.dp(4), 0, ui.dp(2));
         photoButton = mediaButton(ui.getString(R.string.photo), R.drawable.ic_still_photo);
         photoButton.setId(R.id.chat_photo);
         cameraButton = mediaButton(ui.getString(R.string.camera), R.drawable.ic_still_camera);
@@ -158,15 +199,15 @@ final class ChatShellSection {
         recordButton.setId(R.id.voice_record);
         speakButton = mediaButton(ui.getString(R.string.speak_reply), R.drawable.ic_still_speak);
         speakButton.setId(R.id.voice_speak);
-        // Two rows when stacked (narrow / large fonts); one row otherwise.
+        // Two rows when stacked (narrow / large fonts); one clean 5-slot icon-top bar otherwise.
         if (StillwaterReadable.shouldStack(ui.settingsActivity())) {
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 46,
+            StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 48,
                     photoButton, cameraButton, documentButton);
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 46,
-                    new float[]{1f, 1.2f}, recordButton, speakButton);
+            StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 48,
+                    new float[]{1f, 1.1f}, recordButton, speakButton);
         } else {
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 46,
-                    new float[]{1f, 1f, 1f, 1.2f, 1.2f},
+            StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 48,
+                    new float[]{1f, 1f, 1.05f, 1.15f, 1.15f},
                     photoButton, cameraButton, documentButton, recordButton, speakButton);
         }
         chatRoot.addView(mediaHost);
@@ -175,14 +216,40 @@ final class ChatShellSection {
     }
 
     void setChatStatus(CharSequence message) {
-        if (status != null) status.setText(message);
+        if (status == null) return;
+        CharSequence cleaned = cleanStatusMessage(message);
+        status.setText(cleaned);
+        status.setTextColor(statusColorFor(cleaned));
     }
 
     /** Matches ModelRuntime chat updates: hide status line while a turn status is on the panel. */
     void applyChatStatusDuringTurn(CharSequence message, boolean turnRunning) {
         if (status == null) return;
-        status.setText(message);
+        CharSequence cleaned = cleanStatusMessage(message);
+        status.setText(cleaned);
+        status.setTextColor(statusColorFor(cleaned));
         status.setVisibility(turnRunning ? View.GONE : View.VISIBLE);
+    }
+
+    private static CharSequence cleanStatusMessage(CharSequence message) {
+        if (message == null) return "";
+        String raw = message.toString();
+        return raw.replace("java.io.IOException: ", "")
+                .replace("java.lang.IllegalArgumentException: ", "")
+                .replace("java.lang.RuntimeException: ", "");
+    }
+
+    private static int statusColorFor(CharSequence message) {
+        if (message == null || message.length() == 0) return StillwaterUi.MUTED;
+        String lower = message.toString().toLowerCase(Locale.ROOT);
+        if (lower.startsWith("model error") || lower.startsWith("import failed")
+                || lower.contains("failed") || lower.contains("could not")
+                || lower.contains("must be") || lower.contains("exceeds")
+                || lower.contains("not enough storage") || lower.contains("błąd")
+                || lower.contains("nie udało")) {
+            return StillwaterUi.DANGER;
+        }
+        return StillwaterUi.MUTED;
     }
 
     CharSequence chatStatusText() {
@@ -191,9 +258,8 @@ final class ChatShellSection {
 
     void paintModePill(boolean searchEnabled) {
         if (modePill == null) return;
-        modePill.setText(searchEnabled
-                ? ui.getString(R.string.mode_web_search)
-                : ui.getString(R.string.mode_local));
+        modePill.setText(ui.getString(R.string.mode_web_search_short));
+        modePill.setVisibility(searchEnabled ? View.VISIBLE : View.GONE);
     }
 
     void setBrandTitle(CharSequence title) {
@@ -205,6 +271,7 @@ final class ChatShellSection {
             settingsOpenButton.setVisibility(settingsOpen ? View.GONE : View.VISIBLE);
         }
         if (topBarView != null) topBarView.setVisibility(settingsOpen ? View.GONE : View.VISIBLE);
+        if (topDividerView != null) topDividerView.setVisibility(settingsOpen ? View.GONE : View.VISIBLE);
         if (chatShell != null) chatShell.setVisibility(settingsOpen ? View.GONE : View.VISIBLE);
     }
 
@@ -238,11 +305,16 @@ final class ChatShellSection {
 
     private Button mediaButton(String title, int icon) {
         Button button = ui.button(title);
-        StillwaterReadable.setTextSizeSp(button, 12);
-        button.setCompoundDrawablesWithIntrinsicBounds(icon, 0, 0, 0);
-        button.setCompoundDrawablePadding(ui.dp(4));
+        StillwaterReadable.setTextSizeSp(button, 11);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(ui.dp(3), ui.dp(5), ui.dp(3), ui.dp(5));
+        button.setCompoundDrawablesWithIntrinsicBounds(0, icon, 0, 0);
+        button.setCompoundDrawablePadding(ui.dp(3));
         StillwaterUi.quiet(button);
-        StillwaterReadable.prepareWrappingControl(button, ui.dp(46));
+        StillwaterUi.tintStatefulIcon(button);
+        int floor = Math.max(ui.dp(48), InterfaceSize.minTouchPx(ui.settingsActivity()));
+        button.setMinimumHeight(floor);
+        StillwaterReadable.prepareWrappingControl(button, floor);
         return button;
     }
 }

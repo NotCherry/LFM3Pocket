@@ -46,16 +46,17 @@ internal fun ChatLiveStatus(mode: String, status: String, packageName: String) {
                 }.testTag(tag("chat_live_announcer")),
             verticalAlignment = Alignment.CenterVertically) {
             if (active) CircularProgressIndicator(
-                Modifier.size(18.dp).testTag(tag("chat_live_progress")),
+                Modifier.size(16.dp).testTag(tag("chat_live_progress")),
                 color = atlas.accent,
-                strokeWidth = 2.dp,
+                trackColor = atlas.border,
+                strokeWidth = 1.8.dp,
             )
             Text(
                 announcedStatus,
                 style = MaterialTheme.typography.bodyMedium,
                 color = atlas.ink,
                 modifier = Modifier
-                    .padding(start = 8.dp)
+                    .padding(start = if (active) 8.dp else 0.dp)
                     .weight(1f, fill = false)
                     .testTag(tag("chat_live_status")),
             )

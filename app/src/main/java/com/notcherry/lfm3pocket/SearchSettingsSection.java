@@ -1,6 +1,5 @@
 package com.notcherry.lfm3pocket;
 
-import android.graphics.Color;
 import android.text.InputType;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -57,41 +56,44 @@ final class SearchSettingsSection {
         TextView searchHeading = host.label(host.getString(R.string.searxng_heading), 11, inkMuted);
         searchHeading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
         searchHeading.setLetterSpacing(0.12f);
-        searchHeading.setPadding(0, host.dp(16), 0, host.dp(4));
+        searchHeading.setPadding(0, host.dp(18), 0, host.dp(6));
         configuration.addView(searchHeading);
+
         searchEndpointField = new EditText(host.settingsActivity());
         searchEndpointField.setId(R.id.search_endpoint);
         searchEndpointField.setSingleLine(true);
         searchEndpointField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         searchEndpointField.setHint("https://your-searxng.example.org/search");
-        searchEndpointField.setHintTextColor(inkMuted);
-        searchEndpointField.setTextColor(ink);
+        StillwaterReadable.setTextSizeSp(searchEndpointField, 13);
         searchEndpointField.setTypeface(StillwaterUi.mono(host.settingsActivity()));
-        searchEndpointField.setBackgroundColor(Color.TRANSPARENT);
-        StillwaterUi.styleInput(searchEndpointField);
+        StillwaterUi.styleBoxedInput(searchEndpointField);
+        searchEndpointField.setHintTextColor(StillwaterUi.DISABLED);
         searchEndpointField.setText(deps.endpoint.get());
-        configuration.addView(searchEndpointField);
+        configuration.addView(searchEndpointField, new LinearLayout.LayoutParams(-1, -2));
+
         searchEnabledBox = new CheckBox(host.settingsActivity());
         searchEnabledBox.setId(R.id.search_enabled);
         searchEnabledBox.setText(R.string.use_web_search);
         StillwaterUi.styleCheck(searchEnabledBox);
         searchEnabledBox.setChecked(deps.enabled.getAsBoolean());
-        configuration.addView(searchEnabledBox);
+        LinearLayout.LayoutParams checkParams = new LinearLayout.LayoutParams(-1, -2);
+        checkParams.topMargin = host.dp(6);
+        configuration.addView(searchEnabledBox, checkParams);
+
         searchButton = host.button(host.getString(R.string.web_search_off));
         searchButton.setId(R.id.web_search);
-        StillwaterUi.quiet(searchButton);
+        StillwaterUi.outlined(searchButton);
         searchButton.setOnClickListener(v -> deps.openSearchSettings.run());
         StillwaterReadable.addFlexibleFullWidth(configuration, searchButton, 44);
         paintWebSearchControl(deps.activityBusy.getAsBoolean());
     }
 
-    void mountSaveButton(LinearLayout settingsActions) {
+    Button createSaveButton() {
         Button saveSearch = host.button(host.getString(R.string.save_search));
         saveSearch.setId(R.id.search_save);
-        StillwaterUi.quiet(saveSearch);
+        StillwaterUi.outlined(saveSearch);
         saveSearch.setOnClickListener(v -> saveInline());
-        StillwaterReadable.prepareWrappingControl(saveSearch, host.dp(44));
-        settingsActions.addView(saveSearch, new LinearLayout.LayoutParams(-2, -2));
+        return saveSearch;
     }
 
     void syncFields() {

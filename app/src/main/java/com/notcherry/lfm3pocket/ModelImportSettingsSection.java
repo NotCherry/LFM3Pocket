@@ -2,6 +2,7 @@ package com.notcherry.lfm3pocket;
 
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 
 /** Settings scroll section for GGUF import/open controls and {@link ModelManagerPanel}. */
 final class ModelImportSettingsSection {
@@ -40,34 +41,52 @@ final class ModelImportSettingsSection {
     }
 
     void mount(LinearLayout configuration, int accent) {
+        TextView heading = ui.label(ui.getString(R.string.model_heading), 11, StillwaterUi.MUTED);
+        heading.setTypeface(StillwaterUi.sansMedium(ui.settingsActivity()));
+        heading.setLetterSpacing(0.12f);
+        heading.setPadding(0, ui.dp(6), 0, ui.dp(2));
+        configuration.addView(heading);
+
+        TextView help = ui.label(ui.getString(R.string.model_import_help), 12, StillwaterUi.MUTED);
+        StillwaterReadable.prepareWrappingLabel(help);
+        help.setPadding(0, 0, 0, ui.dp(4));
+        configuration.addView(help);
+
         modelButton = ui.button(ui.getString(R.string.import_model));
         modelButton.setId(R.id.import_model);
-        StillwaterUi.quiet(modelButton);
-        modelButton.setTextColor(accent);
+        StillwaterUi.accentOutlined(modelButton);
+        modelButton.setPadding(ui.dp(10), ui.dp(8), ui.dp(10), ui.dp(8));
         modelButton.setOnClickListener(v -> deps.pickModel.run());
+
         mmprojButton = ui.button(ui.getString(R.string.import_projector));
         mmprojButton.setId(R.id.import_projector);
-        StillwaterUi.quiet(mmprojButton);
-        mmprojButton.setTextColor(accent);
+        StillwaterUi.accentOutlined(mmprojButton);
+        mmprojButton.setPadding(ui.dp(10), ui.dp(8), ui.dp(10), ui.dp(8));
         mmprojButton.setOnClickListener(v -> deps.pickMmproj.run());
         StillwaterReadable.addFlexibleButtonRow(configuration, ui.settingsActivity(), 48,
                 modelButton, mmprojButton);
+
         openModelUriButton = ui.button(ui.getString(R.string.open_model_from_storage));
         openModelUriButton.setId(R.id.open_model_uri);
-        StillwaterUi.quiet(openModelUriButton);
-        openModelUriButton.setTextColor(accent);
+        StillwaterUi.outlined(openModelUriButton);
+        openModelUriButton.setPadding(ui.dp(10), ui.dp(8), ui.dp(10), ui.dp(8));
         openModelUriButton.setOnClickListener(v -> deps.openModelUri.run());
+
         openProjectorUriButton = ui.button(ui.getString(R.string.open_projector_from_storage));
         openProjectorUriButton.setId(R.id.open_projector_uri);
-        StillwaterUi.quiet(openProjectorUriButton);
-        openProjectorUriButton.setTextColor(accent);
+        StillwaterUi.outlined(openProjectorUriButton);
+        openProjectorUriButton.setPadding(ui.dp(10), ui.dp(8), ui.dp(10), ui.dp(8));
         openProjectorUriButton.setOnClickListener(v -> deps.openProjectorUri.run());
         StillwaterReadable.addFlexibleButtonRow(configuration, ui.settingsActivity(), 48,
                 openModelUriButton, openProjectorUriButton);
+
         // Model manager stays near the top so Unload/Load remain on-screen for Stage 1.
+        // Hosted inside Settings, so suppress the redundant "Settings" jump button.
         modelManager = new ModelManagerPanel(ui.settingsActivity(),
-                deps.reloadSelectedModel, deps.unloadSelectedModel, deps.showInferenceSettings);
-        configuration.addView(modelManager, new LinearLayout.LayoutParams(-1, -2));
+                deps.reloadSelectedModel, deps.unloadSelectedModel, deps.showInferenceSettings, false);
+        LinearLayout.LayoutParams managerParams = new LinearLayout.LayoutParams(-1, -2);
+        managerParams.topMargin = ui.dp(8);
+        configuration.addView(modelManager, managerParams);
     }
 
     void paintImportButtons(boolean busy) {

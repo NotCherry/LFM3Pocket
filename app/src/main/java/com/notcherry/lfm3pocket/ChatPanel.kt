@@ -6,11 +6,15 @@ import android.graphics.Color
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,7 +22,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -46,6 +51,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.notcherry.lfm3pocket.ui.theme.PocketTheme
 import com.notcherry.lfm3pocket.ui.theme.StillwaterControls
@@ -68,8 +74,14 @@ class ChatPanel @JvmOverloads constructor(
     private val clear: Runnable,
     private val retryInterrupted: Consumer<String> = Consumer { },
     private val compact: Runnable = Runnable { },
+    private val openSettings: Runnable = Runnable { },
 ) : LinearLayout(context) {
-    private data class Controls(val send: Boolean = false, val stop: Boolean = false, val clear: Boolean = true, val compact: Boolean = false)
+    private data class Controls(
+        val send: Boolean = false,
+        val stop: Boolean = false,
+        val clear: Boolean = true,
+        val compact: Boolean = false,
+    )
     private data class ToolCardState(
         val details: String,
         val risk: String,
@@ -84,7 +96,8 @@ class ChatPanel @JvmOverloads constructor(
 
     private var snapshot by mutableStateOf(ChatSnapshot(emptyList(), "", false))
     private var liveStatus by mutableStateOf("")
-    private var idleMode by mutableStateOf("Mode · Local / offline")
+    private var searchModeEnabled by mutableStateOf(false)
+    private var modelReadyState by mutableStateOf(false)
     private var toolCard by mutableStateOf<ToolCardState?>(null)
     private var attachment by mutableStateOf<Attachment?>(null)
     private var documentAttachments by mutableStateOf<List<DocumentAttachment>>(emptyList())
@@ -134,7 +147,15 @@ class ChatPanel @JvmOverloads constructor(
     }
 
     fun setIdleMode(searchEnabled: Boolean) {
-        idleMode = if (searchEnabled) "Mode · Web search + local model" else "Mode · Local / offline"
+        searchModeEnabled = searchEnabled
+    }
+
+    fun setModelReady(ready: Boolean) {
+        modelReadyState = ready
+    }
+
+    fun clearToolCard() {
+        toolCard = null
     }
 
     fun renderToolCard(
@@ -146,6 +167,10 @@ class ChatPanel @JvmOverloads constructor(
         approve: Runnable?,
         reject: Runnable?,
     ) {
+        if (details.isBlank() && status.isBlank() && result.isBlank() && !pending) {
+            toolCard = null
+            return
+        }
         toolCard = ToolCardState(details, risk, status, result, pending, approve, reject)
     }
 
@@ -155,6 +180,9 @@ class ChatPanel @JvmOverloads constructor(
 
     fun updateControls(canSend: Boolean, canStop: Boolean, canClear: Boolean, canCompact: Boolean) {
         controls = Controls(canSend, canStop, canClear, canCompact)
+        if (canSend || canStop) {
+            modelReadyState = true
+        }
     }
 
     fun showImageAttachment(path: String, onRemove: Runnable) {
@@ -190,6 +218,7 @@ class ChatPanel @JvmOverloads constructor(
 
     private fun tag(name: String) = "${context.packageName}:id/$name"
 
+    @OptIn(ExperimentalLayoutApi::class)
     @Composable
     private fun ChatPanelContent() {
         PocketTheme {
@@ -206,6 +235,11 @@ class ChatPanel @JvmOverloads constructor(
             val atlas = MaterialTheme.atlasColors
             val type = MaterialTheme.atlasTypography
             val space = MaterialTheme.atlasSpacing
+            val idleMode = if (searchModeEnabled) {
+                stringResource(R.string.mode_composer_web_search)
+            } else {
+                stringResource(R.string.mode_local)
+            }
             var previewBitmap by remember(attachment?.path) { mutableStateOf<Bitmap?>(null) }
             LaunchedEffect(attachment?.path) {
                 val path = attachment?.path
@@ -227,12 +261,34 @@ class ChatPanel @JvmOverloads constructor(
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = space.space4, vertical = space.space2)
-                            .background(atlas.surfaceRaised, MaterialTheme.shapes.large)
-                            .border(1.dp, atlas.border, MaterialTheme.shapes.large)
+                            .padding(horizontal = space.space3, vertical = space.space2)
+                            .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
+                            .border(1.dp, atlas.borderStrong, MaterialTheme.shapes.medium)
                             .padding(space.space4),
                     ) {
-                        Text("Android action", style = type.title, color = atlas.ink)
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                stringResource(R.string.android_action),
+                                style = type.title,
+                                color = atlas.ink,
+                            )
+                            if (!card.pending) {
+                                TextButton(
+                                    onClick = { toolCard = null },
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .testTag(tag("tool_dismiss")),
+                                    contentPadding = PaddingValues(horizontal = space.space2, vertical = 2.dp),
+                                    colors = StillwaterControls.textButtonColors(),
+                                ) {
+                                    Text(stringResource(R.string.dismiss), style = type.label, color = atlas.inkMuted)
+                                }
+                            }
+                        }
                         Spacer(Modifier.height(space.space1))
                         Text(
                             card.details,
@@ -240,20 +296,22 @@ class ChatPanel @JvmOverloads constructor(
                             color = atlas.ink,
                             modifier = Modifier.testTag(tag("tool_details")),
                         )
-                        Text(
-                            card.risk,
-                            style = type.mono,
-                            color = riskColor(card.risk, atlas),
-                            modifier = Modifier
-                                .padding(top = 4.dp)
-                                .testTag(tag("tool_risk")),
-                        )
+                        if (card.risk.isNotBlank()) {
+                            Text(
+                                card.risk,
+                                style = type.mono,
+                                color = riskColor(card.risk, atlas),
+                                modifier = Modifier
+                                    .padding(top = space.space1)
+                                    .testTag(tag("tool_risk")),
+                            )
+                        }
                         Text(
                             card.status,
                             style = type.bodySmall,
                             color = atlas.inkMuted,
                             modifier = Modifier
-                                .padding(top = 4.dp)
+                                .padding(top = space.space1)
                                 .testTag(tag("tool_status")),
                         )
                         if (card.result.isNotBlank()) {
@@ -262,26 +320,37 @@ class ChatPanel @JvmOverloads constructor(
                                 style = type.mono,
                                 color = atlas.ink,
                                 modifier = Modifier
-                                    .padding(top = 4.dp)
+                                    .padding(top = space.space1)
                                     .testTag(tag("tool_result")),
                             )
                         }
                         if (card.pending) {
                             Row(
-                                Modifier.padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                Modifier.padding(top = space.space3),
+                                horizontalArrangement = Arrangement.spacedBy(space.space2),
                             ) {
-                                TextButton(
+                                OutlinedButton(
                                     onClick = { card.reject?.run() },
-                                    modifier = Modifier.testTag(tag("tool_reject")),
-                                    colors = StillwaterControls.dangerTextColors(),
-                                ) { Text("Reject") }
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .heightIn(min = 42.dp)
+                                        .testTag(tag("tool_reject")),
+                                    shape = MaterialTheme.shapes.medium,
+                                    border = BorderStroke(1.dp, atlas.danger),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = atlas.danger,
+                                        disabledContentColor = atlas.inkDisabled,
+                                    ),
+                                ) { Text(stringResource(R.string.reject)) }
                                 Button(
                                     onClick = { card.approve?.run() },
-                                    modifier = Modifier.testTag(tag("tool_approve")),
-                                    shape = RoundedCornerShape(0.dp),
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .heightIn(min = 42.dp)
+                                        .testTag(tag("tool_approve")),
+                                    shape = MaterialTheme.shapes.medium,
                                     colors = StillwaterControls.buttonColors(),
-                                ) { Text("Approve") }
+                                ) { Text(stringResource(R.string.approve)) }
                             }
                         }
                     }
@@ -291,8 +360,9 @@ class ChatPanel @JvmOverloads constructor(
                     packageName = context.packageName,
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = space.space1),
+                        .fillMaxWidth(),
+                    modelReady = modelReadyState,
+                    onOpenSettings = { openSettings.run() },
                     onSuggest = { input = it },
                     onRetryInterrupted = { turnId -> retryInterrupted.accept(turnId) },
                 )
@@ -300,13 +370,14 @@ class ChatPanel @JvmOverloads constructor(
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = space.space4, vertical = space.space1)
+                            .padding(horizontal = space.space2, vertical = space.space1)
+                            .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
                             .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
-                            .padding(space.space3)
+                            .padding(horizontal = space.space3, vertical = space.space2)
                             .testTag(tag("document_attachments")),
                     ) {
                         Text(
-                            "Documents attached",
+                            stringResource(R.string.documents_attached_heading),
                             style = type.label,
                             color = atlas.inkMuted,
                             modifier = Modifier.fillMaxWidth(),
@@ -315,166 +386,199 @@ class ChatPanel @JvmOverloads constructor(
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(top = 4.dp),
+                                    .padding(top = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
                                     doc.name,
-                                    style = type.bodySmall,
+                                    style = type.mono,
                                     color = atlas.ink,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier
                                         .weight(1f)
                                         .testTag(tag("document_attachment_$index")),
                                 )
                                 TextButton(
                                     onClick = { doc.onRemove.run() },
-                                    modifier = Modifier.testTag(tag("document_remove_$index")),
-                                    colors = StillwaterControls.textButtonColors(),
-                                ) { Text("Remove") }
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .testTag(tag("document_remove_$index")),
+                                    contentPadding = PaddingValues(horizontal = space.space2, vertical = 2.dp),
+                                    colors = StillwaterControls.dangerTextColors(),
+                                ) { Text(stringResource(R.string.remove_short), style = type.bodySmall) }
                             }
                         }
                     }
                 }
                 attachment?.let { image ->
-                    Column(
+                    Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = space.space4, vertical = space.space1)
+                            .padding(horizontal = space.space2, vertical = space.space1)
+                            .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
                             .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
-                            .padding(space.space3)
+                            .padding(space.space2)
                             .testTag(tag("image_attachment")),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            "Image attached",
-                            style = type.label,
-                            color = atlas.inkMuted,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
                         previewBitmap?.let { bitmap ->
                             Image(
                                 bitmap.asImageBitmap(),
-                                contentDescription = "Attached image preview",
+                                contentDescription = stringResource(R.string.attached_image_preview_cd),
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(144.dp)
-                                    .padding(top = 6.dp)
+                                    .size(56.dp)
+                                    .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
                                     .testTag(tag("image_preview")),
-                                contentScale = ContentScale.Fit,
+                                contentScale = ContentScale.Crop,
                             )
                         } ?: Text(
-                            "Loading image preview…",
+                            stringResource(R.string.loading_image_preview),
                             style = type.bodySmall,
                             color = atlas.inkMuted,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 6.dp),
+                            modifier = Modifier.padding(end = space.space2),
                         )
-                        if (image.caption.isNotBlank()) {
+                        Spacer(Modifier.width(space.space3))
+                        Column(Modifier.weight(1f)) {
                             Text(
-                                image.caption,
-                                style = type.bodySmall,
-                                color = atlas.inkMuted,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 4.dp)
-                                    .testTag(tag("image_size_caption")),
+                                stringResource(R.string.image_attached),
+                                style = type.label,
+                                color = atlas.ink,
                             )
+                            if (image.caption.isNotBlank()) {
+                                Text(
+                                    image.caption,
+                                    style = type.bodySmall,
+                                    color = atlas.inkMuted,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .padding(top = 2.dp)
+                                        .testTag(tag("image_size_caption")),
+                                )
+                            }
                         }
                         TextButton(
                             onClick = { image.onRemove.run() },
-                            modifier = Modifier.testTag(tag("image_remove")),
-                            colors = StillwaterControls.textButtonColors(),
-                        ) { Text("Remove image") }
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag(tag("image_remove")),
+                            contentPadding = PaddingValues(horizontal = space.space2, vertical = space.space1),
+                            colors = StillwaterControls.dangerTextColors(),
+                        ) { Text(stringResource(R.string.image_remove), style = type.bodySmall) }
                     }
                 }
+                val hasClearableContent = snapshot.turns.isNotEmpty() || input.isNotEmpty() ||
+                    attachment != null || documentAttachments.isNotEmpty()
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .background(atlas.surface)
-                        .border(width = 1.dp, color = atlas.border)
+                        .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
+                        .border(width = 1.dp, color = atlas.border, shape = MaterialTheme.shapes.medium)
                         .padding(horizontal = space.composer, vertical = space.space2),
                 ) {
                     ChatLiveStatus(idleMode, liveStatus, context.packageName)
-                    Spacer(Modifier.height(space.space1))
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(space.space2),
-                    ) {
-                        OutlinedTextField(
-                            value = input,
-                            onValueChange = { input = it },
-                            placeholder = { Text("Write a message…", color = atlas.inkDisabled) },
-                            minLines = 1,
-                            maxLines = 4,
-                            shape = RoundedCornerShape(0.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = atlas.ink,
-                                unfocusedTextColor = atlas.ink,
-                                disabledTextColor = atlas.inkDisabled,
-                                focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
-                                unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
-                                cursorColor = atlas.accent,
-                                focusedContainerColor = atlas.surface,
-                                unfocusedContainerColor = atlas.surface,
-                                focusedPlaceholderColor = atlas.inkDisabled,
-                                unfocusedPlaceholderColor = atlas.inkDisabled,
-                                selectionColors = TextSelectionColors(
-                                    handleColor = atlas.accent,
-                                    backgroundColor = atlas.accent.copy(alpha = 0.35f),
-                                ),
+                    Spacer(Modifier.height(space.space2))
+                    OutlinedTextField(
+                        value = input,
+                        onValueChange = { input = it },
+                        placeholder = {
+                            Text(stringResource(R.string.chat_write_message), color = atlas.inkDisabled)
+                        },
+                        minLines = 1,
+                        maxLines = 5,
+                        shape = MaterialTheme.shapes.medium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = atlas.ink,
+                            unfocusedTextColor = atlas.ink,
+                            disabledTextColor = atlas.inkDisabled,
+                            focusedBorderColor = atlas.borderStrong,
+                            unfocusedBorderColor = atlas.border,
+                            cursorColor = atlas.accent,
+                            focusedContainerColor = atlas.surface,
+                            unfocusedContainerColor = atlas.surface,
+                            focusedPlaceholderColor = atlas.inkDisabled,
+                            unfocusedPlaceholderColor = atlas.inkDisabled,
+                            selectionColors = TextSelectionColors(
+                                handleColor = atlas.accent,
+                                backgroundColor = atlas.accent.copy(alpha = 0.35f),
                             ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag(tag("chat_input")),
-                        )
-                        OutlinedButton(
-                            onClick = { stop.run() },
-                            enabled = controls.stop,
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .heightIn(min = 40.dp)
-                                .testTag(tag("chat_stop")),
-                            shape = RoundedCornerShape(0.dp),
-                            colors = StillwaterControls.outlinedColors(),
-                        ) { Text(stringResource(R.string.stop)) }
-                        Button(
-                            onClick = {
-                                val text = input
-                                input = ""
-                                focus.clearFocus()
-                                keyboard?.hide()
-                                send.accept(text)
-                            },
-                            enabled = controls.send,
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .heightIn(min = 40.dp)
-                                .testTag(tag("chat_send")),
-                            shape = RoundedCornerShape(0.dp),
-                            colors = StillwaterControls.buttonColors(),
-                        ) { Text(stringResource(R.string.send)) }
-                    }
-                    Row(
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(tag("chat_input")),
+                    )
+                    Spacer(Modifier.height(space.space1))
+                    FlowRow(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalArrangement = Arrangement.Center,
                     ) {
-                        TextButton(
-                            onClick = { compact.run() },
-                            enabled = controls.compact,
-                            modifier = Modifier.testTag(tag("chat_compact")),
-                            colors = StillwaterControls.textButtonColors(),
-                        ) {
-                            Text(stringResource(R.string.compact_conversation))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(
+                                onClick = { compact.run() },
+                                enabled = controls.compact && snapshot.turns.isNotEmpty(),
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag(tag("chat_compact")),
+                                contentPadding = PaddingValues(horizontal = space.space2, vertical = 2.dp),
+                                colors = StillwaterControls.textButtonColors(),
+                            ) {
+                                Text(stringResource(R.string.compact_conversation), style = type.bodySmall)
+                            }
+                            TextButton(
+                                onClick = { clear.run() },
+                                enabled = controls.clear,
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag(tag("chat_clear")),
+                                contentPadding = PaddingValues(horizontal = space.space2, vertical = 2.dp),
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = if (hasClearableContent) atlas.accent else atlas.inkMuted,
+                                    disabledContentColor = atlas.inkDisabled,
+                                ),
+                            ) {
+                                Text(stringResource(R.string.clear_conversation), style = type.bodySmall)
+                            }
                         }
-                        TextButton(
-                            onClick = { clear.run() },
-                            enabled = controls.clear,
-                            colors = StillwaterControls.textButtonColors(),
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(space.space2),
                         ) {
-                            Text("Clear")
+                            OutlinedButton(
+                                onClick = { stop.run() },
+                                enabled = controls.stop,
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .heightIn(min = 40.dp)
+                                    .testTag(tag("chat_stop")),
+                                shape = MaterialTheme.shapes.medium,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (controls.stop) atlas.danger else atlas.border,
+                                ),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = atlas.danger,
+                                    disabledContentColor = atlas.inkMuted,
+                                ),
+                            ) { Text(stringResource(R.string.stop)) }
+                            Button(
+                                onClick = {
+                                    val text = input
+                                    input = ""
+                                    focus.clearFocus()
+                                    keyboard?.hide()
+                                    send.accept(text)
+                                },
+                                enabled = controls.send,
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .heightIn(min = 40.dp)
+                                    .testTag(tag("chat_send")),
+                                shape = MaterialTheme.shapes.medium,
+                                colors = StillwaterControls.buttonColors(),
+                            ) { Text(stringResource(R.string.send)) }
                         }
                     }
                 }

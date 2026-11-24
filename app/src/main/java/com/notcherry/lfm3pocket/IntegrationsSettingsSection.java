@@ -1,7 +1,6 @@
 package com.notcherry.lfm3pocket;
 
 import android.content.Intent;
-import android.graphics.Color;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.Gravity;
@@ -142,7 +141,7 @@ final class IntegrationsSettingsSection {
         TextView toolsHeading = host.label(host.getString(R.string.tools_heading), 11, inkMuted);
         toolsHeading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
         toolsHeading.setLetterSpacing(0.12f);
-        toolsHeading.setPadding(0, host.dp(16), 0, host.dp(4));
+        toolsHeading.setPadding(0, host.dp(18), 0, host.dp(4));
         configuration.addView(toolsHeading);
         networkToolsBox = new CheckBox(host.settingsActivity());
         networkToolsBox.setId(R.id.settings_network_tools);
@@ -160,7 +159,7 @@ final class IntegrationsSettingsSection {
         TextView notificationAccessHeading = host.label(host.getString(R.string.notification_access_heading), 11, inkMuted);
         notificationAccessHeading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
         notificationAccessHeading.setLetterSpacing(0.12f);
-        notificationAccessHeading.setPadding(0, host.dp(16), 0, host.dp(4));
+        notificationAccessHeading.setPadding(0, host.dp(18), 0, host.dp(4));
         configuration.addView(notificationAccessHeading);
         notificationAccessBox = new CheckBox(host.settingsActivity());
         notificationAccessBox.setId(R.id.settings_notification_access);
@@ -174,9 +173,10 @@ final class IntegrationsSettingsSection {
         TextView notificationAccessHelp = host.label(host.getString(R.string.notification_access_help), 12, inkMuted);
         StillwaterReadable.prepareWrappingLabel(notificationAccessHelp);
         configuration.addView(notificationAccessHelp);
+
         Button openNotificationAccessSettings = host.button(host.getString(R.string.notification_access_open_settings));
         openNotificationAccessSettings.setId(R.id.settings_notification_open_system);
-        StillwaterUi.quiet(openNotificationAccessSettings);
+        StillwaterUi.outlined(openNotificationAccessSettings);
         openNotificationAccessSettings.setOnClickListener(v -> {
             try {
                 host.settingsActivity().startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
@@ -185,9 +185,13 @@ final class IntegrationsSettingsSection {
             }
         });
         StillwaterReadable.addFlexibleFullWidth(configuration, openNotificationAccessSettings, 44);
+
         TextView notificationAllowlistLabel = host.label(host.getString(R.string.notification_access_allowlist_label), 14, ink);
+        notificationAllowlistLabel.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
+        notificationAllowlistLabel.setPadding(0, host.dp(8), 0, host.dp(4));
         StillwaterReadable.prepareWrappingLabel(notificationAllowlistLabel);
         configuration.addView(notificationAllowlistLabel);
+
         notificationAllowlistField = new EditText(host.settingsActivity());
         notificationAllowlistField.setId(R.id.settings_notification_allowlist);
         notificationAllowlistField.setMinLines(3);
@@ -196,65 +200,71 @@ final class IntegrationsSettingsSection {
         notificationAllowlistField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
                 | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         notificationAllowlistField.setHint(host.getString(R.string.notification_access_allowlist_hint));
-        notificationAllowlistField.setHintTextColor(inkMuted);
-        notificationAllowlistField.setTextColor(ink);
+        StillwaterReadable.setTextSizeSp(notificationAllowlistField, 13);
         notificationAllowlistField.setTypeface(StillwaterUi.mono(host.settingsActivity()));
-        notificationAllowlistField.setBackgroundColor(Color.TRANSPARENT);
-        StillwaterUi.styleInput(notificationAllowlistField);
-        configuration.addView(notificationAllowlistField);
+        StillwaterUi.styleBoxedInput(notificationAllowlistField);
+        notificationAllowlistField.setHintTextColor(StillwaterUi.DISABLED);
+        configuration.addView(notificationAllowlistField, new LinearLayout.LayoutParams(-1, -2));
+
         Button saveNotificationAllowlist = host.button(host.getString(R.string.notification_access_save_allowlist));
         saveNotificationAllowlist.setId(R.id.settings_notification_save_allowlist);
-        StillwaterUi.quiet(saveNotificationAllowlist);
+        StillwaterUi.outlined(saveNotificationAllowlist);
         saveNotificationAllowlist.setOnClickListener(v -> saveNotificationAllowlist());
         StillwaterReadable.addFlexibleFullWidth(configuration, saveNotificationAllowlist, 44);
+
         TextView notificationAllowlistHelp = host.label(host.getString(R.string.notification_access_empty_allowlist), 12, inkMuted);
+        notificationAllowlistHelp.setPadding(0, host.dp(4), 0, 0);
         StillwaterReadable.prepareWrappingLabel(notificationAllowlistHelp);
         configuration.addView(notificationAllowlistHelp);
 
         TextView calendarHeading = host.label(host.getString(R.string.calendar_heading), 11, inkMuted);
         calendarHeading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
         calendarHeading.setLetterSpacing(0.12f);
-        calendarHeading.setPadding(0, host.dp(16), 0, host.dp(4));
+        calendarHeading.setPadding(0, host.dp(18), 0, host.dp(4));
         configuration.addView(calendarHeading);
         TextView calendarHelp = host.label(host.getString(R.string.calendar_help), 12, inkMuted);
         StillwaterReadable.prepareWrappingLabel(calendarHelp);
         configuration.addView(calendarHelp);
         calendarStatusText = host.label(host.getString(R.string.calendar_none_picked), 13, ink);
         calendarStatusText.setId(R.id.settings_calendar_status);
+        calendarStatusText.setPadding(0, host.dp(4), 0, host.dp(2));
         StillwaterReadable.prepareWrappingLabel(calendarStatusText);
         configuration.addView(calendarStatusText);
+
         Button calendarPickButton = host.button(host.getString(R.string.calendar_pick_button));
         calendarPickButton.setId(R.id.settings_calendar_pick);
-        StillwaterUi.quiet(calendarPickButton);
+        StillwaterUi.outlined(calendarPickButton);
         calendarPickButton.setOnClickListener(v -> deps.pickCalendarTarget.run());
-        StillwaterReadable.addFlexibleFullWidth(configuration, calendarPickButton, 44);
+
         Button calendarClearButton = host.button(host.getString(R.string.calendar_clear_button));
         calendarClearButton.setId(R.id.settings_calendar_clear);
-        StillwaterUi.quiet(calendarClearButton);
+        StillwaterUi.dangerOutlined(calendarClearButton);
         calendarClearButton.setOnClickListener(v -> {
             deps.preferences.get().setCalendarWriteTarget("", "");
             refreshCalendarPickerStatus();
         });
-        StillwaterReadable.addFlexibleFullWidth(configuration, calendarClearButton, 44);
+        StillwaterReadable.addFlexibleButtonRow(configuration, host.settingsActivity(), 44,
+                calendarPickButton, calendarClearButton);
 
         TextView speechHeading = host.label(host.getString(R.string.speech_heading), 11, inkMuted);
         speechHeading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
         speechHeading.setLetterSpacing(0.12f);
-        speechHeading.setPadding(0, host.dp(16), 0, host.dp(4));
+        speechHeading.setPadding(0, host.dp(18), 0, host.dp(4));
         configuration.addView(speechHeading);
 
         TextView speechInputHeading = host.label(host.getString(R.string.speech_input_heading), 11, inkMuted);
         speechInputHeading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
         speechInputHeading.setLetterSpacing(0.08f);
-        speechInputHeading.setPadding(0, host.dp(8), 0, host.dp(2));
+        speechInputHeading.setPadding(0, host.dp(6), 0, host.dp(2));
         configuration.addView(speechInputHeading);
-        TextView speechInputLabel = host.label(host.getString(R.string.speech_input_mode_label), 14, ink);
+        TextView speechInputLabel = host.label(host.getString(R.string.speech_input_mode_label), 15, ink);
         speechInputLabel.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
         StillwaterReadable.prepareWrappingLabel(speechInputLabel);
         configuration.addView(speechInputLabel);
         TextView speechInputHelp = host.label(host.getString(R.string.speech_input_mode_help), 12, inkMuted);
         StillwaterReadable.prepareWrappingLabel(speechInputHelp);
         configuration.addView(speechInputHelp);
+
         speechInputOmniButton = host.button(host.getString(R.string.speech_input_omni));
         speechInputWhistleButton = host.button(host.getString(R.string.speech_input_cactus_whistle));
         speechInputOmniButton.setOnClickListener(v -> {
@@ -270,31 +280,37 @@ final class IntegrationsSettingsSection {
         LinearLayout speechModeRow = StillwaterReadable.addFlexibleButtonRow(
                 configuration, host.settingsActivity(), 44, speechInputOmniButton, speechInputWhistleButton);
         speechModeRow.setPadding(0, host.dp(4), 0, host.dp(4));
-        speechInputCactusStatus = host.label(host.getString(R.string.speech_input_cactus_status_missing), 13, ink);
+
+        speechInputCactusStatus = host.label(host.getString(R.string.speech_input_cactus_status_missing), 12, ink);
         speechInputCactusStatus.setId(R.id.settings_cactus_whistle_status);
+        speechInputCactusStatus.setTypeface(StillwaterUi.mono(host.settingsActivity()));
+        speechInputCactusStatus.setPadding(0, host.dp(4), 0, host.dp(2));
         StillwaterReadable.prepareWrappingLabel(speechInputCactusStatus);
         configuration.addView(speechInputCactusStatus);
+
         speechInputCactusDownloadButton = host.button(host.getString(R.string.speech_input_cactus_download));
         speechInputCactusDownloadButton.setId(R.id.settings_cactus_whistle_download);
-        StillwaterUi.quiet(speechInputCactusDownloadButton);
+        StillwaterUi.outlined(speechInputCactusDownloadButton);
         speechInputCactusDownloadButton.setOnClickListener(v -> deps.downloadCactusWhistleModel.run());
-        configuration.addView(speechInputCactusDownloadButton, new LinearLayout.LayoutParams(-1, host.dp(44)));
+        StillwaterReadable.addFlexibleFullWidth(configuration, speechInputCactusDownloadButton, 44);
+
         speechInputCactusCancelButton = host.button(host.getString(R.string.model_download_cancel));
         speechInputCactusCancelButton.setId(R.id.settings_cactus_whistle_cancel);
-        StillwaterUi.quiet(speechInputCactusCancelButton);
+        StillwaterUi.dangerOutlined(speechInputCactusCancelButton);
         speechInputCactusCancelButton.setOnClickListener(v -> {
             ModelDownloadManager.getInstance(host.settingsActivity()).cancel(ModelDownloadKind.CACTUS_WHISTLE);
             paintSpeechInputControls();
         });
-        configuration.addView(speechInputCactusCancelButton, new LinearLayout.LayoutParams(-1, host.dp(44)));
+        StillwaterReadable.addFlexibleFullWidth(configuration, speechInputCactusCancelButton, 44);
+
         speechInputCactusPickButton = host.button(host.getString(R.string.speech_input_cactus_pick));
         speechInputCactusPickButton.setId(R.id.settings_cactus_whistle_pick);
-        StillwaterUi.quiet(speechInputCactusPickButton);
+        StillwaterUi.outlined(speechInputCactusPickButton);
         speechInputCactusPickButton.setOnClickListener(v -> deps.pickWhistleModel.run());
-        configuration.addView(speechInputCactusPickButton, new LinearLayout.LayoutParams(-1, host.dp(44)));
+
         speechInputCactusClearButton = host.button(host.getString(R.string.speech_input_cactus_clear));
         speechInputCactusClearButton.setId(R.id.settings_cactus_whistle_clear);
-        StillwaterUi.quiet(speechInputCactusClearButton);
+        StillwaterUi.dangerOutlined(speechInputCactusClearButton);
         speechInputCactusClearButton.setOnClickListener(v -> {
             deps.preferences.get().setCactusWhistleModelPath("");
             new CactusWhistleModelStore(host.settingsActivity()).clear();
@@ -302,8 +318,11 @@ final class IntegrationsSettingsSection {
             paintSpeechInputControls();
             deps.updateControls.run();
         });
-        configuration.addView(speechInputCactusClearButton, new LinearLayout.LayoutParams(-1, host.dp(44)));
+        StillwaterReadable.addFlexibleButtonRow(configuration, host.settingsActivity(), 44,
+                speechInputCactusPickButton, speechInputCactusClearButton);
+
         TextView speechCactusHelp = host.label(host.getString(R.string.speech_input_cactus_help), 12, inkMuted);
+        speechCactusHelp.setPadding(0, host.dp(4), 0, host.dp(6));
         StillwaterReadable.prepareWrappingLabel(speechCactusHelp);
         configuration.addView(speechCactusHelp);
 
@@ -321,33 +340,39 @@ final class IntegrationsSettingsSection {
         TextView tinyVocaHelp = host.label(host.getString(R.string.tiny_voca_tts_help), 12, inkMuted);
         StillwaterReadable.prepareWrappingLabel(tinyVocaHelp);
         configuration.addView(tinyVocaHelp);
-        tinyVocaStatus = host.label(host.getString(R.string.tiny_voca_status_missing), 13, ink);
+
+        tinyVocaStatus = host.label(host.getString(R.string.tiny_voca_status_missing), 12, ink);
         tinyVocaStatus.setId(R.id.settings_tiny_voca_status);
+        tinyVocaStatus.setTypeface(StillwaterUi.mono(host.settingsActivity()));
+        tinyVocaStatus.setPadding(0, host.dp(4), 0, host.dp(2));
         StillwaterReadable.prepareWrappingLabel(tinyVocaStatus);
         configuration.addView(tinyVocaStatus);
+
         tinyVocaDownloadButton = host.button(host.getString(R.string.tiny_voca_download));
         tinyVocaDownloadButton.setId(R.id.settings_tiny_voca_download);
-        StillwaterUi.quiet(tinyVocaDownloadButton);
+        StillwaterUi.outlined(tinyVocaDownloadButton);
         tinyVocaDownloadButton.setOnClickListener(v -> deps.downloadTinyVocaPack.run());
-        configuration.addView(tinyVocaDownloadButton, new LinearLayout.LayoutParams(-1, host.dp(44)));
-        tinyVocaCancelButton = host.button(host.getString(R.string.model_download_cancel));
-        tinyVocaCancelButton.setId(R.id.settings_tiny_voca_cancel);
-        StillwaterUi.quiet(tinyVocaCancelButton);
-        tinyVocaCancelButton.setOnClickListener(v -> {
-            ModelDownloadManager.getInstance(host.settingsActivity()).cancel(ModelDownloadKind.TINY_VOCA);
-            paintTinyVocaPackStatus();
-        });
-        configuration.addView(tinyVocaCancelButton, new LinearLayout.LayoutParams(-1, host.dp(44)));
+
         tinyVocaRemoveButton = host.button(host.getString(R.string.tiny_voca_remove));
         tinyVocaRemoveButton.setId(R.id.settings_tiny_voca_remove);
-        StillwaterUi.quiet(tinyVocaRemoveButton);
+        StillwaterUi.dangerOutlined(tinyVocaRemoveButton);
         tinyVocaRemoveButton.setOnClickListener(v -> {
             new TinyVocaPackStore(host.settingsActivity()).clear();
             TinyVocaPhonemizerBridge.resetLoadedState();
             paintTinyVocaPackStatus();
             deps.updateControls.run();
         });
-        configuration.addView(tinyVocaRemoveButton, new LinearLayout.LayoutParams(-1, host.dp(44)));
+        StillwaterReadable.addFlexibleButtonRow(configuration, host.settingsActivity(), 44,
+                tinyVocaDownloadButton, tinyVocaRemoveButton);
+
+        tinyVocaCancelButton = host.button(host.getString(R.string.model_download_cancel));
+        tinyVocaCancelButton.setId(R.id.settings_tiny_voca_cancel);
+        StillwaterUi.dangerOutlined(tinyVocaCancelButton);
+        tinyVocaCancelButton.setOnClickListener(v -> {
+            ModelDownloadManager.getInstance(host.settingsActivity()).cancel(ModelDownloadKind.TINY_VOCA);
+            paintTinyVocaPackStatus();
+        });
+        StillwaterReadable.addFlexibleFullWidth(configuration, tinyVocaCancelButton, 44);
     }
 
     void syncControls() {
@@ -400,18 +425,8 @@ final class IntegrationsSettingsSection {
     void paintSpeechInputControls() {
         RuntimePreferences prefs = deps.preferences.get();
         SpeechInputMode mode = prefs.speechInputMode();
-        if (speechInputOmniButton != null) {
-            boolean selected = mode == SpeechInputMode.OMNI_AUDIO;
-            speechInputOmniButton.setSelected(selected);
-            if (selected) StillwaterUi.primary(speechInputOmniButton);
-            else StillwaterUi.quiet(speechInputOmniButton);
-        }
-        if (speechInputWhistleButton != null) {
-            boolean selected = mode == SpeechInputMode.CACTUS_WHISTLE_STT;
-            speechInputWhistleButton.setSelected(selected);
-            if (selected) StillwaterUi.primary(speechInputWhistleButton);
-            else StillwaterUi.quiet(speechInputWhistleButton);
-        }
+        StillwaterUi.segmented(speechInputOmniButton, mode == SpeechInputMode.OMNI_AUDIO);
+        StillwaterUi.segmented(speechInputWhistleButton, mode == SpeechInputMode.CACTUS_WHISTLE_STT);
         CactusWhistleModelStore store = new CactusWhistleModelStore(host.settingsActivity());
         String path = prefs.cactusWhistleModelPath();
         boolean hasPath = path != null && !path.trim().isEmpty();

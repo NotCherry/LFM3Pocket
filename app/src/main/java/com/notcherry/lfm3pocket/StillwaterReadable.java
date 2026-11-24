@@ -85,15 +85,18 @@ final class StillwaterReadable {
             if (stack) {
                 params = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                if (i > 0) params.topMargin = dp(context, 4);
+                if (i > 0) params.topMargin = dp(context, 6);
             } else {
                 float weight = (weights != null && i < weights.length) ? weights[i] : 1f;
                 params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, weight);
+                if (i > 0) params.leftMargin = dp(context, 6);
             }
             row.addView(button, params);
         }
-        parent.addView(row, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowParams.topMargin = dp(context, 4);
+        parent.addView(row, rowParams);
         return row;
     }
 
@@ -104,8 +107,10 @@ final class StillwaterReadable {
         } else {
             child.setMinimumHeight(dp(parent.getContext(), minHeightDp));
         }
-        parent.addView(child, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams fullParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        fullParams.topMargin = dp(parent.getContext(), 6);
+        parent.addView(child, fullParams);
     }
 
     /**

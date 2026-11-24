@@ -1,30 +1,48 @@
 package com.notcherry.lfm3pocket;
 
+import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
+import android.view.View;
+import android.view.Window;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.TextView;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.content.res.ResourcesCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
-/** Shared Stillwater colors and button chrome for the view-based screens. */
+/** Shared Stillwater colors, window-inset helpers, and stateful chrome for View screens. */
 final class StillwaterUi {
     static final int SURFACE = 0xFF0E0E0C;
     static final int RAISED = 0xFF161614;
+    static final int OVERLAY = 0xFF1C1C18;
+    static final int CODE_BG = 0xFF0A0A09;
     static final int INK = 0xFFF3EFE6;
     static final int SOFT = 0xFFC9C2B4;
     static final int MUTED = 0xFF8F897C;
     static final int DISABLED = 0xFFA39E92;
     static final int CANDLE = 0xFFE6C27A;
+    static final int CANDLE_PRESSED = 0xFFD2AE66;
     static final int CANDLE_INK = 0xFF1C1508;
     static final int DANGER = 0xFFE08A78;
+    static final int WARN = 0xFFC4A35A;
     static final int OK = 0xFF9DBEA4;
     static final int LINE = 0xFF2C2B28;
+    static final int BORDER_STRONG = 0xFF4A473F;
+    static final int PRESSED_FILL = 0xFF22211D;
 
     private StillwaterUi() {}
 
@@ -48,50 +66,222 @@ final class StillwaterUi {
         return face != null ? face : Typeface.MONOSPACE;
     }
 
+    /**
+     * Configures dark Stillwater system bars and applies status-bar, navigation-bar, and IME
+     * keyboard insets on top of the base content padding (critical for Android 15 targetSdk 35).
+     */
+    static void applySystemAndImeInsets(Activity activity, View root,
+                                        int baseLeftPx, int baseTopPx, int baseRightPx, int baseBottomPx) {
+        Window window = activity.getWindow();
+        if (window != null) {
+            window.setStatusBarColor(SURFACE);
+            window.setNavigationBarColor(SURFACE);
+            WindowInsetsControllerCompat controller =
+                    WindowCompat.getInsetsController(window, window.getDecorView());
+            controller.setAppearanceLightStatusBars(false);
+            controller.setAppearanceLightNavigationBars(false);
+        }
+        root.setPadding(baseLeftPx, baseTopPx, baseRightPx, baseBottomPx);
+        ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
+            Insets insets = windowInsets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.ime());
+            view.setPadding(
+                    baseLeftPx + insets.left,
+                    baseTopPx + insets.top,
+                    baseRightPx + insets.right,
+                    baseBottomPx + insets.bottom);
+            return windowInsets;
+        });
+        ViewCompat.requestApplyInsets(root);
+    }
+
+    private static float cornerPx(Context context) {
+        return 2f * context.getResources().getDisplayMetrics().density;
+    }
+
+    private static int strokePx(Context context) {
+        return Math.max(1, Math.round(context.getResources().getDisplayMetrics().density));
+    }
+
+    private static GradientDrawable box(Context context, int fillColor, int borderColor) {
+        GradientDrawable shape = new GradientDrawable();
+        shape.setCornerRadius(cornerPx(context));
+        shape.setColor(fillColor);
+        if (borderColor != Color.TRANSPARENT) {
+            shape.setStroke(strokePx(context), borderColor);
+        }
+        return shape;
+    }
+
+    private static ColorStateList enabledTextColors(int enabledColor, int disabledColor) {
+        return new ColorStateList(
+                new int[][]{
+                        new int[]{-android.R.attr.state_enabled},
+                        new int[]{}
+                },
+                new int[]{disabledColor, enabledColor}
+        );
+    }
+
     static void primary(Button button) {
+        Context context = button.getContext();
         button.setAllCaps(false);
         button.setBackgroundTintList(null);
-        GradientDrawable fill = new GradientDrawable();
-        fill.setColor(CANDLE);
-        button.setBackground(fill);
-        button.setTextColor(CANDLE_INK);
-        button.setTypeface(sansMedium(button.getContext()));
+        StateListDrawable bg = new StateListDrawable();
+        bg.addState(new int[]{-android.R.attr.state_enabled}, box(context, RAISED, LINE));
+        bg.addState(new int[]{android.R.attr.state_pressed}, box(context, CANDLE_PRESSED, Color.TRANSPARENT));
+        bg.addState(new int[]{}, box(context, CANDLE, Color.TRANSPARENT));
+        button.setBackground(bg);
+        button.setTextColor(enabledTextColors(CANDLE_INK, MUTED));
+        button.setTypeface(sansMedium(context));
     }
 
     static void quiet(Button button) {
+        Context context = button.getContext();
         button.setAllCaps(false);
         button.setBackgroundTintList(null);
-        button.setBackgroundColor(Color.TRANSPARENT);
-        button.setTextColor(SOFT);
-        button.setTypeface(sansMedium(button.getContext()));
+        StateListDrawable bg = new StateListDrawable();
+        bg.addState(new int[]{android.R.attr.state_pressed}, box(context, PRESSED_FILL, Color.TRANSPARENT));
+        bg.addState(new int[]{}, box(context, Color.TRANSPARENT, Color.TRANSPARENT));
+        button.setBackground(bg);
+        button.setTextColor(enabledTextColors(SOFT, MUTED));
+        button.setTypeface(sansMedium(context));
+    }
+
+    /** Subtle raised surface with a 1dp hairline border for Settings and secondary actions. */
+    static void outlined(Button button) {
+        Context context = button.getContext();
+        button.setAllCaps(false);
+        button.setBackgroundTintList(null);
+        StateListDrawable bg = new StateListDrawable();
+        bg.addState(new int[]{-android.R.attr.state_enabled}, box(context, SURFACE, LINE));
+        bg.addState(new int[]{android.R.attr.state_pressed}, box(context, PRESSED_FILL, BORDER_STRONG));
+        bg.addState(new int[]{}, box(context, RAISED, LINE));
+        button.setBackground(bg);
+        button.setTextColor(enabledTextColors(INK, MUTED));
+        button.setTypeface(sansMedium(context));
+    }
+
+    /** Emphasized candle-text outlined action (e.g. model import / open). */
+    static void accentOutlined(Button button) {
+        Context context = button.getContext();
+        button.setAllCaps(false);
+        button.setBackgroundTintList(null);
+        StateListDrawable bg = new StateListDrawable();
+        bg.addState(new int[]{-android.R.attr.state_enabled}, box(context, SURFACE, LINE));
+        bg.addState(new int[]{android.R.attr.state_pressed}, box(context, PRESSED_FILL, CANDLE));
+        bg.addState(new int[]{}, box(context, RAISED, BORDER_STRONG));
+        button.setBackground(bg);
+        button.setTextColor(enabledTextColors(CANDLE, MUTED));
+        button.setTypeface(sansMedium(context));
+    }
+
+    /** Unified Stillwater segmented picker state (selected = candle fill, unselected = outlined). */
+    static void segmented(Button button, boolean selected) {
+        if (button == null) return;
+        button.setSelected(selected);
+        if (selected) primary(button);
+        else outlined(button);
     }
 
     static void dangerQuiet(Button button) {
+        Context context = button.getContext();
         quiet(button);
-        button.setTextColor(DANGER);
+        button.setTextColor(enabledTextColors(DANGER, MUTED));
+        button.setTypeface(sansMedium(context));
+    }
+
+    /** Outlined destructive/reset control whose disabled state drops cleanly to muted charcoal. */
+    static void dangerOutlined(Button button) {
+        Context context = button.getContext();
+        button.setAllCaps(false);
+        button.setBackgroundTintList(null);
+        StateListDrawable bg = new StateListDrawable();
+        bg.addState(new int[]{-android.R.attr.state_enabled}, box(context, SURFACE, LINE));
+        bg.addState(new int[]{android.R.attr.state_pressed}, box(context, PRESSED_FILL, DANGER));
+        bg.addState(new int[]{}, box(context, RAISED, DANGER));
+        button.setBackground(bg);
+        button.setTextColor(enabledTextColors(DANGER, MUTED));
+        button.setTypeface(sansMedium(context));
     }
 
     static void tintIcon(Button button, int color) {
         button.setCompoundDrawableTintList(ColorStateList.valueOf(color));
     }
 
+    static void tintStatefulIcon(Button button) {
+        button.setCompoundDrawableTintList(enabledTextColors(SOFT, MUTED));
+    }
+
     /** Chalk text, candle caret, and a light hint. Disabled text stays above WCAG AA. */
     static void styleInput(EditText field) {
-        field.setTextColor(ColorStateList.valueOf(INK));
+        field.setTextColor(enabledTextColors(INK, DISABLED));
         field.setHintTextColor(MUTED);
         field.setHighlightColor(0x66E6C27A);
         field.setLinkTextColor(CANDLE);
         if (android.os.Build.VERSION.SDK_INT >= 29) {
-            android.graphics.drawable.GradientDrawable cursor = new android.graphics.drawable.GradientDrawable();
+            GradientDrawable cursor = new GradientDrawable();
             cursor.setColor(CANDLE);
             cursor.setSize(Math.max(2, (int) (2 * field.getResources().getDisplayMetrics().density)), 0);
             field.setTextCursorDrawable(cursor);
         }
     }
 
+    /** Framed input box (`surfaceRaised` + `1dp` border, `borderStrong` when focused). */
+    static void styleBoxedInput(EditText field) {
+        Context context = field.getContext();
+        styleInput(field);
+        field.setBackgroundTintList(null);
+        StateListDrawable bg = new StateListDrawable();
+        bg.addState(new int[]{android.R.attr.state_focused}, box(context, RAISED, BORDER_STRONG));
+        bg.addState(new int[]{}, box(context, RAISED, LINE));
+        field.setBackground(bg);
+        int padH = Math.round(10 * context.getResources().getDisplayMetrics().density);
+        int padV = Math.round(8 * context.getResources().getDisplayMetrics().density);
+        field.setPadding(padH, padV, padH, padV);
+    }
+
     static void styleCheck(CheckBox box) {
-        box.setTextColor(INK);
+        box.setTextColor(enabledTextColors(INK, DISABLED));
         box.setButtonTintList(ContextCompat.getColorStateList(box.getContext(), R.color.still_control));
         box.setHighlightColor(0x66E6C27A);
+    }
+
+    /** Applies Stillwater border, serif title, and mixed-case button styling to a shown AlertDialog. */
+    static AlertDialog showDialog(AlertDialog.Builder builder) {
+        AlertDialog dialog = builder.create();
+        dialog.show();
+        Context context = dialog.getContext();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(box(context, OVERLAY, LINE));
+        }
+        int titleId = context.getResources().getIdentifier("alertTitle", "id", "android");
+        if (titleId != 0) {
+            View titleView = dialog.findViewById(titleId);
+            if (titleView instanceof TextView) {
+                TextView tv = (TextView) titleView;
+                tv.setTypeface(serif(context));
+                tv.setTextColor(INK);
+            }
+        }
+        Button pos = dialog.getButton(DialogInterface.BUTTON_POSITIVE);
+        if (pos != null) {
+            pos.setAllCaps(false);
+            pos.setTypeface(sansMedium(context));
+            pos.setTextColor(CANDLE);
+        }
+        Button neg = dialog.getButton(DialogInterface.BUTTON_NEGATIVE);
+        if (neg != null) {
+            neg.setAllCaps(false);
+            neg.setTypeface(sansMedium(context));
+            neg.setTextColor(SOFT);
+        }
+        Button neu = dialog.getButton(DialogInterface.BUTTON_NEUTRAL);
+        if (neu != null) {
+            neu.setAllCaps(false);
+            neu.setTypeface(sansMedium(context));
+            neu.setTextColor(SOFT);
+        }
+        return dialog;
     }
 }
