@@ -63,6 +63,10 @@
     <item name="settings_crash_log_export" type="id"/>
     <item name="settings_crash_log_clear" type="id"/>
     <item name="settings_crash_log_text" type="id"/>
+    <item name="settings_diag_github_issue" type="id"/>
+    <item name="settings_diag_paste_issue" type="id"/>
+    <item name="settings_diag_lan_toggle" type="id"/>
+    <item name="settings_diag_lan_url" type="id"/>
     <item name="chat_retry_interrupted" type="id"/>
     <item name="settings_network_tools" type="id"/>
     <item name="settings_notification_access" type="id"/>

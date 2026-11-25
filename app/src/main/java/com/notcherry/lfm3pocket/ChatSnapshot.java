@@ -57,11 +57,22 @@ public final class ChatSnapshot {
     public final List<Turn> turns;
     public final String status;
     public final boolean generating;
+    public final List<String> activeDocumentNames;
+    public final List<String> traceLines;
 
     public ChatSnapshot(List<Turn> turns, String status, boolean generating) {
+        this(turns, status, generating, Collections.emptyList(), Collections.emptyList());
+    }
+
+    public ChatSnapshot(List<Turn> turns, String status, boolean generating,
+                        List<String> activeDocumentNames, List<String> traceLines) {
         List<Turn> copy = turns == null ? Collections.emptyList() : new ArrayList<>(turns);
         this.turns = Collections.unmodifiableList(copy);
         this.status = status == null ? "" : status;
         this.generating = generating;
+        this.activeDocumentNames = activeDocumentNames == null
+                ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(activeDocumentNames));
+        this.traceLines = traceLines == null
+                ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(traceLines));
     }
 }

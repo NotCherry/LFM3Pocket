@@ -90,6 +90,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private ExternalToolsSettingsSection externalToolsSection;
     private ChatShellSection chatShellSection;
     private ModelImportSettingsSection modelImportSection;
+    private CrashLogSettingsSection crashLogSettingsSection;
 
     private ModelImportCoordinator modelImportCoordinator;
     private AttachmentImportCoordinator attachmentCoordinator;
@@ -223,9 +224,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void initCoordinators() {
+        Lfm3PocketApplication app = (Lfm3PocketApplication) getApplication();
         attachmentCoordinator = new AttachmentImportCoordinator(new AttachmentImportCoordinator.Deps(
                 this, ioWorker, () -> chatPanel, () -> imageSettings, () -> destroyed,
-                this::recomputeBusy, this::setChatStatus, this::updateControls));
+                this::recomputeBusy, this::setChatStatus, this::updateControls, app.processingTelemetry()));
         voiceCoordinator = new VoiceInputCoordinator(new VoiceInputCoordinator.Deps(
                 this, runtime, playbackController, mainHandler, this::pocketPreferences,
                 () -> chatPanel, () -> destroyed, () -> foreground, () -> busy,
@@ -652,8 +654,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         new DefaultAssistantSettingsSection(this, new DefaultAssistantSettingsSection.Deps(
                 this::startActivity, intent -> startActivityForResult(intent, REQUEST_ASSISTANT_ROLE),
                 this::setChatStatus)).mount(configuration, inkMuted);
-        new CrashLogSettingsSection(this, new CrashLogSettingsSection.Deps(this::setChatStatus))
-                .mount(configuration, ink, inkMuted);
+        crashLogSettingsSection = new CrashLogSettingsSection(this, new CrashLogSettingsSection.Deps(
+                this::setChatStatus,
+                () -> CrashLogSettingsSection.collectDeviceInfo(this, runtime.loadedPath(),
+                        !mmprojPath.isEmpty(), inferenceSettings),
+                app::processingTelemetry, app::diagnostics, ioWorker, this::runOnUiThread));
+        crashLogSettingsSection.mount(configuration, ink, inkMuted);
 
         ScrollView configurationScroll = new ScrollView(this);
         configurationScroll.setId(R.id.model_configuration_scroll);
@@ -1113,6 +1119,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         if (settingsStore != null) settingsStore.close();
         if (imageSettingsStore != null) imageSettingsStore.close();
         if (appearanceSettings != null) appearanceSettings.dispose();
+        if (crashLogSettingsSection != null) crashLogSettingsSection.dispose();
         mainHandler.removeCallbacksAndMessages(null);
         if (modelImportCoordinator != null) modelImportCoordinator.cancelOnDestroy();
         if (voiceCoordinator != null) voiceCoordinator.onDestroy();
