@@ -83,6 +83,60 @@ public final class GenerationSmokeTest {
         }
     }
 
+    @Test public void nativeLazyToolGrammarStreamsWithoutHangingOrCrashing() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        String modelPath = InstrumentationRegistry.getArguments().getString("modelPath");
+        File modelFile = modelPath == null || modelPath.trim().isEmpty()
+                ? copyPackagedSmokeModel(context)
+                : new File(modelPath);
+        assertTrue("Smoke GGUF must exist", modelFile.isFile());
+
+        long handle = NativeBridge.loadModel(modelFile.getAbsolutePath(), null);
+        assertTrue("Native engine failed to load smoke GGUF", handle != 0L);
+        try {
+            String grammar = LfmToolGrammar.build(
+                    LfmToolCatalog.coreTools(LfmToolCatalog.Capabilities.offlineDefaults()));
+            assertTrue("Core tool grammar must be non-empty", !grammar.isEmpty());
+
+            CountDownLatch firstToken = new CountDownLatch(1);
+            CountDownLatch done = new CountDownLatch(1);
+            StringBuilder streamed = new StringBuilder();
+            AtomicReference<String> error = new AtomicReference<>();
+            NativeBridge.resetModelStop(handle);
+            InferenceSettings settings = new InferenceSettings(512, 2, 64, false);
+            Thread gen = new Thread(() -> {
+                try {
+                    error.set(NativeBridge.generateWithMediaSettingsAndGrammar(
+                            handle,
+                            "Once upon a time, a curious little cat",
+                            null,
+                            settings,
+                            grammar,
+                            LfmToolGrammar.LAZY_TRIGGER_PATTERN,
+                            piece -> {
+                                streamed.append(piece);
+                                firstToken.countDown();
+                            }));
+                } catch (Throwable t) {
+                    error.set(t.toString());
+                } finally {
+                    done.countDown();
+                }
+            }, "lfm3-lazy-grammar-smoke");
+            gen.start();
+
+            assertTrue("No token streamed with lazy tool grammar within 30 seconds",
+                    firstToken.await(30, TimeUnit.SECONDS));
+            assertTrue("Lazy grammar generation did not finish within 45 seconds",
+                    done.await(45, TimeUnit.SECONDS));
+            assertNull("Lazy grammar generation reported an error: " + error.get(), error.get());
+            assertTrue("Lazy grammar generation produced no tokens", streamed.length() > 0);
+        } finally {
+            NativeBridge.requestStop(handle);
+            NativeBridge.unloadModel(handle);
+        }
+    }
+
     /**
      * The fixture is packaged into the instrumentation APK by the host build.
      * The Android emulator never fetches GGUF weights over the network.

@@ -14,6 +14,8 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -21,6 +23,10 @@ import java.util.function.Supplier;
 /**
  * Coordinates photo, camera, audio, and document attachment import, preprocessing,
  * pending-attachment state, and cleanup outside {@link MainActivity} (#322).
+ *
+ * <p>Runs on its own non-inference I/O worker so slow SAF streams, image preprocessing, or
+ * document parsing can never block {@link ModelRuntime#worker()} inference or Cactus STT sends,
+ * and supports Stop/Clear cancellation with guaranteed busy-state recovery on any {@link Throwable}.
  */
 final class AttachmentImportCoordinator {
     static final class Deps {
@@ -29,32 +35,67 @@ final class AttachmentImportCoordinator {
         final Supplier<ChatPanel> chatPanel;
         final Supplier<ImageSettings> imageSettings;
         final BooleanSupplier isDestroyed;
-        final Consumer<Boolean> setBusy;
+        final Runnable recomputeBusy;
         final Consumer<CharSequence> setChatStatus;
         final Runnable updateControls;
 
         Deps(Activity activity, ExecutorService worker, Supplier<ChatPanel> chatPanel,
                 Supplier<ImageSettings> imageSettings, BooleanSupplier isDestroyed,
-                Consumer<Boolean> setBusy, Consumer<CharSequence> setChatStatus,
+                Runnable recomputeBusy, Consumer<CharSequence> setChatStatus,
                 Runnable updateControls) {
             this.activity = activity;
             this.worker = worker;
             this.chatPanel = chatPanel;
             this.imageSettings = imageSettings;
             this.isDestroyed = isDestroyed;
-            this.setBusy = setBusy;
+            this.recomputeBusy = recomputeBusy;
             this.setChatStatus = setChatStatus;
             this.updateControls = updateControls;
         }
     }
 
     private final Deps deps;
+    private final AtomicInteger activeImports = new AtomicInteger();
+    private volatile AtomicBoolean importCancellation;
     private String pendingImagePath = "";
     private String pendingAudioPath = "";
     private final List<ChatSession.Attachment> pendingDocuments = new ArrayList<>();
 
     AttachmentImportCoordinator(Deps deps) {
         this.deps = deps;
+    }
+
+    boolean isImporting() {
+        return activeImports.get() > 0;
+    }
+
+    boolean cancelImportIfActive() {
+        if (!isImporting()) return false;
+        AtomicBoolean active = importCancellation;
+        if (active != null) active.set(true);
+        deps.setChatStatus.accept("Cancelling attachment import…");
+        return true;
+    }
+
+    void cancelPendingImportSilently() {
+        AtomicBoolean active = importCancellation;
+        if (active != null) active.set(true);
+    }
+
+    private AtomicBoolean beginImport() {
+        AtomicBoolean cancellation = new AtomicBoolean();
+        importCancellation = cancellation;
+        activeImports.incrementAndGet();
+        deps.recomputeBusy.run();
+        deps.updateControls.run();
+        return cancellation;
+    }
+
+    private void endImport(AtomicBoolean cancellation) {
+        if (importCancellation == cancellation) importCancellation = null;
+        int remaining = activeImports.decrementAndGet();
+        if (remaining < 0) activeImports.set(0);
+        deps.recomputeBusy.run();
     }
 
     void importSelectedDocuments(Intent data) {
@@ -78,135 +119,233 @@ final class AttachmentImportCoordinator {
             deps.setChatStatus.accept("You can attach up to " + DocumentAttachmentReader.MAX_FILES + " documents.");
             return;
         }
-        deps.setBusy.accept(true);
-        deps.updateControls.run();
+        AtomicBoolean cancellation = beginImport();
         deps.setChatStatus.accept(deps.activity.getString(R.string.importing_document));
         deps.worker.execute(() -> {
             ArrayList<ChatSession.Attachment> imported = new ArrayList<>();
             String error = null;
-            for (Uri uri : uris) {
-                if (deps.isDestroyed.getAsBoolean()) return;
-                File temp = null;
-                try {
-                    String displayName = displayNameForUri(uri);
-                    String mime = deps.activity.getContentResolver().getType(uri);
-                    long size = selectedUriSize(uri);
-                    long maxBytes = DocumentAttachmentReader.isPdfMimeOrName(mime, displayName)
-                            ? DocumentAttachmentReader.MAX_PDF_BYTES : DocumentAttachmentReader.MAX_TEXT_BYTES;
-                    if (size >= 0 && size > maxBytes) {
-                        error = DocumentAttachmentReader.isPdfMimeOrName(mime, displayName)
-                                ? displayName + ": This PDF is too large to attach."
-                                : displayName + ": This file is too large to attach.";
+            boolean cancelled = false;
+            try {
+                for (Uri uri : uris) {
+                    if (deps.isDestroyed.getAsBoolean() || cancellation.get()) {
+                        cancelled = true;
                         break;
                     }
-                    temp = copyUriToCache(uri, "doc-" + System.currentTimeMillis() + "-" + imported.size() + ".tmp",
-                            maxBytes);
-                    DocumentAttachmentReader.Result result = DocumentAttachmentReader.read(temp, displayName, mime);
-                    if (!result.isOk()) {
-                        error = result.displayName + ": " + result.error;
+                    File temp = null;
+                    try {
+                        String displayName = displayNameForUri(uri);
+                        String mime = deps.activity.getContentResolver().getType(uri);
+                        long size = selectedUriSize(uri);
+                        long maxBytes = DocumentAttachmentReader.isPdfMimeOrName(mime, displayName)
+                                ? DocumentAttachmentReader.MAX_PDF_BYTES : DocumentAttachmentReader.MAX_TEXT_BYTES;
+                        if (size >= 0 && size > maxBytes) {
+                            error = DocumentAttachmentReader.isPdfMimeOrName(mime, displayName)
+                                    ? displayName + ": This PDF is too large to attach."
+                                    : displayName + ": This file is too large to attach.";
+                            break;
+                        }
+                        temp = copyUriToCache(uri, "doc-" + System.currentTimeMillis() + "-" + imported.size() + ".tmp",
+                                maxBytes, cancellation);
+                        if (deps.isDestroyed.getAsBoolean() || cancellation.get()) {
+                            cancelled = true;
+                            break;
+                        }
+                        DocumentAttachmentReader.Result result = DocumentAttachmentReader.read(
+                                temp, displayName, mime, cancellation);
+                        if (cancellation.get()) {
+                            cancelled = true;
+                            break;
+                        }
+                        if (!result.isOk()) {
+                            error = result.displayName + ": " + result.error;
+                            break;
+                        }
+                        imported.add(ChatSession.Attachment.document(result.displayName, result.text));
+                    } catch (Throwable e) {
+                        if (cancellation.get()) {
+                            cancelled = true;
+                            break;
+                        }
+                        String name = displayNameForUri(uri);
+                        String message = e instanceof OutOfMemoryError
+                                ? "This file is too large to process on this phone."
+                                : (e.getMessage() == null ? "Could not read this file." : e.getMessage());
+                        error = name + ": " + message;
                         break;
+                    } finally {
+                        if (temp != null && temp.exists()) temp.delete();
                     }
-                    imported.add(ChatSession.Attachment.document(result.displayName, result.text));
-                } catch (Exception e) {
-                    String name = displayNameForUri(uri);
-                    String message = e.getMessage() == null ? "Could not read this file." : e.getMessage();
-                    error = name + ": " + message;
-                    break;
-                } finally {
-                    if (temp != null && temp.exists()) temp.delete();
                 }
+            } finally {
+                final String importError = error;
+                final boolean wasCancelled = cancelled || cancellation.get();
+                final ArrayList<ChatSession.Attachment> ok = imported;
+                deps.activity.runOnUiThread(() -> {
+                    endImport(cancellation);
+                    if (deps.isDestroyed.getAsBoolean()) return;
+                    if (wasCancelled) {
+                        deps.setChatStatus.accept("Document import cancelled.");
+                    } else if (importError != null) {
+                        deps.setChatStatus.accept(importError);
+                    } else if (!ok.isEmpty()) {
+                        pendingDocuments.addAll(ok);
+                        deps.setChatStatus.accept(deps.activity.getString(
+                                R.string.documents_attached_status, pendingDocuments.size()));
+                    }
+                    syncPendingDocumentsUi();
+                    deps.updateControls.run();
+                });
             }
-            final String importError = error;
-            final ArrayList<ChatSession.Attachment> ok = imported;
-            deps.activity.runOnUiThread(() -> {
-                if (deps.isDestroyed.getAsBoolean()) return;
-                deps.setBusy.accept(false);
-                if (importError != null) {
-                    deps.setChatStatus.accept(importError);
-                } else if (!ok.isEmpty()) {
-                    pendingDocuments.addAll(ok);
-                    deps.setChatStatus.accept(deps.activity.getString(
-                            R.string.documents_attached_status, pendingDocuments.size()));
-                }
-                syncPendingDocumentsUi();
-                deps.updateControls.run();
-            });
         });
     }
 
     void copySelectedPhoto(Uri uri) {
-        deps.setBusy.accept(true);
-        deps.updateControls.run();
+        AtomicBoolean cancellation = beginImport();
         deps.setChatStatus.accept(deps.activity.getString(R.string.importing_photo));
         ImageSettings prepareSettings = deps.imageSettings.get();
         deps.worker.execute(() -> {
             File photo = new File(deps.activity.getCacheDir(), "photo-" + System.currentTimeMillis() + ".img");
             File preparedCopy = null;
+            String attachedPath = null;
+            String attachedCaption = "";
+            String failure = null;
+            boolean cancelled = false;
             try {
-                Long reportedSize = selectedPhotoSize(uri);
-                if (reportedSize != null && reportedSize > ImageAttachmentFiles.MAX_IMAGE_BYTES) {
-                    throw new IOException("Selected image exceeds the 32 MiB limit.");
-                }
-                try (InputStream input = deps.activity.getContentResolver().openInputStream(uri);
-                     FileOutputStream output = new FileOutputStream(photo)) {
-                    if (input == null) throw new IOException("Could not read the selected photo");
-                    byte[] buffer = new byte[64 * 1024];
-                    int count;
-                    long totalBytes = 0;
-                    while ((count = input.read(buffer)) != -1) {
-                        totalBytes += count;
-                        if (totalBytes > ImageAttachmentFiles.MAX_IMAGE_BYTES) {
-                            throw new IOException("Selected image exceeds the 32 MiB limit.");
+                if (deps.isDestroyed.getAsBoolean() || cancellation.get()) {
+                    cancelled = true;
+                } else {
+                    Long reportedSize = selectedPhotoSize(uri);
+                    if (reportedSize != null && reportedSize > ImageAttachmentFiles.MAX_IMAGE_BYTES) {
+                        throw new IOException("Selected image exceeds the 32 MiB limit.");
+                    }
+                    try (InputStream input = deps.activity.getContentResolver().openInputStream(uri);
+                         FileOutputStream output = new FileOutputStream(photo)) {
+                        if (input == null) throw new IOException("Could not read the selected photo");
+                        byte[] buffer = new byte[64 * 1024];
+                        int count;
+                        long totalBytes = 0;
+                        while ((count = input.read(buffer)) != -1) {
+                            if (deps.isDestroyed.getAsBoolean() || cancellation.get()) {
+                                cancelled = true;
+                                break;
+                            }
+                            totalBytes += count;
+                            if (totalBytes > ImageAttachmentFiles.MAX_IMAGE_BYTES) {
+                                throw new IOException("Selected image exceeds the 32 MiB limit.");
+                            }
+                            output.write(buffer, 0, count);
                         }
-                        output.write(buffer, 0, count);
+                        if (!cancelled) output.getFD().sync();
                     }
-                    output.getFD().sync();
+                    if (!cancelled) {
+                        String validationError = ImageAttachmentFiles.validationError(photo);
+                        if (validationError != null) throw new IOException(validationError);
+                        deps.activity.runOnUiThread(() -> {
+                            if (!deps.isDestroyed.getAsBoolean() && !cancellation.get()) {
+                                deps.setChatStatus.accept(deps.activity.getString(R.string.preparing_photo));
+                            }
+                        });
+                        ImagePreprocessor.Result prepared = ImagePreprocessor.prepare(deps.activity, photo, prepareSettings);
+                        preparedCopy = prepared.file;
+                        if (prepared.prepared && !prepared.file.equals(photo)) photo.delete();
+                        if (deps.isDestroyed.getAsBoolean() || cancellation.get()) {
+                            cancelled = true;
+                        } else {
+                            attachedPath = prepared.file.getAbsolutePath();
+                            attachedCaption = prepared.caption;
+                        }
+                    }
                 }
-                String validationError = ImageAttachmentFiles.validationError(photo);
-                if (validationError != null) throw new IOException(validationError);
+            } catch (Throwable e) {
+                if (cancellation.get()) {
+                    cancelled = true;
+                } else {
+                    failure = e instanceof OutOfMemoryError
+                            ? "Selected image is too large to process on this phone."
+                            : (e.getMessage() == null ? e.toString() : e.getMessage());
+                }
+            } finally {
+                final boolean wasCancelled = cancelled || cancellation.get() || deps.isDestroyed.getAsBoolean();
+                if (wasCancelled || failure != null || attachedPath == null) {
+                    photo.delete();
+                    if (preparedCopy != null && !preparedCopy.equals(photo)) preparedCopy.delete();
+                }
+                final String finalPath = wasCancelled ? null : attachedPath;
+                final String finalCaption = attachedCaption;
+                final String finalError = failure;
                 deps.activity.runOnUiThread(() -> {
-                    if (!deps.isDestroyed.getAsBoolean()) {
-                        deps.setChatStatus.accept(deps.activity.getString(R.string.preparing_photo));
+                    endImport(cancellation);
+                    if (deps.isDestroyed.getAsBoolean()) return;
+                    if (wasCancelled) {
+                        deps.setChatStatus.accept("Photo import cancelled.");
+                        deps.updateControls.run();
+                    } else if (finalError != null || finalPath == null) {
+                        deps.setChatStatus.accept("Photo import failed: " + finalError);
+                        deps.updateControls.run();
+                    } else {
+                        applyPendingMediaOnUi(finalPath, "photo", finalCaption);
                     }
-                });
-                ImagePreprocessor.Result prepared = ImagePreprocessor.prepare(deps.activity, photo, prepareSettings);
-                preparedCopy = prepared.file;
-                if (prepared.prepared && !prepared.file.equals(photo)) photo.delete();
-                setPendingMedia(prepared.file.getAbsolutePath(), "photo", prepared.caption);
-            } catch (Exception e) {
-                photo.delete();
-                if (preparedCopy != null && !preparedCopy.equals(photo)) preparedCopy.delete();
-                deps.activity.runOnUiThread(() -> {
-                    deps.setBusy.accept(false);
-                    deps.setChatStatus.accept("Photo import failed: " + e.getMessage());
-                    deps.updateControls.run();
                 });
             }
         });
     }
 
     void prepareCapturedPhoto(String path) {
-        deps.setBusy.accept(true);
-        deps.updateControls.run();
+        AtomicBoolean cancellation = beginImport();
         deps.setChatStatus.accept(deps.activity.getString(R.string.preparing_photo));
         ImageSettings prepareSettings = deps.imageSettings.get();
         deps.worker.execute(() -> {
             File photo = new File(path);
             File preparedCopy = null;
+            String attachedPath = null;
+            String attachedCaption = "";
+            String failure = null;
+            boolean cancelled = false;
             try {
-                String validationError = ImageAttachmentFiles.validationError(photo);
-                if (validationError != null) throw new IOException(validationError);
-                ImagePreprocessor.Result prepared = ImagePreprocessor.prepare(deps.activity, photo, prepareSettings);
-                preparedCopy = prepared.file;
-                if (prepared.prepared && !prepared.file.equals(photo)) photo.delete();
-                setPendingMedia(prepared.file.getAbsolutePath(), "photo", prepared.caption);
-            } catch (Exception e) {
-                if (preparedCopy != null && !preparedCopy.equals(photo)) preparedCopy.delete();
-                HistoryMediaCleanup.deleteAttachment(deps.activity, path);
+                if (deps.isDestroyed.getAsBoolean() || cancellation.get()) {
+                    cancelled = true;
+                } else {
+                    String validationError = ImageAttachmentFiles.validationError(photo);
+                    if (validationError != null) throw new IOException(validationError);
+                    ImagePreprocessor.Result prepared = ImagePreprocessor.prepare(deps.activity, photo, prepareSettings);
+                    preparedCopy = prepared.file;
+                    if (prepared.prepared && !prepared.file.equals(photo)) photo.delete();
+                    if (deps.isDestroyed.getAsBoolean() || cancellation.get()) {
+                        cancelled = true;
+                    } else {
+                        attachedPath = prepared.file.getAbsolutePath();
+                        attachedCaption = prepared.caption;
+                    }
+                }
+            } catch (Throwable e) {
+                if (cancellation.get()) {
+                    cancelled = true;
+                } else {
+                    failure = e instanceof OutOfMemoryError
+                            ? "Captured photo is too large to process on this phone."
+                            : (e.getMessage() == null ? e.toString() : e.getMessage());
+                }
+            } finally {
+                final boolean wasCancelled = cancelled || cancellation.get() || deps.isDestroyed.getAsBoolean();
+                if (wasCancelled || failure != null || attachedPath == null) {
+                    if (preparedCopy != null && !preparedCopy.equals(photo)) preparedCopy.delete();
+                    HistoryMediaCleanup.deleteAttachment(deps.activity, path);
+                }
+                final String finalPath = wasCancelled ? null : attachedPath;
+                final String finalCaption = attachedCaption;
+                final String finalError = failure;
                 deps.activity.runOnUiThread(() -> {
-                    deps.setBusy.accept(false);
-                    deps.setChatStatus.accept("Photo import failed: " + e.getMessage());
-                    deps.updateControls.run();
+                    endImport(cancellation);
+                    if (deps.isDestroyed.getAsBoolean()) return;
+                    if (wasCancelled) {
+                        deps.setChatStatus.accept("Photo import cancelled.");
+                        deps.updateControls.run();
+                    } else if (finalError != null || finalPath == null) {
+                        deps.setChatStatus.accept("Photo import failed: " + finalError);
+                        deps.updateControls.run();
+                    } else {
+                        applyPendingMediaOnUi(finalPath, "photo", finalCaption);
+                    }
                 });
             }
         });
@@ -303,7 +442,7 @@ final class AttachmentImportCoordinator {
         return last == null || last.trim().isEmpty() ? "document" : last.trim();
     }
 
-    private File copyUriToCache(Uri uri, String name, long maxBytes) throws IOException {
+    private File copyUriToCache(Uri uri, String name, long maxBytes, AtomicBoolean cancellation) throws IOException {
         File out = new File(deps.activity.getCacheDir(), name);
         try (InputStream input = deps.activity.getContentResolver().openInputStream(uri);
              FileOutputStream output = new FileOutputStream(out)) {
@@ -312,6 +451,9 @@ final class AttachmentImportCoordinator {
             long total = 0;
             int count;
             while ((count = input.read(buffer)) != -1) {
+                if ((cancellation != null && cancellation.get()) || deps.isDestroyed.getAsBoolean()) {
+                    throw new IOException("Document import cancelled.");
+                }
                 total += count;
                 if (maxBytes > 0 && total > maxBytes) {
                     throw new IOException("This file is too large to attach.");
@@ -370,27 +512,24 @@ final class AttachmentImportCoordinator {
         return null;
     }
 
-    private void setPendingMedia(String path, String kind, String caption) {
-        deps.activity.runOnUiThread(() -> {
-            if ("photo".equals(kind)) {
-                if (!pendingImagePath.isEmpty() && !pendingImagePath.equals(path)) {
-                    HistoryMediaCleanup.deleteAttachment(deps.activity, pendingImagePath);
-                }
-                pendingImagePath = path;
-                ChatPanel panel = deps.chatPanel.get();
-                if (panel != null) panel.showImageAttachment(path, caption, () -> removePendingImage(path));
-            } else {
-                if (!pendingAudioPath.isEmpty() && !pendingAudioPath.equals(path)) {
-                    HistoryMediaCleanup.deleteAttachment(deps.activity, pendingAudioPath);
-                }
-                pendingAudioPath = path;
+    private void applyPendingMediaOnUi(String path, String kind, String caption) {
+        if ("photo".equals(kind)) {
+            if (!pendingImagePath.isEmpty() && !pendingImagePath.equals(path)) {
+                HistoryMediaCleanup.deleteAttachment(deps.activity, pendingImagePath);
             }
-            deps.setBusy.accept(false);
-            deps.setChatStatus.accept("photo".equals(kind)
-                    ? deps.activity.getString(R.string.photo_attached_status)
-                    : (kind + " attached. Add a question and press Send."));
-            deps.updateControls.run();
-        });
+            pendingImagePath = path;
+            ChatPanel panel = deps.chatPanel.get();
+            if (panel != null) panel.showImageAttachment(path, caption, () -> removePendingImage(path));
+        } else {
+            if (!pendingAudioPath.isEmpty() && !pendingAudioPath.equals(path)) {
+                HistoryMediaCleanup.deleteAttachment(deps.activity, pendingAudioPath);
+            }
+            pendingAudioPath = path;
+        }
+        deps.setChatStatus.accept("photo".equals(kind)
+                ? deps.activity.getString(R.string.photo_attached_status)
+                : (kind + " attached. Add a question and press Send."));
+        deps.updateControls.run();
     }
 
     private void removePendingImage(String expectedPath) {

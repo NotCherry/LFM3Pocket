@@ -67,6 +67,7 @@ jobs:
           python3 .github/scripts/assert-release-ci-gate.py --self-test
           python3 .github/scripts/assert-dizione-jni-in-apk.py --self-test
           python3 .github/scripts/assert-cactus-runtime-in-apk.py --self-test
+          python3 .github/scripts/antigravity-pr-review.py --self-test
           bash -n scripts/fetch-cactus.sh
       - name: Verify Stage 1 acceptance matrix completeness
         run: python3 .github/scripts/check-acceptance-matrix.py

@@ -74,4 +74,29 @@ public final class PdfTextExtractorTest {
                 + "3 0 obj\n<< /Length 20 >>\nstream\nBT (Secret) Tj ET\nendstream\nendobj\n%%EOF";
         assertEquals("", PdfTextExtractor.extract(pdf.getBytes(StandardCharsets.ISO_8859_1), 1000));
     }
+
+    @Test(timeout = 3000)
+    public void terminatesAndExtractsWhenContentStreamHasGraphicsArraysAndMarkedContentBeforeBT() {
+        // Real-world PDFs emit dash arrays `[3 3] 0 d`, marked-content dicts `<< /MCID 0 >> BDC`,
+        // comments, and stray delimiters outside BT..ET as well as unclosed `<` inside BT..ET.
+        String stream = "q [3 3] 0 d << /MCID 0 >> BDC (meta) { } )\n"
+                + "BT /F1 12 Tf 72 720 Td (Invoice Total: 42.50) Tj T* <broken\n"
+                + "(Second Line) Tj ET EMC Q\n"
+                + "q [1 2] 0 d BT (Third Line) Tj ET Q";
+        String pdf = "%PDF-1.4\n1 0 obj\n<< /Length " + stream.length() + " >>\nstream\n"
+                + stream + "\nendstream\nendobj\n%%EOF";
+        String extracted = PdfTextExtractor.extract(pdf.getBytes(StandardCharsets.ISO_8859_1), 4000);
+        assertTrue("Expected first line in: " + extracted, extracted.contains("Invoice Total: 42.50"));
+        assertTrue("Expected second line in: " + extracted, extracted.contains("Second Line"));
+        assertTrue("Expected third line in: " + extracted, extracted.contains("Third Line"));
+    }
+
+    @Test(timeout = 3000)
+    public void respectsCancellationFlagDuringPdfExtraction() {
+        String stream = "BT (Should not be extracted after cancel) Tj ET";
+        String pdf = "%PDF-1.4\n1 0 obj\n<< /Length " + stream.length() + " >>\nstream\n"
+                + stream + "\nendstream\nendobj\n%%EOF";
+        java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean(true);
+        assertEquals("", PdfTextExtractor.extract(pdf.getBytes(StandardCharsets.ISO_8859_1), 4000, cancelled));
+    }
 }

@@ -45,6 +45,12 @@ public final class MainActivityCoordinatorsContractTest {
                 source.contains("DocumentAttachmentReader.read("));
         assertFalse("CalendarContract queries belong in CalendarPickerHelper",
                 source.contains("CalendarContract.Calendars"));
+        assertTrue("AttachmentImportCoordinator must run on dedicated ioWorker, never hanami-infer worker",
+                source.contains("new AttachmentImportCoordinator.Deps(\n                this, ioWorker"));
+        assertTrue("recomputeBusy must include attachmentCoordinator.isImporting()",
+                source.contains("attachmentCoordinator.isImporting()"));
+        assertTrue("recomputeBusy must include modelImportCoordinator.isBusy()",
+                source.contains("modelImportCoordinator.isBusy()"));
     }
 
     @Test

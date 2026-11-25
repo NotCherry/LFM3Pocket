@@ -241,8 +241,10 @@ class ChatPanel @JvmOverloads constructor(
                 stringResource(R.string.mode_local)
             }
             var previewBitmap by remember(attachment?.path) { mutableStateOf<Bitmap?>(null) }
+            var previewLoaded by remember(attachment?.path) { mutableStateOf(false) }
             LaunchedEffect(attachment?.path) {
                 val path = attachment?.path
+                previewLoaded = false
                 previewBitmap = if (path == null) {
                     null
                 } else {
@@ -250,6 +252,7 @@ class ChatPanel @JvmOverloads constructor(
                         ImageAttachmentFiles.decodePreview(File(path))
                     }
                 }
+                previewLoaded = true
             }
             Column(
                 Modifier
@@ -433,12 +436,16 @@ class ChatPanel @JvmOverloads constructor(
                                     .testTag(tag("image_preview")),
                                 contentScale = ContentScale.Crop,
                             )
-                        } ?: Text(
-                            stringResource(R.string.loading_image_preview),
-                            style = type.bodySmall,
-                            color = atlas.inkMuted,
-                            modifier = Modifier.padding(end = space.space2),
-                        )
+                        } ?: if (!previewLoaded) {
+                            Text(
+                                stringResource(R.string.loading_image_preview),
+                                style = type.bodySmall,
+                                color = atlas.inkMuted,
+                                modifier = Modifier.padding(end = space.space2),
+                            )
+                        } else {
+                            Spacer(Modifier.width(0.dp))
+                        }
                         Spacer(Modifier.width(space.space3))
                         Column(Modifier.weight(1f)) {
                             Text(

@@ -561,7 +561,10 @@ static jstring run_generate_utf8(
         }
     }
 
-    if (prompt_lookup && prompt_ready && state->ctx && !has_media && error.empty()) {
+    const bool has_lazy_grammar = !grammar_str.empty() && !grammar_trigger.empty();
+    std::vector<llama_token> generated;
+    bool use_ngram = prompt_lookup && !has_lazy_grammar && prompt_ready && state->ctx && !has_media && error.empty();
+    if (use_ngram) {
         const size_t target = static_cast<size_t>(converted);
         const size_t kv = hanami::kv_token_count(state->ctx, 0);
         if (kv != target) {
@@ -571,13 +574,10 @@ static jstring run_generate_utf8(
             if (!eval_tokens(state.get(), tokens.data(), converted, 0, mrope, error)) {
                 state->release_session();
                 prompt_ready = false;
+                use_ngram = false;
             }
         }
     }
-
-    const bool has_lazy_grammar = !grammar_str.empty() && !grammar_trigger.empty();
-    std::vector<llama_token> generated;
-    bool use_ngram = prompt_lookup && !has_lazy_grammar && prompt_ready && state->ctx && !has_media && error.empty();
     bool ngram_fallback_sequential = false;
     if (use_ngram) {
         std::vector<llama_token> prompt_in_kv = tokens;
@@ -607,16 +607,43 @@ static jstring run_generate_utf8(
     }
     if ((!use_ngram || ngram_fallback_sequential) && error.empty() && prompt_ready && state->ctx &&
         !state->cancelled.load()) {
-        llama_sampler * sampler = has_lazy_grammar
+        bool grammar_active = has_lazy_grammar;
+        llama_sampler * sampler = grammar_active
                 ? hanami::make_chat_sampler_with_lazy_grammar(
                         vocab, grammar_str.c_str(), "root", grammar_trigger.c_str())
                 : hanami::make_chat_sampler(vocab);
 
         for (int i = 0; sampler && !state->cancelled.load() &&
                         i < max_tokens && position + i < context_tokens; ++i) {
-            const llama_token next = llama_sampler_sample(sampler, state->ctx, -1);
+            llama_token next = LLAMA_TOKEN_NULL;
+            try {
+                next = llama_sampler_sample(sampler, state->ctx, -1);
+            } catch (...) {
+                if (grammar_active) {
+                    llama_sampler_free(sampler);
+                    grammar_active = false;
+                    sampler = hanami::make_chat_sampler(vocab);
+                    if (!sampler) { error = "Failed to initialize fallback sampler"; break; }
+                    next = llama_sampler_sample(sampler, state->ctx, -1);
+                } else {
+                    error = "Sampler failed during generation";
+                    break;
+                }
+            }
             if (llama_vocab_is_eog(vocab, next)) break;
-            llama_sampler_accept(sampler, next);
+            try {
+                llama_sampler_accept(sampler, next);
+            } catch (...) {
+                if (grammar_active) {
+                    llama_sampler_free(sampler);
+                    grammar_active = false;
+                    sampler = hanami::make_chat_sampler(vocab);
+                    if (sampler) llama_sampler_accept(sampler, next);
+                } else {
+                    error = "Sampler accept failed during generation";
+                    break;
+                }
+            }
 
             char piece[512];
             const int n = llama_token_to_piece(vocab, next, piece, sizeof(piece), 0, true);

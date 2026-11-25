@@ -41,6 +41,8 @@ public final class NativeChatSamplerContractTest {
                 nat.contains("hanami::make_chat_sampler(vocab)"));
         assertTrue("native.cpp sequential path must check exact-cycle repetition guard",
                 nat.contains("hanami::has_verbatim_token_loop(generated)"));
+        assertTrue("native.cpp must guard llama_sampler_sample/accept against C++ exceptions across JNI",
+                nat.contains("try {") && nat.contains("llama_sampler_accept(sampler, next)"));
     }
 
     private static String read(Path path) throws IOException {

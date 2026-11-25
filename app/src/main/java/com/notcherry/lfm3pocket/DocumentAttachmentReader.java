@@ -9,6 +9,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Reads SAF-selected document bytes into bounded text for prompt context. */
 final class DocumentAttachmentReader {
@@ -42,7 +43,14 @@ final class DocumentAttachmentReader {
     private DocumentAttachmentReader() {}
 
     static Result read(File file, String displayName, String mimeType) {
+        return read(file, displayName, mimeType, null);
+    }
+
+    static Result read(File file, String displayName, String mimeType, AtomicBoolean cancelled) {
         String name = displayName == null || displayName.trim().isEmpty() ? file.getName() : displayName.trim();
+        if (cancelled != null && cancelled.get()) {
+            return Result.error(name, "Document import cancelled.");
+        }
         if (file == null || !file.isFile()) {
             return Result.error(name, "Selected file could not be read.");
         }
@@ -54,7 +62,10 @@ final class DocumentAttachmentReader {
                 return Result.error(name, "This PDF is too large to attach.");
             }
             try {
-                String extracted = PdfTextExtractor.extract(file, MAX_EXTRACTED_CHARS);
+                String extracted = PdfTextExtractor.extract(file, MAX_EXTRACTED_CHARS, cancelled);
+                if (cancelled != null && cancelled.get()) {
+                    return Result.error(name, "Document import cancelled.");
+                }
                 if (extracted == null || extracted.trim().isEmpty()) {
                     return Result.error(name,
                             "No extractable text found in this PDF (it may be scanned, image-only, or encrypted). Attach a text file or screenshot instead.");
