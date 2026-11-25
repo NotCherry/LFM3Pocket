@@ -40,11 +40,18 @@ public final class NativeInferenceEngine implements InferenceEngine {
 
     @Override public String generateWithMedia(long handle, String prompt, String[] mediaPaths,
                                               int maxTokens, TokenSink sink) {
+        return generateWithMediaAndGrammar(handle, prompt, mediaPaths, maxTokens, null, null, sink);
+    }
+
+    @Override public String generateWithMediaAndGrammar(long handle, String prompt, String[] mediaPaths,
+                                                        int maxTokens, String grammar, String grammarTrigger,
+                                                        TokenSink sink) {
         InferenceSettings current = settings;
         try {
-            return NativeBridge.generateWithMediaAndSettings(handle, prompt, mediaPaths,
+            return NativeBridge.generateWithMediaSettingsAndGrammar(handle, prompt, mediaPaths,
                     new InferenceSettings(current.contextTokens, current.threads,
-                            Math.min(maxTokens, current.maxTokens), current.promptLookup), sink::onToken);
+                            Math.min(maxTokens, current.maxTokens), current.promptLookup),
+                    grammar, grammarTrigger, sink::onToken);
         } catch (OutOfMemoryError error) {
             return "Could not process this image on this phone (out of memory). Try a smaller photo.";
         } catch (Throwable error) {

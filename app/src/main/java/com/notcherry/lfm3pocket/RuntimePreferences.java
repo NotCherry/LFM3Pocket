@@ -94,6 +94,12 @@ public final class RuntimePreferences {
     /** Optional human-readable label for the picked calendar (Settings display only). */
     public String calendarWriteLabel() { return prefs.getString("calendar_write_label", ""); }
 
+    /** Persisted SAF tree URI for the offline Local Workspace folder; empty means unmounted. */
+    public String workspaceTreeUri() { return prefs.getString("workspace_tree_uri", ""); }
+
+    /** Human-readable display label for the mounted Local Workspace folder. */
+    public String workspaceLabel() { return prefs.getString("workspace_label", ""); }
+
     /**
      * App-level interface size multiplier (0.80–1.30). Applied via densityDpi so typography and
      * spacing scale together on top of the system font scale. Default is {@link InterfaceSize#DEFAULT}.
@@ -153,6 +159,13 @@ public final class RuntimePreferences {
         prefs.edit()
                 .putString("calendar_write_id", id == null ? "" : id)
                 .putString("calendar_write_label", label == null ? "" : label)
+                .apply();
+    }
+
+    public void setWorkspaceTarget(String treeUri, String label) {
+        prefs.edit()
+                .putString("workspace_tree_uri", treeUri == null ? "" : treeUri.trim())
+                .putString("workspace_label", label == null ? "" : label.trim())
                 .apply();
     }
 

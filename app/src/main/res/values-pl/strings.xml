@@ -303,4 +303,13 @@ com.whatsapp</string>
     <string name="tool_not_pending">Ta akcja nie oczekuje już na decyzję.</string>
     <string name="tool_confirm_prompt">Zatwierdź tylko wtedy, gdy chcesz wykonać dokładnie powyższą akcję i jej argumenty.</string>
     <string name="tool_action_result_format">Wynik akcji: %1$s — %2$s</string>
+
+    <!-- Local Workspace (Offline Vault / Notes) -->
+    <string name="workspace_heading">LOKALNY FOLDER ROBOCZY</string>
+    <string name="workspace_help">Wybierz lokalny folder (np. skarbiec Obsidian lub folder notatek), aby Hanami mogło przeszukiwać, czytać, tworzyć i edytować notatki Markdown offline. Zmiany plików zawsze wymagają Twojego zatwierdzenia.</string>
+    <string name="workspace_none_picked">Nie wybrano folderu (narzędzia plików wyłączone).</string>
+    <string name="workspace_picked">Folder roboczy: %1$s</string>
+    <string name="workspace_pick_button">Wybierz folder</string>
+    <string name="workspace_clear_button">Wyczyść</string>
+    <string name="workspace_cleared">Wyczyszczono lokalny folder roboczy.</string>
 </resources>

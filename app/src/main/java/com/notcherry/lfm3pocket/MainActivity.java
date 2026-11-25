@@ -53,6 +53,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private static final int REQUEST_POST_NOTIFICATIONS_WHISTLE = 52;
     private static final int PICK_DOCUMENT = 53;
     private static final int REQUEST_ASSISTANT_ROLE = 54;
+    private static final int PICK_WORKSPACE_TREE = 55;
 
     private ExecutorService worker;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -76,6 +77,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private SearchSettingsSection searchSettingsSection;
     private BackgroundSettingsSection backgroundSettingsSection;
     private IntegrationsSettingsSection integrationsSettingsSection;
+    private WorkspaceSettingsSection workspaceSettingsSection;
     private ChatShellSection chatShellSection;
     private ModelImportSettingsSection modelImportSection;
 
@@ -623,6 +625,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 modelDownloadDialogs::downloadTinyVocaPack,
                 this::runOnUiThread, this::setChatStatus));
         integrationsSettingsSection.mount(configuration, ink, inkMuted);
+        workspaceSettingsSection = new WorkspaceSettingsSection(this, new WorkspaceSettingsSection.Deps(
+                () -> new RuntimePreferences(this), this::pickWorkspaceFolder, this::setChatStatus));
+        workspaceSettingsSection.mount(configuration, ink);
 
         new DefaultAssistantSettingsSection(this, new DefaultAssistantSettingsSection.Deps(
                 this::startActivity, intent -> startActivityForResult(intent, REQUEST_ASSISTANT_ROLE),
@@ -734,11 +739,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         if (inferenceSettingsSection != null) inferenceSettingsSection.syncFields();
         if (searchSettingsSection != null) searchSettingsSection.syncFields();
         if (integrationsSettingsSection != null) integrationsSettingsSection.syncFields();
+        if (workspaceSettingsSection != null) workspaceSettingsSection.refreshStatus();
     }
 
     private void syncBackgroundControls() {
         if (backgroundSettingsSection != null) backgroundSettingsSection.syncControls();
         if (integrationsSettingsSection != null) integrationsSettingsSection.syncControls();
+        if (workspaceSettingsSection != null) workspaceSettingsSection.refreshStatus();
     }
 
     private void showInferenceSettings() {
@@ -818,6 +825,19 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         startActivityForResult(pick, PICK_WHISTLE_MODEL);
     }
 
+    private void pickWorkspaceFolder() {
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+        try {
+            startActivityForResult(pick, PICK_WORKSPACE_TREE);
+        } catch (Exception e) {
+            setChatStatus("Could not open folder picker.");
+        }
+    }
+
     String pendingMediaPathForTest() { return attachmentCoordinator.pendingMediaPathForTest(); }
 
     String[] pendingMediaPathsForTest() { return attachmentCoordinator.pendingMediaPathsForTest(); }
@@ -867,6 +887,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
+        if (code == PICK_WORKSPACE_TREE && result == RESULT_OK && data != null && data.getData() != null) {
+            if (workspaceSettingsSection != null) {
+                workspaceSettingsSection.onFolderPicked(data.getData(), data.getFlags());
+            }
+            return;
+        }
         if (code == PICK_PHOTO && result == RESULT_OK && data != null && data.getData() != null) {
             attachmentCoordinator.copySelectedPhoto(data.getData());
             return;

@@ -981,8 +981,11 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                         && pickedId != null && !pickedId.trim().isEmpty();
                 boolean notifReady = preferences.notificationAccessEnabled()
                         && !preferences.notificationAllowlist().isEmpty();
+                String wsUri = preferences.workspaceTreeUri();
+                boolean wsReady = wsUri != null && !wsUri.trim().isEmpty();
                 return new LfmToolCatalog.Capabilities(
-                        webReady, weatherReady, calRead, calWrite, preferences.calendarWriteLabel(), notifReady);
+                        webReady, weatherReady, calRead, calWrite, preferences.calendarWriteLabel(), notifReady,
+                        wsReady, preferences.workspaceLabel());
             }
 
             @Override public java.util.Locale locale() {
@@ -999,6 +1002,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                     case CURRENT_TIME:
                     case CALCULATOR:
                     case UNIT_CONVERT:
+                    case SEARCH_TOOLS:
                         return true;
                     case WEATHER:
                         return preferences.networkToolsEnabled();
@@ -1009,6 +1013,12 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                     case LIST_EVENTS:
                         return app.checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
                                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                    case FS_LIST:
+                    case FS_SEARCH:
+                    case FS_READ: {
+                        String wsUri = preferences.workspaceTreeUri();
+                        return wsUri != null && !wsUri.trim().isEmpty();
+                    }
                     default:
                         return false;
                 }
@@ -1019,15 +1029,21 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             }
 
             @Override public void proposeTool(ToolRegistry.Request request) {
-                ToolCoordinator.Outcome outcome = app.toolCoordinator()
-                        .propose(request, ToolCoordinator.Source.MODEL_PROPOSAL);
+                proposeTool(request, false);
+            }
+
+            @Override public void proposeTool(ToolRegistry.Request request, boolean tainted) {
+                ToolCoordinator.Outcome outcome = tainted
+                        ? app.toolCoordinator().proposeTainted(request, ToolCoordinator.Source.MODEL_PROPOSAL)
+                        : app.toolCoordinator().propose(request, ToolCoordinator.Source.MODEL_PROPOSAL);
                 if (outcome == null) return;
                 String pickedLabel = preferences.calendarWriteLabel();
                 main.post(() -> {
                     if ("PENDING_CONFIRMATION".equals(outcome.status) && outcome.proposal != null) {
                         showConsent(outcome.proposal.id,
-                                ToolCoordinator.formatForDisplay(outcome.proposal.request, pickedLabel),
-                                outcome.proposal.risk == ToolCoordinator.Risk.SAFE);
+                                ToolCoordinator.formatForDisplay(outcome.proposal.request, pickedLabel,
+                                        outcome.proposal.tainted),
+                                !outcome.proposal.tainted && outcome.proposal.risk == ToolCoordinator.Risk.SAFE);
                     }
                     if (ui != null && ui.isUsable()) {
                         ToolRegistry.Request req = outcome.proposal == null ? request : outcome.proposal.request;
@@ -1249,10 +1265,16 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                     maxTokens, sink);
         }
         @Override public String generateWithMedia(long model, String prompt, String[] mediaPaths, int maxTokens, TokenSink sink) {
-            return delegate.generateWithMedia(model, prompt, mediaPaths, maxTokens, piece -> {
-                onDecodedTokens(1);
-                sink.onToken(piece);
-            });
+            return generateWithMediaAndGrammar(model, prompt, mediaPaths, maxTokens, null, null, sink);
+        }
+        @Override public String generateWithMediaAndGrammar(long model, String prompt, String[] mediaPaths,
+                                                            int maxTokens, String grammar, String grammarTrigger,
+                                                            TokenSink sink) {
+            return delegate.generateWithMediaAndGrammar(model, prompt, mediaPaths, maxTokens, grammar, grammarTrigger,
+                    piece -> {
+                        onDecodedTokens(1);
+                        sink.onToken(piece);
+                    });
         }
         @Override public String generateSpeech(long model, String prompt, SpeechOptions options, AudioSink sink) {
             return delegate.generateSpeech(model, prompt, options, sink);

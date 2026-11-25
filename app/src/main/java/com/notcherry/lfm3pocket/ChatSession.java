@@ -31,6 +31,9 @@ public final class ChatSession {
         boolean canAutoExecute(ToolRegistry.Request request);
         AndroidActionExecutor.ActionResult executeReadOnly(ToolRegistry.Request request);
         void proposeTool(ToolRegistry.Request request);
+        default void proposeTool(ToolRegistry.Request request, boolean tainted) {
+            proposeTool(request);
+        }
     }
     /**
      * History writes. {@link #save} remains the single abstract method so existing
@@ -158,7 +161,7 @@ public final class ChatSession {
     }
     private static final int PROMPT_HISTORY_WINDOW = 8;
     private static final int COMPACT_KEEP_RECENT = 4;
-    private static final int MAX_TOOL_STEPS = 4;
+    private static final int MAX_TOOL_STEPS = 5;
     private static final String SUMMARY_PROMPT_PREFIX = "<|startoftext|><|im_start|>system\n"
             + "You summarize conversations for a local assistant. Write a concise, factual rolling summary of the conversation so far. "
             + "Preserve user goals, key facts, decisions, names, numbers, tasks, and important assistant answers. "
@@ -492,7 +495,7 @@ public final class ChatSession {
         }
         ToolHost host=toolHost;
         boolean docContext=turn.documents!=null && !turn.documents.isEmpty();
-        boolean useToolLoop=host!=null && !docContext;
+        boolean useToolLoop=host!=null;
         if(useSearch && !useToolLoop && !turn.cancelled) {
             String searchQuestion=speechTranscript!=null && DEFAULT_VOICE_QUESTION.equals(question)
                     ?speechTranscript:question;
@@ -539,6 +542,11 @@ public final class ChatSession {
                 } else {
                     LfmToolCatalog.Capabilities caps=host.capabilities(useSearch,endpoint);
                     Locale locale=host.locale();
+                    LinkedHashMap<String,LfmToolCatalog.ToolSpec> activeTools=new LinkedHashMap<>();
+                    for(LfmToolCatalog.ToolSpec spec:LfmToolCatalog.coreTools(caps)) {
+                        activeTools.put(spec.name,spec);
+                    }
+                    boolean turnTainted=docContext;
                     StringBuilder toolTrace=new StringBuilder();
                     int errorRetries=0;
                     for(int step=0;step<MAX_TOOL_STEPS && current(turn) && !turn.cancelled;step++) {
@@ -548,8 +556,9 @@ public final class ChatSession {
                         String[] stepMedia=step==0?mediaPaths:new String[0];
                         String stepPrompt=promptWithTools(replyHistory,sources,turn.documents,stepMedia.length,
                                 caps,locale,toolTrace.toString());
-                        try { error=engine.generateWithMedia(turn.handle,stepPrompt,stepMedia,maxTokens,
-                                piece -> queue(turn,piece)); }
+                        String grammar=LfmToolGrammar.build(activeTools.values());
+                        try { error=engine.generateWithMediaAndGrammar(turn.handle,stepPrompt,stepMedia,maxTokens,
+                                grammar,LfmToolGrammar.LAZY_TRIGGER_PATTERN,piece -> queue(turn,piece)); }
                         catch(Throwable e) { error=safeFailureMessage(e); }
                         if(error!=null || turn.cancelled || !current(turn)) break;
                         String rawStep=ThinkingSanitizer.clean(partialFor(turn)).answer;
@@ -573,7 +582,20 @@ public final class ChatSession {
                             break;
                         }
                         ToolRegistry.Request req=parsed.request;
-                        if(host.canAutoExecute(req) && step+1<MAX_TOOL_STEPS) {
+                        // Deferred tool discovery: always safe, runs locally, expands active grammar.
+                        if(req instanceof ToolRegistry.SearchToolsRequest && step+1<MAX_TOOL_STEPS) {
+                            ToolRegistry.SearchToolsRequest st=(ToolRegistry.SearchToolsRequest)req;
+                            LfmToolCatalog.SearchResult foundTools=LfmToolCatalog.searchTools(st.query,caps,6);
+                            for(LfmToolCatalog.ToolSpec spec:foundTools.matched) {
+                                activeTools.put(spec.name,spec);
+                            }
+                            appendToolTurn(toolTrace,rawStep,foundTools.formattedToolResponse);
+                            continue;
+                        }
+                        // Prevent silent exfiltration: never auto-execute outbound network tools when tainted by private documents.
+                        boolean blockOutboundAutoExec=docContext
+                                && (req.tool==ToolRegistry.Tool.WEB_SEARCH || req.tool==ToolRegistry.Tool.WEATHER);
+                        if(!blockOutboundAutoExec && host.canAutoExecute(req) && step+1<MAX_TOOL_STEPS) {
                             final String stepStatus="Running "+ToolCoordinator.title(req)+"…";
                             ui.post(() -> {
                                 synchronized(ChatSession.this) {
@@ -582,6 +604,7 @@ public final class ChatSession {
                             },0);
                             String toolOutput;
                             if(req instanceof ToolRegistry.WebSearchRequest) {
+                                turnTainted=true;
                                 ToolRegistry.WebSearchRequest ws=(ToolRegistry.WebSearchRequest)req;
                                 try {
                                     List<WebSearch.Source> found=(ws.timeRange==null || ws.timeRange.isEmpty())
@@ -600,15 +623,17 @@ public final class ChatSession {
                                 }
                             } else {
                                 AndroidActionExecutor.ActionResult res=host.executeReadOnly(req);
-                                toolOutput=res==null?"Tool returned no output."
-                                        :escapePromptContent(res.message==null?res.status:res.message);
+                                String rawMsg=res==null?"Tool returned no output."
+                                        :(res.message==null?res.status:res.message);
+                                if(rawMsg.startsWith("UNTRUSTED_")) turnTainted=true;
+                                toolOutput=escapePromptContent(rawMsg);
                             }
                             appendToolTurn(toolTrace,rawStep,toolOutput);
                             continue;
                         }
-                        // Confirmable / side-effect tool: hand off to ToolCoordinator + approval UI.
+                        // Confirmable / side-effect tool (or tainted outbound call): hand off to ToolCoordinator + approval UI.
                         toolHandledInLoop=true;
-                        host.proposeTool(req);
+                        host.proposeTool(req,turnTainted);
                         String prose=ModelToolBridge.stripToolCallMarkup(rawStep);
                         overrideVisibleAnswer=prose.isEmpty()
                                 ? "Action ready: "+ToolCoordinator.title(req)+". Review and approve above."

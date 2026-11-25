@@ -46,17 +46,27 @@ public final class LfmAgentHarnessTest {
         assertFalse(offPrompt.contains("\"name\":\"weather\""));
 
         LfmToolCatalog.Capabilities online = new LfmToolCatalog.Capabilities(
-                true, true, true, true, "Personal", true);
+                true, true, true, true, "Personal", true, true, "Notes");
         String onPrompt = LfmToolCatalog.systemPrompt(online, new Locale("pl"));
+        assertTrue(onPrompt.contains("\"name\":\"search_tools\""));
         assertTrue(onPrompt.contains("\"name\":\"web_search\""));
-        assertTrue(onPrompt.contains("\"name\":\"weather\""));
-        assertTrue(onPrompt.contains("\"name\":\"list_notifications\""));
+        assertTrue(onPrompt.contains("\"name\":\"fs_search\""));
+        assertTrue(onPrompt.contains("\"name\":\"note_create\""));
+        assertFalse("Deferred tools stay out of static prompt", onPrompt.contains("\"name\":\"weather\""));
+        assertFalse("Deferred tools stay out of static prompt", onPrompt.contains("\"name\":\"list_notifications\""));
         assertTrue(onPrompt.contains("Polish"));
+
+        LfmToolCatalog.SearchResult weatherFound = LfmToolCatalog.searchTools("pogoda weather", online, 5);
+        assertTrue(weatherFound.formattedToolResponse.contains("<additional_tools>"));
+        assertTrue(weatherFound.formattedToolResponse.contains("\"name\":\"weather\""));
+        assertTrue(LfmToolCatalog.searchTools("notifications", online, 5)
+                .formattedToolResponse.contains("\"name\":\"list_notifications\""));
 
         String ctx = LfmToolCatalog.turnContextLine(
                 ZonedDateTime.of(2026, 11, 25, 11, 42, 0, 0, ZoneId.of("UTC")), online);
         assertTrue(ctx.contains("2026-11-25"));
         assertTrue(ctx.contains("calendar=Personal"));
+        assertTrue(ctx.contains("workspace=Notes"));
         assertTrue(ctx.contains("web_search=on"));
     }
 

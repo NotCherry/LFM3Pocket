@@ -373,10 +373,19 @@ Java_com_notcherry_lfm3pocket_NativeBridge_nativeBuildInfo(JNIEnv * env, jclass)
     return make_string(env, info);
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
-        JNIEnv * env, jclass, jlong handle, jbyteArray prompt, jobjectArray media_paths,
-        jint max_tokens, jint context_tokens, jint threads, jboolean prompt_lookup, jobject sink) {
+static std::string jstring_utf8_or_empty(JNIEnv * env, jstring value) {
+    if (!value) return {};
+    const char * raw = env->GetStringUTFChars(value, nullptr);
+    if (!raw) return {};
+    std::string out(raw);
+    env->ReleaseStringUTFChars(value, raw);
+    return out;
+}
+
+static jstring run_generate_utf8(
+        JNIEnv * env, jlong handle, jbyteArray prompt, jobjectArray media_paths,
+        jint max_tokens, jint context_tokens, jint threads, jboolean prompt_lookup,
+        const std::string & grammar_str, const std::string & grammar_trigger, jobject sink) {
     if (!handle) return make_string(env, "Model has not been loaded");
     if (!prompt || !sink) return make_string(env, "Missing prompt or callback");
     if (context_tokens < 512 || context_tokens > 8192 || context_tokens % 256 != 0 ||
@@ -566,8 +575,9 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         }
     }
 
+    const bool has_lazy_grammar = !grammar_str.empty() && !grammar_trigger.empty();
     std::vector<llama_token> generated;
-    bool use_ngram = prompt_lookup && prompt_ready && state->ctx && !has_media && error.empty();
+    bool use_ngram = prompt_lookup && !has_lazy_grammar && prompt_ready && state->ctx && !has_media && error.empty();
     bool ngram_fallback_sequential = false;
     if (use_ngram) {
         std::vector<llama_token> prompt_in_kv = tokens;
@@ -597,7 +607,10 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     }
     if ((!use_ngram || ngram_fallback_sequential) && error.empty() && prompt_ready && state->ctx &&
         !state->cancelled.load()) {
-        llama_sampler * sampler = hanami::make_chat_sampler(vocab);
+        llama_sampler * sampler = has_lazy_grammar
+                ? hanami::make_chat_sampler_with_lazy_grammar(
+                        vocab, grammar_str.c_str(), "root", grammar_trigger.c_str())
+                : hanami::make_chat_sampler(vocab);
 
         for (int i = 0; sampler && !state->cancelled.load() &&
                         i < max_tokens && position + i < context_tokens; ++i) {
@@ -646,6 +659,25 @@ Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
     }
 
     return error.empty() || state->cancelled.load() ? nullptr : make_string(env, error);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
+        JNIEnv * env, jclass, jlong handle, jbyteArray prompt, jobjectArray media_paths,
+        jint max_tokens, jint context_tokens, jint threads, jboolean prompt_lookup, jobject sink) {
+    return run_generate_utf8(env, handle, prompt, media_paths, max_tokens, context_tokens,
+            threads, prompt_lookup, {}, {}, sink);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_notcherry_lfm3pocket_NativeBridge_generateWithGrammarUtf8(
+        JNIEnv * env, jclass, jlong handle, jbyteArray prompt, jobjectArray media_paths,
+        jint max_tokens, jint context_tokens, jint threads, jboolean prompt_lookup,
+        jstring grammar, jstring grammar_trigger, jobject sink) {
+    std::string grammar_str = jstring_utf8_or_empty(env, grammar);
+    std::string trigger_str = jstring_utf8_or_empty(env, grammar_trigger);
+    return run_generate_utf8(env, handle, prompt, media_paths, max_tokens, context_tokens,
+            threads, prompt_lookup, grammar_str, trigger_str, sink);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
