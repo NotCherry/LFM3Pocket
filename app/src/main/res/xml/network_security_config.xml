@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Deny all cleartext HTTP by default (public endpoints require HTTPS). -->
+    <base-config cleartextTrafficPermitted="false" />
+    <!-- Allow offline loopback HTTP for local Termux / on-device MCP servers. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

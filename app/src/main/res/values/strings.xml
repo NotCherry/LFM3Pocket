@@ -312,4 +312,36 @@ com.whatsapp</string>
     <string name="workspace_pick_button">Pick folder</string>
     <string name="workspace_clear_button">Clear</string>
     <string name="workspace_cleared">Local workspace folder cleared.</string>
+
+    <!-- External Tools: Contacts, Custom Shortcuts & Open MCP Client -->
+    <string name="external_tools_heading">EXTERNAL TOOLS &amp; MCP</string>
+    <string name="external_tools_help">Connect offline contacts, custom local app shortcuts (Obsidian, Tasker, geo), or open MCP Streamable HTTP servers (local Termux, LAN homelab, or HTTPS hubs like Composio). External tools always ask for your approval before running.</string>
+    <string name="contacts_status_off">Offline Contacts lookup: permission not granted.</string>
+    <string name="contacts_status_ready">Offline Contacts lookup: ready (read-only).</string>
+    <string name="contacts_grant_button">Grant Contacts access</string>
+    <string name="shortcuts_subheading">Custom Local Shortcuts (Offline)</string>
+    <string name="shortcuts_help">Define deep links with {{param}} placeholders, e.g. obsidian://new?name={{title}}&amp;content={{content}}.</string>
+    <string name="shortcuts_add_button">Add local shortcut</string>
+    <string name="shortcuts_empty">No custom shortcuts configured.</string>
+    <string name="shortcuts_name_hint">Name (e.g. Obsidian Note)</string>
+    <string name="shortcuts_uri_hint">URI template (e.g. obsidian://new?name={{title}})</string>
+    <string name="shortcuts_desc_hint">Short description for the model</string>
+    <string name="shortcuts_pkg_hint">Optional Android package id</string>
+    <string name="shortcuts_saved">Saved local shortcut: %1$s</string>
+    <string name="shortcuts_removed">Removed shortcut: %1$s</string>
+    <string name="mcp_subheading">MCP Servers (Local Termux / LAN / HTTPS)</string>
+    <string name="mcp_help">Add http://127.0.0.1:PORT/mcp for offline Termux servers, or https:// endpoints for remote MCP hubs (Composio, GitHub, Notion). Tap Sync tools to cache schemas for offline discovery.</string>
+    <string name="mcp_add_button">Add MCP server</string>
+    <string name="mcp_empty">No MCP servers configured.</string>
+    <string name="mcp_label_hint">Server name (e.g. Termux or Composio)</string>
+    <string name="mcp_url_hint">Endpoint URL (http://127.0.0.1:3000/mcp or https://…)</string>
+    <string name="mcp_token_hint">Optional Bearer token / API key</string>
+    <string name="mcp_allow_lan_http">Allow local LAN HTTP (10.x / 192.168.x / .local)</string>
+    <string name="mcp_saved">Saved MCP server: %1$s. Tap Sync tools to discover capabilities.</string>
+    <string name="mcp_removed">Removed MCP server: %1$s</string>
+    <string name="mcp_sync_button">Sync tools</string>
+    <string name="mcp_syncing">Syncing tools from %1$s…</string>
+    <string name="mcp_sync_ok">Synced %2$d tool(s) from %1$s.</string>
+    <string name="mcp_sync_failed">Sync failed for %1$s: %2$s</string>
+    <string name="remove_item">Remove</string>
 </resources>

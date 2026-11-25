@@ -40,6 +40,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     /** System assistant gesture: open the single entry path and start a Hanami voice session. */
     public static final String EXTRA_ASSISTANT_VOICE_SESSION = "assistant_voice_session";
     public static final String EXTRA_SHARED_IMAGE = "shared_image_uri";
+    public static final String EXTRA_SHARED_DOCUMENTS = "shared_document_uris";
     private static final int PICK_MODEL = 42;
     private static final int PICK_MMPROJ = 43;
     private static final int PICK_PHOTO = 44;
@@ -54,6 +55,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private static final int PICK_DOCUMENT = 53;
     private static final int REQUEST_ASSISTANT_ROLE = 54;
     private static final int PICK_WORKSPACE_TREE = 55;
+    private static final int REQUEST_READ_CONTACTS = 56;
 
     private ExecutorService worker;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -78,6 +80,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private BackgroundSettingsSection backgroundSettingsSection;
     private IntegrationsSettingsSection integrationsSettingsSection;
     private WorkspaceSettingsSection workspaceSettingsSection;
+    private ExternalToolsSettingsSection externalToolsSection;
     private ChatShellSection chatShellSection;
     private ModelImportSettingsSection modelImportSection;
 
@@ -628,6 +631,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         workspaceSettingsSection = new WorkspaceSettingsSection(this, new WorkspaceSettingsSection.Deps(
                 () -> new RuntimePreferences(this), this::pickWorkspaceFolder, this::setChatStatus));
         workspaceSettingsSection.mount(configuration, ink);
+        Lfm3PocketApplication app = (Lfm3PocketApplication) getApplication();
+        externalToolsSection = new ExternalToolsSettingsSection(this, new ExternalToolsSettingsSection.Deps(
+                app::customShortcutStore, app::mcpToolProvider,
+                () -> requestPermissions(new String[] { Manifest.permission.READ_CONTACTS }, REQUEST_READ_CONTACTS),
+                worker, this::runOnUiThread, this::setChatStatus));
+        externalToolsSection.mount(configuration, ink);
 
         new DefaultAssistantSettingsSection(this, new DefaultAssistantSettingsSection.Deps(
                 this::startActivity, intent -> startActivityForResult(intent, REQUEST_ASSISTANT_ROLE),
@@ -740,12 +749,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         if (searchSettingsSection != null) searchSettingsSection.syncFields();
         if (integrationsSettingsSection != null) integrationsSettingsSection.syncFields();
         if (workspaceSettingsSection != null) workspaceSettingsSection.refreshStatus();
+        if (externalToolsSection != null) externalToolsSection.refreshStatus();
     }
 
     private void syncBackgroundControls() {
         if (backgroundSettingsSection != null) backgroundSettingsSection.syncControls();
         if (integrationsSettingsSection != null) integrationsSettingsSection.syncControls();
         if (workspaceSettingsSection != null) workspaceSettingsSection.refreshStatus();
+        if (externalToolsSection != null) externalToolsSection.refreshStatus();
     }
 
     private void showInferenceSettings() {
@@ -871,6 +882,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 }
             }
             calendarPickerHelper.onPermissionResult(allGranted);
+            return;
+        }
+        if (requestCode == REQUEST_READ_CONTACTS) {
+            if (externalToolsSection != null) externalToolsSection.refreshStatus();
+            setChatStatus(granted ? R.string.contacts_status_ready : R.string.contacts_status_off);
         }
     }
 
@@ -1035,6 +1051,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             } catch (Exception failed) {
                 setChatStatus("Photo import failed: " + failed.getMessage());
             }
+        }
+        ArrayList<String> sharedDocs = intent.getStringArrayListExtra(EXTRA_SHARED_DOCUMENTS);
+        if (sharedDocs != null && !sharedDocs.isEmpty()) {
+            intent.removeExtra(EXTRA_SHARED_DOCUMENTS);
+            ArrayList<Uri> uris = new ArrayList<>(sharedDocs.size());
+            for (String s : sharedDocs) {
+                if (s != null && !s.isBlank()) uris.add(Uri.parse(s));
+            }
+            attachmentCoordinator.importDocumentUris(uris);
         }
     }
 
