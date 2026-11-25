@@ -63,6 +63,7 @@ jobs:
           python3 .github/scripts/assert-android-test-results.py --check-inventory
           python3 .github/scripts/assert-instrumentation-result.py --self-test
           python3 .github/scripts/next-hanami-version.py --self-test
+          python3 .github/scripts/prune-old-releases.py --self-test
           python3 .github/scripts/assert-release-ci-gate.py --self-test
           python3 .github/scripts/assert-dizione-jni-in-apk.py --self-test
           python3 .github/scripts/assert-cactus-runtime-in-apk.py --self-test
@@ -125,7 +126,7 @@ jobs:
           test -s app/schemas/com.notcherry.lfm3pocket.HistoryDatabase/4.json
           test -s app/schemas/com.notcherry.lfm3pocket.HistoryDatabase/5.json
       - name: Upload JVM JUnit XML and reports
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: LFM3Pocket-jvm-unit-results
@@ -136,7 +137,7 @@ jobs:
             app/build/reports/tests/testSmokeDebugUnitTest/
             app/schemas/com.notcherry.lfm3pocket.HistoryDatabase/4.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
 
   emulator-e2e:
     name: Android emulator JNI + UI E2E (${{ github.event_name == 'pull_request' && 'smoke' || (github.event_name == 'workflow_dispatch' && inputs.e2e_tier || 'deep') }})
@@ -307,7 +308,7 @@ jobs:
         if: always()
         run: python3 .github/scripts/assert-android-test-results.py app/build/outputs/androidTest-results/connected/ --mode "$E2E_TIER"
       - name: Upload emulator JUnit XML, screenshots and logcat
-        if: always()
+        if: failure() || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: LFM3Pocket-android-emulator-e2e-results
@@ -317,7 +318,7 @@ jobs:
             app/build/ci-artifacts/
             app/build/ci-artifacts/attempt-1/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
 
   apk:
     name: Build ARM64 debug APK
@@ -430,15 +431,15 @@ jobs:
           gradle :app:minifyPhoneReleaseWithR8 -Phanami.skipNative=true --no-daemon --stacktrace
           ls -lh app/build/intermediates/dex/phoneRelease/minifyPhoneReleaseWithR8/ || true
       - name: Upload compiled ARM64 APK
-        if: success()
+        if: success() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
         uses: actions/upload-artifact@v4
         with:
           name: LFM3Pocket-arm64-debug
           path: app/build/outputs/apk/phone/debug/app-phone-debug.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
       - name: Upload isolated physical-device test APKs
-        if: success()
+        if: success() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
         uses: actions/upload-artifact@v4
         with:
           name: LFM3Pocket-arm64-device-check
@@ -446,4 +447,4 @@ jobs:
             app/build/outputs/apk/deviceCheck/debug/app-deviceCheck-debug.apk
             app/build/outputs/apk/androidTest/deviceCheck/debug/app-deviceCheck-debug-androidTest.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
