@@ -53,23 +53,21 @@ final class SearchSettingsSection {
     }
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
-        TextView searchHeading = host.label(host.getString(R.string.searxng_heading), 11, inkMuted);
-        searchHeading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
-        searchHeading.setLetterSpacing(0.12f);
-        searchHeading.setPadding(0, host.dp(18), 0, host.dp(6));
-        configuration.addView(searchHeading);
+        LinearLayout card = StillwaterUi.settingsCard(configuration,
+                host.getString(R.string.searxng_heading));
 
         searchEndpointField = new EditText(host.settingsActivity());
         searchEndpointField.setId(R.id.search_endpoint);
         searchEndpointField.setSingleLine(true);
         searchEndpointField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         searchEndpointField.setHint("https://your-searxng.example.org/search");
-        StillwaterReadable.setTextSizeSp(searchEndpointField, 13);
+        StillwaterReadable.setTextSizeSp(searchEndpointField, 14.5f);
         searchEndpointField.setTypeface(StillwaterUi.mono(host.settingsActivity()));
         StillwaterUi.styleBoxedInput(searchEndpointField);
+        searchEndpointField.setMinimumHeight(Math.max(host.dp(48), InterfaceSize.minTouchPx(host.settingsActivity())));
         searchEndpointField.setHintTextColor(StillwaterUi.DISABLED);
         searchEndpointField.setText(deps.endpoint.get());
-        configuration.addView(searchEndpointField, new LinearLayout.LayoutParams(-1, -2));
+        card.addView(searchEndpointField, new LinearLayout.LayoutParams(-1, -2));
 
         searchEnabledBox = new CheckBox(host.settingsActivity());
         searchEnabledBox.setId(R.id.search_enabled);
@@ -77,14 +75,14 @@ final class SearchSettingsSection {
         StillwaterUi.styleCheck(searchEnabledBox);
         searchEnabledBox.setChecked(deps.enabled.getAsBoolean());
         LinearLayout.LayoutParams checkParams = new LinearLayout.LayoutParams(-1, -2);
-        checkParams.topMargin = host.dp(6);
-        configuration.addView(searchEnabledBox, checkParams);
+        checkParams.topMargin = host.dp(10);
+        card.addView(searchEnabledBox, checkParams);
 
         searchButton = host.button(host.getString(R.string.web_search_off));
         searchButton.setId(R.id.web_search);
         StillwaterUi.outlined(searchButton);
         searchButton.setOnClickListener(v -> deps.openSearchSettings.run());
-        StillwaterReadable.addFlexibleFullWidth(configuration, searchButton, 44);
+        StillwaterReadable.addFlexibleFullWidth(card, searchButton, 48);
         paintWebSearchControl(deps.activityBusy.getAsBoolean());
     }
 

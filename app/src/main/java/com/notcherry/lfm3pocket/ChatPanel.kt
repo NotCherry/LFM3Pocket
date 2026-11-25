@@ -483,8 +483,13 @@ class ChatPanel @JvmOverloads constructor(
                     OutlinedTextField(
                         value = input,
                         onValueChange = { input = it },
+                        textStyle = type.body,
                         placeholder = {
-                            Text(stringResource(R.string.chat_write_message), color = atlas.inkDisabled)
+                            Text(
+                                stringResource(R.string.chat_write_message),
+                                style = type.body,
+                                color = atlas.inkDisabled,
+                            )
                         },
                         minLines = 1,
                         maxLines = 5,
@@ -509,23 +514,26 @@ class ChatPanel @JvmOverloads constructor(
                             .fillMaxWidth()
                             .testTag(tag("chat_input")),
                     )
-                    Spacer(Modifier.height(space.space1))
+                    Spacer(Modifier.height(space.space2))
                     FlowRow(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(space.space2),
+                        ) {
                             TextButton(
                                 onClick = { compact.run() },
                                 enabled = controls.compact && snapshot.turns.isNotEmpty(),
                                 modifier = Modifier
                                     .minimumInteractiveComponentSize()
                                     .testTag(tag("chat_compact")),
-                                contentPadding = PaddingValues(horizontal = space.space2, vertical = 2.dp),
+                                contentPadding = PaddingValues(horizontal = space.space3, vertical = 6.dp),
                                 colors = StillwaterControls.textButtonColors(),
                             ) {
-                                Text(stringResource(R.string.compact_conversation), style = type.bodySmall)
+                                Text(stringResource(R.string.compact_short), style = type.bodySmall)
                             }
                             TextButton(
                                 onClick = { clear.run() },
@@ -533,7 +541,7 @@ class ChatPanel @JvmOverloads constructor(
                                 modifier = Modifier
                                     .minimumInteractiveComponentSize()
                                     .testTag(tag("chat_clear")),
-                                contentPadding = PaddingValues(horizontal = space.space2, vertical = 2.dp),
+                                contentPadding = PaddingValues(horizontal = space.space3, vertical = 6.dp),
                                 colors = ButtonDefaults.textButtonColors(
                                     contentColor = if (hasClearableContent) atlas.accent else atlas.inkMuted,
                                     disabledContentColor = atlas.inkDisabled,
@@ -551,7 +559,7 @@ class ChatPanel @JvmOverloads constructor(
                                 enabled = controls.stop,
                                 modifier = Modifier
                                     .minimumInteractiveComponentSize()
-                                    .heightIn(min = 40.dp)
+                                    .heightIn(min = 44.dp)
                                     .testTag(tag("chat_stop")),
                                 shape = MaterialTheme.shapes.medium,
                                 border = BorderStroke(
@@ -574,7 +582,7 @@ class ChatPanel @JvmOverloads constructor(
                                 enabled = controls.send,
                                 modifier = Modifier
                                     .minimumInteractiveComponentSize()
-                                    .heightIn(min = 40.dp)
+                                    .heightIn(min = 44.dp)
                                     .testTag(tag("chat_send")),
                                 shape = MaterialTheme.shapes.medium,
                                 colors = StillwaterControls.buttonColors(),

@@ -148,7 +148,7 @@ final class StillwaterUi {
         button.setTypeface(sansMedium(context));
     }
 
-    /** Subtle raised surface with a 1dp hairline border for Settings and secondary actions. */
+    /** Subtle elevated surface with a 1dp hairline border for Settings cards and actions. */
     static void outlined(Button button) {
         Context context = button.getContext();
         button.setAllCaps(false);
@@ -156,10 +156,11 @@ final class StillwaterUi {
         StateListDrawable bg = new StateListDrawable();
         bg.addState(new int[]{-android.R.attr.state_enabled}, box(context, SURFACE, LINE));
         bg.addState(new int[]{android.R.attr.state_pressed}, box(context, PRESSED_FILL, BORDER_STRONG));
-        bg.addState(new int[]{}, box(context, RAISED, LINE));
+        bg.addState(new int[]{}, box(context, OVERLAY, LINE));
         button.setBackground(bg);
         button.setTextColor(enabledTextColors(INK, MUTED));
         button.setTypeface(sansMedium(context));
+        StillwaterReadable.setTextSizeSp(button, 14.5f);
     }
 
     /** Emphasized candle-text outlined action (e.g. model import / open). */
@@ -170,18 +171,23 @@ final class StillwaterUi {
         StateListDrawable bg = new StateListDrawable();
         bg.addState(new int[]{-android.R.attr.state_enabled}, box(context, SURFACE, LINE));
         bg.addState(new int[]{android.R.attr.state_pressed}, box(context, PRESSED_FILL, CANDLE));
-        bg.addState(new int[]{}, box(context, RAISED, BORDER_STRONG));
+        bg.addState(new int[]{}, box(context, OVERLAY, BORDER_STRONG));
         button.setBackground(bg);
         button.setTextColor(enabledTextColors(CANDLE, MUTED));
         button.setTypeface(sansMedium(context));
+        StillwaterReadable.setTextSizeSp(button, 14.5f);
     }
 
     /** Unified Stillwater segmented picker state (selected = candle fill, unselected = outlined). */
     static void segmented(Button button, boolean selected) {
         if (button == null) return;
         button.setSelected(selected);
-        if (selected) primary(button);
-        else outlined(button);
+        if (selected) {
+            primary(button);
+            StillwaterReadable.setTextSizeSp(button, 14.5f);
+        } else {
+            outlined(button);
+        }
     }
 
     static void dangerQuiet(Button button) {
@@ -199,10 +205,11 @@ final class StillwaterUi {
         StateListDrawable bg = new StateListDrawable();
         bg.addState(new int[]{-android.R.attr.state_enabled}, box(context, SURFACE, LINE));
         bg.addState(new int[]{android.R.attr.state_pressed}, box(context, PRESSED_FILL, DANGER));
-        bg.addState(new int[]{}, box(context, RAISED, DANGER));
+        bg.addState(new int[]{}, box(context, OVERLAY, DANGER));
         button.setBackground(bg);
         button.setTextColor(enabledTextColors(DANGER, MUTED));
         button.setTypeface(sansMedium(context));
+        StillwaterReadable.setTextSizeSp(button, 14.5f);
     }
 
     static void tintIcon(Button button, int color) {
@@ -227,24 +234,104 @@ final class StillwaterUi {
         }
     }
 
-    /** Framed input box (`surfaceRaised` + `1dp` border, `borderStrong` when focused). */
+    /** Framed input box (`surface` recessed + `1dp` border, `borderStrong` when focused). */
     static void styleBoxedInput(EditText field) {
         Context context = field.getContext();
         styleInput(field);
         field.setBackgroundTintList(null);
         StateListDrawable bg = new StateListDrawable();
-        bg.addState(new int[]{android.R.attr.state_focused}, box(context, RAISED, BORDER_STRONG));
-        bg.addState(new int[]{}, box(context, RAISED, LINE));
+        bg.addState(new int[]{android.R.attr.state_focused}, box(context, SURFACE, BORDER_STRONG));
+        bg.addState(new int[]{}, box(context, SURFACE, LINE));
         field.setBackground(bg);
-        int padH = Math.round(10 * context.getResources().getDisplayMetrics().density);
-        int padV = Math.round(8 * context.getResources().getDisplayMetrics().density);
+        int padH = Math.round(14 * context.getResources().getDisplayMetrics().density);
+        int padV = Math.round(12 * context.getResources().getDisplayMetrics().density);
         field.setPadding(padH, padV, padH, padV);
     }
 
     static void styleCheck(CheckBox box) {
+        Context context = box.getContext();
+        float density = context.getResources().getDisplayMetrics().density;
         box.setTextColor(enabledTextColors(INK, DISABLED));
-        box.setButtonTintList(ContextCompat.getColorStateList(box.getContext(), R.color.still_control));
+        box.setButtonTintList(ContextCompat.getColorStateList(context, R.color.still_control));
         box.setHighlightColor(0x66E6C27A);
+        box.setTypeface(sans(context));
+        StillwaterReadable.setTextSizeSp(box, 15.5f);
+        box.setLineSpacing(0f, 1.25f);
+        box.setMinHeight(Math.round(48 * density));
+        int padStart = Math.round(8 * density);
+        int padV = Math.round(8 * density);
+        box.setPaddingRelative(padStart, padV, 0, padV);
+    }
+
+    /** Creates an elevated Stillwater Settings section card with generous padding and bottom separation. */
+    static android.widget.LinearLayout settingsCard(android.widget.LinearLayout parent, String kickerText) {
+        Context context = parent.getContext();
+        float density = context.getResources().getDisplayMetrics().density;
+        int pad = Math.round(18 * density);
+        android.widget.LinearLayout card = new android.widget.LinearLayout(context);
+        card.setOrientation(android.widget.LinearLayout.VERTICAL);
+        card.setBackground(box(context, RAISED, LINE));
+        card.setPadding(pad, pad, pad, pad);
+        android.widget.LinearLayout.LayoutParams params = new android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.bottomMargin = Math.round(20 * density);
+        parent.addView(card, params);
+        if (kickerText != null && !kickerText.isEmpty()) {
+            TextView kicker = new TextView(context);
+            kicker.setText(kickerText);
+            StillwaterReadable.setTextSizeSp(kicker, 12f);
+            kicker.setTextColor(CANDLE);
+            kicker.setTypeface(sansMedium(context));
+            kicker.setLetterSpacing(0.12f);
+            kicker.setPadding(0, 0, 0, Math.round(10 * density));
+            StillwaterReadable.prepareWrappingLabel(kicker);
+            card.addView(kicker);
+        }
+        return card;
+    }
+
+    /** Subtle hairline divider separating logical sub-groups inside a Settings card. */
+    static View settingsDivider(android.widget.LinearLayout card) {
+        Context context = card.getContext();
+        float density = context.getResources().getDisplayMetrics().density;
+        View line = new View(context);
+        line.setBackgroundColor(LINE);
+        android.widget.LinearLayout.LayoutParams params = new android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, Math.max(1, Math.round(density)));
+        params.topMargin = Math.round(16 * density);
+        params.bottomMargin = Math.round(14 * density);
+        card.addView(line, params);
+        return line;
+    }
+
+    /** Readable mobile-scale helper copy inside Settings cards. */
+    static TextView settingsHelp(android.widget.LinearLayout card, String text) {
+        Context context = card.getContext();
+        float density = context.getResources().getDisplayMetrics().density;
+        TextView help = new TextView(context);
+        help.setText(text);
+        StillwaterReadable.setTextSizeSp(help, 13.5f);
+        help.setTextColor(SOFT);
+        help.setTypeface(sans(context));
+        help.setLineSpacing(0f, 1.32f);
+        help.setPadding(0, Math.round(4 * density), 0, Math.round(8 * density));
+        StillwaterReadable.prepareWrappingLabel(help);
+        card.addView(help);
+        return help;
+    }
+
+    /** Readable recessed monospace output block (benchmark / crash log / build info). */
+    static void styleCodeBlock(TextView view) {
+        Context context = view.getContext();
+        float density = context.getResources().getDisplayMetrics().density;
+        view.setTypeface(mono(context));
+        StillwaterReadable.setTextSizeSp(view, 13.5f);
+        view.setLineSpacing(0f, 1.3f);
+        view.setBackground(box(context, CODE_BG, LINE));
+        int padH = Math.round(14 * density);
+        int padV = Math.round(12 * density);
+        view.setPadding(padH, padV, padH, padV);
     }
 
     /** Applies Stillwater border, serif title, and mixed-case button styling to a shown AlertDialog. */

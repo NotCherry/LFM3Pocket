@@ -193,6 +193,8 @@ com.whatsapp</string>
     <string name="settings_crash_log_empty">No crash evidence recorded yet.</string>
     <string name="settings_crash_log_exported">Crash log ready to share from this phone.</string>
     <string name="compact_conversation">Compact conversation</string>
+    <string name="compact_short">Compact</string>
+    <string name="default_assistant_heading">ASSISTANT</string>
     <string name="chat_interrupted_retry">Interrupted — Retry</string>
 
     <string name="calendar_heading">CALENDAR</string>

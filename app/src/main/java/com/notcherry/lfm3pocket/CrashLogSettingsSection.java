@@ -27,28 +27,17 @@ final class CrashLogSettingsSection {
     }
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
-        TextView crashHeading = ui.label(ui.getString(R.string.settings_crash_log_heading), 11, inkMuted);
-        crashHeading.setTypeface(StillwaterUi.sansMedium(ui.settingsActivity()));
-        crashHeading.setLetterSpacing(0.12f);
-        crashHeading.setPadding(0, ui.dp(18), 0, ui.dp(4));
-        configuration.addView(crashHeading);
+        LinearLayout card = StillwaterUi.settingsCard(configuration,
+                ui.getString(R.string.settings_crash_log_heading));
+        StillwaterUi.settingsHelp(card, ui.getString(R.string.settings_crash_log_body));
 
-        TextView crashBody = ui.label(ui.getString(R.string.settings_crash_log_body), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(crashBody);
-        configuration.addView(crashBody);
-
-        crashLogText = ui.label(ui.getString(R.string.settings_crash_log_empty), 12, ink);
+        crashLogText = ui.label(ui.getString(R.string.settings_crash_log_empty), 13, ink);
         crashLogText.setId(R.id.settings_crash_log_text);
-        crashLogText.setTypeface(StillwaterUi.mono(ui.settingsActivity()));
-        GradientDrawable codeBox = new GradientDrawable();
-        codeBox.setColor(StillwaterUi.CODE_BG);
-        codeBox.setCornerRadius(2f * ui.settingsActivity().getResources().getDisplayMetrics().density);
-        codeBox.setStroke(Math.max(1, ui.dp(1)), StillwaterUi.LINE);
-        crashLogText.setBackground(codeBox);
-        crashLogText.setPadding(ui.dp(10), ui.dp(8), ui.dp(10), ui.dp(8));
+        StillwaterUi.styleCodeBlock(crashLogText);
         LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(-1, -2);
-        logParams.topMargin = ui.dp(8);
-        configuration.addView(crashLogText, logParams);
+        logParams.topMargin = ui.dp(4);
+        logParams.bottomMargin = ui.dp(6);
+        card.addView(crashLogText, logParams);
 
         Button viewCrashLog = ui.button(ui.getString(R.string.settings_crash_log_view));
         viewCrashLog.setId(R.id.settings_crash_log_view);
@@ -72,7 +61,7 @@ final class CrashLogSettingsSection {
                     ui.getString(R.string.settings_crash_log_export)));
             deps.chatStatus.accept(ui.getString(R.string.settings_crash_log_exported));
         });
-        StillwaterReadable.addFlexibleButtonRow(configuration, ui.settingsActivity(), 44,
+        StillwaterReadable.addFlexibleButtonRow(card, ui.settingsActivity(), 48,
                 viewCrashLog, exportCrashLog);
 
         Button clearCrashLog = ui.button(ui.getString(R.string.settings_crash_log_clear));
@@ -82,6 +71,6 @@ final class CrashLogSettingsSection {
             CrashLog.clear(ui.settingsActivity());
             crashLogText.setText(ui.getString(R.string.settings_crash_log_empty));
         });
-        StillwaterReadable.addFlexibleFullWidth(configuration, clearCrashLog, 44);
+        StillwaterReadable.addFlexibleFullWidth(card, clearCrashLog, 48);
     }
 }

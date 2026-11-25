@@ -34,22 +34,14 @@ final class AppearanceSettingsSection {
     }
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
-        LinearLayout section = new LinearLayout(host.settingsActivity());
+        LinearLayout section = StillwaterUi.settingsCard(configuration,
+                host.getString(R.string.appearance_heading));
         section.setId(R.id.settings_appearance);
-        section.setOrientation(LinearLayout.VERTICAL);
-        TextView heading = host.label(host.getString(R.string.appearance_heading), 11, inkMuted);
-        heading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
-        heading.setLetterSpacing(0.12f);
-        heading.setPadding(0, host.dp(18), 0, host.dp(4));
-        section.addView(heading);
-        TextView title = host.label(host.getString(R.string.interface_size_label), 15, ink);
+        TextView title = host.label(host.getString(R.string.interface_size_label), 16, ink);
         title.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
         StillwaterReadable.prepareWrappingLabel(title);
         section.addView(title);
-        TextView help = host.label(host.getString(R.string.interface_size_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(help);
-        help.setPadding(0, host.dp(2), 0, host.dp(4));
-        section.addView(help);
+        StillwaterUi.settingsHelp(section, host.getString(R.string.interface_size_help));
 
         interfaceCompactButton = interfacePreset(host.getString(R.string.interface_size_compact),
                 InterfaceSize.COMPACT, R.id.settings_interface_compact);
@@ -57,15 +49,15 @@ final class AppearanceSettingsSection {
                 InterfaceSize.DEFAULT, R.id.settings_interface_default);
         interfaceLargeButton = interfacePreset(host.getString(R.string.interface_size_large),
                 InterfaceSize.LARGE, R.id.settings_interface_large);
-        LinearLayout presets = StillwaterReadable.addFlexibleButtonRow(section, host.settingsActivity(), 46,
+        LinearLayout presets = StillwaterReadable.addFlexibleButtonRow(section, host.settingsActivity(), 48,
                 interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton);
         presets.setId(R.id.settings_interface_size);
 
-        interfaceSizeValue = host.label("", 12, StillwaterUi.CANDLE);
+        interfaceSizeValue = host.label("", 14, StillwaterUi.CANDLE);
         interfaceSizeValue.setId(R.id.settings_interface_value);
         interfaceSizeValue.setTypeface(StillwaterUi.mono(host.settingsActivity()));
         StillwaterReadable.prepareWrappingLabel(interfaceSizeValue);
-        interfaceSizeValue.setPadding(0, host.dp(8), 0, host.dp(2));
+        interfaceSizeValue.setPadding(0, host.dp(12), 0, host.dp(4));
         section.addView(interfaceSizeValue);
 
         interfaceSizeSlider = new SeekBar(host.settingsActivity());
@@ -104,7 +96,6 @@ final class AppearanceSettingsSection {
         });
         section.addView(interfaceSizeSlider, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        configuration.addView(section);
         syncControls();
     }
 

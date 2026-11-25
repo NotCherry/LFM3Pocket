@@ -473,7 +473,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(surface);
-        StillwaterUi.applySystemAndImeInsets(this, root, dp(12), dp(6), dp(12), dp(6));
+        StillwaterUi.applySystemAndImeInsets(this, root, dp(16), dp(6), dp(16), dp(8));
 
         chatShellSection = new ChatShellSection(this, new ChatShellSection.Deps(
                 () -> historyTitle, () -> searchEnabled, () -> requestNewChat(false),
@@ -486,27 +486,33 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         LinearLayout settingsRoot = new LinearLayout(this);
         settingsRoot.setOrientation(LinearLayout.VERTICAL);
         settingsRoot.setBackgroundColor(surface);
+        LinearLayout settingsHeader = new LinearLayout(this);
+        settingsHeader.setOrientation(LinearLayout.HORIZONTAL);
+        settingsHeader.setGravity(Gravity.CENTER_VERTICAL);
+        settingsHeader.setPadding(0, dp(4), 0, dp(10));
+        TextView settingsHeading = label(getString(R.string.settings_title), 26, ink);
+        settingsHeading.setTypeface(StillwaterUi.serif(this));
+        StillwaterReadable.prepareWrappingLabel(settingsHeading);
+        settingsHeader.addView(settingsHeading, new LinearLayout.LayoutParams(0, -2, 1f));
         Button settingsBack = button(getString(R.string.back_to_chat));
         settingsBack.setId(R.id.settings_back);
-        StillwaterUi.quiet(settingsBack);
-        settingsBack.setTextColor(accent);
-        settingsBack.setPadding(0, dp(6), dp(12), dp(6));
-        settingsBack.setMinimumHeight(InterfaceSize.minTouchPx(this));
+        StillwaterUi.accentOutlined(settingsBack);
+        StillwaterReadable.setTextSizeSp(settingsBack, 14f);
+        settingsBack.setPadding(dp(14), dp(8), dp(14), dp(8));
+        int backFloor = Math.max(dp(48), InterfaceSize.minTouchPx(this));
+        settingsBack.setMinimumHeight(backFloor);
+        settingsBack.setMinWidth(backFloor);
         settingsBack.setOnClickListener(v -> setSettingsOpen(false));
-        StillwaterReadable.prepareWrappingControl(settingsBack, Math.max(dp(44), InterfaceSize.minTouchPx(this)));
-        settingsRoot.addView(settingsBack, new LinearLayout.LayoutParams(-2, -2));
-        TextView settingsHeading = label(getString(R.string.settings_title), 28, ink);
-        settingsHeading.setTypeface(StillwaterUi.serif(this));
-        settingsHeading.setPadding(0, dp(2), 0, dp(8));
-        StillwaterReadable.prepareWrappingLabel(settingsHeading);
-        settingsRoot.addView(settingsHeading);
+        StillwaterReadable.prepareWrappingControl(settingsBack, backFloor);
+        settingsHeader.addView(settingsBack, new LinearLayout.LayoutParams(-2, -2));
+        settingsRoot.addView(settingsHeader, new LinearLayout.LayoutParams(-1, -2));
         View settingsHeaderDivider = new View(this);
         settingsHeaderDivider.setBackgroundColor(StillwaterUi.LINE);
         settingsRoot.addView(settingsHeaderDivider, new LinearLayout.LayoutParams(-1, Math.max(1, dp(1))));
 
         LinearLayout configuration = new LinearLayout(this);
         configuration.setOrientation(LinearLayout.VERTICAL);
-        configuration.setPadding(0, 0, 0, dp(16));
+        configuration.setPadding(0, 0, 0, dp(8));
         modelImportSection = new ModelImportSettingsSection(this, new ModelImportSettingsSection.Deps(
                 this::pickModel, this::pickMmproj,
                 () -> pickExternalModel(OPEN_MODEL_URI),
@@ -573,7 +579,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         ScrollView configurationScroll = new ScrollView(this);
         configurationScroll.setId(R.id.model_configuration_scroll);
         configurationScroll.setBackgroundColor(surface);
-        configurationScroll.setPadding(0, dp(4), 0, dp(8));
+        configurationScroll.setScrollBarStyle(View.SCROLLBARS_OUTSIDE_OVERLAY);
+        configurationScroll.setClipToPadding(false);
+        configurationScroll.setPadding(0, dp(16), 0, dp(24));
         configurationScroll.addView(configuration);
         settingsRoot.addView(configurationScroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
@@ -584,19 +592,21 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         LinearLayout settingsActions = new LinearLayout(this);
         settingsActions.setOrientation(LinearLayout.VERTICAL);
         settingsActions.setBackgroundColor(surface);
-        settingsActions.setPadding(0, dp(4), 0, dp(4));
+        settingsActions.setPadding(0, dp(8), 0, dp(6));
         Button saveInference = button(getString(R.string.save));
         saveInference.setId(R.id.settings_save);
         StillwaterUi.primary(saveInference);
+        StillwaterReadable.setTextSizeSp(saveInference, 15f);
         saveInference.setOnClickListener(v -> {
             if (inferenceSettingsSection != null) inferenceSettingsSection.saveInline();
         });
         if (searchSettingsSection != null) {
             Button saveSearch = searchSettingsSection.createSaveButton();
-            StillwaterReadable.addFlexibleButtonRow(settingsActions, this, 48,
+            StillwaterReadable.setTextSizeSp(saveSearch, 15f);
+            StillwaterReadable.addFlexibleButtonRow(settingsActions, this, 50,
                     new float[]{1.15f, 1f}, saveInference, saveSearch);
         } else {
-            StillwaterReadable.addFlexibleFullWidth(settingsActions, saveInference, 48);
+            StillwaterReadable.addFlexibleFullWidth(settingsActions, saveInference, 50);
         }
         settingsRoot.addView(settingsActions, new LinearLayout.LayoutParams(-1, -2));
 
@@ -762,24 +772,27 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private EditText settingInput(LinearLayout form, String title, String hint, int value, int id,
                                   int step, int min, int max) {
-        int minTouch = Math.max(dp(44), InterfaceSize.minTouchPx(this));
-        TextView name = label(title, 15, StillwaterUi.INK);
+        int minTouch = Math.max(dp(48), InterfaceSize.minTouchPx(this));
+        TextView name = label(title, 16, StillwaterUi.INK);
         name.setTypeface(StillwaterUi.sansMedium(this));
-        name.setPadding(0, dp(10), 0, 0);
+        name.setPadding(0, dp(12), 0, dp(2));
         StillwaterReadable.prepareWrappingLabel(name);
         form.addView(name);
-        TextView hintView = label(hint, 12, StillwaterUi.MUTED);
+        TextView hintView = label(hint, 13, StillwaterUi.SOFT);
         hintView.setTypeface(StillwaterUi.sans(this));
-        hintView.setPadding(0, 0, 0, dp(4));
+        hintView.setLineSpacing(0f, 1.25f);
+        hintView.setPadding(0, 0, 0, dp(8));
         StillwaterReadable.prepareWrappingLabel(hintView);
         form.addView(hintView);
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        int stepperWidth = Math.max(dp(56), minTouch);
         Button minus = button("–");
         StillwaterUi.outlined(minus);
-        StillwaterReadable.setTextSizeSp(minus, 18);
-        minus.setMinimumWidth(minTouch);
+        StillwaterReadable.setTextSizeSp(minus, 20);
+        minus.setMinWidth(stepperWidth);
+        minus.setMinimumWidth(stepperWidth);
         minus.setMinimumHeight(minTouch);
         StillwaterReadable.prepareWrappingControl(minus, minTouch);
         EditText field = new EditText(this);
@@ -794,19 +807,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         field.setMinimumHeight(minTouch);
         Button plus = button("+");
         StillwaterUi.outlined(plus);
-        StillwaterReadable.setTextSizeSp(plus, 18);
-        plus.setMinimumWidth(minTouch);
+        StillwaterReadable.setTextSizeSp(plus, 20);
+        plus.setMinWidth(stepperWidth);
+        plus.setMinimumWidth(stepperWidth);
         plus.setMinimumHeight(minTouch);
         StillwaterReadable.prepareWrappingControl(plus, minTouch);
         minus.setOnClickListener(v -> nudge(field, -step, min, max));
         plus.setOnClickListener(v -> nudge(field, step, min, max));
-        row.addView(minus, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        row.addView(minus, new LinearLayout.LayoutParams(stepperWidth, LinearLayout.LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams fieldParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        fieldParams.leftMargin = dp(6);
-        fieldParams.rightMargin = dp(6);
+        fieldParams.leftMargin = dp(8);
+        fieldParams.rightMargin = dp(8);
         row.addView(field, fieldParams);
-        row.addView(plus, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        form.addView(row);
+        row.addView(plus, new LinearLayout.LayoutParams(stepperWidth, LinearLayout.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, -2);
+        rowParams.bottomMargin = dp(4);
+        form.addView(row, rowParams);
         return field;
     }
 

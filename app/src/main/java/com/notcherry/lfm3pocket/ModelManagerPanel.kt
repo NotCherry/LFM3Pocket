@@ -70,7 +70,7 @@ class ModelManagerPanel @JvmOverloads constructor(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
+                    .background(atlas.surface, MaterialTheme.shapes.medium)
                     .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
                     .padding(space.space4),
             ) {
@@ -80,22 +80,22 @@ class ModelManagerPanel @JvmOverloads constructor(
                     color = atlas.ink,
                     style = type.body,
                 )
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(4.dp))
                 Text(
                     stringResource(R.string.projector_label, projectorName),
                     color = atlas.inkSoft,
                     style = type.bodySmall,
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(6.dp))
                 Text(
                     settingsSummary,
                     style = type.mono,
                     color = atlas.inkMuted,
                 )
-                Spacer(Modifier.height(space.space2))
+                Spacer(Modifier.height(space.space3))
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(space.space2),
-                    verticalArrangement = Arrangement.spacedBy(space.space1),
+                    verticalArrangement = Arrangement.spacedBy(space.space2),
                 ) {
                     OutlinedButton(
                         onClick = { reload.run() },
@@ -103,7 +103,7 @@ class ModelManagerPanel @JvmOverloads constructor(
                         modifier = Modifier.minimumInteractiveComponentSize(),
                         shape = MaterialTheme.shapes.medium,
                         border = BorderStroke(1.dp, if (canReload) atlas.borderStrong else atlas.border),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         colors = StillwaterControls.outlinedColors(),
                     ) {
                         Text(
@@ -120,7 +120,7 @@ class ModelManagerPanel @JvmOverloads constructor(
                         modifier = Modifier.minimumInteractiveComponentSize(),
                         shape = MaterialTheme.shapes.medium,
                         border = BorderStroke(1.dp, if (canUnload) atlas.borderStrong else atlas.border),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         colors = StillwaterControls.outlinedColors(),
                     ) {
                         Text(stringResource(R.string.unload_model))
@@ -131,7 +131,7 @@ class ModelManagerPanel @JvmOverloads constructor(
                             enabled = !state.busy,
                             modifier = Modifier.minimumInteractiveComponentSize(),
                             shape = MaterialTheme.shapes.medium,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                             colors = StillwaterControls.textButtonColors(),
                         ) { Text(stringResource(R.string.settings_title)) }
                     }

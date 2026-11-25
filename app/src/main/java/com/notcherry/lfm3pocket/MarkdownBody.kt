@@ -43,7 +43,7 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier) {
     val bodyColor = atlas.ink
     Column(modifier.fillMaxWidth()) {
         blocks.forEachIndexed { index, block ->
-            val top = if (index == 0) 0.dp else 8.dp
+            val top = if (index == 0) 0.dp else 10.dp
             when (block) {
                 is MdBlock.Heading -> {
                     val style = when (block.level) {
@@ -69,7 +69,7 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier) {
                 is MdBlock.BulletList -> {
                     Column(
                         Modifier.padding(top = top),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         block.items.forEach { item ->
                             Row(Modifier.fillMaxWidth()) {
@@ -91,7 +91,7 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier) {
                 is MdBlock.OrderedList -> {
                     Column(
                         Modifier.padding(top = top),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         block.items.forEachIndexed { i, item ->
                             Row(Modifier.fillMaxWidth()) {
@@ -117,15 +117,15 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier) {
                             text = block.code,
                             color = atlas.inkSoft,
                             style = type.mono.copy(
-                                fontSize = 12.5.sp,
-                                lineHeight = 18.sp,
+                                fontSize = 14.sp,
+                                lineHeight = 21.sp,
                             ),
                             modifier = Modifier
                                 .padding(top = top)
                                 .fillMaxWidth()
                                 .background(codeBg, MaterialTheme.shapes.medium)
                                 .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
                         )
                     }
                 }
@@ -149,7 +149,7 @@ private fun annotatedInlines(
                 is MdInline.Code -> withStyle(
                     SpanStyle(
                         fontFamily = StillwaterMono,
-                        fontSize = 12.5.sp,
+                        fontSize = 14.sp,
                         background = codeBg,
                         color = codeTextColor,
                     ),

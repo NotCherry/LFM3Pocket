@@ -77,31 +77,31 @@ final class ChatShellSection {
         LinearLayout topBar = new LinearLayout(ui.settingsActivity());
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
-        topBar.setPadding(0, ui.dp(2), 0, ui.dp(4));
+        topBar.setPadding(0, ui.dp(6), 0, ui.dp(8));
 
         LinearLayout titles = new LinearLayout(ui.settingsActivity());
         titles.setOrientation(LinearLayout.VERTICAL);
-        brandTitle = ui.label(deps.historyTitle.get(), 18, ink);
+        brandTitle = ui.label(deps.historyTitle.get(), 20, ink);
         brandTitle.setTypeface(StillwaterUi.serif(ui.settingsActivity()));
         StillwaterReadable.prepareWrappingLabel(brandTitle);
         titles.addView(brandTitle);
 
         // Subtle search indicator only when web search is active (avoids duplicating composer mode line).
-        modePill = ui.label(ui.getString(R.string.mode_web_search_short), 11, accent);
+        modePill = ui.label(ui.getString(R.string.mode_web_search_short), 12, accent);
         modePill.setTypeface(StillwaterUi.sansMedium(ui.settingsActivity()));
         StillwaterReadable.prepareWrappingLabel(modePill);
         modePill.setVisibility(deps.searchEnabled.getAsBoolean() ? View.VISIBLE : View.GONE);
         titles.addView(modePill);
 
         LinearLayout.LayoutParams titlesParams = new LinearLayout.LayoutParams(0, -2, 1f);
-        titlesParams.rightMargin = ui.dp(6);
+        titlesParams.rightMargin = ui.dp(8);
         topBar.addView(titles, titlesParams);
 
         Button newChat = ui.button(ui.getString(R.string.new_chat));
         newChat.setId(R.id.chat_new_chat);
         StillwaterUi.accentOutlined(newChat);
-        StillwaterReadable.setTextSizeSp(newChat, 12);
-        newChat.setPadding(ui.dp(10), ui.dp(4), ui.dp(10), ui.dp(4));
+        StillwaterReadable.setTextSizeSp(newChat, 13.5f);
+        newChat.setPadding(ui.dp(12), ui.dp(6), ui.dp(12), ui.dp(6));
         newChat.setOnClickListener(v -> deps.requestNewChat.run());
         newChat.setMinWidth(minTouch);
         newChat.setMinimumWidth(minTouch);
@@ -109,33 +109,38 @@ final class ChatShellSection {
         newChat.setMinimumHeight(minTouch);
         StillwaterReadable.prepareWrappingControl(newChat, minTouch);
         LinearLayout.LayoutParams newChatParams = new LinearLayout.LayoutParams(-2, -2);
-        newChatParams.rightMargin = ui.dp(2);
+        newChatParams.rightMargin = ui.dp(6);
         topBar.addView(newChat, newChatParams);
 
         settingsOpenButton = ui.button("");
         settingsOpenButton.setId(R.id.settings_open);
         settingsOpenButton.setContentDescription(ui.getString(R.string.settings_title));
+        // Zero text height + centered foreground/compound icon so gear is pixel-aligned with New chat & ⋮.
+        settingsOpenButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 0f);
+        settingsOpenButton.setIncludeFontPadding(false);
         settingsOpenButton.setCompoundDrawablesWithIntrinsicBounds(0, R.drawable.ic_still_gear, 0, 0);
         settingsOpenButton.setCompoundDrawablePadding(0);
         settingsOpenButton.setGravity(Gravity.CENTER);
-        settingsOpenButton.setPadding(ui.dp(12), ui.dp(14), ui.dp(12), ui.dp(14));
-        StillwaterUi.quiet(settingsOpenButton);
+        int iconPad = Math.max(0, (minTouch - ui.dp(22)) / 2);
+        settingsOpenButton.setPadding(iconPad, iconPad, iconPad, iconPad);
+        StillwaterUi.outlined(settingsOpenButton);
         StillwaterUi.tintStatefulIcon(settingsOpenButton);
         settingsOpenButton.setOnClickListener(v -> deps.openSettings.run());
         settingsOpenButton.setMinWidth(minTouch);
         settingsOpenButton.setMinimumWidth(minTouch);
         settingsOpenButton.setMinHeight(minTouch);
         settingsOpenButton.setMinimumHeight(minTouch);
-        // WRAP_CONTENT + overridden TextView minWidth (default 88dp) -> exact 48dp touch square.
-        topBar.addView(settingsOpenButton, new LinearLayout.LayoutParams(-2, -2));
+        LinearLayout.LayoutParams gearParams = new LinearLayout.LayoutParams(minTouch, minTouch);
+        gearParams.rightMargin = ui.dp(6);
+        topBar.addView(settingsOpenButton, gearParams);
 
         Button overflow = ui.button("⋮");
         overflow.setId(R.id.chat_overflow);
         overflow.setContentDescription(ui.getString(R.string.chat_more_options));
-        StillwaterReadable.setTextSizeSp(overflow, 18);
+        StillwaterReadable.setTextSizeSp(overflow, 20);
         overflow.setGravity(Gravity.CENTER);
-        overflow.setPadding(ui.dp(10), ui.dp(4), ui.dp(10), ui.dp(4));
-        StillwaterUi.quiet(overflow);
+        overflow.setPadding(0, 0, 0, 0);
+        StillwaterUi.outlined(overflow);
         overflow.setOnClickListener(v -> {
             android.view.ContextThemeWrapper menuContext =
                     new android.view.ContextThemeWrapper(ui.settingsActivity(), R.style.Theme_Stillwater);
@@ -160,7 +165,7 @@ final class ChatShellSection {
         overflow.setMinimumWidth(minTouch);
         overflow.setMinHeight(minTouch);
         overflow.setMinimumHeight(minTouch);
-        topBar.addView(overflow, new LinearLayout.LayoutParams(-2, -2));
+        topBar.addView(overflow, new LinearLayout.LayoutParams(minTouch, minTouch));
 
         topBarView = topBar;
         root.addView(topBar);
@@ -169,9 +174,9 @@ final class ChatShellSection {
         topDividerView.setBackgroundColor(StillwaterUi.LINE);
         root.addView(topDividerView, new LinearLayout.LayoutParams(-1, Math.max(1, ui.dp(1))));
 
-        status = ui.label(ui.getString(R.string.starting), 12, inkMuted);
+        status = ui.label(ui.getString(R.string.starting), 13, inkMuted);
         status.setId(R.id.chat_status);
-        status.setPadding(0, ui.dp(5), 0, ui.dp(4));
+        status.setPadding(0, ui.dp(6), 0, ui.dp(6));
         StillwaterReadable.prepareWrappingLabel(status);
         root.addView(status);
     }
@@ -187,7 +192,7 @@ final class ChatShellSection {
         LinearLayout mediaHost = new LinearLayout(ui.settingsActivity());
         mediaHost.setOrientation(LinearLayout.VERTICAL);
         mediaHost.setBackgroundColor(surface);
-        mediaHost.setPadding(0, ui.dp(4), 0, ui.dp(2));
+        mediaHost.setPadding(0, ui.dp(8), 0, ui.dp(4));
         photoButton = mediaButton(ui.getString(R.string.photo), R.drawable.ic_still_photo);
         photoButton.setId(R.id.chat_photo);
         cameraButton = mediaButton(ui.getString(R.string.camera), R.drawable.ic_still_camera);
@@ -199,17 +204,14 @@ final class ChatShellSection {
         recordButton.setId(R.id.voice_record);
         speakButton = mediaButton(ui.getString(R.string.speak_reply), R.drawable.ic_still_speak);
         speakButton.setId(R.id.voice_speak);
-        // Two rows when stacked (narrow / large fonts); one clean 5-slot icon-top bar otherwise.
-        if (StillwaterReadable.shouldStack(ui.settingsActivity())) {
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 48,
-                    photoButton, cameraButton, documentButton);
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 48,
-                    new float[]{1f, 1.1f}, recordButton, speakButton);
-        } else {
-            StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 48,
-                    new float[]{1f, 1f, 1.05f, 1.15f, 1.15f},
-                    photoButton, cameraButton, documentButton, recordButton, speakButton);
-        }
+        // Structured 3 + 2 tactile dock: generous thumb targets, aligned 22dp icons, zero squishing.
+        StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 48,
+                new float[]{1f, 1f, 1.15f}, photoButton, cameraButton, documentButton);
+        LinearLayout voiceRow = StillwaterReadable.addFlexibleButtonRow(mediaHost, ui.settingsActivity(), 48,
+                new float[]{1f, 1f}, recordButton, speakButton);
+        LinearLayout.LayoutParams voiceParams = (LinearLayout.LayoutParams) voiceRow.getLayoutParams();
+        voiceParams.topMargin = ui.dp(8);
+        voiceRow.setLayoutParams(voiceParams);
         chatRoot.addView(mediaHost);
         chatShell = chatRoot;
         root.addView(chatShell, new LinearLayout.LayoutParams(-1, 0, 1f));
@@ -305,12 +307,12 @@ final class ChatShellSection {
 
     private Button mediaButton(String title, int icon) {
         Button button = ui.button(title);
-        StillwaterReadable.setTextSizeSp(button, 11);
-        button.setGravity(Gravity.CENTER);
-        button.setPadding(ui.dp(3), ui.dp(5), ui.dp(3), ui.dp(5));
-        button.setCompoundDrawablesWithIntrinsicBounds(0, icon, 0, 0);
-        button.setCompoundDrawablePadding(ui.dp(3));
-        StillwaterUi.quiet(button);
+        StillwaterUi.outlined(button);
+        StillwaterReadable.setTextSizeSp(button, 13.5f);
+        button.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        button.setPadding(ui.dp(12), ui.dp(10), ui.dp(10), ui.dp(10));
+        button.setCompoundDrawablesWithIntrinsicBounds(icon, 0, 0, 0);
+        button.setCompoundDrawablePadding(ui.dp(8));
         StillwaterUi.tintStatefulIcon(button);
         int floor = Math.max(ui.dp(48), InterfaceSize.minTouchPx(ui.settingsActivity()));
         button.setMinimumHeight(floor);

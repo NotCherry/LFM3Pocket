@@ -181,6 +181,8 @@
     <string name="settings_crash_log_empty">Brak zapisanych informacji o awarii.</string>
     <string name="settings_crash_log_exported">Dziennik awarii gotowy do udostępnienia z tego telefonu.</string>
     <string name="compact_conversation">Kompaktuj rozmowę</string>
+    <string name="compact_short">Kompaktuj</string>
+    <string name="default_assistant_heading">ASYSTENT</string>
     <string name="chat_interrupted_retry">Przerwano — Ponów</string>
 
     <string name="notification_listener_label">Dostęp Hanami do powiadomień</string>

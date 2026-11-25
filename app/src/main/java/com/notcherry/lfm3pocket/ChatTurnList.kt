@@ -79,7 +79,7 @@ fun ChatTurnList(
     val scroll = rememberScrollState()
     val space = MaterialTheme.atlasSpacing
     LaunchedEffect(turns.size, turns.lastOrNull()?.text, turns.lastOrNull()?.streaming) {
-        if (autoScroll) scroll.scrollTo(scroll.maxValue)
+        if (autoScroll && turns.isNotEmpty()) scroll.scrollTo(scroll.maxValue)
     }
     Column(
         modifier
@@ -131,7 +131,6 @@ fun ChatTurn(
     val space = MaterialTheme.atlasSpacing
     val isUser = turn.role == "user"
     val roleLabel = if (isUser) stringResource(R.string.chat_role_you) else stringResource(R.string.app_name)
-    val wideViewport = LocalConfiguration.current.screenWidthDp >= 600
     val bodyTag = when {
         isUser && userMessageTag != null -> "$packageName:id/$userMessageTag"
         !isUser && assistantMessageTag != null -> "$packageName:id/$assistantMessageTag"
@@ -143,7 +142,7 @@ fun ChatTurn(
             style = type.label,
             color = if (isUser) atlas.inkMuted else atlas.accent,
         )
-        Spacer(Modifier.height(space.space1))
+        Spacer(Modifier.height(space.space2))
         if (isUser) {
             SelectionContainer {
                 Text(
@@ -165,33 +164,15 @@ fun ChatTurn(
                         .semantics { contentDescription = turn.text },
                 )
             }
-        } else if (wideViewport) {
-            // Landscape / tablet (>=600dp): side-by-side leading Reasoning rail per DESIGN.md §4.
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                if (!turn.reasoning.isNullOrBlank()) {
-                    ReasoningRail(
-                        reasoning = turn.reasoning!!,
-                        modifier = Modifier
-                            .padding(end = space.space4)
-                            .widthIn(min = 140.dp, max = 240.dp),
-                    )
-                }
-                AssistantAnswerColumn(
-                    turn = turn,
-                    packageName = packageName,
-                    bodyTag = bodyTag,
-                    onRetryInterrupted = onRetryInterrupted,
-                    modifier = Modifier.weight(1f),
-                )
-            }
         } else {
-            // Portrait phone (<600dp): top-of-turn collapsible strip so answer & code get 100% width.
+            // Always place collapsible reasoning above the answer across all viewports so
+            // assistant text and code blocks get 100% reading width (no awkward side panel).
             if (!turn.reasoning.isNullOrBlank()) {
                 ReasoningRail(
                     reasoning = turn.reasoning!!,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = space.space2),
+                        .padding(bottom = space.space3),
                 )
             }
             AssistantAnswerColumn(
@@ -269,16 +250,9 @@ fun ReasoningRail(reasoning: String, modifier: Modifier = Modifier) {
         modifier
             .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
             .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
-            .drawBehind {
-                drawLine(
-                    color = atlas.accent.copy(alpha = 0.7f),
-                    start = Offset(0f, 0f),
-                    end = Offset(0f, size.height),
-                    strokeWidth = 2.dp.toPx(),
-                )
-            }
             .clickable { expanded = !expanded }
-            .padding(horizontal = space.space3, vertical = space.space2),
+            .heightIn(min = 48.dp)
+            .padding(horizontal = space.space4, vertical = space.space3),
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -293,12 +267,12 @@ fun ReasoningRail(reasoning: String, modifier: Modifier = Modifier) {
                 )
                 Text(
                     text = stringResource(R.string.chat_reasoning),
-                    style = type.label,
+                    style = type.bodySmall,
                     color = atlas.ink,
                 )
             }
             if (!expanded && preview.isNotBlank()) {
-                Spacer(Modifier.width(space.space2))
+                Spacer(Modifier.width(space.space3))
                 Text(
                     text = preview,
                     style = type.bodySmall,
@@ -314,14 +288,19 @@ fun ReasoningRail(reasoning: String, modifier: Modifier = Modifier) {
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut(),
         ) {
-            Text(
-                text = reasoning,
-                style = type.mono,
-                color = atlas.inkSoft,
-                modifier = Modifier
-                    .padding(top = space.space2)
-                    .fillMaxWidth(),
-            )
+            Column(Modifier.fillMaxWidth()) {
+                HorizontalDivider(
+                    color = atlas.border,
+                    thickness = 1.dp,
+                    modifier = Modifier.padding(vertical = space.space2),
+                )
+                Text(
+                    text = reasoning,
+                    style = type.bodySmall,
+                    color = atlas.inkSoft,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }

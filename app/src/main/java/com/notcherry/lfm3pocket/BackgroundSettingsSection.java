@@ -53,52 +53,49 @@ final class BackgroundSettingsSection {
     }
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
-        TextView backgroundHeading = host.label(host.getString(R.string.background_heading), 11, inkMuted);
-        backgroundHeading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
-        backgroundHeading.setLetterSpacing(0.12f);
-        backgroundHeading.setPadding(0, host.dp(18), 0, host.dp(4));
-        configuration.addView(backgroundHeading);
+        LinearLayout card = StillwaterUi.settingsCard(configuration,
+                host.getString(R.string.background_heading));
 
         keepLoadedBox = new CheckBox(host.settingsActivity());
         keepLoadedBox.setId(R.id.settings_keep_loaded);
         keepLoadedBox.setText(R.string.keep_model_loaded);
         StillwaterUi.styleCheck(keepLoadedBox);
         keepLoadedBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
-        configuration.addView(keepLoadedBox);
+        card.addView(keepLoadedBox);
 
-        TextView idleTitle = host.label(host.getString(R.string.unload_after_idle), 15, ink);
+        TextView idleTitle = host.label(host.getString(R.string.unload_after_idle), 16, ink);
         idleTitle.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
-        idleTitle.setPadding(0, host.dp(8), 0, host.dp(2));
-        configuration.addView(idleTitle);
+        idleTitle.setPadding(0, host.dp(12), 0, host.dp(4));
+        card.addView(idleTitle);
 
         idleOffButton = idleChoice(host.getString(R.string.idle_off), 0, R.id.settings_idle_off);
         idle15Button = idleChoice(host.getString(R.string.idle_15), 15, R.id.settings_idle_15);
         idle60Button = idleChoice(host.getString(R.string.idle_60), 60, R.id.settings_idle_60);
         LinearLayout idleRow = StillwaterReadable.addFlexibleButtonRow(
-                configuration, host.settingsActivity(), 44, idleOffButton, idle15Button, idle60Button);
+                card, host.settingsActivity(), 48, idleOffButton, idle15Button, idle60Button);
         idleRow.setId(R.id.settings_idle_unload);
+
+        StillwaterUi.settingsDivider(card);
 
         lockPreviewBox = new CheckBox(host.settingsActivity());
         lockPreviewBox.setId(R.id.settings_lock_preview);
         lockPreviewBox.setText(R.string.lock_screen_preview);
         StillwaterUi.styleCheck(lockPreviewBox);
         lockPreviewBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
-        LinearLayout.LayoutParams lockParams = new LinearLayout.LayoutParams(-1, -2);
-        lockParams.topMargin = host.dp(6);
-        configuration.addView(lockPreviewBox, lockParams);
+        card.addView(lockPreviewBox);
 
         loopbackBox = new CheckBox(host.settingsActivity());
         loopbackBox.setId(R.id.settings_loopback);
         loopbackBox.setText(R.string.loopback_prompts);
         StillwaterUi.styleCheck(loopbackBox);
         loopbackBox.setOnCheckedChangeListener((button, checked) -> saveBackgroundSettings());
-        configuration.addView(loopbackBox);
+        card.addView(loopbackBox);
 
         Button loopbackTokenButton = host.button(host.getString(R.string.loopback_show_token));
         loopbackTokenButton.setId(R.id.settings_loopback_token);
         StillwaterUi.outlined(loopbackTokenButton);
         loopbackTokenButton.setOnClickListener(v -> showLoopbackToken());
-        StillwaterReadable.addFlexibleFullWidth(configuration, loopbackTokenButton, 44);
+        StillwaterReadable.addFlexibleFullWidth(card, loopbackTokenButton, 48);
     }
 
     void syncControls() {
