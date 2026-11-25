@@ -156,6 +156,12 @@ final class VoiceInputCoordinator {
         voiceSttCancelled.set(true);
     }
 
+    void cancelAllOnClear() {
+        voiceSttCancelled.set(true);
+        transcribingVoiceInput = false;
+        if (recordingActive()) recordingController.cancel();
+    }
+
     boolean stopActiveWorkIfHandling() {
         if (transcribingVoiceInput) {
             voiceSttCancelled.set(true);
@@ -212,8 +218,9 @@ final class VoiceInputCoordinator {
                         ? deps.activity.getString(R.string.stop_speech)
                         : deps.activity.getString(R.string.speak_reply));
         long handle = deps.runtime == null ? 0L : deps.runtime.handle();
+        boolean modelReady = handle != 0L && (deps.runtime == null || !deps.runtime.isUnloading());
         boolean canSpeakReply = !deps.lastAssistantReply.get().isBlank()
-                && ((handle != 0L && deps.isSettingsLoaded.getAsBoolean()) || canSpeakWithoutOmniModel());
+                && ((modelReady && deps.isSettingsLoaded.getAsBoolean()) || canSpeakWithoutOmniModel());
         speakButton.setEnabled((!busy || playbackActive() || speaking)
                 && (playbackActive() || speaking || canSpeakReply));
     }
@@ -237,12 +244,13 @@ final class VoiceInputCoordinator {
     void toggleSpokenReply() {
         String reply = deps.lastAssistantReply.get();
         if (playbackActive() || deps.isSpeaking.getAsBoolean()) {
-            deps.runtime.speak(reply);
+            deps.runtime.stopSpeech();
             return;
         }
         if (deps.isBusy.getAsBoolean() || !deps.isForeground.getAsBoolean() || reply.isBlank()) return;
         long handle = deps.runtime == null ? 0L : deps.runtime.handle();
-        if (handle == 0L && !canSpeakWithoutOmniModel()) return;
+        boolean unloading = deps.runtime != null && deps.runtime.isUnloading();
+        if ((handle == 0L || unloading) && !canSpeakWithoutOmniModel()) return;
         deps.setBusy.accept(true);
         deps.setSpeaking.accept(true);
         deps.updateControls.run();
@@ -368,7 +376,8 @@ final class VoiceInputCoordinator {
                 }
                 deps.updateControls.run();
                 long handle = deps.runtime == null ? 0L : deps.runtime.handle();
-                if (handle == 0L || !deps.isSettingsLoaded.getAsBoolean() || deps.isBusy.getAsBoolean()) {
+                boolean unloading = deps.runtime != null && deps.runtime.isUnloading();
+                if (handle == 0L || unloading || !deps.isSettingsLoaded.getAsBoolean() || deps.isBusy.getAsBoolean()) {
                     ChatPanel panel = deps.chatPanel.get();
                     if (panel != null) panel.setDraft(stt.text);
                     deps.setChatStatus.accept(deps.activity.getString(R.string.speech_input_transcribed_draft));

@@ -485,7 +485,7 @@ static jstring run_generate_utf8(
                 std::vector<const mtmd_bitmap *> bitmaps;
                 wrappers.reserve(static_cast<size_t>(media_count));
                 bitmaps.reserve(static_cast<size_t>(media_count));
-                for (jsize i = 0; i < media_count && error.empty(); ++i) {
+                for (jsize i = 0; i < media_count && error.empty() && !state->cancelled.load(); ++i) {
                     auto path = static_cast<jstring>(env->GetObjectArrayElement(media_paths, i));
                     if (!path) {
                         error = "A selected media path is missing";
@@ -509,13 +509,13 @@ static jstring run_generate_utf8(
                     wrappers.push_back(wrapper);
                     bitmaps.push_back(wrapper.bitmap);
                 }
-                if (error.empty()) {
+                if (error.empty() && !state->cancelled.load()) {
                     mtmd_input_chunks * chunks = mtmd_input_chunks_init();
                     mtmd_input_text text = { input.data(), input.size(), false, true };
                     if (!chunks || mtmd_tokenize(state->multimodal, chunks, &text,
                                                   bitmaps.data(), bitmaps.size()) != 0) {
                         error = "Could not prepare the selected media for LFM3";
-                    } else {
+                    } else if (!state->cancelled.load()) {
                         report_progress(env, sink, progress_cb, "projector", 0, static_cast<int>(media_count));
                         llama_pos next_position = 0;
                         if (mtmd_helper_eval_chunks(state->multimodal, state->ctx, chunks, 0, 0,
@@ -576,6 +576,20 @@ static jstring run_generate_utf8(
                     // Cancel or decode error: drop partial session so the next turn
                     // cannot reuse a half-evaluated prompt (blocking review #1).
                     state->release_session();
+                    // If partial prefix reuse failed on a hybrid KV/recurrent session (e.g. after
+                    // clear or compact), retry cleanly from position 0 on a fresh context.
+                    if (shared > 0 && !state->cancelled.load()) {
+                        error.clear();
+                        if (ensure_text_session(state.get(), context_tokens, threads, error)) {
+                            if (!eval_tokens(state.get(), tokens.data(), converted, 0, mrope, error,
+                                             env, sink, progress_cb, converted)) {
+                                state->release_session();
+                            } else {
+                                position = converted;
+                                prompt_ready = true;
+                            }
+                        }
+                    }
                 } else {
                     position = converted;
                     prompt_ready = true;

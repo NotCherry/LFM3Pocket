@@ -11,10 +11,16 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** Small SearXNG JSON client. Network access is only used when the user enables search. */
 final class WebSearch {
+    private static final Set<HttpURLConnection> ACTIVE_CONNECTIONS =
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
+
     static final class Source {
         final String title;
         final String snippet;
@@ -29,6 +35,16 @@ final class WebSearch {
     static final String USER_AGENT = "Hanami/1.0 (Android; on-device assistant)";
 
     private WebSearch() {}
+
+    /** Best-effort abort for in-flight search sockets when the user taps Stop or Clear. */
+    static void cancelActive() {
+        for (HttpURLConnection connection : ACTIVE_CONNECTIONS) {
+            try {
+                connection.disconnect();
+            } catch (Exception ignored) {
+            }
+        }
+    }
 
     /**
      * Normalizes a user-entered SearXNG URL so bare hosts like {@code https://searx.example}
@@ -72,6 +88,7 @@ final class WebSearch {
         connection.setReadTimeout(10000);
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("User-Agent", USER_AGENT);
+        ACTIVE_CONNECTIONS.add(connection);
         try {
             int code = connection.getResponseCode();
             if (code == 403) {
@@ -110,6 +127,7 @@ final class WebSearch {
                 return sources;
             }
         } finally {
+            ACTIVE_CONNECTIONS.remove(connection);
             connection.disconnect();
         }
     }

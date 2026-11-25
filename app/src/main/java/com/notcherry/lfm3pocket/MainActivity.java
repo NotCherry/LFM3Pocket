@@ -73,7 +73,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private String historyConversationId = "default";
     private String historyTitle = "Hanami";
     private InferenceEngine inferenceEngine;
-    private boolean busy = false;
+    private boolean modelBusy = false;
     private boolean generating = false;
     private boolean speaking = false;
     private volatile boolean destroyed = false;
@@ -123,11 +123,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private String pendingSwitchId;
     private String pendingSwitchTitle;
 
+    private boolean isBusy() {
+        return generating || speaking || modelBusy
+                || (voiceCoordinator != null && (voiceCoordinator.recordingActive()
+                        || voiceCoordinator.playbackActive() || voiceCoordinator.isTranscribing()))
+                || (attachmentCoordinator != null && attachmentCoordinator.isImporting())
+                || (modelImportCoordinator != null && modelImportCoordinator.isBusy());
+    }
+
     private final ModelRuntime.Ui viewer = new ModelRuntime.Ui() {
         @Override public void onChat(String transcript, String message, boolean running) {
             if (destroyed || chatPanel == null || chatShellSection == null) return;
             generating = running;
-            recomputeBusy();
             chatPanel.render(transcript, message);
             chatShellSection.applyChatStatusDuringTurn(message, running);
             updateControls();
@@ -149,14 +156,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         }
         @Override public void onPlayback(String message) {
             if (destroyed || chatShellSection == null) return;
-            recomputeBusy();
             setChatStatus(message);
             updateControls();
         }
         @Override public void onSpeech(boolean active, String message) {
             if (destroyed || chatShellSection == null) return;
             speaking = active;
-            recomputeBusy();
             setChatStatus(message);
             updateControls();
         }
@@ -168,6 +173,20 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             if (destroyed || chatShellSection == null) return;
             if (message != null) {
                 voiceUiStatus = message;
+                setChatStatus(message);
+            }
+            updateControls();
+        }
+        @Override public void onModelStateChanged(boolean loaded, String message) {
+            if (destroyed || chatShellSection == null) return;
+            if (runtime != null && !runtime.isLoading() && !runtime.isUnloading()) {
+                modelBusy = false;
+            }
+            if (!loaded) {
+                generating = runtime != null && runtime.isGenerating();
+                speaking = false;
+            }
+            if (message != null && !message.isEmpty()) {
                 setChatStatus(message);
             }
             updateControls();
@@ -227,18 +246,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         Lfm3PocketApplication app = (Lfm3PocketApplication) getApplication();
         attachmentCoordinator = new AttachmentImportCoordinator(new AttachmentImportCoordinator.Deps(
                 this, ioWorker, () -> chatPanel, () -> imageSettings, () -> destroyed,
-                this::recomputeBusy, this::setChatStatus, this::updateControls, app.processingTelemetry()));
+                () -> {}, this::setChatStatus, this::updateControls, app.processingTelemetry()));
         voiceCoordinator = new VoiceInputCoordinator(new VoiceInputCoordinator.Deps(
                 this, runtime, playbackController, mainHandler, this::pocketPreferences,
-                () -> chatPanel, () -> destroyed, () -> foreground, () -> busy,
+                () -> chatPanel, () -> destroyed, () -> foreground, this::isBusy,
                 () -> generating, () -> speaking, () -> settingsLoaded, () -> lastAssistantReply,
-                value -> recomputeBusy(), value -> { speaking = value; recomputeBusy(); }, this::recomputeBusy,
+                value -> {}, value -> speaking = value, () -> {},
                 this::setChatStatus, attachmentCoordinator::onCompletedRecordingAudio,
                 this::send, () -> requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQUEST_AUDIO),
                 this::updateControls));
         modelImportCoordinator = new ModelImportCoordinator(new ModelImportCoordinator.Deps(
                 this, runtime, worker, this::pocketPreferences, () -> destroyed,
-                () -> busy, value -> recomputeBusy(), this::setChatStatus, this::updateControls,
+                this::isBusy, value -> {}, this::setChatStatus, this::updateControls,
                 voiceCoordinator::maybeStartPendingAssistantVoiceSession,
                 () -> {
                     if (integrationsSettingsSection != null) integrationsSettingsSection.paintSpeechInputControls();
@@ -306,7 +325,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         syncBackgroundControls();
         final boolean launchNewChat = shouldDeferNewChat(intent);
         consumeAssistantVoiceSessionIntent(intent);
-        final boolean modelInMemory = runtime.handle() != 0L
+        final boolean modelInMemory = runtime.handle() != 0L && !runtime.isUnloading()
                 && (previous.equals(runtime.loadedPath()) || ModelImportCoordinator.isContentUri(previous));
         if (modelInMemory) {
             if (!launchNewChat && !runtime.isGenerating()) {
@@ -314,6 +333,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                         ? getString(R.string.status_text_model_ready)
                         : getString(R.string.status_omni_model_ready));
             }
+        } else if (runtime.isLoading()) {
+            modelBusy = true;
+            setChatStatus(R.string.loading_model);
+            updateControls();
         } else if (!previous.isEmpty()
                 && (ModelImportCoordinator.isContentUri(previous) || new File(previous).isFile())) {
             modelImportCoordinator.loadSelectedModel(previous, mmprojPath);
@@ -328,14 +351,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         }
         if (pendingSwitchId != null) confirmSwitchConversation();
         voiceCoordinator.maybeStartPendingAssistantVoiceSession();
-    }
-
-    private void recomputeBusy() {
-        busy = generating || speaking
-                || (voiceCoordinator != null && (voiceCoordinator.recordingActive()
-                        || voiceCoordinator.playbackActive() || voiceCoordinator.isTranscribing()))
-                || (attachmentCoordinator != null && attachmentCoordinator.isImporting())
-                || (modelImportCoordinator != null && modelImportCoordinator.isBusy());
     }
 
     private void scheduleResumeRestores(String resumeId) {
@@ -483,23 +498,26 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private void onChatPanelNewChat() {
         cancelPendingResumeRestores();
-        voiceCoordinator.cancelPendingStt();
+        voiceCoordinator.cancelAllOnClear();
+        speaking = false;
         attachmentCoordinator.cancelPendingImportSilently();
         attachmentCoordinator.clearAndDeletePending(true);
         lastAssistantReply = "";
         if (voiceCoordinator.playbackActive()) playbackController.stop();
         chatPanel.clearToolCard();
         runtime.clearConversation();
+        generating = runtime.isGenerating();
         lastAssistantReply = "";
+        updateControls();
     }
 
     private void onChatPanelRetryTurn(String turnId) {
-        if (busy || modelHandle() == 0L || !settingsLoaded) return;
+        if (isBusy() || modelHandle() == 0L || runtime.isUnloading() || !settingsLoaded) return;
         runtime.noteSubmission("retry", inferenceSettings.maxTokens);
         if (runtime.retryInterrupted(turnId)) {
             session = runtime.session();
             attachmentCoordinator.clearPendingForRetry();
-            busy = true;
+            generating = true;
             updateControls();
         }
     }
@@ -600,7 +618,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         }, this::setChatStatus);
         inferenceSettingsSection = new InferenceSettingsSection(this, settingsStore,
                 () -> inferenceSettings, validated -> inferenceSettings = validated,
-                inferenceEngine::configure, () -> settingsLoaded, () -> busy, () -> generating,
+                inferenceEngine::configure, () -> settingsLoaded, this::isBusy, () -> generating,
                 this::modelHandle, worker, this::updateControls,
                 new InferenceSettingsSection.BundledImageSettings() {
                     @Override public ImageSettings readForBundledSave() {
@@ -622,7 +640,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                             .putString("search_endpoint", searchEndpoint)
                             .putBoolean("search_enabled", searchEnabled).apply();
                 },
-                enabled -> chatPanel.setIdleMode(enabled), this::updateControls, () -> busy,
+                enabled -> chatPanel.setIdleMode(enabled), this::updateControls, this::isBusy,
                 this::showSearchSettings, this::setChatStatus, ioWorker, this::runOnUiThread));
         searchSettingsSection.mount(configuration, ink, inkMuted);
 
@@ -710,12 +728,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void updateControls() {
-        if (searchSettingsSection != null) searchSettingsSection.paintWebSearchControl(busy);
+        boolean busyNow = isBusy();
+        boolean modelReady = modelHandle() != 0L && (runtime == null || !runtime.isUnloading());
+        if (searchSettingsSection != null) searchSettingsSection.paintWebSearchControl(busyNow);
         if (chatShellSection != null) chatShellSection.paintModePill(searchEnabled);
-        if (modelImportSection != null) modelImportSection.paintImportButtons(busy);
-        photoButton.setEnabled(!busy);
-        cameraButton.setEnabled(!busy);
-        if (documentButton != null) documentButton.setEnabled(!busy);
+        if (modelImportSection != null) modelImportSection.paintImportButtons(busyNow);
+        photoButton.setEnabled(!busyNow);
+        cameraButton.setEnabled(!busyNow);
+        if (documentButton != null) documentButton.setEnabled(!busyNow);
         voiceCoordinator.paintVoiceControls(recordButton, speakButton, voiceUiStatus);
 
         boolean recording = voiceCoordinator.recordingActive();
@@ -723,12 +743,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         boolean transcribing = voiceCoordinator.isTranscribing();
         boolean importing = modelImportCoordinator.isImporting();
         boolean importingAttachment = attachmentCoordinator != null && attachmentCoordinator.isImporting();
-        boolean canCompact = !busy && !speaking && !recording && !playback
-                && !importing && !importingAttachment && modelHandle() != 0L && settingsLoaded;
-        chatPanel.setModelReady(modelHandle() != 0L);
-        chatPanel.updateControls(!busy && modelHandle() != 0L && settingsLoaded,
+        boolean canCompact = !busyNow && !speaking && !recording && !playback
+                && !importing && !importingAttachment && modelReady && settingsLoaded;
+        chatPanel.setModelReady(modelReady);
+        chatPanel.updateControls(!busyNow && modelReady && settingsLoaded,
                 generating || speaking || recording || playback || transcribing || importing || importingAttachment,
-                !busy || generating || transcribing || importingAttachment,
+                !busyNow || generating || transcribing || importingAttachment,
                 canCompact);
 
         if (modelImportSection != null) {
@@ -739,14 +759,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                     settingsLoaded ? inferenceSettings.summary() : "Loading inference settings...",
                     model.isEmpty() ? "" : pocketPreferences().getString("model_name", new File(model).getName()),
                     projector.isEmpty() ? "" : pocketPreferences().getString("projector_name", new File(projector).getName()),
-                    busy, modelHandle() != 0,
+                    busyNow, modelReady,
                     description.startsWith("Model error") || description.startsWith("Import failed"));
         }
     }
 
     private void requestCompact() {
-        if (busy || generating || speaking || voiceCoordinator.recordingActive()
-                || voiceCoordinator.playbackActive() || modelHandle() == 0L || !settingsLoaded) {
+        if (isBusy() || generating || speaking || voiceCoordinator.recordingActive()
+                || voiceCoordinator.playbackActive() || modelHandle() == 0L || runtime.isUnloading() || !settingsLoaded) {
             if (modelHandle() == 0L) setChatStatus("No model loaded.");
             return;
         }
@@ -757,11 +777,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             ChatSnapshot compactSnapshot = session.snapshot();
             setChatStatus(compactSnapshot == null ? currentChatStatus() : compactSnapshot.status);
         } else if (started) {
-            busy = true;
+            generating = true;
             updateControls();
         }
     }
-
     private void syncInlineSettingsFields() {
         if (inferenceSettingsSection != null) inferenceSettingsSection.syncFields();
         if (searchSettingsSection != null) searchSettingsSection.syncFields();
@@ -778,7 +797,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void showInferenceSettings() {
-        if (busy || !settingsLoaded) return;
+        if (isBusy() || !settingsLoaded) return;
         setSettingsOpen(true);
         syncInlineSettingsFields();
         if (inferenceSettingsSection != null) inferenceSettingsSection.focusContextField();
@@ -791,7 +810,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void pickPhoto() {
-        if (busy) return;
+        if (isBusy()) return;
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         pick.addCategory(Intent.CATEGORY_OPENABLE);
         pick.setType("image/*");
@@ -799,7 +818,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void takePhoto() {
-        if (busy) return;
+        if (isBusy()) return;
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             cameraRequested = true;
             requestPermissions(new String[] { Manifest.permission.CAMERA }, REQUEST_CAMERA);
@@ -813,7 +832,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void pickDocument() {
-        if (busy) return;
+        if (isBusy()) return;
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         pick.addCategory(Intent.CATEGORY_OPENABLE);
         pick.setType("*/*");
@@ -830,7 +849,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void pickMmproj() { pickModel(PICK_MMPROJ); }
 
     private void pickModel(int requestCode) {
-        if (busy) return;
+        if (isBusy()) return;
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         pick.addCategory(Intent.CATEGORY_OPENABLE);
         pick.setType("*/*");
@@ -838,7 +857,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void pickExternalModel(int requestCode) {
-        if (busy) return;
+        if (isBusy()) return;
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         pick.addCategory(Intent.CATEGORY_OPENABLE);
         pick.setType("*/*");
@@ -847,7 +866,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void pickWhistleModel() {
-        if (busy || CactusWhistleModelDownloader.isDownloading()) return;
+        if (isBusy() || CactusWhistleModelDownloader.isDownloading()) return;
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         pick.addCategory(Intent.CATEGORY_OPENABLE);
         pick.setType("*/*");
@@ -879,7 +898,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
         if (requestCode == REQUEST_CAMERA && cameraRequested) {
             cameraRequested = false;
-            if (granted && !destroyed && !busy) {
+            if (granted && !destroyed && !isBusy()) {
                 launchCameraCapture();
             } else {
                 setChatStatus("Camera access is needed to take a photo.");
@@ -1002,6 +1021,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private void startFreshChat(boolean fromSystemAssist) {
         cancelPendingResumeRestores();
+        voiceCoordinator.cancelAllOnClear();
+        speaking = false;
         attachmentCoordinator.cancelPendingImportSilently();
         attachmentCoordinator.clearAndDeletePending(true);
         lastAssistantReply = "";
@@ -1013,6 +1034,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         if (chatShellSection != null) chatShellSection.setBrandTitle(historyTitle);
         runtime.setConversation(id, historyTitle);
         runtime.clearConversation();
+        generating = runtime.isGenerating();
         setSettingsOpen(false);
         String freshStatus = fromSystemAssist
                 ? getString(R.string.fresh_chat_from_assist)
@@ -1031,7 +1053,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         if (voiceCoordinator.playbackActive()) {
             playbackController.stop();
         } else if (speaking) {
-            runtime.speak(lastAssistantReply);
+            runtime.stopSpeech();
         } else if (!modelImportCoordinator.cancelImportIfActive()) {
             runtime.stopTurn();
         }
@@ -1084,7 +1106,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void send(String text) {
-        if (busy || modelHandle() == 0L || !settingsLoaded) return;
+        if (isBusy() || modelHandle() == 0L || runtime.isUnloading() || !settingsLoaded) return;
         if (!runtime.acceptsTurn()) {
             setChatStatus("Phone is too warm for a new reply.");
             return;

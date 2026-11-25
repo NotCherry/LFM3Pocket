@@ -172,9 +172,10 @@ final class ModelImportCoordinator {
                     imported = null;
                 }
             } catch (Throwable e) {
+                final String message = e.getMessage() == null ? e.toString() : e.getMessage();
                 deps.activity.runOnUiThread(() -> {
                     if (!deps.isDestroyed.getAsBoolean()) {
-                        deps.setChatStatus.accept("Import failed: " + e.getMessage());
+                        deps.setChatStatus.accept("Import failed: " + message);
                     }
                 });
             } finally {
@@ -251,9 +252,10 @@ final class ModelImportCoordinator {
                     store.releaseExcept(active);
                 }
             } catch (Throwable e) {
+                final String message = e.getMessage() == null ? e.toString() : e.getMessage();
                 deps.activity.runOnUiThread(() -> {
                     if (!deps.isDestroyed.getAsBoolean()) {
-                        deps.setChatStatus.accept("Could not open storage model: " + e.getMessage());
+                        deps.setChatStatus.accept("Could not open storage model: " + message);
                     }
                 });
             } finally {
@@ -360,9 +362,10 @@ final class ModelImportCoordinator {
                     ExternalModelStore store = ((Lfm3PocketApplication) deps.activity.getApplication())
                             .externalModels();
                     releaseStaleExternalLeases(store, targetModel, targetProjector);
+                    final String message = e.getMessage() == null ? e.toString() : e.getMessage();
                     deps.activity.runOnUiThread(() -> {
                         if (!deps.isDestroyed.getAsBoolean()) {
-                            deps.setChatStatus.accept("Could not open storage model: " + e.getMessage());
+                            deps.setChatStatus.accept("Could not open storage model: " + message);
                         }
                     });
                 } finally {

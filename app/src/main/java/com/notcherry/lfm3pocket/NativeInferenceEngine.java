@@ -28,7 +28,7 @@ public final class NativeInferenceEngine implements InferenceEngine {
     }
 
     /** Drop KV/hybrid session while keeping weights mapped. */
-    public void releaseSession(long handle) {
+    @Override public void releaseSession(long handle) {
         if (handle != 0) NativeBridge.releaseSession(handle);
     }
 
@@ -87,7 +87,9 @@ public final class NativeInferenceEngine implements InferenceEngine {
     }
 
     @Override public void stop() {
-        NativeBridge.requestStop(ownedHandle);
+        long h = ownedHandle;
+        if (h != 0) NativeBridge.requestStop(h);
+        else NativeBridge.stop();
     }
 
     @Override public void resetStop() {
