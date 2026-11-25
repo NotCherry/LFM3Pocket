@@ -37,15 +37,9 @@ final class ImageSettingsSection {
     }
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
-        LinearLayout section = new LinearLayout(host.settingsActivity());
+        LinearLayout section = StillwaterUi.settingsCard(configuration,
+                host.getString(R.string.settings_images_heading).toUpperCase(java.util.Locale.US));
         section.setId(R.id.settings_images);
-        section.setOrientation(LinearLayout.VERTICAL);
-        TextView heading = host.label(
-                host.getString(R.string.settings_images_heading).toUpperCase(java.util.Locale.US), 11, inkMuted);
-        heading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
-        heading.setLetterSpacing(0.12f);
-        heading.setPadding(0, host.dp(16), 0, host.dp(4));
-        section.addView(heading);
 
         imagePrepareBox = new CheckBox(host.settingsActivity());
         imagePrepareBox.setId(R.id.settings_image_prepare);
@@ -57,24 +51,28 @@ final class ImageSettingsSection {
             persist(new ImageSettings(checked, current.maxSide, current.cropToSquare, readImageQualityField()), true);
         });
         section.addView(imagePrepareBox);
-        section.addView(host.label(host.getString(R.string.settings_image_prepare_help), 12, inkMuted));
+        StillwaterUi.settingsHelp(section, host.getString(R.string.settings_image_prepare_help));
+
+        StillwaterUi.settingsDivider(section);
 
         TextView maxTitle = host.label(host.getString(R.string.settings_image_max_size), 16, ink);
-        maxTitle.setPadding(0, host.dp(10), 0, 0);
+        maxTitle.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
         section.addView(maxTitle);
-        section.addView(host.label(host.getString(R.string.settings_image_max_help), 12, inkMuted));
+        StillwaterUi.settingsHelp(section, host.getString(R.string.settings_image_max_help));
 
         imageMax384Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_384, R.id.settings_image_max_384);
         imageMax512Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_512, R.id.settings_image_max_512);
         imageMax768Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_768, R.id.settings_image_max_768);
-        LinearLayout maxRow1 = StillwaterReadable.addFlexibleButtonRow(section, host.settingsActivity(), 44,
+        LinearLayout maxRow1 = StillwaterReadable.addFlexibleButtonRow(section, host.settingsActivity(), 48,
                 imageMax384Button, imageMax512Button, imageMax768Button);
         maxRow1.setId(R.id.settings_image_max_size);
 
         imageMax1024Button = imageMaxChoice(ImageSettings.MaxSide.SIDE_1024, R.id.settings_image_max_1024);
         imageMaxOriginalButton = imageMaxChoice(ImageSettings.MaxSide.ORIGINAL, R.id.settings_image_max_original);
-        StillwaterReadable.addFlexibleButtonRow(section, host.settingsActivity(), 44,
+        StillwaterReadable.addFlexibleButtonRow(section, host.settingsActivity(), 48,
                 imageMax1024Button, imageMaxOriginalButton);
+
+        StillwaterUi.settingsDivider(section);
 
         imageCropBox = new CheckBox(host.settingsActivity());
         imageCropBox.setId(R.id.settings_image_crop);
@@ -86,7 +84,7 @@ final class ImageSettingsSection {
             persist(new ImageSettings(current.enabled, current.maxSide, checked, readImageQualityField()), true);
         });
         section.addView(imageCropBox);
-        section.addView(host.label(host.getString(R.string.settings_image_crop_help), 12, inkMuted));
+        StillwaterUi.settingsHelp(section, host.getString(R.string.settings_image_crop_help));
 
         imageQualityField = host.addSettingInput(section, host.getString(R.string.settings_image_quality),
                 host.getString(R.string.settings_image_quality_help),
@@ -102,7 +100,6 @@ final class ImageSettingsSection {
                 chatStatus.accept(invalid.getMessage());
             }
         });
-        configuration.addView(section);
         syncFields();
     }
 
@@ -151,7 +148,7 @@ final class ImageSettingsSection {
     private Button imageMaxChoice(ImageSettings.MaxSide side, int id) {
         Button choice = host.button(side.label);
         choice.setId(id);
-        StillwaterUi.quiet(choice);
+        StillwaterUi.outlined(choice);
         choice.setOnClickListener(v -> {
             if (bindingImageSettings) return;
             ImageSettings current = currentSettings.get();
@@ -170,16 +167,10 @@ final class ImageSettingsSection {
     }
 
     private void highlightImageMax(ImageSettings.MaxSide selected) {
-        styleImageMax(imageMax384Button, selected == ImageSettings.MaxSide.SIDE_384);
-        styleImageMax(imageMax512Button, selected == ImageSettings.MaxSide.SIDE_512);
-        styleImageMax(imageMax768Button, selected == ImageSettings.MaxSide.SIDE_768);
-        styleImageMax(imageMax1024Button, selected == ImageSettings.MaxSide.SIDE_1024);
-        styleImageMax(imageMaxOriginalButton, selected == ImageSettings.MaxSide.ORIGINAL);
-    }
-
-    private void styleImageMax(Button button, boolean selected) {
-        if (button == null) return;
-        button.setTextColor(selected ? StillwaterUi.CANDLE : StillwaterUi.SOFT);
-        button.setAlpha(selected ? 1f : 0.75f);
+        StillwaterUi.segmented(imageMax384Button, selected == ImageSettings.MaxSide.SIDE_384);
+        StillwaterUi.segmented(imageMax512Button, selected == ImageSettings.MaxSide.SIDE_512);
+        StillwaterUi.segmented(imageMax768Button, selected == ImageSettings.MaxSide.SIDE_768);
+        StillwaterUi.segmented(imageMax1024Button, selected == ImageSettings.MaxSide.SIDE_1024);
+        StillwaterUi.segmented(imageMaxOriginalButton, selected == ImageSettings.MaxSide.ORIGINAL);
     }
 }

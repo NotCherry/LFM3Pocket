@@ -39,14 +39,14 @@ final class DefaultAssistantSettingsSection {
     }
 
     void mount(LinearLayout configuration, int inkMuted) {
+        LinearLayout card = StillwaterUi.settingsCard(configuration,
+                ui.getString(R.string.default_assistant_heading));
+        StillwaterUi.settingsHelp(card, ui.getString(R.string.default_assistant_help));
         Button defaultAssistantButton = ui.button(ui.getString(R.string.default_assistant_button));
         defaultAssistantButton.setId(R.id.settings_default_assistant);
-        StillwaterUi.quiet(defaultAssistantButton);
+        StillwaterUi.outlined(defaultAssistantButton);
         defaultAssistantButton.setOnClickListener(v -> openDefaultAssistantPicker());
-        StillwaterReadable.addFlexibleFullWidth(configuration, defaultAssistantButton, 48);
-        TextView defaultAssistantHelp = ui.label(ui.getString(R.string.default_assistant_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(defaultAssistantHelp);
-        configuration.addView(defaultAssistantHelp);
+        StillwaterReadable.addFlexibleFullWidth(card, defaultAssistantButton, 48);
     }
 
     private void openDefaultAssistantPicker() {

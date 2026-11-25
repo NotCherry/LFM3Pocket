@@ -6,25 +6,42 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
@@ -32,9 +49,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -65,7 +84,9 @@ class ComposeHostActivity : ComponentActivity() {
         if (routeExternalAsk(intent)) return
         window.statusBarColor = StillwaterUi.SURFACE
         window.navigationBarColor = StillwaterUi.SURFACE
-        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
+        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+        insetsController.isAppearanceLightStatusBars = false
+        insetsController.isAppearanceLightNavigationBars = false
         setContent {
             PocketTheme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -156,37 +177,90 @@ private fun PocketNavigation(
             )
         }
         composable("about") {
-            val atlas = MaterialTheme.atlasColors
-            val type = MaterialTheme.atlasTypography
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(atlas.surface)
-                    .statusBarsPadding()
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text("Hanami", style = type.headline, color = atlas.ink)
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "Hanami runs Liquid AI LFM3 models on this phone. LFM3 is the model family, not the name of this app.",
-                    style = type.body,
-                    color = atlas.ink,
-                )
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "Inference stays on the device through llama.cpp. Optional SearXNG web search " +
-                        "stays off unless you turn it on in Settings.",
-                    style = type.body,
-                    color = atlas.inkMuted,
-                )
-                TextButton(
-                    onClick = { controller.popBackStack() },
-                    colors = StillwaterControls.textButtonColors(),
-                ) {
-                    Text("Back to home")
-                }
-            }
+            StillwaterAbout(onBack = { controller.popBackStack() })
+        }
+    }
+}
+
+@Composable
+private fun StillwaterAbout(onBack: () -> Unit) {
+    val atlas = MaterialTheme.atlasColors
+    val type = MaterialTheme.atlasTypography
+    val space = MaterialTheme.atlasSpacing
+    val context = LocalContext.current
+    val versionName = remember(context) {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                ?: ReleaseVersion.untagged().versionName
+        } catch (_: Exception) {
+            ReleaseVersion.untagged().versionName
+        }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(atlas.surface)
+            .systemBarsPadding()
+            .semantics { testTagsAsResourceId = true }
+            .padding(horizontal = space.space6, vertical = space.space4),
+    ) {
+        TextButton(
+            onClick = onBack,
+            contentPadding = PaddingValues(horizontal = 0.dp, vertical = space.space2),
+            modifier = Modifier.minimumInteractiveComponentSize(),
+            colors = StillwaterControls.textButtonColors(),
+        ) {
+            Text(stringResource(R.string.back_to_home), style = type.body)
+        }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Spacer(Modifier.height(space.space4))
+            Text(stringResource(R.string.app_name), style = type.display, color = atlas.ink)
+            Spacer(Modifier.height(space.space2))
+            Text(
+                stringResource(R.string.about_version_format, versionName),
+                style = type.mono,
+                color = atlas.accent,
+            )
+            Spacer(Modifier.height(space.space5))
+            Text(
+                stringResource(R.string.about_lead),
+                style = type.body,
+                color = atlas.ink,
+            )
+            Spacer(Modifier.height(space.space6))
+            HorizontalDivider(color = atlas.border, thickness = 1.dp)
+            Spacer(Modifier.height(space.space5))
+            Text(
+                stringResource(R.string.about_section_privacy_title),
+                style = type.label,
+                color = atlas.inkMuted,
+            )
+            Spacer(Modifier.height(space.space2))
+            Text(
+                stringResource(R.string.about_section_privacy_body),
+                style = type.body,
+                color = atlas.inkSoft,
+            )
+            Spacer(Modifier.height(space.space5))
+            HorizontalDivider(color = atlas.border, thickness = 1.dp)
+            Spacer(Modifier.height(space.space5))
+            Text(
+                stringResource(R.string.about_section_actions_title),
+                style = type.label,
+                color = atlas.inkMuted,
+            )
+            Spacer(Modifier.height(space.space2))
+            Text(
+                stringResource(R.string.about_section_actions_body),
+                style = type.body,
+                color = atlas.inkSoft,
+            )
+            Spacer(Modifier.height(space.space6))
         }
     }
 }
@@ -204,10 +278,27 @@ private fun StillwaterHome(
     val type = MaterialTheme.atlasTypography
     val space = MaterialTheme.atlasSpacing
     val context = LocalContext.current
-    val modelName = context.getSharedPreferences("MainActivity", android.content.Context.MODE_PRIVATE)
-        .getString("model_name", "")
-        .orEmpty()
-    val modelLine = if (modelName.isBlank()) "No model loaded" else "$modelName · on device"
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var modelName by remember { mutableStateOf("") }
+    DisposableEffect(lifecycleOwner, context) {
+        fun refreshModel() {
+            val prefs = context.getSharedPreferences(RuntimePreferences.FILE, Context.MODE_PRIVATE)
+            val storedName = prefs.getString("model_name", "").orEmpty()
+            val storedPath = prefs.getString("model", "").orEmpty()
+            modelName = when {
+                storedName.isNotBlank() -> storedName
+                storedPath.isNotBlank() -> java.io.File(storedPath).name
+                else -> ""
+            }
+        }
+        refreshModel()
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) refreshModel()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val hasModel = modelName.isNotBlank()
     Box(
         Modifier
             .fillMaxSize()
@@ -217,84 +308,147 @@ private fun StillwaterHome(
                     radius = 1400f,
                 ),
             )
-            .statusBarsPadding()
+            .systemBarsPadding()
             .semantics { testTagsAsResourceId = true }
             .padding(horizontal = space.space6, vertical = space.space5),
     ) {
-        Column(Modifier.fillMaxSize()) {
-            Text(
-                "ON DEVICE",
-                style = type.label,
-                color = atlas.accent,
-            )
-            Spacer(Modifier.height(space.space8))
-            Text("Hanami", style = type.display, color = atlas.ink)
-            Spacer(Modifier.height(space.space5))
-            Text(
-                "Liquid AI LFM3 models, on this phone.",
-                style = type.body,
-                color = atlas.inkSoft,
-                modifier = Modifier.fillMaxWidth(0.86f),
-            )
-            Spacer(Modifier.weight(1f))
-            Button(
-                onClick = onOpenChat,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .minimumInteractiveComponentSize()
-                    .heightIn(min = 48.dp)
-                    .testTag("${context.packageName}:id/open_chat"),
-                shape = MaterialTheme.shapes.extraSmall,
-                colors = StillwaterControls.buttonColors(),
-            ) {
-                Text(stringResource(R.string.open_chat), style = type.body.copy(color = atlas.candleInk))
-            }
-            Spacer(Modifier.height(space.space4))
-            TextButton(
-                onClick = onNewChat,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .minimumInteractiveComponentSize()
-                    .heightIn(min = 48.dp)
-                    .testTag("${context.packageName}:id/home_new_chat"),
-                colors = StillwaterControls.textButtonColors(),
-            ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(6.dp)
+                            .background(if (hasModel) atlas.ok else atlas.warn, CircleShape),
+                    )
+                    Spacer(Modifier.width(space.space2))
+                    Text(
+                        stringResource(R.string.home_on_device),
+                        style = type.label,
+                        color = atlas.accent,
+                    )
+                }
+                Spacer(Modifier.height(space.space6))
+                Text(stringResource(R.string.app_name), style = type.display, color = atlas.ink)
+                Spacer(Modifier.height(space.space4))
                 Text(
-                    stringResource(R.string.new_chat),
+                    stringResource(R.string.home_tagline),
                     style = type.body,
-                    textDecoration = TextDecoration.Underline,
+                    color = atlas.inkSoft,
+                    modifier = Modifier.fillMaxWidth(0.92f),
                 )
             }
-            Spacer(Modifier.height(space.space2))
-            // Flow so Polish "O trybie offline" does not collide with History/Settings at large fonts.
-            FlowRow(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                TextButton(
-                    onClick = onOpenHistory,
-                    modifier = Modifier.testTag("${context.packageName}:id/history_open"),
-                    colors = StillwaterControls.textButtonColors(),
+
+            Column(Modifier.fillMaxWidth()) {
+                Spacer(Modifier.height(space.space8))
+                // Model readiness strip: guides first-run setup when empty, confirms active GGUF when ready.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
+                        .border(1.dp, if (hasModel) atlas.border else atlas.borderStrong, MaterialTheme.shapes.medium)
+                        .clickable { onOpenSettings() }
+                        .padding(horizontal = space.space4, vertical = space.space3)
+                        .testTag("${context.packageName}:id/home_import_model"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text(stringResource(R.string.history), textDecoration = TextDecoration.Underline)
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = if (hasModel) modelName else stringResource(R.string.home_no_model_title),
+                            style = if (hasModel) type.mono else type.body,
+                            color = atlas.ink,
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = if (hasModel) {
+                                stringResource(R.string.home_model_ready_suffix)
+                            } else {
+                                stringResource(R.string.home_no_model_hint)
+                            },
+                            style = type.bodySmall,
+                            color = atlas.inkMuted,
+                        )
+                    }
+                    if (!hasModel) {
+                        Spacer(Modifier.width(space.space3))
+                        Text(
+                            text = stringResource(R.string.home_setup_model),
+                            style = type.label,
+                            color = atlas.accent,
+                        )
+                    }
                 }
-                TextButton(
-                    onClick = onOpenSettings,
-                    modifier = Modifier.testTag("${context.packageName}:id/home_settings"),
-                    colors = StillwaterControls.textButtonColors(),
+
+                Spacer(Modifier.height(space.space4))
+                Button(
+                    onClick = onOpenChat,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .minimumInteractiveComponentSize()
+                        .heightIn(min = 50.dp)
+                        .testTag("${context.packageName}:id/open_chat"),
+                    shape = MaterialTheme.shapes.medium,
+                    colors = StillwaterControls.buttonColors(),
                 ) {
-                    Text(stringResource(R.string.settings_title), textDecoration = TextDecoration.Underline)
+                    Text(stringResource(R.string.open_chat), style = type.body.copy(color = atlas.candleInk))
                 }
-                TextButton(onClick = onAbout, colors = StillwaterControls.textButtonColors()) {
-                    Text(stringResource(R.string.about_offline_mode), textDecoration = TextDecoration.Underline)
+                Spacer(Modifier.height(space.space2))
+                OutlinedButton(
+                    onClick = onNewChat,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .minimumInteractiveComponentSize()
+                        .heightIn(min = 48.dp)
+                        .testTag("${context.packageName}:id/home_new_chat"),
+                    shape = MaterialTheme.shapes.medium,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, atlas.borderStrong),
+                    colors = StillwaterControls.outlinedColors(),
+                ) {
+                    Text(stringResource(R.string.new_chat), style = type.body)
+                }
+                Spacer(Modifier.height(space.space3))
+                HorizontalDivider(color = atlas.border, thickness = 1.dp)
+                Spacer(Modifier.height(space.space1))
+                // FlowRow so Polish "O trybie offline" wraps cleanly at 2.0x font scale.
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    TextButton(
+                        onClick = onOpenHistory,
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("${context.packageName}:id/history_open"),
+                        contentPadding = PaddingValues(horizontal = space.space2, vertical = space.space1),
+                        colors = StillwaterControls.textButtonColors(),
+                    ) {
+                        Text(stringResource(R.string.history), style = type.bodySmall, color = atlas.inkSoft)
+                    }
+                    TextButton(
+                        onClick = onOpenSettings,
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("${context.packageName}:id/home_settings"),
+                        contentPadding = PaddingValues(horizontal = space.space2, vertical = space.space1),
+                        colors = StillwaterControls.textButtonColors(),
+                    ) {
+                        Text(stringResource(R.string.settings_title), style = type.bodySmall, color = atlas.inkSoft)
+                    }
+                    TextButton(
+                        onClick = onAbout,
+                        modifier = Modifier.minimumInteractiveComponentSize(),
+                        contentPadding = PaddingValues(horizontal = space.space2, vertical = space.space1),
+                        colors = StillwaterControls.textButtonColors(),
+                    ) {
+                        Text(stringResource(R.string.about_offline_mode), style = type.bodySmall, color = atlas.inkSoft)
+                    }
                 }
             }
-            Text(
-                modelLine,
-                style = type.bodySmall,
-                color = atlas.inkMuted,
-                modifier = Modifier.padding(top = 18.dp, bottom = 8.dp),
-            )
         }
     }
 }

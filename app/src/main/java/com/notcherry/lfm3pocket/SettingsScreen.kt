@@ -202,9 +202,9 @@ fun SettingsScreen(
                 maxTokens, onTokensChange, 1, 1, 2048, fieldColors,
                 Modifier.fillMaxWidth().testTag(tag("settings_tokens")),
             )
-            Text("Benchmark", style = type.title, color = atlas.ink)
+            Text(stringResource(R.string.benchmark_heading), style = type.title, color = atlas.ink)
             Text(
-                "Prompt-processing (pp) and decode (tg) tok/s on the loaded model. Results wrap and can be copied from the Settings host.",
+                stringResource(R.string.benchmark_help),
                 style = type.bodySmall,
                 color = atlas.inkMuted,
                 modifier = Modifier.fillMaxWidth(),
@@ -216,7 +216,7 @@ fun SettingsScreen(
             OutlinedTextField(
                 value = searchEndpoint,
                 onValueChange = onEndpointChange,
-                label = { Text("HTTPS search endpoint") },
+                label = { Text("https://your-searxng.example.org/search") },
                 singleLine = true,
                 colors = fieldColors,
                 modifier = Modifier.fillMaxWidth().testTag(tag("search_endpoint")),

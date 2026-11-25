@@ -4,9 +4,14 @@ import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.FrameLayout;
@@ -51,11 +56,10 @@ public final class CameraCaptureActivity extends ComponentActivity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        getWindow().setStatusBarColor(StillwaterUi.SURFACE);
-        getWindow().setNavigationBarColor(StillwaterUi.SURFACE);
         buildUi();
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            status.setText("Camera access is needed to take a photo.");
+            status.setText(R.string.camera_permission_needed);
+            status.setTextColor(StillwaterUi.DANGER);
             captureButton.setEnabled(false);
             return;
         }
@@ -65,29 +69,41 @@ public final class CameraCaptureActivity extends ComponentActivity {
     private int dp(int n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
 
     private void buildUi() {
+        int minTouch = InterfaceSize.minTouchPx(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(StillwaterUi.SURFACE);
+        StillwaterUi.applySystemAndImeInsets(this, root, 0, 0, 0, 0);
 
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        top.setPadding(dp(8), dp(8), dp(8), dp(4));
+        top.setPadding(dp(12), dp(6), dp(12), dp(6));
+
         Button cancelButton = new Button(this);
         cancelButton.setId(R.id.camera_cancel);
-        cancelButton.setText("Cancel");
-        StillwaterUi.quiet(cancelButton);
+        cancelButton.setText(R.string.cancel);
+        StillwaterUi.outlined(cancelButton);
+        cancelButton.setMinimumWidth(minTouch);
+        cancelButton.setMinimumHeight(minTouch);
+        StillwaterReadable.prepareWrappingControl(cancelButton, minTouch);
         cancelButton.setOnClickListener(view -> finish());
+
         TextView title = new TextView(this);
-        title.setText("Camera");
-        title.setTextSize(18);
+        title.setText(R.string.camera);
+        title.setTextSize(20);
         title.setTextColor(StillwaterUi.INK);
         title.setGravity(Gravity.CENTER);
         title.setTypeface(StillwaterUi.serif(this));
-        top.addView(cancelButton, new LinearLayout.LayoutParams(dp(88), ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        top.addView(cancelButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         top.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        top.addView(new android.view.View(this), new LinearLayout.LayoutParams(dp(88), 1));
+        top.addView(new View(this), new LinearLayout.LayoutParams(dp(72), 1));
         root.addView(top);
+
+        View topDivider = new View(this);
+        topDivider.setBackgroundColor(StillwaterUi.LINE);
+        root.addView(topDivider, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1))));
 
         FrameLayout stage = new FrameLayout(this);
         previewView = new PreviewView(this);
@@ -97,39 +113,74 @@ public final class CameraCaptureActivity extends ComponentActivity {
         previewView.setBackgroundColor(StillwaterUi.RAISED);
         stage.addView(previewView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         status = new TextView(this);
         status.setId(R.id.camera_status);
         status.setTextColor(StillwaterUi.INK);
         status.setTextSize(12);
-        status.setLetterSpacing(0.08f);
+        status.setLetterSpacing(0.06f);
         status.setTypeface(StillwaterUi.sansMedium(this));
-        status.setText("Starting camera preview…");
-        status.setPadding(dp(16), dp(12), dp(16), dp(12));
+        status.setText(R.string.camera_starting);
+        GradientDrawable statusChip = new GradientDrawable();
+        statusChip.setColor(StillwaterUi.OVERLAY);
+        statusChip.setStroke(Math.max(1, dp(1)), StillwaterUi.LINE);
+        statusChip.setCornerRadius(dp(2));
+        status.setBackground(statusChip);
+        status.setPadding(dp(14), dp(8), dp(14), dp(8));
         FrameLayout.LayoutParams statusParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.START);
+        statusParams.setMargins(dp(16), dp(12), dp(16), dp(16));
         stage.addView(status, statusParams);
         root.addView(stage, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
+        View bottomDivider = new View(this);
+        bottomDivider.setBackgroundColor(StillwaterUi.LINE);
+        root.addView(bottomDivider, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1))));
+
         LinearLayout shutterRow = new LinearLayout(this);
         shutterRow.setGravity(Gravity.CENTER);
-        shutterRow.setPadding(0, dp(16), 0, dp(20));
+        shutterRow.setPadding(0, dp(16), 0, dp(16));
         captureButton = new Button(this);
         captureButton.setId(R.id.camera_capture);
         captureButton.setText("");
-        captureButton.setContentDescription("Capture");
+        captureButton.setContentDescription(getString(R.string.camera_capture_cd));
         captureButton.setAllCaps(false);
-        GradientDrawable ring = new GradientDrawable();
-        ring.setShape(GradientDrawable.OVAL);
-        ring.setColor(StillwaterUi.INK);
-        ring.setStroke(dp(2), StillwaterUi.INK);
         captureButton.setBackgroundTintList(null);
-        captureButton.setBackground(ring);
+        captureButton.setBackground(buildShutterDrawable());
         captureButton.setEnabled(false);
         captureButton.setOnClickListener(view -> captureStill());
-        shutterRow.addView(captureButton, new LinearLayout.LayoutParams(dp(68), dp(68)));
+        shutterRow.addView(captureButton, new LinearLayout.LayoutParams(dp(72), dp(72)));
         root.addView(shutterRow);
         setContentView(root);
+    }
+
+    private Drawable buildShutterDrawable() {
+        StateListDrawable states = new StateListDrawable();
+        states.addState(new int[]{-android.R.attr.state_enabled},
+                dualRing(StillwaterUi.LINE, StillwaterUi.RAISED));
+        states.addState(new int[]{android.R.attr.state_pressed},
+                dualRing(StillwaterUi.CANDLE, StillwaterUi.CANDLE_PRESSED));
+        states.addState(new int[]{},
+                dualRing(StillwaterUi.CANDLE, StillwaterUi.INK));
+        return states;
+    }
+
+    private Drawable dualRing(int outerStrokeColor, int innerFillColor) {
+        GradientDrawable outer = new GradientDrawable();
+        outer.setShape(GradientDrawable.OVAL);
+        outer.setColor(Color.TRANSPARENT);
+        outer.setStroke(dp(2), outerStrokeColor);
+
+        GradientDrawable inner = new GradientDrawable();
+        inner.setShape(GradientDrawable.OVAL);
+        inner.setColor(innerFillColor);
+
+        LayerDrawable layered = new LayerDrawable(new Drawable[]{outer, inner});
+        int inset = dp(6);
+        layered.setLayerInset(1, inset, inset, inset, inset);
+        return layered;
     }
 
     private void bindCamera() {
@@ -146,10 +197,12 @@ public final class CameraCaptureActivity extends ComponentActivity {
                 cameraProvider.unbindAll();
                 cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA,
                         preview, imageCapture);
-                status.setText("Camera ready");
+                status.setText(R.string.camera_ready);
+                status.setTextColor(StillwaterUi.INK);
                 captureButton.setEnabled(true);
             } catch (Exception failure) {
                 status.setText("Could not start camera: " + failure.getMessage());
+                status.setTextColor(StillwaterUi.DANGER);
                 captureButton.setEnabled(false);
             }
         }, ContextCompat.getMainExecutor(this));
@@ -159,7 +212,8 @@ public final class CameraCaptureActivity extends ComponentActivity {
         if (imageCapture == null || captureStarted || isFinishing()) return;
         captureStarted = true;
         captureButton.setEnabled(false);
-        status.setText("Capturing full-size photo…");
+        status.setText(R.string.camera_capturing);
+        status.setTextColor(StillwaterUi.INK);
         File photo = new File(getCacheDir(), "camera-" + System.currentTimeMillis() + ".jpg");
         ImageCapture.OutputFileOptions output = new ImageCapture.OutputFileOptions.Builder(photo).build();
         imageCapture.takePicture(output, cameraExecutor, new ImageCapture.OnImageSavedCallback() {
@@ -192,6 +246,7 @@ public final class CameraCaptureActivity extends ComponentActivity {
     private void showFailure(String message) {
         captureStarted = false;
         status.setText(message);
+        status.setTextColor(StillwaterUi.DANGER);
         captureButton.setEnabled(imageCapture != null);
     }
 

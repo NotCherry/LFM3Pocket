@@ -1,6 +1,7 @@
 package com.notcherry.lfm3pocket;
 
 import android.content.Context;
+import android.graphics.drawable.GradientDrawable;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -65,64 +66,66 @@ final class InferenceSettingsSection {
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
         InferenceSettings initial = currentSettings.get();
-        TextView inferenceHeading = host.label(host.getString(R.string.inference_heading), 11, inkMuted);
-        inferenceHeading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
-        inferenceHeading.setLetterSpacing(0.12f);
-        inferenceHeading.setPadding(0, host.dp(16), 0, host.dp(4));
-        configuration.addView(inferenceHeading);
-        settingsContextField = host.addSettingInput(configuration, host.getString(R.string.context_label),
+        LinearLayout inferenceCard = StillwaterUi.settingsCard(configuration,
+                host.getString(R.string.inference_heading));
+        settingsContextField = host.addSettingInput(inferenceCard, host.getString(R.string.context_label),
                 host.getString(R.string.context_hint),
                 initial.contextTokens, R.id.settings_context, 256, 512, 8192);
-        settingsThreadsField = host.addSettingInput(configuration, host.getString(R.string.decode_threads_label),
+        settingsThreadsField = host.addSettingInput(inferenceCard, host.getString(R.string.decode_threads_label),
                 host.getString(R.string.decode_threads_hint),
                 initial.threads, R.id.settings_threads, 1, 1, 8);
-        settingsTokensField = host.addSettingInput(configuration, host.getString(R.string.response_tokens_label),
+        settingsTokensField = host.addSettingInput(inferenceCard, host.getString(R.string.response_tokens_label),
                 host.getString(R.string.response_tokens_hint),
                 initial.maxTokens, R.id.settings_tokens, 1, 1, 2048);
+
+        StillwaterUi.settingsDivider(inferenceCard);
+
         promptLookupBox = new CheckBox(host.settingsActivity());
         promptLookupBox.setId(R.id.settings_prompt_lookup);
         promptLookupBox.setText(R.string.prompt_lookup_label);
         StillwaterUi.styleCheck(promptLookupBox);
         promptLookupBox.setChecked(initial.promptLookup);
-        configuration.addView(promptLookupBox);
-        configuration.addView(host.label(host.getString(R.string.prompt_lookup_hint), 12, inkMuted));
-        settingsInlineError = host.label("", 13, StillwaterUi.DANGER);
+        inferenceCard.addView(promptLookupBox, new LinearLayout.LayoutParams(-1, -2));
+        StillwaterUi.settingsHelp(inferenceCard, host.getString(R.string.prompt_lookup_hint));
+        settingsInlineError = host.label("", 14, StillwaterUi.DANGER);
         StillwaterReadable.prepareWrappingLabel(settingsInlineError);
-        configuration.addView(settingsInlineError);
+        inferenceCard.addView(settingsInlineError);
 
-        TextView benchHeading = host.label("BENCHMARK", 11, inkMuted);
-        benchHeading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
-        benchHeading.setLetterSpacing(0.12f);
-        benchHeading.setPadding(0, host.dp(16), 0, host.dp(4));
-        configuration.addView(benchHeading);
-        configuration.addView(host.label(
-                "Measures prompt-processing (pp) and decode (tg) tok/s on the loaded model, like llama-bench.",
-                12, inkMuted));
-        Button runBench = host.button("Run speed test");
+        LinearLayout benchCard = StillwaterUi.settingsCard(configuration,
+                host.getString(R.string.benchmark_heading));
+        StillwaterUi.settingsHelp(benchCard, host.getString(R.string.benchmark_help));
+
+        Button runBench = host.button(host.getString(R.string.benchmark_run));
         runBench.setId(R.id.settings_bench_run);
-        StillwaterUi.quiet(runBench);
+        StillwaterUi.outlined(runBench);
         runBench.setOnClickListener(v -> runInlineBenchmark());
-        configuration.addView(runBench, new LinearLayout.LayoutParams(-1, host.dp(48)));
-        settingsBenchResult = host.label(
-                "Load a model, then run the speed test. Results wrap and can be copied.", 13, ink);
+
+        Button copyBench = host.button(host.getString(R.string.benchmark_copy));
+        copyBench.setId(R.id.settings_bench_copy);
+        StillwaterUi.outlined(copyBench);
+        copyBench.setOnClickListener(v -> copyBenchmarkResults());
+        StillwaterReadable.addFlexibleButtonRow(benchCard, host.settingsActivity(), 48,
+                runBench, copyBench);
+
+        settingsBenchResult = host.label(host.getString(R.string.benchmark_idle_result), 13, ink);
         settingsBenchResult.setId(R.id.settings_bench_result);
         settingsBenchResult.setSingleLine(false);
         settingsBenchResult.setMaxLines(24);
         settingsBenchResult.setHorizontallyScrolling(false);
-        settingsBenchResult.setPadding(0, host.dp(8), 0, host.dp(4));
-        configuration.addView(settingsBenchResult);
-        Button copyBench = host.button("Copy results");
-        copyBench.setId(R.id.settings_bench_copy);
-        StillwaterUi.quiet(copyBench);
-        copyBench.setOnClickListener(v -> copyBenchmarkResults());
-        configuration.addView(copyBench, new LinearLayout.LayoutParams(-1, host.dp(44)));
+        StillwaterUi.styleCodeBlock(settingsBenchResult);
+        LinearLayout.LayoutParams resParams = new LinearLayout.LayoutParams(-1, -2);
+        resParams.topMargin = host.dp(12);
+        benchCard.addView(settingsBenchResult, resParams);
+
         TextView settingsBuildInfo = host.label(safeNativeBuildInfo(), 12, inkMuted);
         settingsBuildInfo.setId(R.id.settings_build_info);
+        settingsBuildInfo.setTypeface(StillwaterUi.mono(host.settingsActivity()));
+        settingsBuildInfo.setLineSpacing(0f, 1.3f);
         settingsBuildInfo.setSingleLine(false);
         settingsBuildInfo.setMaxLines(8);
         settingsBuildInfo.setHorizontallyScrolling(false);
-        settingsBuildInfo.setPadding(0, host.dp(4), 0, host.dp(8));
-        configuration.addView(settingsBuildInfo);
+        settingsBuildInfo.setPadding(0, host.dp(10), 0, 0);
+        benchCard.addView(settingsBuildInfo);
     }
 
     void syncFields() {
@@ -182,7 +185,7 @@ final class InferenceSettingsSection {
         long handle = modelHandle.get();
         if (handle == 0L) {
             if (settingsBenchResult != null)
-                settingsBenchResult.setText("Load a GGUF model first, then run the speed test.");
+                settingsBenchResult.setText(host.getString(R.string.benchmark_need_model));
             return;
         }
         InferenceSettings limits = currentSettings.get();
@@ -196,7 +199,7 @@ final class InferenceSettingsSection {
         final InferenceSettings benchLimits = limits;
         benchmarkRunning = true;
         if (settingsBenchResult != null)
-            settingsBenchResult.setText("Running prompt-processing and decode benchmark…");
+            settingsBenchResult.setText(host.getString(R.string.benchmark_running));
         updateControls.run();
         worker.execute(() -> {
             String report;
@@ -224,7 +227,7 @@ final class InferenceSettingsSection {
                 (android.content.ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
         if (clipboard == null) return;
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Hanami benchmark", text));
-        chatStatus.accept("Benchmark results copied.");
+        chatStatus.accept(host.getString(R.string.benchmark_copied));
     }
 
     private static String safeNativeBuildInfo() {

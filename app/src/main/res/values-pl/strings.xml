@@ -181,6 +181,8 @@
     <string name="settings_crash_log_empty">Brak zapisanych informacji o awarii.</string>
     <string name="settings_crash_log_exported">Dziennik awarii gotowy do udostępnienia z tego telefonu.</string>
     <string name="compact_conversation">Kompaktuj rozmowę</string>
+    <string name="compact_short">Kompaktuj</string>
+    <string name="default_assistant_heading">ASYSTENT</string>
     <string name="chat_interrupted_retry">Przerwano — Ponów</string>
 
     <string name="notification_listener_label">Dostęp Hanami do powiadomień</string>
@@ -204,4 +206,94 @@ com.whatsapp</string>
     <string name="calendar_permission_needed">Do wyświetlenia listy kalendarzy potrzebne jest uprawnienie Kalendarza.</string>
     <string name="calendar_no_calendars">Na tym urządzeniu nie znaleziono kalendarzy.</string>
     <string name="calendar_pick_title">Wybierz kalendarz</string>
+
+    <!-- Home & About -->
+    <string name="home_on_device">NA URZĄDZENIU</string>
+    <string name="home_tagline">Modele Liquid AI LFM3, prywatnie na tym telefonie.</string>
+    <string name="home_no_model_title">Brak załadowanego modelu</string>
+    <string name="home_no_model_hint">Zaimportuj lub otwórz plik LFM3 GGUF w Ustawieniach, aby rozmawiać offline.</string>
+    <string name="home_setup_model">Skonfiguruj</string>
+    <string name="home_model_ready_suffix">Na urządzeniu · lokalna inferencja</string>
+    <string name="back_to_home">Wróć na ekran główny</string>
+    <string name="about_version_format">Wersja %1$s · AI na urządzeniu</string>
+    <string name="about_lead">Hanami uruchamia modele Liquid AI LFM3 bezpośrednio na tym telefonie. LFM3 to rodzina modeli, a Hanami to aplikacja.</string>
+    <string name="about_section_privacy_title">PRYWATNOŚĆ DOMYŚLNIE</string>
+    <string name="about_section_privacy_body">Tekst, zdjęcia, dokumenty i głos są przetwarzane lokalnie przez llama.cpp bez telemetrii. Opcjonalne wyszukiwanie HTTPS SearXNG pozostaje wyłączone, dopóki nie włączysz go w Ustawieniach.</string>
+    <string name="about_section_actions_title">CHRONIONE AKCJE ANDROIDA</string>
+    <string name="about_section_actions_body">Proponowane przez model minutniki, alarmy, przypomnienia i wpisy kalendarza nigdy nie wykonują się po cichu — wrażliwe akcje wymagają jednorazowego zatwierdzenia.</string>
+
+    <!-- Chat Shell, Composer, Transcript & Empty State -->
+    <string name="mode_local_short">Lokalnie · offline</string>
+    <string name="mode_web_search_short">Sieć · lokalny model</string>
+    <string name="mode_composer_web_search">Tryb · Wyszukiwanie w sieci + lokalny model</string>
+    <string name="chat_more_options">Więcej opcji</string>
+    <string name="web_search_menu">Wyszukiwanie w sieci</string>
+    <string name="chat_write_message">Napisz wiadomość…</string>
+    <string name="clear_conversation">Wyczyść</string>
+    <string name="dismiss">Zamknij</string>
+    <string name="remove_short">Usuń</string>
+    <string name="documents_attached_heading">Załączone dokumenty</string>
+    <string name="attached_image_preview_cd">Podgląd załączonego obrazu</string>
+    <string name="loading_image_preview">Ładowanie podglądu obrazu…</string>
+    <string name="chat_role_you">TY</string>
+    <string name="chat_reasoning">Rozumowanie</string>
+    <string name="chat_empty_title">Brak rozmowy.</string>
+    <string name="chat_empty_subtitle">Tekst, zdjęcia, dokumenty i głos zostają na tym telefonie, dopóki nie włączysz wyszukiwania.</string>
+    <string name="chat_empty_no_model_title">Załaduj model LFM3, aby zacząć</string>
+    <string name="chat_empty_no_model_body">Zaimportuj lub otwórz skwantyzowany model LFM3 GGUF w Ustawieniach. Po załadowaniu odpowiedzi działają w pełni offline.</string>
+    <string name="chat_empty_open_settings">Skonfiguruj model w Ustawieniach</string>
+    <string name="chat_suggest_photo_prompt">Jakie kolory i kształty widać na zdjęciu?</string>
+    <string name="chat_suggest_photo_hint">Zdjęcie · na urządzeniu</string>
+    <string name="chat_suggest_text_prompt">Napisz po polsku jedno zwięzłe zdanie o lokalnym przetwarzaniu na telefonie.</string>
+    <string name="chat_suggest_text_hint">Tekst · lokalnie</string>
+    <string name="chat_suggest_tool_prompt">Ustaw minutnik na czterdzieści pięć sekund</string>
+    <string name="chat_suggest_tool_hint">Wymaga zatwierdzenia</string>
+    <string name="status_no_model_loaded">Brak modelu. Otwórz Ustawienia i wybierz plik LFM3 GGUF.</string>
+    <string name="status_text_model_ready">Model tekstowy gotowy · offline</string>
+    <string name="status_omni_model_ready">Model i projektor załadowane · offline</string>
+
+    <!-- Settings Benchmark -->
+    <string name="benchmark_heading">TEST SZYBKOŚCI</string>
+    <string name="benchmark_help">Mierzy przetwarzanie promptu (pp) i dekodowanie (tg) w tok/s na załadowanym modelu, jak llama-bench.</string>
+    <string name="benchmark_run">Uruchom test szybkości</string>
+    <string name="benchmark_idle_result">Załaduj model i uruchom test szybkości. Wyniki zawijają się i można je skopiować.</string>
+    <string name="benchmark_copy">Kopiuj wyniki</string>
+    <string name="benchmark_running">Trwa test przetwarzania promptu i dekodowania…</string>
+    <string name="benchmark_copied">Skopiowano wyniki testu szybkości.</string>
+    <string name="benchmark_need_model">Najpierw załaduj model GGUF, a potem uruchom test szybkości.</string>
+    <string name="model_heading">MODEL</string>
+    <string name="model_import_help">Import kopiuje plik GGUF do prywatnej pamięci aplikacji; Otwórz czyta bezpośrednio ze wskazanego pliku.</string>
+
+    <!-- History -->
+    <string name="history_home">Start</string>
+    <string name="history_back">Wstecz</string>
+    <string name="history_continue_chat">Kontynuuj czat</string>
+    <string name="history_empty_title">Brak zapisanych rozmów.</string>
+    <string name="history_empty_subtitle">Zakończone rozmowy pojawiają się tutaj automatycznie, aby można było do nich wrócić w każdej chwili.</string>
+    <string name="history_delete_all">Usuń całą historię</string>
+    <string name="history_delete">Usuń</string>
+    <string name="history_no_preview">Brak podglądu wiadomości</string>
+    <string name="history_retention_notice">Zapisane na tym telefonie. Wyłączone z kopii zapasowej Androida. Audio i zdjęcia są tymczasowe i usuwane po przetworzeniu.</string>
+    <string name="history_speech_transcript">Transkrypcja mowy: %1$s</string>
+    <string name="history_speech_unavailable">Transkrypcja mowy niedostępna</string>
+    <string name="history_turn_status">Tura: %1$s</string>
+    <string name="history_delete_one_title">Usunąć rozmowę?</string>
+    <string name="history_delete_one_body">Usunąć „%1$s” oraz wszystkie zapisane wiadomości i wyniki akcji?</string>
+    <string name="history_delete_all_title">Usunąć całą historię?</string>
+    <string name="history_delete_all_body">Spowoduje to trwałe usunięcie wszystkich zapisanych rozmów z tego urządzenia.</string>
+    <string name="history_delete_all_confirm">Usuń wszystko</string>
+    <string name="cancel">Anuluj</string>
+    <string name="done">Gotowe</string>
+    <string name="history_read_error">Nie udało się odczytać zapisanych rozmów</string>
+    <string name="history_open_error">Nie udało się otworzyć tej rozmowy</string>
+
+    <!-- Camera & Tool Confirmation -->
+    <string name="camera_capture_cd">Zrób zdjęcie</string>
+    <string name="camera_starting">Uruchamianie podglądu aparatu…</string>
+    <string name="camera_ready">Aparat gotowy</string>
+    <string name="camera_capturing">Robienie zdjęcia w pełnej rozdzielczości…</string>
+    <string name="camera_permission_needed">Do zrobienia zdjęcia potrzebny jest dostęp do aparatu.</string>
+    <string name="tool_not_pending">Ta akcja nie oczekuje już na decyzję.</string>
+    <string name="tool_confirm_prompt">Zatwierdź tylko wtedy, gdy chcesz wykonać dokładnie powyższą akcję i jej argumenty.</string>
+    <string name="tool_action_result_format">Wynik akcji: %1$s — %2$s</string>
 </resources>

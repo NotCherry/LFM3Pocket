@@ -193,6 +193,8 @@ com.whatsapp</string>
     <string name="settings_crash_log_empty">No crash evidence recorded yet.</string>
     <string name="settings_crash_log_exported">Crash log ready to share from this phone.</string>
     <string name="compact_conversation">Compact conversation</string>
+    <string name="compact_short">Compact</string>
+    <string name="default_assistant_heading">ASSISTANT</string>
     <string name="chat_interrupted_retry">Interrupted — Retry</string>
 
     <string name="calendar_heading">CALENDAR</string>
@@ -204,4 +206,94 @@ com.whatsapp</string>
     <string name="calendar_permission_needed">Calendar permission is needed to list calendars.</string>
     <string name="calendar_no_calendars">No calendars found on this device.</string>
     <string name="calendar_pick_title">Pick a calendar</string>
+
+    <!-- Home & About -->
+    <string name="home_on_device">ON DEVICE</string>
+    <string name="home_tagline">Liquid AI LFM3 models, private on this phone.</string>
+    <string name="home_no_model_title">No model loaded</string>
+    <string name="home_no_model_hint">Import or open an LFM3 GGUF file in Settings to start chatting offline.</string>
+    <string name="home_setup_model">Set up</string>
+    <string name="home_model_ready_suffix">On device · local inference</string>
+    <string name="back_to_home">Back to home</string>
+    <string name="about_version_format">Version %1$s · On-device AI</string>
+    <string name="about_lead">Hanami runs Liquid AI LFM3 models directly on this phone. LFM3 is the model family; Hanami is the interface.</string>
+    <string name="about_section_privacy_title">PRIVATE BY DEFAULT</string>
+    <string name="about_section_privacy_body">Text, photo, document, and voice inference run locally through llama.cpp with zero telemetry. Optional HTTPS SearXNG web search stays off unless you configure and enable it in Settings.</string>
+    <string name="about_section_actions_title">GUARDED ANDROID ACTIONS</string>
+    <string name="about_section_actions_body">Model-proposed timers, alarms, reminders, and calendar updates never execute silently — sensitive actions require explicit one-shot approval.</string>
+
+    <!-- Chat Shell, Composer, Transcript & Empty State -->
+    <string name="mode_local_short">Local · offline</string>
+    <string name="mode_web_search_short">Web search · local model</string>
+    <string name="mode_composer_web_search">Mode · Web search + local model</string>
+    <string name="chat_more_options">More options</string>
+    <string name="web_search_menu">Web search</string>
+    <string name="chat_write_message">Write a message…</string>
+    <string name="clear_conversation">Clear</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="remove_short">Remove</string>
+    <string name="documents_attached_heading">Documents attached</string>
+    <string name="attached_image_preview_cd">Attached image preview</string>
+    <string name="loading_image_preview">Loading image preview…</string>
+    <string name="chat_role_you">YOU</string>
+    <string name="chat_reasoning">Reasoning</string>
+    <string name="chat_empty_title">No conversation yet.</string>
+    <string name="chat_empty_subtitle">Text, photos, documents, and voice stay on this phone until you opt into search.</string>
+    <string name="chat_empty_no_model_title">Load an LFM3 model to begin</string>
+    <string name="chat_empty_no_model_body">Import or open a quantized LFM3 GGUF model from Settings. Once loaded, replies stream offline.</string>
+    <string name="chat_empty_open_settings">Set up model in Settings</string>
+    <string name="chat_suggest_photo_prompt">What colors and shapes are in the image?</string>
+    <string name="chat_suggest_photo_hint">Photo · on device</string>
+    <string name="chat_suggest_text_prompt">Write one concise paragraph about local on-device privacy.</string>
+    <string name="chat_suggest_text_hint">Text · local</string>
+    <string name="chat_suggest_tool_prompt">Set a timer for forty five seconds</string>
+    <string name="chat_suggest_tool_hint">Needs your approval</string>
+    <string name="status_no_model_loaded">No model loaded. Open Settings to select an LFM3 GGUF file.</string>
+    <string name="status_text_model_ready">Text model ready · offline</string>
+    <string name="status_omni_model_ready">Model and projector loaded · offline</string>
+
+    <!-- Settings Benchmark -->
+    <string name="benchmark_heading">BENCHMARK</string>
+    <string name="benchmark_help">Measures prompt-processing (pp) and decode (tg) tok/s on the loaded model, like llama-bench.</string>
+    <string name="benchmark_run">Run speed test</string>
+    <string name="benchmark_idle_result">Load a model, then run the speed test. Results wrap and can be copied.</string>
+    <string name="benchmark_copy">Copy results</string>
+    <string name="benchmark_running">Running prompt-processing and decode benchmark…</string>
+    <string name="benchmark_copied">Benchmark results copied.</string>
+    <string name="benchmark_need_model">Load a GGUF model first, then run the speed test.</string>
+    <string name="model_heading">MODEL</string>
+    <string name="model_import_help">Import copies a GGUF into private app storage; Open reads directly from your chosen file.</string>
+
+    <!-- History -->
+    <string name="history_home">Home</string>
+    <string name="history_back">Back</string>
+    <string name="history_continue_chat">Continue chat</string>
+    <string name="history_empty_title">No saved conversations yet.</string>
+    <string name="history_empty_subtitle">Completed chats appear here automatically so you can revisit or continue them anytime.</string>
+    <string name="history_delete_all">Delete all history</string>
+    <string name="history_delete">Delete</string>
+    <string name="history_no_preview">No message preview</string>
+    <string name="history_retention_notice">Saved on this phone. Excluded from Android backup. Audio and photos are temporary and removed after processing.</string>
+    <string name="history_speech_transcript">Speech transcript: %1$s</string>
+    <string name="history_speech_unavailable">Speech transcript unavailable</string>
+    <string name="history_turn_status">Turn %1$s</string>
+    <string name="history_delete_one_title">Delete conversation?</string>
+    <string name="history_delete_one_body">Delete ‘%1$s’ and all of its saved messages and action results?</string>
+    <string name="history_delete_all_title">Delete all history?</string>
+    <string name="history_delete_all_body">This permanently deletes every saved conversation on this device.</string>
+    <string name="history_delete_all_confirm">Delete all</string>
+    <string name="cancel">Cancel</string>
+    <string name="done">Done</string>
+    <string name="history_read_error">Could not read saved conversations</string>
+    <string name="history_open_error">Could not open this conversation</string>
+
+    <!-- Camera & Tool Confirmation -->
+    <string name="camera_capture_cd">Capture</string>
+    <string name="camera_starting">Starting camera preview…</string>
+    <string name="camera_ready">Camera ready</string>
+    <string name="camera_capturing">Capturing full-size photo…</string>
+    <string name="camera_permission_needed">Camera access is needed to take a photo.</string>
+    <string name="tool_not_pending">This action is no longer pending.</string>
+    <string name="tool_confirm_prompt">Approve only if you want the exact action and arguments shown above.</string>
+    <string name="tool_action_result_format">Action result: %1$s — %2$s</string>
 </resources>

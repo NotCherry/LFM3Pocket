@@ -77,7 +77,7 @@ final class StillwaterReadable {
         boolean stack = shouldStack(context);
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(stack ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
-        int minHeightPx = dp(context, minHeightDp);
+        int minHeightPx = Math.max(dp(context, minHeightDp), InterfaceSize.minTouchPx(context));
         for (int i = 0; i < buttons.length; i++) {
             Button button = buttons[i];
             prepareWrappingControl(button, minHeightPx);
@@ -85,27 +85,34 @@ final class StillwaterReadable {
             if (stack) {
                 params = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                if (i > 0) params.topMargin = dp(context, 4);
+                if (i > 0) params.topMargin = dp(context, 10);
             } else {
                 float weight = (weights != null && i < weights.length) ? weights[i] : 1f;
                 params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, weight);
+                if (i > 0) params.leftMargin = dp(context, 8);
             }
             row.addView(button, params);
         }
-        parent.addView(row, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowParams.topMargin = dp(context, 8);
+        parent.addView(row, rowParams);
         return row;
     }
 
     /** Full-width control with WRAP_CONTENT height and a minHeight floor. */
     static void addFlexibleFullWidth(LinearLayout parent, View child, int minHeightDp) {
+        int minHeightPx = Math.max(dp(parent.getContext(), minHeightDp),
+                InterfaceSize.minTouchPx(parent.getContext()));
         if (child instanceof TextView) {
-            prepareWrappingControl((TextView) child, dp(parent.getContext(), minHeightDp));
+            prepareWrappingControl((TextView) child, minHeightPx);
         } else {
-            child.setMinimumHeight(dp(parent.getContext(), minHeightDp));
+            child.setMinimumHeight(minHeightPx);
         }
-        parent.addView(child, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams fullParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        fullParams.topMargin = dp(parent.getContext(), 10);
+        parent.addView(child, fullParams);
     }
 
     /**

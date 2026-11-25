@@ -1,5 +1,6 @@
 package com.notcherry.lfm3pocket;
 
+import android.content.res.ColorStateList;
 import android.os.Handler;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -33,20 +34,14 @@ final class AppearanceSettingsSection {
     }
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
-        LinearLayout section = new LinearLayout(host.settingsActivity());
+        LinearLayout section = StillwaterUi.settingsCard(configuration,
+                host.getString(R.string.appearance_heading));
         section.setId(R.id.settings_appearance);
-        section.setOrientation(LinearLayout.VERTICAL);
-        TextView heading = host.label(host.getString(R.string.appearance_heading), 11, inkMuted);
-        heading.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
-        heading.setLetterSpacing(0.12f);
-        heading.setPadding(0, host.dp(16), 0, host.dp(4));
-        section.addView(heading);
-        TextView title = host.label(host.getString(R.string.interface_size_label), 14, ink);
+        TextView title = host.label(host.getString(R.string.interface_size_label), 16, ink);
+        title.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
         StillwaterReadable.prepareWrappingLabel(title);
         section.addView(title);
-        TextView help = host.label(host.getString(R.string.interface_size_help), 12, inkMuted);
-        StillwaterReadable.prepareWrappingLabel(help);
-        section.addView(help);
+        StillwaterUi.settingsHelp(section, host.getString(R.string.interface_size_help));
 
         interfaceCompactButton = interfacePreset(host.getString(R.string.interface_size_compact),
                 InterfaceSize.COMPACT, R.id.settings_interface_compact);
@@ -54,19 +49,25 @@ final class AppearanceSettingsSection {
                 InterfaceSize.DEFAULT, R.id.settings_interface_default);
         interfaceLargeButton = interfacePreset(host.getString(R.string.interface_size_large),
                 InterfaceSize.LARGE, R.id.settings_interface_large);
-        LinearLayout presets = StillwaterReadable.addFlexibleButtonRow(section, host.settingsActivity(), 44,
+        LinearLayout presets = StillwaterReadable.addFlexibleButtonRow(section, host.settingsActivity(), 48,
                 interfaceCompactButton, interfaceDefaultButton, interfaceLargeButton);
         presets.setId(R.id.settings_interface_size);
 
-        interfaceSizeValue = host.label("", 12, inkMuted);
+        interfaceSizeValue = host.label("", 14, StillwaterUi.CANDLE);
         interfaceSizeValue.setId(R.id.settings_interface_value);
+        interfaceSizeValue.setTypeface(StillwaterUi.mono(host.settingsActivity()));
         StillwaterReadable.prepareWrappingLabel(interfaceSizeValue);
-        interfaceSizeValue.setPadding(0, host.dp(8), 0, host.dp(2));
+        interfaceSizeValue.setPadding(0, host.dp(12), 0, host.dp(4));
         section.addView(interfaceSizeValue);
 
         interfaceSizeSlider = new SeekBar(host.settingsActivity());
         interfaceSizeSlider.setId(R.id.settings_interface_slider);
+        // Prevent Activity.onRestoreInstanceState from overwriting the new preset after recreate().
+        interfaceSizeSlider.setSaveEnabled(false);
         interfaceSizeSlider.setMax(50); // 80..130 in 1% steps
+        interfaceSizeSlider.setThumbTintList(ColorStateList.valueOf(StillwaterUi.CANDLE));
+        interfaceSizeSlider.setProgressTintList(ColorStateList.valueOf(StillwaterUi.CANDLE));
+        interfaceSizeSlider.setProgressBackgroundTintList(ColorStateList.valueOf(StillwaterUi.LINE));
         interfaceSizeSlider.setMinimumHeight(InterfaceSize.minTouchPx(host.settingsActivity()));
         interfaceSizeSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -95,14 +96,13 @@ final class AppearanceSettingsSection {
         });
         section.addView(interfaceSizeSlider, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        configuration.addView(section);
         syncControls();
     }
 
     private Button interfacePreset(String title, float scale, int id) {
         Button presetButton = host.button(title);
         presetButton.setId(id);
-        StillwaterUi.quiet(presetButton);
+        StillwaterUi.outlined(presetButton);
         presetButton.setOnClickListener(v -> {
             if (bindingInterfaceSize) return;
             applyInterfaceSize(scale);
@@ -136,14 +136,8 @@ final class AppearanceSettingsSection {
     }
 
     private void highlightInterfaceSize(float scale) {
-        styleInterfacePreset(interfaceCompactButton, InterfaceSize.isCompact(scale));
-        styleInterfacePreset(interfaceDefaultButton, InterfaceSize.isDefault(scale));
-        styleInterfacePreset(interfaceLargeButton, InterfaceSize.isLarge(scale));
-    }
-
-    private void styleInterfacePreset(Button button, boolean selected) {
-        if (button == null) return;
-        if (selected) StillwaterUi.primary(button);
-        else StillwaterUi.quiet(button);
+        StillwaterUi.segmented(interfaceCompactButton, InterfaceSize.isCompact(scale));
+        StillwaterUi.segmented(interfaceDefaultButton, InterfaceSize.isDefault(scale));
+        StillwaterUi.segmented(interfaceLargeButton, InterfaceSize.isLarge(scale));
     }
 }
