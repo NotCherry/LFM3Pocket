@@ -38,7 +38,8 @@ internal fun ChatLiveStatus(mode: String, status: String, packageName: String) {
     if (status.isNotBlank()) {
         val announcedStatus = chatStatusLabel(status)
         val active = status.startsWith("Searching") || status.startsWith("Generating")
-                || status.startsWith("Stopping")
+                || status.startsWith("Stopping") || status.startsWith("Compacting")
+                || status.startsWith("Transcribing")
         Row(Modifier.fillMaxWidth().padding(top = 3.dp)
                 .semantics {
                     liveRegion = LiveRegionMode.Polite

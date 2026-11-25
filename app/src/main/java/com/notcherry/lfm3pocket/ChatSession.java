@@ -126,7 +126,7 @@ public final class ChatSession {
         final List<Attachment> documents;
         final String imagePath;
         final AtomicBoolean imageDeleted=new AtomicBoolean();
-        volatile boolean cancelled,discarded,workerFinished;
+        volatile boolean cancelled,discarded,workerStarted,workerFinished;
         volatile long lastPartialSaveAt;
         Turn(long id,long handle,boolean webSearch,String question,List<Attachment> media,List<Attachment> documents,String imagePath) {
             this.id=id;this.handle=handle;this.webSearch=webSearch;this.question=question;
@@ -159,6 +159,8 @@ public final class ChatSession {
     private long epoch;
     private Turn active;
     private boolean closed, scheduled, compacting;
+    private volatile boolean compactCancelled, compactWorkerStarted, compactWorkerFinished;
+    private long compactEpoch;
     private String status="";
     private String activeImagePath="";
     private String rollingSummary="";
@@ -325,24 +327,50 @@ public final class ChatSession {
         return true;
     }
     public synchronized void stop() {
-        if(active==null) return;
-        active.cancelled=true;engine.stop();
-        status=active.webSearch?"Stopping local generation · web search mode…":"Stopping local generation · offline…";emit();
+        if(active!=null) {
+            active.cancelled=true;engine.stop();WebSearch.cancelActive();
+            if(!active.workerStarted || active.workerFinished) {
+                drain();
+                if(partial.length()>0) {
+                    ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(partial.toString());
+                    if(!cleaned.answer.isEmpty() || cleaned.reasoning!=null) {
+                        messages.add(new Message("assistant",cleaned.answer,cleaned.reasoning,Collections.emptyList()));
+                    }
+                }
+                String mode=active.webSearch?"web search + local model":"local model · offline";
+                partial.setLength(0);++epoch;active=null;
+                status="Response stopped · "+mode;emit();
+                return;
+            }
+            status=active.webSearch?"Stopping local generation · web search mode…":"Stopping local generation · offline…";emit();
+            return;
+        }
+        if(compacting) {
+            compactCancelled=true;engine.stop();
+            if(!compactWorkerStarted || compactWorkerFinished) {
+                ++epoch;compacting=false;compactCancelled=false;
+                status="Compaction stopped.";emit();
+                return;
+            }
+            status="Stopping conversation compaction…";emit();
+        }
     }
     public synchronized void clear() {
         if(active!=null) {
             active.cancelled=true;active.discarded=true;engine.stop();
             if(active.workerFinished)cleanupDiscardedImage(active);
         } else if(compacting) {
+            compactCancelled=true;
             engine.stop();
         } else if(!activeImagePath.isEmpty())mediaCleanup.delete(activeImagePath);
+        WebSearch.cancelActive();
         activeImagePath="";
         for(Attachment doc:activeDocuments) {
             if(doc.path!=null && !doc.path.isEmpty()) mediaCleanup.delete(doc.path);
         }
         activeDocuments.clear();
         ++epoch;active=null;messages.clear();pending.setLength(0);partial.setLength(0);scheduled=false;
-        rollingSummary="";summarizedMessageCount=0;compacting=false;
+        rollingSummary="";summarizedMessageCount=0;compacting=false;compactCancelled=false;
         status="Conversation cleared.";emit();
     }
     public synchronized void close() {
@@ -351,14 +379,16 @@ public final class ChatSession {
             active.cancelled=true;active.discarded=true;engine.stop();
             if(active.workerFinished)cleanupDiscardedImage(active);
         } else if(compacting) {
+            compactCancelled=true;
             engine.stop();
         } else if(!activeImagePath.isEmpty())mediaCleanup.delete(activeImagePath);
+        WebSearch.cancelActive();
         activeImagePath="";
         for(Attachment doc:activeDocuments) {
             if(doc.path!=null && !doc.path.isEmpty()) mediaCleanup.delete(doc.path);
         }
         activeDocuments.clear();
-        active=null;pending.setLength(0);partial.setLength(0);compacting=false;
+        active=null;pending.setLength(0);partial.setLength(0);compacting=false;compactCancelled=false;
     }
 
     /**
@@ -391,9 +421,11 @@ public final class ChatSession {
         final int previousCount=summarizedMessageCount;
         final long handle=model.getAsLong();
         final int tokens=maxTokens<=0?256:maxTokens;
-        compacting=true;
+        final long runEpoch=++epoch;
+        compactEpoch=runEpoch;
+        compacting=true;compactCancelled=false;compactWorkerStarted=false;compactWorkerFinished=false;
         status="Compacting conversation…";emit();
-        worker.execute(() -> runCompact(handle,summaryPrompt,tokens,targetCount,previousSummary,previousCount,listener));
+        worker.execute(() -> runCompact(runEpoch,handle,summaryPrompt,tokens,targetCount,previousSummary,previousCount,listener));
         return true;
     }
     private synchronized boolean current(Turn turn) { return !closed && active==turn && epoch==turn.id; }
@@ -403,30 +435,44 @@ public final class ChatSession {
     }
     private void generate(Turn turn,String question,boolean voiceRecording,boolean useSearch,
                           String endpoint,int maxTokens,List<Message> history) {
-        try { generateTurn(turn,question,voiceRecording,useSearch,endpoint,maxTokens,history); }
-        finally {
+        boolean finishPosted=false;
+        try {
+            synchronized(ChatSession.this) {
+                turn.workerStarted=true;
+            }
+            finishPosted=generateTurn(turn,question,voiceRecording,useSearch,endpoint,maxTokens,history);
+        } catch(Throwable unexpected) {
+            final String failure=safeFailureMessage(unexpected);
+            if(!finishPosted) {
+                finishPosted=true;
+                ui.post(() -> finish(turn,Collections.emptyList(),failure,useSearch,null,null),0);
+            }
+        } finally {
             for(Attachment attachment:turn.media) {
                 if(attachment.kind!=AttachmentKind.PHOTO)
                     try { mediaCleanup.delete(attachment.path); } catch(RuntimeException ignored) { }
             }
             turn.workerFinished=true;
             cleanupDiscardedImage(turn);
+            if(!finishPosted) {
+                ui.post(() -> finish(turn,Collections.emptyList(),null,useSearch,null,null),0);
+            }
         }
     }
     private void cleanupDiscardedImage(Turn turn) {
         if(turn.discarded && !turn.imagePath.isEmpty() && turn.imageDeleted.compareAndSet(false,true))
             try { mediaCleanup.delete(turn.imagePath); } catch(RuntimeException ignored) { }
     }
-    private void generateTurn(Turn turn,String question,boolean voiceRecording,boolean useSearch,
-                              String endpoint,int maxTokens,List<Message> history) {
+    private boolean generateTurn(Turn turn,String question,boolean voiceRecording,boolean useSearch,
+                                 String endpoint,int maxTokens,List<Message> history) {
         if(!current(turn)) {
             persistTerminal(turn,question,"",null,null,TerminalState.CANCELLED);
-            return;
+            return true;
         }
         try {
             persistence.begin(new StartedTurn(turn.persistenceId,question,turn.imagePath,System.currentTimeMillis()));
-        } catch(Exception e) {
-            String saveFailure=e.getMessage()==null?e.toString():e.getMessage();
+        } catch(Throwable e) {
+            String saveFailure=safeFailureMessage(e);
             ui.post(() -> {
                 synchronized(ChatSession.this) {
                     if(!current(turn)) return;
@@ -435,11 +481,11 @@ public final class ChatSession {
                     emit();
                 }
             },0);
-            return;
+            return true;
         }
         if(!current(turn)) {
             persistTerminal(turn,question,"",null,null,TerminalState.CANCELLED);
-            return;
+            return true;
         }
         List<WebSearch.Source> sources=Collections.emptyList();
         String searchError=null,error=null;
@@ -512,6 +558,7 @@ public final class ChatSession {
         String saveFailure=persistTerminal(turn,question,answer,speechTranscript,speechTranscriptStatus,terminal);
         final String historyFailure=saveFailure;
         ui.post(() -> finish(turn,resultSources,failure,useSearch,searchFailure,historyFailure),0);
+        return true;
     }
     private String persistTerminal(Turn turn,String question,String answer,String speechTranscript,
                                    String speechTranscriptStatus,TerminalState terminal) {
@@ -683,34 +730,64 @@ public final class ChatSession {
         return SUMMARY_PROMPT_PREFIX + body + "\n<|im_end|>\n<|im_start|>assistant\n";
     }
 
-    private void runCompact(long handle,String summaryPrompt,int maxTokens,int targetCount,
+    private synchronized boolean isCurrentCompact(long runEpoch) {
+        return !closed && compacting && compactEpoch==runEpoch && epoch==runEpoch;
+    }
+
+    private void runCompact(long runEpoch,long handle,String summaryPrompt,int maxTokens,int targetCount,
                             String previousSummary,int previousCount,CompactListener listener) {
+        synchronized(this) {
+            if(!isCurrentCompact(runEpoch) || compactCancelled) {
+                compactWorkerFinished=true;
+                ui.post(() -> finishCompact(runEpoch,"",targetCount,null,true,previousSummary,previousCount,listener),0);
+                return;
+            }
+            compactWorkerStarted=true;
+        }
         String error=null;
         String generated="";
+        boolean cancelled=false;
         try {
             engine.resetStop();
-            StringBuilder out=new StringBuilder();
-            error=engine.generateWithMedia(handle,summaryPrompt,new String[0],maxTokens,out::append);
-            generated=ThinkingSanitizer.clean(out.toString()).answer.trim();
+            if(compactCancelled || !isCurrentCompact(runEpoch)) {
+                cancelled=true;
+                engine.stop();
+            } else {
+                StringBuilder out=new StringBuilder();
+                error=engine.generateWithMedia(handle,summaryPrompt,new String[0],maxTokens,out::append);
+                cancelled=compactCancelled || !isCurrentCompact(runEpoch);
+                if(!cancelled) generated=ThinkingSanitizer.clean(out.toString()).answer.trim();
+            }
         } catch(Throwable t) {
-            error=safeFailureMessage(t);
+            if(compactCancelled || !isCurrentCompact(runEpoch)) cancelled=true;
+            else error=safeFailureMessage(t);
+        } finally {
+            compactWorkerFinished=true;
         }
         final String failure=error;
         final String summary=generated;
-        ui.post(() -> finishCompact(summary,targetCount,failure,previousSummary,previousCount,listener),0);
+        final boolean wasCancelled=cancelled;
+        ui.post(() -> finishCompact(runEpoch,summary,targetCount,failure,wasCancelled,previousSummary,previousCount,listener),0);
     }
 
-    private synchronized void finishCompact(String summary,int targetCount,String failure,
-                                            String previousSummary,int previousCount,CompactListener listener) {
-        compacting=false;
-        if(closed) {
-            if(listener!=null) listener.onResult(false,"Conversation closed.");
+    private synchronized void finishCompact(long runEpoch,String summary,int targetCount,String failure,
+                                            boolean cancelled,String previousSummary,int previousCount,
+                                            CompactListener listener) {
+        if(!isCurrentCompact(runEpoch)) {
+            if(listener!=null) listener.onResult(false,closed?"Conversation closed.":"Conversation cleared.");
             return;
         }
+        compacting=false;
+        boolean stopped=cancelled || compactCancelled;
+        compactCancelled=false;
         boolean applied=false;
         String persistSummary=null;
         int persistCount=0;
-        if(failure==null && summary!=null && !summary.trim().isEmpty()) {
+        if(stopped) {
+            rollingSummary=previousSummary==null?"":previousSummary;
+            summarizedMessageCount=previousCount;
+            status="Compaction stopped.";
+        } else if(failure==null && summary!=null && !summary.trim().isEmpty()) {
             rollingSummary=summary.trim();
             summarizedMessageCount=Math.max(0,Math.min(targetCount,messages.size()));
             status="Conversation compacted · summary applied.";

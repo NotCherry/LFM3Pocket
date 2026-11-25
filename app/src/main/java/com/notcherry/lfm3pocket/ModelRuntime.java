@@ -32,6 +32,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         void onSpeech(boolean speaking, String status);
         void onToolOutcome(ToolRegistry.Request request, ToolCoordinator.Outcome outcome);
         void onVoiceStatus(String status);
+        default void onModelStateChanged(boolean loaded, String status) {}
         boolean isUsable();
     }
 
@@ -75,7 +76,8 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private volatile boolean speechCancel;
     private boolean playbackNoted;
     private boolean serviceStartRequested;
-    private boolean unloading;
+    private volatile boolean loading;
+    private volatile boolean unloading;
     private int sessionEpoch;
     private final AtomicInteger conversationEpoch = new AtomicInteger();
     private String pendingQuestion = "";
@@ -233,7 +235,9 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         return session;
     }
 
-    @Override public boolean isGenerating() { return session != null && session.isGenerating(); }
+    @Override public boolean isGenerating() { return session != null && session.isBusy(); }
+    public boolean isLoading() { return loading; }
+    public boolean isUnloading() { return unloading; }
 
     public boolean hasTranscript() {
         if (session == null) return false;
@@ -280,12 +284,14 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     public int loopbackPort() { return loopback.port(); }
 
     public void load(String path, String projector, LoadCallback callback) {
+        loading = true;
         dispatchPolicy(() -> policy.onLoading(path == null ? "" : new File(path).getName()));
         worker.execute(() -> loadBlocking(path, projector, callback));
     }
 
     /** Caller is the runtime worker. Safe for import, which already runs there. */
     public boolean loadBlocking(String path, String projector, LoadCallback callback) {
+        loading = true;
         String name = path == null ? "" : new File(path).getName();
         long started = SystemClock.elapsedRealtime();
         long next = 0L;
@@ -325,6 +331,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                     : "Model and projector loaded • offline")
                 : "Model error: " + failure;
         main.post(() -> {
+            loading = false;
             if (loaded != 0L) {
                 dispatchPolicy(() -> policy.onLoaded(name, SystemClock.elapsedRealtime()));
                 dispatchPolicy(() -> policy.onVoiceTalkAvailable(voiceActions.isEnabled()));
@@ -332,6 +339,10 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 dispatchPolicy(policy::onLoadFailed);
             }
             if (callback != null) callback.finished(status);
+            Ui target = ui;
+            if (target != null && target.isUsable()) {
+                target.onModelStateChanged(loaded != 0L, callback == null ? status : null);
+            }
         });
         return loaded != 0L;
     }
@@ -358,6 +369,12 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         systemSpeech.stop();
         last = policy.unloadRequested();
         String why = cause == null ? "user" : cause;
+        if (done == null) {
+            Ui startTarget = ui;
+            if (startTarget != null && startTarget.isUsable()) {
+                startTarget.onModelStateChanged(false, "Unloading model…");
+            }
+        }
         worker.execute(() -> {
             long current = handle;
             if (current != 0L) {
@@ -372,9 +389,26 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                     try { app.externalModels().releaseAll(); } catch (Exception ignored) { }
                 }
                 publish(last);
-                if (done != null) done.run();
+                if (done != null) {
+                    done.run();
+                } else {
+                    Ui finishTarget = ui;
+                    if (finishTarget != null && finishTarget.isUsable()) {
+                        finishTarget.onModelStateChanged(handle != 0L, unloadStatusFor(why));
+                    }
+                }
             });
         });
+    }
+
+    private static String unloadStatusFor(String why) {
+        if ("policy-cancel".equals(why) || "policy".equals(why)) {
+            return "Model unloaded due to memory or thermal pressure. Reload it in Settings to continue.";
+        }
+        if ("fgs-timeout".equals(why)) {
+            return "Background session timed out; model unloaded. Reload it in Settings to continue.";
+        }
+        return "Model unloaded. Selected files remain available for reload.";
     }
 
     @Override public void stopTurn() {
@@ -387,20 +421,47 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         dispatchPolicy(() -> policy.stopRequested(SystemClock.elapsedRealtime()));
     }
 
+    public void stopSpeech() {
+        speechCancel = true;
+        playback.stop();
+        systemSpeech.stop();
+        engine.stop();
+        dispatchPolicy(() -> policy.onSpeechFinished(SystemClock.elapsedRealtime()));
+        Ui target = ui;
+        if (target != null && target.isUsable()) {
+            target.onSpeech(false, "Spoken response cancelled.");
+        }
+    }
+
     public void clearConversation() {
         conversationEpoch.incrementAndGet();
+        voiceActions.cancelAll("Cleared");
+        speechCancel = true;
+        playback.stop();
+        systemSpeech.stop();
         if (session != null) session.clear();
         lastAssistant = "";
+        final long current = handle;
+        if (current != 0L) {
+            worker.execute(() -> {
+                if (handle == current) engine.releaseSession(current);
+            });
+        }
         if (session != null) {
             lastSnapshot = session.snapshot();
             lastTranscript = FlatTranscript.format(lastSnapshot);
             lastStatus = lastSnapshot == null ? "" : lastSnapshot.status;
-            lastGenerating = session.isGenerating();
+            lastGenerating = session.isBusy();
         } else {
-            lastSnapshot = null;
+            lastSnapshot = new ChatSnapshot(java.util.Collections.emptyList(), "Conversation cleared.", false);
             lastTranscript = FlatTranscriptFormatter.EMPTY_TRANSCRIPT;
-            lastStatus = "";
+            lastStatus = "Conversation cleared.";
             lastGenerating = false;
+            Ui target = ui;
+            if (target != null && target.isUsable()) {
+                target.onSnapshot(lastSnapshot);
+                target.onChat(lastTranscript, lastStatus, false);
+            }
         }
     }
 
@@ -518,7 +579,10 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             return;
         }
         boolean lightweightTts = preferences.tinyVocaEnglishTtsEnabled();
-        if (handle == 0L && !lightweightTts) return;
+        if (handle == 0L && !lightweightTts) {
+            if (ui != null && ui.isUsable()) ui.onSpeech(false, "Load a model to speak replies.");
+            return;
+        }
         String reply = SpeechPrompt.spokenText(replyText == null ? "" : replyText);
         if (reply.isBlank()) {
             if (ui != null && ui.isUsable()) ui.onSpeech(false, "Nothing speakable in the last reply.");
@@ -592,11 +656,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             if (current != 0L && (complete || critical
                     || level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW)) {
                 worker.execute(() -> {
-                    if (engine instanceof NativeInferenceEngine) {
-                        ((NativeInferenceEngine) engine).releaseSession(current);
-                    } else {
-                        NativeBridge.releaseSession(current);
-                    }
+                    if (handle == current) engine.releaseSession(current);
                 });
             }
             if (!complete && !critical) {
@@ -998,7 +1058,8 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     }
 
     private void saveTurn(ChatSession.CompletedTurn turn) {
-        if (turn.assistantText != null && !turn.assistantText.isBlank()) {
+        if (turn.assistantText != null && !turn.assistantText.isBlank()
+                && turn.status != ChatSession.TerminalState.CANCELLED) {
             lastAssistant = turn.assistantText;
             main.post(() -> { if (ui != null && ui.isUsable()) ui.onAssistantReply(lastAssistant); });
             // Only COMPLETED replies become tool proposals. Cancelled text is inert.
@@ -1171,6 +1232,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             return delegate.loadModel(modelPath, projectorPath);
         }
         @Override public void unloadModel(long model) { delegate.unloadModel(model); }
+        @Override public void releaseSession(long model) { delegate.releaseSession(model); }
         @Override public String generate(long model, String prompt, String mediaPath, int maxTokens, TokenSink sink) {
             return generateWithMedia(model, prompt, mediaPath == null ? new String[0] : new String[] { mediaPath },
                     maxTokens, sink);

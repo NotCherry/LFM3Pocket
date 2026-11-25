@@ -524,6 +524,100 @@ public class ChatSessionTest {
         assertTrue(prompt.contains("Follow up"));
     }
 
+    @Test public void stopBeforeWorkerStartsUnlocksSessionImmediately() {
+        Harness h = new Harness();
+        assertTrue(h.send("Queued turn"));
+        assertTrue(h.session.isGenerating());
+        h.session.stop();
+        assertFalse("Stopping a queued turn must unlock immediately instead of hanging", h.session.isGenerating());
+        assertFalse(h.generating);
+        assertTrue(h.status.startsWith("Response stopped"));
+        assertTrue(h.send("Next turn"));
+        h.complete();
+        assertEquals(1, h.engine.calls);
+        assertTrue(h.text.contains("Next turn"));
+        assertTrue(h.text.contains("Answer 1"));
+    }
+
+    @Test public void stopDuringCompactionCancelsAndRestoresIdle() {
+        Queue worker = new Queue(), ui = new Queue();
+        CompactEngine engine = new CompactEngine();
+        String[] status = {""};
+        boolean[] running = {false};
+        ChatSession session = new ChatSession(engine, worker, ui, () -> 1,
+                (endpoint, question) -> Collections.emptyList(),
+                turn -> {}, path -> {},
+                (text, s, g) -> { status[0] = s; running[0] = g; }, snap -> {});
+        for (int i = 1; i <= 6; i++) {
+            assertTrue(session.submit("Question " + i, "", "", false, "", 32));
+            worker.drain(); ui.drain();
+        }
+        int callsBefore = engine.calls;
+        assertTrue(session.requestCompact(128));
+        assertTrue(session.isCompacting());
+        assertTrue(session.isBusy());
+        assertTrue(running[0]);
+        session.stop();
+        assertFalse("Stopping queued compaction must unlock immediately", session.isCompacting());
+        assertFalse(session.isBusy());
+        assertFalse(running[0]);
+        assertEquals("Compaction stopped.", status[0]);
+        worker.drain(); ui.drain();
+        assertEquals("Cancelled compaction must not invoke inference", callsBefore, engine.calls);
+        assertFalse(session.hasSummary());
+        assertTrue(session.submit("After stopped compact", "", "", false, "", 32));
+        worker.drain(); ui.drain();
+        assertEquals(callsBefore + 1, engine.calls);
+    }
+
+    @Test public void clearDuringCompactionDiscardsLateCompactCallback() {
+        Queue worker = new Queue(), ui = new Queue();
+        CompactEngine engine = new CompactEngine();
+        String[] status = {""};
+        boolean[] running = {false};
+        ChatSession session = new ChatSession(engine, worker, ui, () -> 1,
+                (endpoint, question) -> Collections.emptyList(),
+                turn -> {}, path -> {},
+                (text, s, g) -> { status[0] = s; running[0] = g; }, snap -> {});
+        for (int i = 1; i <= 6; i++) {
+            assertTrue(session.submit("Question " + i, "", "", false, "", 32));
+            worker.drain(); ui.drain();
+        }
+        assertTrue(session.requestCompact(128));
+        // Run worker so compact produces a result queued for UI delivery, then clear before UI runs.
+        worker.drain();
+        session.clear();
+        assertEquals("Conversation cleared.", status[0]);
+        assertFalse(running[0]);
+        ui.drain();
+        assertEquals("Late compaction callback must not overwrite cleared state",
+                "Conversation cleared.", status[0]);
+        assertFalse(session.hasSummary());
+        assertFalse(session.isBusy());
+        assertTrue(session.snapshot().turns.isEmpty());
+    }
+
+    @Test public void unexpectedWorkerErrorStillReleasesActiveTurn() {
+        Queue worker = new Queue(), ui = new Queue();
+        Engine engine = new Engine() {
+            @Override public void resetStop() {
+                throw new AssertionError("boom");
+            }
+        };
+        boolean[] running = {false};
+        String[] status = {""};
+        ChatSession session = new ChatSession(engine, worker, ui, () -> 1,
+                (endpoint, question) -> Collections.emptyList(),
+                turn -> {}, path -> {},
+                (text, s, g) -> { status[0] = s; running[0] = g; }, snap -> {});
+        assertTrue(session.submit("Trigger error", "", "", false, "", 32));
+        assertTrue(running[0]);
+        worker.drain(); ui.drain();
+        assertFalse("Unexpected Error on worker must still clear active turn", session.isGenerating());
+        assertFalse(running[0]);
+        assertTrue(status[0].contains("Response failed"));
+    }
+
     private static int occurrences(String value,String token){
         return value.split(java.util.regex.Pattern.quote(token),-1).length-1;
     }

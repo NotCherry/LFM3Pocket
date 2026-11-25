@@ -20,6 +20,8 @@ public interface InferenceEngine {
 
     long loadModel(String modelPath, String projectorPath);
     void unloadModel(long handle);
+    /** Drop any cached KV/hybrid decode session while keeping model weights loaded. */
+    default void releaseSession(long handle) {}
     String generate(long handle, String prompt, String mediaPath, int maxTokens, TokenSink sink);
     /**
      * Generates with media in prompt-marker order. Each path must correspond to one {@code <__media__>} marker.
