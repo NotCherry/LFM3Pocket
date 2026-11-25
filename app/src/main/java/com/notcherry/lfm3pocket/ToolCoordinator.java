@@ -44,7 +44,8 @@ public final class ToolCoordinator {
         switch(request.tool){
             case FLASHLIGHT:case TIMER:case SHOW_ALARMS:case APPLICATION:case SETTINGS:
             case CURRENT_TIME:case CALCULATOR:case UNIT_CONVERT:case WEATHER:
-            case WEB_SEARCH:case SEARCH_TOOLS:case FS_LIST:case FS_SEARCH:case FS_READ:return Risk.SAFE;
+            case WEB_SEARCH:case SEARCH_TOOLS:case FS_LIST:case FS_SEARCH:case FS_READ:
+            case LOOKUP_CONTACT:return Risk.SAFE;
             case VOLUME:return request instanceof ToolRegistry.VolumeRequest && ((ToolRegistry.VolumeRequest)request).stream.equals("music")?Risk.SAFE:Risk.CONFIRM;
             case LIST_NOTIFICATIONS:return Risk.CONFIRM;
             default:return Risk.CONFIRM;
@@ -117,6 +118,8 @@ public final class ToolCoordinator {
                 message = "Calendar permission or a picked calendar is unavailable.";
             } else if (request != null && isWorkspaceTool(request.tool)) {
                 message = "Pick a Local Workspace folder in Settings before accessing files or notes.";
+            } else if (request != null && request.tool == ToolRegistry.Tool.LOOKUP_CONTACT) {
+                message = "Grant Contacts permission in Settings → External Tools & Shortcuts.";
             }
         }
         return denied("PERMISSION_DENIED",message);
@@ -152,6 +155,13 @@ public final class ToolCoordinator {
             case FS_APPEND:return "Append to file";
             case FS_EDIT:return "Edit workspace file";
             case FS_DELETE:return "Delete workspace file";
+            case LOOKUP_CONTACT:return "Look up contact";
+            case EXTERNAL:
+                if (request instanceof ToolRegistry.ExternalToolRequest) {
+                    String wire = ((ToolRegistry.ExternalToolRequest) request).externalWireName;
+                    return wire.startsWith("mcp.") ? "MCP tool" : "External shortcut";
+                }
+                return "External tool";
             default:return "Android action";
         }
     }
@@ -167,7 +177,7 @@ public final class ToolCoordinator {
     }
 
     /**
-     * Human-readable card summary for UI display. Formats calendar, reminder, workspace, and web-search
+     * Human-readable card summary for UI display. Formats calendar, reminder, workspace, external, and web-search
      * requests cleanly (local times, diff previews, no raw epochs or empty optional fields), while
      * delegating other tools to {@link #describe(ToolRegistry.Request)}.
      */
@@ -183,6 +193,17 @@ public final class ToolCoordinator {
 
     private static String formatBodyForDisplay(ToolRegistry.Request request, String pickedCalendarLabel) {
         if (request == null) return "Android action";
+        if (request instanceof ToolRegistry.ExternalToolRequest) {
+            ToolRegistry.ExternalToolRequest ext = (ToolRegistry.ExternalToolRequest) request;
+            if (ext.displaySummary != null && !ext.displaySummary.trim().isEmpty()) {
+                return ext.displaySummary.trim();
+            }
+            return title(request) + "\nTool: " + ext.externalWireName;
+        }
+        if (request instanceof ToolRegistry.LookupContactRequest) {
+            ToolRegistry.LookupContactRequest r = (ToolRegistry.LookupContactRequest) request;
+            return title(request) + "\nQuery: " + r.query + "\nLimit: " + r.limit;
+        }
         if (request instanceof ToolRegistry.CreateEventRequest) {
             ToolRegistry.CreateEventRequest r = (ToolRegistry.CreateEventRequest) request;
             StringBuilder out = new StringBuilder(title(request));

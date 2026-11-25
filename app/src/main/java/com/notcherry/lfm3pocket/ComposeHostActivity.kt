@@ -142,7 +142,21 @@ class ComposeHostActivity : ComponentActivity() {
                 intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
             else -> null
         }
-        if (draft.isEmpty() && sharedImage == null) return false
+        val sharedDocs = ArrayList<android.net.Uri>()
+        if (Intent.ACTION_SEND == intent.action && sharedImage == null) {
+            val stream = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+            if (stream != null) sharedDocs.add(stream)
+        } else if (Intent.ACTION_SEND_MULTIPLE == intent.action) {
+            val streams = intent.getParcelableArrayListExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+            if (streams != null) {
+                for (u in streams) {
+                    if (u != null && sharedDocs.size < DocumentAttachmentReader.MAX_FILES) {
+                        sharedDocs.add(u)
+                    }
+                }
+            }
+        }
+        if (draft.isEmpty() && sharedImage == null && sharedDocs.isEmpty()) return false
         val chat = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         if (draft.isNotEmpty()) chat.putExtra(MainActivity.EXTRA_DRAFT_TEXT, draft)
@@ -151,6 +165,21 @@ class ComposeHostActivity : ComponentActivity() {
             chat.clipData = android.content.ClipData.newUri(contentResolver, "shared-image", sharedImage)
             chat.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             chat.putExtra(MainActivity.EXTRA_SHARED_IMAGE, sharedImage.toString())
+        }
+        if (sharedDocs.isNotEmpty()) {
+            val uriStrings = ArrayList<String>(sharedDocs.size)
+            var clip: android.content.ClipData? = chat.clipData
+            for (u in sharedDocs) {
+                uriStrings.add(u.toString())
+                if (clip == null) {
+                    clip = android.content.ClipData.newUri(contentResolver, "shared-doc", u)
+                } else {
+                    clip.addItem(android.content.ClipData.Item(u))
+                }
+            }
+            chat.clipData = clip
+            chat.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            chat.putStringArrayListExtra(MainActivity.EXTRA_SHARED_DOCUMENTS, uriStrings)
         }
         startActivity(chat)
         finish()

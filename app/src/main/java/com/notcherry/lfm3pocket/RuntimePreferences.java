@@ -169,6 +169,20 @@ public final class RuntimePreferences {
                 .apply();
     }
 
+    /** Serialized JSON array of user-defined offline local Intent/URI shortcuts. */
+    public String customShortcutsJson() { return prefs.getString("custom_shortcuts_json", "[]"); }
+
+    public void setCustomShortcutsJson(String json) {
+        prefs.edit().putString("custom_shortcuts_json", json == null ? "[]" : json).apply();
+    }
+
+    /** Serialized JSON array of configured MCP Streamable HTTP servers and cached tool lists. */
+    public String mcpServersJson() { return prefs.getString("mcp_servers_json", "[]"); }
+
+    public void setMcpServersJson(String json) {
+        prefs.edit().putString("mcp_servers_json", json == null ? "[]" : json).apply();
+    }
+
     /** Per-install secret required by the opt-in localhost prompt API. Never logged. */
     public synchronized String loopbackToken() {
         String token = prefs.getString("loopback_token", "");

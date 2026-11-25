@@ -312,4 +312,36 @@ com.whatsapp</string>
     <string name="workspace_pick_button">Wybierz folder</string>
     <string name="workspace_clear_button">Wyczyść</string>
     <string name="workspace_cleared">Wyczyszczono lokalny folder roboczy.</string>
+
+    <!-- External Tools: Contacts, Custom Shortcuts & Open MCP Client -->
+    <string name="external_tools_heading">ZEWNĘTRZNE NARZĘDZIA I MCP</string>
+    <string name="external_tools_help">Podłącz lokalne kontakty offline, własne skróty aplikacji (Obsidian, Tasker, geo) lub otwarte serwery MCP Streamable HTTP (lokalny Termux, domowa sieć LAN albo zdalne HTTPS, np. Composio). Narzędzia zewnętrzne zawsze wymagają Twojego zatwierdzenia.</string>
+    <string name="contacts_status_off">Wyszukiwanie kontaktów offline: brak uprawnienia.</string>
+    <string name="contacts_status_ready">Wyszukiwanie kontaktów offline: gotowe (tylko odczyt).</string>
+    <string name="contacts_grant_button">Przyznaj dostęp do kontaktów</string>
+    <string name="shortcuts_subheading">Własne skróty lokalne (offline)</string>
+    <string name="shortcuts_help">Zdefiniuj linki URI z parametrami {{param}}, np. obsidian://new?name={{title}}&amp;content={{content}}.</string>
+    <string name="shortcuts_add_button">Dodaj skrót lokalny</string>
+    <string name="shortcuts_empty">Brak skonfigurowanych skrótów.</string>
+    <string name="shortcuts_name_hint">Nazwa (np. Notatka Obsidian)</string>
+    <string name="shortcuts_uri_hint">Szablon URI (np. obsidian://new?name={{title}})</string>
+    <string name="shortcuts_desc_hint">Krótki opis dla modelu</string>
+    <string name="shortcuts_pkg_hint">Opcjonalna nazwa pakietu Android</string>
+    <string name="shortcuts_saved">Zapisano skrót lokalny: %1$s</string>
+    <string name="shortcuts_removed">Usunięto skrót: %1$s</string>
+    <string name="mcp_subheading">Serwery MCP (lokalny Termux / LAN / HTTPS)</string>
+    <string name="mcp_help">Dodaj http://127.0.0.1:PORT/mcp dla lokalnego serwera Termux offline albo adres https:// dla zdalnych hubów MCP (Composio, GitHub, Notion). Kliknij Synchronizuj, aby zapisać schematy narzędzi offline.</string>
+    <string name="mcp_add_button">Dodaj serwer MCP</string>
+    <string name="mcp_empty">Brak skonfigurowanych serwerów MCP.</string>
+    <string name="mcp_label_hint">Nazwa serwera (np. Termux lub Composio)</string>
+    <string name="mcp_url_hint">Adres URL (http://127.0.0.1:3000/mcp lub https://…)</string>
+    <string name="mcp_token_hint">Opcjonalny token Bearer / klucz API</string>
+    <string name="mcp_allow_lan_http">Zezwól na lokalne HTTP w LAN (10.x / 192.168.x / .local)</string>
+    <string name="mcp_saved">Zapisano serwer MCP: %1$s. Kliknij Synchronizuj, aby pobrać narzędzia.</string>
+    <string name="mcp_removed">Usunięto serwer MCP: %1$s</string>
+    <string name="mcp_sync_button">Synchronizuj</string>
+    <string name="mcp_syncing">Synchronizowanie narzędzi z %1$s…</string>
+    <string name="mcp_sync_ok">Zsynchronizowano %2$d narzędzi z %1$s.</string>
+    <string name="mcp_sync_failed">Błąd synchronizacji %1$s: %2$s</string>
+    <string name="remove_item">Usuń</string>
 </resources>

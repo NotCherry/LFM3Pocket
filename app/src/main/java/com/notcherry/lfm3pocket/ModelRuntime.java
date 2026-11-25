@@ -983,9 +983,13 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                         && !preferences.notificationAllowlist().isEmpty();
                 String wsUri = preferences.workspaceTreeUri();
                 boolean wsReady = wsUri != null && !wsUri.trim().isEmpty();
+                java.util.List<LfmToolCatalog.ToolSpec> extraTools = new java.util.ArrayList<>();
+                for (ExternalToolProvider provider : app.externalToolProviders()) {
+                    extraTools.addAll(provider.discoverTools());
+                }
                 return new LfmToolCatalog.Capabilities(
                         webReady, weatherReady, calRead, calWrite, preferences.calendarWriteLabel(), notifReady,
-                        wsReady, preferences.workspaceLabel());
+                        wsReady, preferences.workspaceLabel(), extraTools);
             }
 
             @Override public java.util.Locale locale() {
@@ -993,7 +997,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             }
 
             @Override public ToolRegistry registry() {
-                return new ToolRegistry();
+                return new ToolRegistry(() -> System.currentTimeMillis() / 1000L, app.externalToolProviders());
             }
 
             @Override public boolean canAutoExecute(ToolRegistry.Request request) {
@@ -1012,6 +1016,9 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                                 preferences.raw().getString("search_endpoint", ""));
                     case LIST_EVENTS:
                         return app.checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
+                                == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                    case LOOKUP_CONTACT:
+                        return app.checkSelfPermission(android.Manifest.permission.READ_CONTACTS)
                                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
                     case FS_LIST:
                     case FS_SEARCH:

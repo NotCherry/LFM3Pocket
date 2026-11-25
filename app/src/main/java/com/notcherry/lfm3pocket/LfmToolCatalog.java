@@ -232,7 +232,11 @@ public final class LfmToolCatalog {
             new ToolSpec("list_notifications",
                     "{\"name\":\"list_notifications\",\"defer_loading\":true,\"description\":\"List recent notifications from allowed apps\",\"parameters\":{\"type\":\"object\",\"properties\":{\"limit\":{\"type\":\"integer\"},\"package\":{\"type\":\"string\"}}}}",
                     Arrays.asList("limit", "package"),
-                    "notifications alerts unread messages powiadomienia alerty", true, c -> c.notificationsEnabled)
+                    "notifications alerts unread messages powiadomienia alerty", true, c -> c.notificationsEnabled),
+            new ToolSpec("lookup_contact",
+                    "{\"name\":\"lookup_contact\",\"defer_loading\":true,\"description\":\"Search local phone contacts by name, number, or email offline\",\"parameters\":{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"}},\"required\":[\"query\"]}}",
+                    Arrays.asList("query", "limit"),
+                    "contact contacts phone number email person sms call kontakt kontakty numer telefon osoba", true, c -> true)
     ));
 
     private LfmToolCatalog() {}

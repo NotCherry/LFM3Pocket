@@ -20,19 +20,20 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
     private final AndroidActionExecutor message;
     private final AndroidActionExecutor calendar;
     private final AndroidActionExecutor workspace;
+    private final AndroidActionExecutor contacts;
 
     AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
                          AndroidActionExecutor timer, AndroidActionExecutor alarm,
                          AndroidActionExecutor application, AndroidActionExecutor settings,
                          AndroidActionExecutor text) {
-        this(flashlight, volume, timer, alarm, application, settings, text, DISABLED, DISABLED, DISABLED, DISABLED, DISABLED, DISABLED);
+        this(flashlight, volume, timer, alarm, application, settings, text, DISABLED, DISABLED, DISABLED, DISABLED, DISABLED, DISABLED, DISABLED);
     }
 
     AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
                          AndroidActionExecutor timer, AndroidActionExecutor alarm,
                          AndroidActionExecutor application, AndroidActionExecutor settings,
                          AndroidActionExecutor text, AndroidActionExecutor builtins) {
-        this(flashlight, volume, timer, alarm, application, settings, text, builtins, DISABLED, DISABLED, DISABLED, DISABLED, DISABLED);
+        this(flashlight, volume, timer, alarm, application, settings, text, builtins, DISABLED, DISABLED, DISABLED, DISABLED, DISABLED, DISABLED);
     }
 
     AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
@@ -40,7 +41,7 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
                          AndroidActionExecutor application, AndroidActionExecutor settings,
                          AndroidActionExecutor text, AndroidActionExecutor builtins,
                          AndroidActionExecutor notifications) {
-        this(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, DISABLED, DISABLED, DISABLED, DISABLED);
+        this(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, DISABLED, DISABLED, DISABLED, DISABLED, DISABLED);
     }
 
     AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
@@ -48,7 +49,7 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
                          AndroidActionExecutor application, AndroidActionExecutor settings,
                          AndroidActionExecutor text, AndroidActionExecutor builtins,
                          AndroidActionExecutor notifications, AndroidActionExecutor reminder) {
-        this(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, reminder, DISABLED, DISABLED, DISABLED);
+        this(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, reminder, DISABLED, DISABLED, DISABLED, DISABLED);
     }
 
     AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
@@ -57,7 +58,7 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
                          AndroidActionExecutor text, AndroidActionExecutor builtins,
                          AndroidActionExecutor notifications, AndroidActionExecutor reminder,
                          AndroidActionExecutor message) {
-        this(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, reminder, message, DISABLED, DISABLED);
+        this(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, reminder, message, DISABLED, DISABLED, DISABLED);
     }
 
     AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
@@ -66,7 +67,7 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
                          AndroidActionExecutor text, AndroidActionExecutor builtins,
                          AndroidActionExecutor notifications, AndroidActionExecutor reminder,
                          AndroidActionExecutor message, AndroidActionExecutor calendar) {
-        this(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, reminder, message, calendar, DISABLED);
+        this(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, reminder, message, calendar, DISABLED, DISABLED);
     }
 
     AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
@@ -76,10 +77,20 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
                          AndroidActionExecutor notifications, AndroidActionExecutor reminder,
                          AndroidActionExecutor message, AndroidActionExecutor calendar,
                          AndroidActionExecutor workspace) {
+        this(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, reminder, message, calendar, workspace, DISABLED);
+    }
+
+    AndroidToolsExecutor(AndroidActionExecutor flashlight, AndroidActionExecutor volume,
+                         AndroidActionExecutor timer, AndroidActionExecutor alarm,
+                         AndroidActionExecutor application, AndroidActionExecutor settings,
+                         AndroidActionExecutor text, AndroidActionExecutor builtins,
+                         AndroidActionExecutor notifications, AndroidActionExecutor reminder,
+                         AndroidActionExecutor message, AndroidActionExecutor calendar,
+                         AndroidActionExecutor workspace, AndroidActionExecutor contacts) {
         if (flashlight == null || volume == null || timer == null || alarm == null
                 || application == null || settings == null || text == null || builtins == null
                 || notifications == null || reminder == null || message == null || calendar == null
-                || workspace == null) {
+                || workspace == null || contacts == null) {
             throw new IllegalArgumentException("Missing action executor");
         }
         this.flashlight = flashlight;
@@ -95,6 +106,7 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
         this.message = message;
         this.calendar = calendar;
         this.workspace = workspace;
+        this.contacts = contacts;
     }
 
     @Override public ActionResult execute(String approvedToolName, Map<String, String> arguments) {
@@ -124,6 +136,8 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
                 || "fs_append".equals(approvedToolName) || "fs_edit".equals(approvedToolName)
                 || "fs_delete".equals(approvedToolName))
             return workspace.execute(approvedToolName, arguments);
+        if ("lookup_contact".equals(approvedToolName))
+            return contacts.execute(approvedToolName, arguments);
         return new ActionResult(false, "UNKNOWN_TOOL", "This Android action is not enabled.");
     }
 }

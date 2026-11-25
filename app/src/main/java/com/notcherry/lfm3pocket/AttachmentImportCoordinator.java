@@ -69,7 +69,11 @@ final class AttachmentImportCoordinator {
         } else if (data.getData() != null) {
             uris.add(data.getData());
         }
-        if (uris.isEmpty()) return;
+        importDocumentUris(uris);
+    }
+
+    void importDocumentUris(List<Uri> uris) {
+        if (uris == null || uris.isEmpty()) return;
         if (pendingDocuments.size() + uris.size() > DocumentAttachmentReader.MAX_FILES) {
             deps.setChatStatus.accept("You can attach up to " + DocumentAttachmentReader.MAX_FILES + " documents.");
             return;

@@ -76,9 +76,39 @@ public class Lfm3PocketApplication extends Application {
     private AndroidActionExecutor actionExecutor;
     private ToolCoordinator toolCoordinator;
     private MessageDraftStore messageDraftStore;
+    private CustomShortcutStore customShortcutStore;
+    private McpToolProvider mcpToolProvider;
     public final synchronized MessageDraftStore messageDraftStore() {
         if (messageDraftStore == null) messageDraftStore = new MessageDraftStore();
         return messageDraftStore;
+    }
+    public final synchronized CustomShortcutStore customShortcutStore() {
+        if (customShortcutStore == null) {
+            customShortcutStore = new CustomShortcutStore(
+                    () -> new RuntimePreferences(this).customShortcutsJson(),
+                    json -> new RuntimePreferences(this).setCustomShortcutsJson(json),
+                    (renderedUri, optionalPkg) -> {
+                        android.content.Intent intent = new android.content.Intent(
+                                android.content.Intent.ACTION_VIEW, android.net.Uri.parse(renderedUri));
+                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                        if (optionalPkg != null && !optionalPkg.trim().isEmpty()) {
+                            intent.setPackage(optionalPkg.trim());
+                        }
+                        startActivity(intent);
+                    });
+        }
+        return customShortcutStore;
+    }
+    public final synchronized McpToolProvider mcpToolProvider() {
+        if (mcpToolProvider == null) {
+            mcpToolProvider = new McpToolProvider(
+                    () -> new RuntimePreferences(this).mcpServersJson(),
+                    json -> new RuntimePreferences(this).setMcpServersJson(json));
+        }
+        return mcpToolProvider;
+    }
+    public final List<ExternalToolProvider> externalToolProviders() {
+        return java.util.Arrays.asList(customShortcutStore(), mcpToolProvider());
     }
     public final synchronized ToolCoordinator toolCoordinator() {
         if (toolCoordinator == null) toolCoordinator = new ToolCoordinator(
@@ -88,6 +118,16 @@ public class Lfm3PocketApplication extends Application {
 
     protected ToolCoordinator.Handler createToolHandler() {
         return request -> {
+            if (request instanceof ToolRegistry.ExternalToolRequest) {
+                ToolRegistry.ExternalToolRequest ext = (ToolRegistry.ExternalToolRequest) request;
+                for (ExternalToolProvider provider : externalToolProviders()) {
+                    if (provider.supportsTool(ext.externalWireName)) {
+                        return provider.execute(ext.externalWireName, ext.arguments);
+                    }
+                }
+                return new AndroidActionExecutor.ActionResult(false, "UNKNOWN_TOOL",
+                        "This external tool is no longer configured.");
+            }
             if (!(request instanceof ToolRegistry.FlashlightRequest) &&
                     !(request instanceof ToolRegistry.VolumeRequest) &&
                     !(request instanceof ToolRegistry.TimerRequest) &&
@@ -115,7 +155,8 @@ public class Lfm3PocketApplication extends Application {
                     !(request instanceof ToolRegistry.NoteCreateRequest) &&
                     !(request instanceof ToolRegistry.FsAppendRequest) &&
                     !(request instanceof ToolRegistry.FsEditRequest) &&
-                    !(request instanceof ToolRegistry.FsDeleteRequest)) {
+                    !(request instanceof ToolRegistry.FsDeleteRequest) &&
+                    !(request instanceof ToolRegistry.LookupContactRequest)) {
                 return new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
                         "This Android tool is not enabled yet");
             }
@@ -198,6 +239,17 @@ public class Lfm3PocketApplication extends Application {
                     String uri = new RuntimePreferences(Lfm3PocketApplication.this).workspaceTreeUri();
                     return uri != null && !uri.trim().isEmpty();
                 }
+                if (request.tool == ToolRegistry.Tool.LOOKUP_CONTACT) {
+                    return checkSelfPermission(android.Manifest.permission.READ_CONTACTS)
+                            == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                }
+                if (request instanceof ToolRegistry.ExternalToolRequest) {
+                    String wire = ((ToolRegistry.ExternalToolRequest) request).externalWireName;
+                    for (ExternalToolProvider provider : externalToolProviders()) {
+                        if (provider.supportsTool(wire)) return true;
+                    }
+                    return false;
+                }
                 return true;
             }
 
@@ -211,6 +263,9 @@ public class Lfm3PocketApplication extends Application {
                         || request.tool == ToolRegistry.Tool.FS_APPEND || request.tool == ToolRegistry.Tool.FS_EDIT
                         || request.tool == ToolRegistry.Tool.FS_DELETE) {
                     return "Pick a Local Workspace folder in Settings before accessing files or notes.";
+                }
+                if (request.tool == ToolRegistry.Tool.LOOKUP_CONTACT) {
+                    return "Grant Contacts permission in Settings → External Tools & Shortcuts.";
                 }
                 if (request.tool == ToolRegistry.Tool.REMINDER) {
                     if (android.os.Build.VERSION.SDK_INT >= 33
@@ -346,7 +401,11 @@ public class Lfm3PocketApplication extends Application {
                     return uri != null && !uri.trim().isEmpty();
                 },
                 this::createWorkspaceGateway);
+        AndroidActionExecutor contacts = new ContactsActionExecutor(
+                () -> checkSelfPermission(android.Manifest.permission.READ_CONTACTS)
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED,
+                new AndroidContactsGateway(this));
         return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text,
-                builtins, notifications, reminder, message, calendar, workspace);
+                builtins, notifications, reminder, message, calendar, workspace, contacts);
     }
 }

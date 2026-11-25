@@ -13,7 +13,8 @@ public final class ToolRegistry {
         LIST_EVENTS("list_events"),CREATE_EVENT("create_event"),UPDATE_EVENT("update_event"),DELETE_EVENT("delete_event"),
         WEB_SEARCH("web_search"),SEARCH_TOOLS("search_tools"),
         FS_LIST("fs_list"),FS_SEARCH("fs_search"),FS_READ("fs_read"),
-        NOTE_CREATE("note_create"),FS_APPEND("fs_append"),FS_EDIT("fs_edit"),FS_DELETE("fs_delete");
+        NOTE_CREATE("note_create"),FS_APPEND("fs_append"),FS_EDIT("fs_edit"),FS_DELETE("fs_delete"),
+        LOOKUP_CONTACT("lookup_contact"),EXTERNAL("external");
         public final String wireName;Tool(String name){wireName=name;}
     }
     public static abstract class Request {
@@ -218,6 +219,23 @@ public final class ToolRegistry {
             path=(String)a.get("path");
         }
     }
+    public static final class LookupContactRequest extends Request {
+        public final String query;public final int limit;
+        private LookupContactRequest(Map<String,Object> a){
+            super(Tool.LOOKUP_CONTACT,a);
+            query=(String)a.get("query");
+            limit=((Number)a.get("limit")).intValue();
+        }
+    }
+    public static final class ExternalToolRequest extends Request {
+        public final String externalWireName;
+        public final String displaySummary;
+        private ExternalToolRequest(String externalWireName,String displaySummary,Map<String,Object> a){
+            super(Tool.EXTERNAL,a);
+            this.externalWireName=externalWireName;
+            this.displaySummary=displaySummary==null?"":displaySummary;
+        }
+    }
     private static Request request(Tool tool,Map<String,Object> args){
         switch(tool){
             case FLASHLIGHT:return new FlashlightRequest(args);case VOLUME:return new VolumeRequest(args);
@@ -245,15 +263,23 @@ public final class ToolRegistry {
             case FS_APPEND:return new FsAppendRequest(args);
             case FS_EDIT:return new FsEditRequest(args);
             case FS_DELETE:return new FsDeleteRequest(args);
+            case LOOKUP_CONTACT:return new LookupContactRequest(args);
             default:throw new IllegalArgumentException("Unregistered tool");
         }
     }
     private static final Set<String> ALLOWED_SHARE_PKGS = new HashSet<>(Arrays.asList("com.whatsapp","org.telegram.messenger","org.thoughtcrime.securesms"));
     private final java.util.function.LongSupplier nowEpochSec;
-    public ToolRegistry(){this(()->System.currentTimeMillis()/1000L);}
+    private final List<ExternalToolProvider> externalProviders;
+    public ToolRegistry(){this(()->System.currentTimeMillis()/1000L,Collections.emptyList());}
     public ToolRegistry(java.util.function.LongSupplier nowEpochSec){
+        this(nowEpochSec,Collections.emptyList());
+    }
+    public ToolRegistry(java.util.function.LongSupplier nowEpochSec,List<ExternalToolProvider> externalProviders){
         if(nowEpochSec==null)throw new IllegalArgumentException("Missing clock");
         this.nowEpochSec=nowEpochSec;
+        this.externalProviders=externalProviders==null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(externalProviders));
     }
     public static final class Parsed {
         public final Request request;public final String status,message;
@@ -275,8 +301,30 @@ public final class ToolRegistry {
     /** Validates an already-extracted tool name and raw arguments map (used by XML/Pythonic/JSON parsers). */
     public Parsed parseCall(String toolName, Map<String,Object> rawArgs){
         if(toolName==null || rawArgs==null)return reject("INVALID_REQUEST","Expected tool name and arguments");
-        Tool selected=null;for(Tool tool:Tool.values())if(tool.wireName.equals(toolName))selected=tool;
-        if(selected==null)return reject("UNKNOWN_TOOL","Tool is not allowlisted");
+        Tool selected=null;
+        for(Tool tool:Tool.values()){
+            if(tool!=Tool.EXTERNAL && tool.wireName.equals(toolName)){selected=tool;break;}
+        }
+        if(selected==null){
+            for(ExternalToolProvider provider:externalProviders){
+                if(provider!=null && provider.supportsTool(toolName)){
+                    Map<String,Object> clean=new LinkedHashMap<>();
+                    if(rawArgs.size()>24)return reject("INVALID_ARGUMENTS","Too many arguments for external tool");
+                    for(Map.Entry<String,Object> e:rawArgs.entrySet()){
+                        String k=e.getKey();
+                        if(k==null || k.isEmpty() || k.length()>64)return reject("INVALID_ARGUMENTS","Invalid argument key");
+                        Object v=e.getValue();
+                        if(v instanceof String && (((String)v).length()>8000 || ((String)v).indexOf('\0')>=0))
+                            return reject("INVALID_ARGUMENTS","Invalid argument value for "+k);
+                        clean.put(k,v);
+                    }
+                    String summary=provider.formatForDisplay(toolName,clean);
+                    return new Parsed(new ExternalToolRequest(toolName,summary,clean),
+                            "VALIDATED","External tool validated; authorization still required");
+                }
+            }
+            return reject("UNKNOWN_TOOL","Tool is not allowlisted");
+        }
         Map<String,Object> args=new LinkedHashMap<>(rawArgs);
         try{
             switch(selected){
@@ -442,6 +490,11 @@ public final class ToolRegistry {
                     break;
                 case FS_DELETE:keys(args,"path");
                     args.put("path",WorkspacePath.normalize(text(args,"path",1,512),false));
+                    break;
+                case LOOKUP_CONTACT:keys(args,"query","limit");
+                    textBounded(args,"query",1,120,true);
+                    if(!args.containsKey("limit")) args.put("limit",5);
+                    else integer(args,"limit",1,10);
                     break;
             }
         }catch(IllegalArgumentException e){return reject("INVALID_ARGUMENTS",e.getMessage());}
