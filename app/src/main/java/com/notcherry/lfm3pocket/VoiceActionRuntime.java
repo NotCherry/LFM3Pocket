@@ -232,7 +232,7 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host, AutoClo
                 runSttCommandPass(wav);
                 return;
             }
-            String prompt = VoiceToolPromptCard.onePassAudioPrompt(callbacks.userLocale());
+            String prompt = VoiceToolPromptCard.onePassAudioPrompt(callbacks.userLocale(), currentCapabilities());
             StringBuilder reply = new StringBuilder();
             callbacks.engine().resetStop();
             String err = callbacks.engine().generateWithMedia(callbacks.modelHandle(), prompt,
@@ -250,11 +250,36 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host, AutoClo
             surfaceSttFailure(result);
             return;
         }
-        String prompt = VoiceToolPromptCard.onePassTextPrompt(callbacks.userLocale(), result.text);
+        String prompt = VoiceToolPromptCard.onePassTextPrompt(callbacks.userLocale(), result.text, currentCapabilities());
         StringBuilder reply = new StringBuilder();
         callbacks.engine().resetStop();
         String err = callbacks.engine().generate(callbacks.modelHandle(), prompt, null, 512, reply::append);
         handleAssistantReply(reply.toString(), err);
+    }
+
+    private LfmToolCatalog.Capabilities currentCapabilities() {
+        android.content.Context app = callbacks.app();
+        if (app == null) return LfmToolCatalog.Capabilities.offlineDefaults();
+        try {
+            RuntimePreferences prefs = new RuntimePreferences(app);
+            boolean webReady = SearchEndpointPolicy.enabled(
+                    prefs.raw().getBoolean("search_enabled", false),
+                    prefs.raw().getString("search_endpoint", ""));
+            boolean weatherReady = prefs.networkToolsEnabled();
+            boolean calRead = app.checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            String pickedId = prefs.calendarWriteId();
+            boolean calWrite = calRead
+                    && app.checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR)
+                            == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    && pickedId != null && !pickedId.trim().isEmpty();
+            boolean notifReady = prefs.notificationAccessEnabled()
+                    && !prefs.notificationAllowlist().isEmpty();
+            return new LfmToolCatalog.Capabilities(
+                    webReady, weatherReady, calRead, calWrite, prefs.calendarWriteLabel(), notifReady);
+        } catch (RuntimeException ignored) {
+            return LfmToolCatalog.Capabilities.offlineDefaults();
+        }
     }
 
     private void handleAssistantReply(String rawAssistant, String err) {
@@ -269,13 +294,19 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host, AutoClo
             beginVoiceConfirm(outcome.proposal);
             return;
         }
-        String toSpeak = assistant.isEmpty() ? (err != null ? err : "No reply.") : assistant;
+        String visible = ModelToolBridge.stripToolCallMarkup(assistant);
+        String toSpeak = visible.isEmpty() ? (err != null ? err : "No reply.") : visible;
         spoken.speakExact(toSpeak, callbacks.userLocale(), null);
     }
 
     private void beginVoiceConfirm(ToolCoordinator.Proposal proposal) {
         pendingConfirmId = proposal.id;
-        pendingConfirmDescribe = ToolCoordinator.describe(proposal.request);
+        String pickedLabel = "";
+        android.content.Context app = callbacks.app();
+        if (app != null) {
+            try { pickedLabel = new RuntimePreferences(app).calendarWriteLabel(); } catch (RuntimeException ignored) {}
+        }
+        pendingConfirmDescribe = ToolCoordinator.formatForDisplay(proposal.request, pickedLabel);
         mode = Mode.CONFIRM;
         callbacks.showConsent(proposal.id, pendingConfirmDescribe, proposal.risk == ToolCoordinator.Risk.SAFE);
         String prompt = VoiceSpokenOutput.confirmSpokenPrompt(pendingConfirmDescribe, callbacks.userLocale());

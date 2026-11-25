@@ -126,7 +126,9 @@ public final class ToolConfirmationActivity extends Activity {
 
         setContentView(root);
         ToolCoordinator.Outcome outcome = coordinator.lookup(id);
-        if (outcome.proposal != null) details.setText(ToolCoordinator.describe(outcome.proposal.request));
+        String pickedCalendarLabel = "";
+        try { pickedCalendarLabel = new RuntimePreferences(this).calendarWriteLabel(); } catch (RuntimeException ignored) {}
+        if (outcome.proposal != null) details.setText(ToolCoordinator.formatForDisplay(outcome.proposal.request, pickedCalendarLabel));
         else details.setText(R.string.tool_not_pending);
         show(outcome);
         approve.setOnClickListener(v -> resolve(coordinator.approve(id)));
@@ -142,7 +144,7 @@ public final class ToolConfirmationActivity extends Activity {
             status.setText(R.string.tool_confirm_prompt);
             status.setTextColor(StillwaterUi.MUTED);
         } else {
-            String msg = outcome.result == null ? "" : outcome.result.message;
+            String msg = outcome.result == null ? "" : ToolCoordinator.stripUntrustedPrefix(outcome.result.message);
             status.setText(getString(R.string.tool_action_result_format, outcome.status, msg));
             boolean ok = outcome.result != null && outcome.result.succeeded;
             status.setTextColor(ok ? StillwaterUi.OK : StillwaterUi.DANGER);

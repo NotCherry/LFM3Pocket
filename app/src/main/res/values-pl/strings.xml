@@ -198,14 +198,21 @@ com.whatsapp</string>
     <string name="notification_access_allowlist_saved">Zapisano listę dozwolonych powiadomień.</string>
 
     <string name="calendar_heading">KALENDARZ</string>
-    <string name="calendar_help">Wybierz jeden kalendarz dla głosowych akcji zapisu. Odczyt i zapis wymagają uprawnień Kalendarza i wyraźnego potwierdzenia.</string>
+    <string name="calendar_help">Wybierz jeden kalendarz z możliwością zapisu dla akcji w czacie i głosie. Odczyt i zapis wymagają uprawnień Kalendarza oraz wyraźnego potwierdzenia.</string>
     <string name="calendar_none_picked">Nie wybrano kalendarza. Zapis jest zablokowany do czasu wyboru.</string>
     <string name="calendar_picked">Wybrany kalendarz: %1$s</string>
     <string name="calendar_pick_button">Wybierz kalendarz</string>
     <string name="calendar_clear_button">Wyczyść kalendarz</string>
-    <string name="calendar_permission_needed">Do wyświetlenia listy kalendarzy potrzebne jest uprawnienie Kalendarza.</string>
+    <string name="calendar_permission_needed">Do korzystania z akcji kalendarza potrzebne są uprawnienia odczytu i zapisu Kalendarza.</string>
     <string name="calendar_no_calendars">Na tym urządzeniu nie znaleziono kalendarzy.</string>
+    <string name="calendar_no_writable_calendars">Na tym urządzeniu nie znaleziono kalendarzy z uprawnieniami zapisu.</string>
     <string name="calendar_pick_title">Wybierz kalendarz</string>
+    <string name="search_test_button">Testuj wyszukiwanie</string>
+    <string name="search_testing">Testowanie punktu końcowego SearXNG…</string>
+    <string name="search_test_ok">Wyszukiwanie działa · %1$d wyników (%2$d ms)</string>
+    <string name="search_test_empty">Połączono (%1$d ms), ale wyszukiwanie zwróciło 0 wyników.</string>
+    <string name="search_test_failed">Test wyszukiwania nie powiódł się: %1$s</string>
+    <string name="search_help">Skonfiguruj instancję HTTPS SearXNG z włączonym formatem JSON. Po włączeniu Hanami może wywoływać web_search, gdy to potrzebne.</string>
 
     <!-- Home & About -->
     <string name="home_on_device">NA URZĄDZENIU</string>

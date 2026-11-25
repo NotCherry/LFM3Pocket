@@ -98,7 +98,8 @@ final class AndroidToolsExecutor implements AndroidActionExecutor {
         if ("draft_message".equals(approvedToolName) || "send_message".equals(approvedToolName))
             return message.execute(approvedToolName, arguments);
         if ("current_time".equals(approvedToolName) || "calculator".equals(approvedToolName)
-                || "unit_convert".equals(approvedToolName) || "weather".equals(approvedToolName))
+                || "unit_convert".equals(approvedToolName) || "weather".equals(approvedToolName)
+                || "web_search".equals(approvedToolName))
             return builtins.execute(approvedToolName, arguments);
         if ("list_notifications".equals(approvedToolName))
             return notifications.execute(approvedToolName, arguments);

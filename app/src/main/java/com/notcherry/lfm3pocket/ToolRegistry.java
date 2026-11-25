@@ -10,7 +10,8 @@ public final class ToolRegistry {
         COPY("copy_text"),SHARE("share_text"),CURRENT_TIME("current_time"),CALCULATOR("calculator"),
         UNIT_CONVERT("unit_convert"),WEATHER("weather"),LIST_NOTIFICATIONS("list_notifications"),
         DRAFT_MESSAGE("draft_message"),SEND_MESSAGE("send_message"),
-        LIST_EVENTS("list_events"),CREATE_EVENT("create_event"),UPDATE_EVENT("update_event"),DELETE_EVENT("delete_event");
+        LIST_EVENTS("list_events"),CREATE_EVENT("create_event"),UPDATE_EVENT("update_event"),DELETE_EVENT("delete_event"),
+        WEB_SEARCH("web_search");
         public final String wireName;Tool(String name){wireName=name;}
     }
     public static abstract class Request {
@@ -141,6 +142,14 @@ public final class ToolRegistry {
         public final String eventId;
         private DeleteEventRequest(Map<String,Object> a){super(Tool.DELETE_EVENT,a);eventId=(String)a.get("event_id");}
     }
+    public static final class WebSearchRequest extends Request {
+        public final String query,timeRange;
+        private WebSearchRequest(Map<String,Object> a){
+            super(Tool.WEB_SEARCH,a);
+            query=(String)a.get("query");
+            timeRange=(String)a.get("time_range");
+        }
+    }
     private static Request request(Tool tool,Map<String,Object> args){
         switch(tool){
             case FLASHLIGHT:return new FlashlightRequest(args);case VOLUME:return new VolumeRequest(args);
@@ -159,6 +168,7 @@ public final class ToolRegistry {
             case CREATE_EVENT:return new CreateEventRequest(args);
             case UPDATE_EVENT:return new UpdateEventRequest(args);
             case DELETE_EVENT:return new DeleteEventRequest(args);
+            case WEB_SEARCH:return new WebSearchRequest(args);
             default:throw new IllegalArgumentException("Unregistered tool");
         }
     }
@@ -183,18 +193,28 @@ public final class ToolRegistry {
         Map<String,Object> call=(Map<String,Object>)root;
         if(call.size()!=2 || !(call.get("tool") instanceof String) || !(call.get("arguments") instanceof Map))
             return reject("INVALID_REQUEST","Expected exactly tool and arguments");
-        Tool selected=null;for(Tool tool:Tool.values())if(tool.wireName.equals(call.get("tool")))selected=tool;
+        return parseCall((String)call.get("tool"),(Map<String,Object>)call.get("arguments"));
+    }
+
+    /** Validates an already-extracted tool name and raw arguments map (used by XML/Pythonic/JSON parsers). */
+    public Parsed parseCall(String toolName, Map<String,Object> rawArgs){
+        if(toolName==null || rawArgs==null)return reject("INVALID_REQUEST","Expected tool name and arguments");
+        Tool selected=null;for(Tool tool:Tool.values())if(tool.wireName.equals(toolName))selected=tool;
         if(selected==null)return reject("UNKNOWN_TOOL","Tool is not allowlisted");
-        Map<String,Object> args=new LinkedHashMap<>((Map<String,Object>)call.get("arguments"));
+        Map<String,Object> args=new LinkedHashMap<>(rawArgs);
         try{
             switch(selected){
                 case FLASHLIGHT:keys(args,"on");if(!(args.get("on") instanceof Boolean))bad("on must be boolean");break;
                 case VOLUME:keys(args,"stream","percent");choice(args,"stream","music","alarm","ring","notification");integer(args,"percent",0,100);break;
                 case TIMER:keys(args,"seconds","label");integer(args,"seconds",1,86400);label(args);break;
                 case ALARM:keys(args,"hour","minute","label","days");integer(args,"hour",0,23);integer(args,"minute",0,59);label(args);days(args);break;
-                case REMINDER:keys(args,"when_epoch_sec","title","body");
+                case REMINDER:keys(args,"when_epoch_sec","when","title","body");
+                    if(args.containsKey("when") && !args.containsKey("when_epoch_sec")){
+                        args.put("when_epoch_sec",parseIsoToEpochSec(args.remove("when"),"when",false));
+                        if(!args.containsKey("body"))args.put("body","");
+                    }
                     if(!args.containsKey("when_epoch_sec") || !args.containsKey("title") || !args.containsKey("body"))
-                        bad("Expected exactly when_epoch_sec, title, and body");
+                        bad("Expected when_epoch_sec (or when), title, and body");
                     reminder(args,nowEpochSec.getAsLong());break;
                 case SHOW_ALARMS:keys(args);break;
                 case APPLICATION:keys(args,"package");String name=text(args,"package",1,255);
@@ -240,19 +260,64 @@ public final class ToolRegistry {
                     text(args,"draft_id",1,128);
                     break;
                 }
-                case LIST_EVENTS:keys(args,"window_start_epoch_sec","window_end_epoch_sec","limit");
+                case LIST_EVENTS:keys(args,"window_start_epoch_sec","window_end_epoch_sec","window_start","window_end","limit");
+                    if(args.containsKey("window_start") && !args.containsKey("window_start_epoch_sec")){
+                        args.put("window_start_epoch_sec",parseIsoToEpochSec(args.remove("window_start"),"window_start",false));
+                    }
+                    if(args.containsKey("window_end") && !args.containsKey("window_end_epoch_sec")){
+                        args.put("window_end_epoch_sec",parseIsoToEpochSec(args.remove("window_end"),"window_end",true));
+                    }
+                    if(!args.containsKey("limit")) args.put("limit",20L);
                     epochSec(args,"window_start_epoch_sec");epochSec(args,"window_end_epoch_sec");integer(args,"limit",1,50);
                     eventWindow(args,"window_start_epoch_sec","window_end_epoch_sec");break;
-                case CREATE_EVENT:keys(args,"title","start_epoch_sec","end_epoch_sec","calendar_id","all_day","location","notes");
+                case CREATE_EVENT:keys(args,"title","start_epoch_sec","end_epoch_sec","start","end","duration_minutes","calendar_id","all_day","location","notes");
                     textBounded(args,"title",1,200,true);
-                    epochSec(args,"start_epoch_sec");epochSec(args,"end_epoch_sec");eventRange(args,"start_epoch_sec","end_epoch_sec");
-                    calendarId(args,"calendar_id");
+                    boolean dateOnlyStart=false;
+                    if(args.containsKey("start") && !args.containsKey("start_epoch_sec")){
+                        Object rawStart=args.remove("start");
+                        dateOnlyStart=isDateOnlyIso(rawStart);
+                        args.put("start_epoch_sec",parseIsoToEpochSec(rawStart,"start",false));
+                    }
+                    if(!args.containsKey("all_day")) args.put("all_day",dateOnlyStart);
                     if(!(args.get("all_day") instanceof Boolean))bad("all_day must be boolean");
+                    boolean allDay=(Boolean)args.get("all_day");
+                    if(args.containsKey("end") && !args.containsKey("end_epoch_sec")){
+                        args.put("end_epoch_sec",parseIsoToEpochSec(args.remove("end"),"end",allDay));
+                    }
+                    if(!args.containsKey("end_epoch_sec") && args.containsKey("start_epoch_sec") && args.get("start_epoch_sec") instanceof Long){
+                        long startVal=(Long)args.get("start_epoch_sec");
+                        long durSec=allDay ? 86400L : 3600L;
+                        if(args.containsKey("duration_minutes")){
+                            integer(args,"duration_minutes",1,24*60*30);
+                            durSec=((Integer)args.remove("duration_minutes")).longValue()*60L;
+                        }
+                        args.put("end_epoch_sec",startVal+durSec);
+                    } else if(args.containsKey("duration_minutes")){
+                        args.remove("duration_minutes");
+                    }
+                    epochSec(args,"start_epoch_sec");epochSec(args,"end_epoch_sec");eventRange(args,"start_epoch_sec","end_epoch_sec");
+                    if(args.containsKey("calendar_id")) calendarId(args,"calendar_id");
+                    else args.put("calendar_id","");
+                    if(!args.containsKey("location")) args.put("location","");
+                    if(!args.containsKey("notes")) args.put("notes","");
                     textBounded(args,"location",0,2000,false);textBounded(args,"notes",0,4000,false);break;
-                case UPDATE_EVENT:keys(args,"event_id","title","start_epoch_sec","end_epoch_sec");
+                case UPDATE_EVENT:keys(args,"event_id","title","start_epoch_sec","end_epoch_sec","start","end");
                     eventId(args,"event_id");textBounded(args,"title",1,200,true);
+                    if(args.containsKey("start") && !args.containsKey("start_epoch_sec")){
+                        args.put("start_epoch_sec",parseIsoToEpochSec(args.remove("start"),"start",false));
+                    }
+                    if(args.containsKey("end") && !args.containsKey("end_epoch_sec")){
+                        args.put("end_epoch_sec",parseIsoToEpochSec(args.remove("end"),"end",false));
+                    }
                     epochSec(args,"start_epoch_sec");epochSec(args,"end_epoch_sec");eventRange(args,"start_epoch_sec","end_epoch_sec");break;
                 case DELETE_EVENT:keys(args,"event_id");eventId(args,"event_id");break;
+                case WEB_SEARCH:keys(args,"query","time_range");
+                    textBounded(args,"query",1,300,true);
+                    if(!args.containsKey("time_range")) args.put("time_range","");
+                    String range=text(args,"time_range",0,16);
+                    if(!range.isEmpty() && !Arrays.asList("day","week","month","year").contains(range))
+                        bad("time_range must be day, week, month, or year");
+                    break;
             }
         }catch(IllegalArgumentException e){return reject("INVALID_ARGUMENTS",e.getMessage());}
         return new Parsed(request(selected,args),"VALIDATED","Arguments validated; authorization still required");
@@ -414,6 +479,33 @@ public final class ToolRegistry {
         for(int i=0;i<id.length();i++){
             char c=id.charAt(i);
             if(Character.isISOControl(c) || c=='\u2028' || c=='\u2029')bad(key+" is invalid");
+        }
+    }
+    private static boolean isDateOnlyIso(Object raw){
+        if(!(raw instanceof String))return false;
+        String s=((String)raw).trim();
+        return s.matches("\\d{4}-\\d{2}-\\d{2}");
+    }
+    private static long parseIsoToEpochSec(Object raw,String key,boolean endOfDateIfDateOnly){
+        if(raw instanceof Long)return (Long)raw;
+        if(!(raw instanceof String))bad(key+" must be an ISO-8601 date/datetime string");
+        String s=((String)raw).trim();
+        if(s.isEmpty() || s.length()>64)bad(key+" is not a valid ISO-8601 datetime");
+        try{
+            if(s.matches("\\d{4}-\\d{2}-\\d{2}")){
+                java.time.LocalDate date=java.time.LocalDate.parse(s);
+                if(endOfDateIfDateOnly)date=date.plusDays(1);
+                return date.atStartOfDay(java.time.ZoneId.systemDefault()).toEpochSecond();
+            }
+            String normalized=s.contains(" ") && !s.contains("T") ? s.replaceFirst(" ","T") : s;
+            if(normalized.endsWith("Z") || normalized.matches(".*[+-]\\d{2}:?\\d{2}$")){
+                return java.time.OffsetDateTime.parse(normalized).toEpochSecond();
+            }
+            return java.time.LocalDateTime.parse(normalized)
+                    .atZone(java.time.ZoneId.systemDefault()).toEpochSecond();
+        }catch(Exception e){
+            bad(key+" must be an ISO-8601 datetime like YYYY-MM-DDTHH:MM");
+            return 0L;
         }
     }
     private static void choice(Map<String,Object> args,String key,String... values){
