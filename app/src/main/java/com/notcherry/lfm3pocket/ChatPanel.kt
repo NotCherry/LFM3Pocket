@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -101,6 +102,7 @@ class ChatPanel @JvmOverloads constructor(
     private var toolCard by mutableStateOf<ToolCardState?>(null)
     private var attachment by mutableStateOf<Attachment?>(null)
     private var documentAttachments by mutableStateOf<List<DocumentAttachment>>(emptyList())
+    private var importingDocumentLabels by mutableStateOf<List<String>>(emptyList())
     private var controls by mutableStateOf(Controls())
     private var pendingDraft by mutableStateOf<String?>(null)
 
@@ -210,6 +212,10 @@ class ChatPanel @JvmOverloads constructor(
         documentAttachments = emptyList()
     }
 
+    fun setImportingDocuments(labels: List<String>) {
+        importingDocumentLabels = labels.toList()
+    }
+
     /** Prefills the composer. Share targets and typed ASK intents use this. */
     fun setDraft(text: String?) {
         if (text.isNullOrBlank()) return
@@ -241,8 +247,10 @@ class ChatPanel @JvmOverloads constructor(
                 stringResource(R.string.mode_local)
             }
             var previewBitmap by remember(attachment?.path) { mutableStateOf<Bitmap?>(null) }
+            var previewLoaded by remember(attachment?.path) { mutableStateOf(false) }
             LaunchedEffect(attachment?.path) {
                 val path = attachment?.path
+                previewLoaded = false
                 previewBitmap = if (path == null) {
                     null
                 } else {
@@ -250,6 +258,7 @@ class ChatPanel @JvmOverloads constructor(
                         ImageAttachmentFiles.decodePreview(File(path))
                     }
                 }
+                previewLoaded = true
             }
             Column(
                 Modifier
@@ -366,6 +375,44 @@ class ChatPanel @JvmOverloads constructor(
                     onSuggest = { input = it },
                     onRetryInterrupted = { turnId -> retryInterrupted.accept(turnId) },
                 )
+                if (importingDocumentLabels.isNotEmpty()) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = space.space2, vertical = space.space1)
+                            .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
+                            .border(1.dp, atlas.accent, MaterialTheme.shapes.medium)
+                            .padding(horizontal = space.space3, vertical = space.space2)
+                            .testTag(tag("document_importing")),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(space.space2),
+                        ) {
+                            CircularProgressIndicator(
+                                Modifier.size(14.dp),
+                                color = atlas.accent,
+                                trackColor = atlas.border,
+                                strokeWidth = 1.8.dp,
+                            )
+                            Text(
+                                stringResource(R.string.documents_extracting_heading),
+                                style = type.label,
+                                color = atlas.accent,
+                            )
+                        }
+                        importingDocumentLabels.forEach { label ->
+                            Text(
+                                label,
+                                style = type.mono,
+                                color = atlas.ink,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 3.dp),
+                            )
+                        }
+                    }
+                }
                 if (documentAttachments.isNotEmpty()) {
                     Column(
                         Modifier
@@ -411,6 +458,31 @@ class ChatPanel @JvmOverloads constructor(
                             }
                         }
                     }
+                } else if (importingDocumentLabels.isEmpty() && snapshot.activeDocumentNames.isNotEmpty()) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = space.space2, vertical = space.space1)
+                            .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
+                            .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
+                            .padding(horizontal = space.space3, vertical = 6.dp)
+                            .testTag(tag("active_documents_strip")),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            stringResource(R.string.documents_active_context_heading) + " ",
+                            style = type.label,
+                            color = atlas.accent,
+                        )
+                        Text(
+                            snapshot.activeDocumentNames.joinToString(", "),
+                            style = type.mono,
+                            color = atlas.inkSoft,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
                 attachment?.let { image ->
                     Row(
@@ -433,12 +505,16 @@ class ChatPanel @JvmOverloads constructor(
                                     .testTag(tag("image_preview")),
                                 contentScale = ContentScale.Crop,
                             )
-                        } ?: Text(
-                            stringResource(R.string.loading_image_preview),
-                            style = type.bodySmall,
-                            color = atlas.inkMuted,
-                            modifier = Modifier.padding(end = space.space2),
-                        )
+                        } ?: if (!previewLoaded) {
+                            Text(
+                                stringResource(R.string.loading_image_preview),
+                                style = type.bodySmall,
+                                color = atlas.inkMuted,
+                                modifier = Modifier.padding(end = space.space2),
+                            )
+                        } else {
+                            Spacer(Modifier.width(0.dp))
+                        }
                         Spacer(Modifier.width(space.space3))
                         Column(Modifier.weight(1f)) {
                             Text(
@@ -478,7 +554,7 @@ class ChatPanel @JvmOverloads constructor(
                         .border(width = 1.dp, color = atlas.border, shape = MaterialTheme.shapes.medium)
                         .padding(horizontal = space.composer, vertical = space.space2),
                 ) {
-                    ChatLiveStatus(idleMode, liveStatus, context.packageName)
+                    ChatLiveStatus(idleMode, liveStatus, context.packageName, snapshot.traceLines)
                     Spacer(Modifier.height(space.space2))
                     OutlinedTextField(
                         value = input,

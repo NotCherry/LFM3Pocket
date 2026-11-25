@@ -344,4 +344,20 @@ com.whatsapp</string>
     <string name="mcp_sync_ok">Synced %2$d tool(s) from %1$s.</string>
     <string name="mcp_sync_failed">Sync failed for %1$s: %2$s</string>
     <string name="remove_item">Remove</string>
+    <string name="documents_extracting_heading">Extracting document…</string>
+    <string name="documents_active_context_heading">Active docs:</string>
+    <string name="settings_diag_github_issue">Report GitHub Issue</string>
+    <string name="settings_diag_paste_issue">Upload Paste &amp; Issue</string>
+    <string name="settings_diag_paste_confirm_title">Upload sanitized diagnostics?</string>
+    <string name="settings_diag_paste_confirm_body">Only device specs, RAM/thermal telemetry, processing timings, and crash traces will be uploaded via HTTPS (auto-expires in 7 days). No chat messages, documents, or tokens are included.\n\nPreview:\n\n%1$s</string>
+    <string name="settings_diag_paste_confirm_ok">Upload &amp; Open Issue</string>
+    <string name="settings_diag_paste_uploading">Uploading sanitized diagnostics log…</string>
+    <string name="settings_diag_paste_uploaded">Uploaded log (%1$s) and opened GitHub Issue.</string>
+    <string name="settings_diag_paste_failed">Upload failed: %1$s</string>
+    <string name="settings_diag_github_opened">Copied full sanitized diagnostics to clipboard and opened GitHub Issue.</string>
+    <string name="settings_diag_lan_start">Start Wi-Fi Log Viewer (No ADB)</string>
+    <string name="settings_diag_lan_stop">Stop Wi-Fi Log Viewer</string>
+    <string name="settings_diag_lan_hint">Open this URL in a browser on the same Wi-Fi (tap to copy):\n%1$s</string>
+    <string name="settings_diag_lan_stopped">Wi-Fi log viewer stopped.</string>
+    <string name="settings_diag_lan_copied">Copied Wi-Fi log viewer URL to clipboard.</string>
 </resources>

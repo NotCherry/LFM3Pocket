@@ -29,6 +29,10 @@ public final class ContactsAndShortcutsTest {
                 "{\"tool\":\"lookup_contact\",\"arguments\":{\"query\":\"Anna\"}}");
         assertTrue(parsed.isValid());
         assertEquals(5, ((ToolRegistry.LookupContactRequest) parsed.request).limit);
+
+        // Regression for DependencyContractTest: constructing an unattached Application must not NPE.
+        AndroidContactsGateway unattached = new AndroidContactsGateway(new Lfm3PocketApplication());
+        assertTrue(unattached.search("Anna", 5).isEmpty());
     }
 
     @Test public void customShortcutRejectsUnsafeSchemesAndRendersEncodedUri() {

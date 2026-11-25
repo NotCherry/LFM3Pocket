@@ -170,4 +170,70 @@ public class CactusWhistleSttSmokeTest {
             assertEquals("Microphone must not open when Whistle STT is unavailable", 0, app.captureOpened());
         }
     }
+
+    @Test public void pdfAttachmentDoesNotBlockCactusWhistleSttSubmission() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        String pkg = context.getPackageName();
+        TestLfm3PocketApplication app = (TestLfm3PocketApplication) context.getApplicationContext();
+        app.resetCapture(false);
+        app.capturePermission(true);
+        app.scriptedEngine().resetForTest();
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+
+        File model = new File(context.getFilesDir(), "whistle-pdf-model.gguf");
+        TestGgufFixtures.model(model);
+        File whistle = new File(context.getFilesDir(), "cactus/whistle-pdf.cact");
+        whistle.getParentFile().mkdirs();
+        try (FileOutputStream out = new FileOutputStream(whistle)) {
+            out.write(new byte[] { 1, 2, 3, 4 });
+        }
+        assertTrue(context.getSharedPreferences(RuntimePreferences.FILE, 0).edit().clear()
+                .putString("model", model.getAbsolutePath())
+                .putString("speech_input_mode", SpeechInputMode.CACTUS_WHISTLE_STT.wireName)
+                .putString("cactus_whistle_model", whistle.getAbsolutePath())
+                .putBoolean("search_enabled", false).commit());
+
+        CactusWhistleBridge.testHook = new CactusWhistleBridge.TestHook() {
+            @Override public SttAvailability availability(String modelPath) {
+                return SttAvailability.ready();
+            }
+            @Override public SttResult transcribe(String modelPath, float[] pcm16kMono, AtomicBoolean cancelled) {
+                return SttResult.ok("Summarize my attached PDF");
+            }
+        };
+
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            assertNotNull(device.wait(Until.findObject(By.res(pkg, "chat_send").enabled(true)), UI_TIMEOUT_MS));
+
+            // Attach the real-world PDF with graphics arrays + marked content outside BT..ET.
+            UiObject2 docButton = device.wait(Until.findObject(By.res(pkg, "chat_document").enabled(true)), UI_TIMEOUT_MS);
+            assertNotNull(docButton);
+            docButton.click();
+            ImageAttachmentE2eTest.selectFixtureDocument(device, "sample-graphics.pdf");
+            assertNotNull("PDF chip must appear without endless loading",
+                    device.wait(Until.findObject(By.res(pkg, "document_attachment_0")), UI_TIMEOUT_MS));
+
+            // Now tap Voice input (Cactus Whistle STT) and verify transcription submits cleanly with PDF context.
+            UiObject2 record = device.wait(Until.findObject(By.res(pkg, "voice_record").enabled(true)), UI_TIMEOUT_MS);
+            assertNotNull("Voice button must be enabled after PDF attachment", record);
+            record.click();
+            assertTrue(app.awaitCaptured());
+
+            app.scriptedEngine().completeFirstTurn();
+            record = device.wait(Until.findObject(By.res(pkg, "voice_record").enabled(true)), UI_TIMEOUT_MS);
+            assertNotNull(record);
+            record.click();
+            assertTrue(app.awaitCaptureReleased());
+
+            assertNotNull("Cactus STT turn must stream response tokens with PDF attached",
+                    device.wait(Until.findObject(By.res(pkg, "chat_transcript")
+                            .textContains("FAKE_STREAM_BEGIN")), UI_TIMEOUT_MS));
+            String prompt = app.scriptedEngine().lastPrompt();
+            assertNotNull(prompt);
+            assertTrue("Prompt must include Cactus STT text: " + prompt, prompt.contains("Summarize my attached PDF"));
+            assertTrue("Prompt must include PDF text: " + prompt, prompt.contains("SUNRISE-42"));
+            assertNotNull("Send must re-enable after response completes",
+                    device.wait(Until.findObject(By.res(pkg, "chat_send").enabled(true)), UI_TIMEOUT_MS));
+        }
+    }
 }

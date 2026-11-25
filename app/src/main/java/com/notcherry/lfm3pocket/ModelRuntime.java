@@ -1025,6 +1025,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                     onSnapshot(snapshot);
                 });
         session.setToolHost(createChatToolHost());
+        session.setTelemetry(app.processingTelemetry(), () -> DeviceResourceMonitor.sample(app).compactBadge());
     }
 
     private ChatSession.ToolHost createChatToolHost() {
@@ -1340,9 +1341,14 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                                                             int maxTokens, String grammar, String grammarTrigger,
                                                             TokenSink sink) {
             return delegate.generateWithMediaAndGrammar(model, prompt, mediaPaths, maxTokens, grammar, grammarTrigger,
-                    piece -> {
-                        onDecodedTokens(1);
-                        sink.onToken(piece);
+                    new TokenSink() {
+                        @Override public void onToken(String piece) {
+                            onDecodedTokens(1);
+                            sink.onToken(piece);
+                        }
+                        @Override public void onProgress(String stage, int done, int total) {
+                            sink.onProgress(stage, done, total);
+                        }
                     });
         }
         @Override public String generateSpeech(long model, String prompt, SpeechOptions options, AudioSink sink) {

@@ -19,10 +19,14 @@ import java.util.List;
  */
 public final class LfmToolGrammar {
     /**
-     * ECMAScript regex matched from the start of generation output; capture group 1 feeds
-     * {@code <tool_call>} directly into the {@code root} grammar symbol.
+     * ECMAScript regex searched inside generated output by {@code llama_grammar_trigger_pattern::find};
+     * capture group 1 feeds {@code <tool_call>} directly into the {@code root} grammar symbol.
+     *
+     * <p>Do NOT prefix with {@code [\s\S]*?} — {@code llama.cpp} uses {@code std::regex_search}
+     * (unless anchored with {@code ^...$}), so a leading wildcard causes O(N^2)-per-token
+     * backtracking and Android {@code libc++} regex stack exhaustion.
      */
-    public static final String LAZY_TRIGGER_PATTERN = "[\\s\\S]*?(<tool_call>)";
+    public static final String LAZY_TRIGGER_PATTERN = "(<tool_call>)";
     public static final String ROOT_SYMBOL = "root";
 
     private LfmToolGrammar() {}

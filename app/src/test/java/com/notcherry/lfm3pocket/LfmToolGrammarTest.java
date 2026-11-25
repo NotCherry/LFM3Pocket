@@ -38,4 +38,19 @@ public final class LfmToolGrammarTest {
         assertEquals("", LfmToolGrammar.build(Collections.emptyList()));
         assertEquals("", LfmToolGrammar.build(null));
     }
+
+    @Test public void lazyTriggerPatternAvoidsCatastrophicLeadingWildcard() {
+        assertFalse("Leading [\\s\\S]*? causes O(N^2)-per-token std::regex_search backtracking in llama.cpp",
+                LfmToolGrammar.LAZY_TRIGGER_PATTERN.contains("[\\s\\S]*"));
+        assertFalse("Leading .* causes quadratic std::regex_search backtracking",
+                LfmToolGrammar.LAZY_TRIGGER_PATTERN.startsWith(".*"));
+
+        StringBuilder longProse = new StringBuilder();
+        for (int i = 0; i < 2000; i++) longProse.append("word ");
+        longProse.append("\n<tool_call>\n<function=current_time></function></tool_call>");
+        Pattern p = Pattern.compile(LfmToolGrammar.LAZY_TRIGGER_PATTERN);
+        Matcher m = p.matcher(longProse);
+        assertTrue(m.find());
+        assertEquals("<tool_call>", m.group(1));
+    }
 }

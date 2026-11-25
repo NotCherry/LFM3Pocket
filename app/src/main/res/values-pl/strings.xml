@@ -344,4 +344,20 @@ com.whatsapp</string>
     <string name="mcp_sync_ok">Zsynchronizowano %2$d narzędzi z %1$s.</string>
     <string name="mcp_sync_failed">Błąd synchronizacji %1$s: %2$s</string>
     <string name="remove_item">Usuń</string>
+    <string name="documents_extracting_heading">Wyodrębnianie dokumentu…</string>
+    <string name="documents_active_context_heading">Aktywne dokumenty:</string>
+    <string name="settings_diag_github_issue">Zgłoś błąd na GitHub</string>
+    <string name="settings_diag_paste_issue">Wyślij log (Paste) i zgłoś</string>
+    <string name="settings_diag_paste_confirm_title">Wysłać zanonimizowany log diagnostyczny?</string>
+    <string name="settings_diag_paste_confirm_body">Przez HTTPS zostaną wysłane wyłącznie parametry urządzenia, RAM/temperatura, czasy faz przetwarzania i logi błędów (wygasa po 7 dniach). Bez treści czatu, dokumentów i tokenów.\n\nPodgląd:\n\n%1$s</string>
+    <string name="settings_diag_paste_confirm_ok">Wyślij i otwórz zgłoszenie</string>
+    <string name="settings_diag_paste_uploading">Wysyłanie zanonimizowanego logu diagnostycznego…</string>
+    <string name="settings_diag_paste_uploaded">Wysłano log (%1$s) i otwarto zgłoszenie GitHub.</string>
+    <string name="settings_diag_paste_failed">Nie udało się wysłać logu: %1$s</string>
+    <string name="settings_diag_github_opened">Skopiowano pełny log diagnostyczny do schowka i otwarto zgłoszenie GitHub.</string>
+    <string name="settings_diag_lan_start">Włącz podgląd logów Wi-Fi (bez ADB)</string>
+    <string name="settings_diag_lan_stop">Zatrzymaj podgląd logów Wi-Fi</string>
+    <string name="settings_diag_lan_hint">Otwórz ten adres w przeglądarce w tej samej sieci Wi-Fi (dotknij, aby skopiować):\n%1$s</string>
+    <string name="settings_diag_lan_stopped">Zatrzymano podgląd logów Wi-Fi.</string>
+    <string name="settings_diag_lan_copied">Skopiowano adres podglądu logów Wi-Fi do schowka.</string>
 </resources>

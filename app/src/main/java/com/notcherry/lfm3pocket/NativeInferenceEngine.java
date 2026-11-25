@@ -51,7 +51,14 @@ public final class NativeInferenceEngine implements InferenceEngine {
             return NativeBridge.generateWithMediaSettingsAndGrammar(handle, prompt, mediaPaths,
                     new InferenceSettings(current.contextTokens, current.threads,
                             Math.min(maxTokens, current.maxTokens), current.promptLookup),
-                    grammar, grammarTrigger, sink::onToken);
+                    grammar, grammarTrigger, new NativeBridge.TokenSink() {
+                        @Override public void onToken(String piece) {
+                            sink.onToken(piece);
+                        }
+                        @Override public void onProgress(String stage, int done, int total) {
+                            sink.onProgress(stage, done, total);
+                        }
+                    });
         } catch (OutOfMemoryError error) {
             return "Could not process this image on this phone (out of memory). Try a smaller photo.";
         } catch (Throwable error) {
