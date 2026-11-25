@@ -13,15 +13,22 @@ import java.util.Map;
 
 /** Queries local Android ContactsContract offline for name, phone, and email matches. */
 public final class AndroidContactsGateway implements ContactsGateway {
-    private final ContentResolver resolver;
+    private final Context context;
 
     public AndroidContactsGateway(Context context) {
         if (context == null) throw new IllegalArgumentException("Missing context");
-        this.resolver = context.getApplicationContext().getContentResolver();
+        Context app = null;
+        try { app = context.getApplicationContext(); } catch (RuntimeException ignored) {}
+        this.context = app != null ? app : context;
     }
 
     @Override public List<ContactMatch> search(String query, int limit) {
         if (query == null || query.trim().isEmpty() || limit <= 0) {
+            return java.util.Collections.emptyList();
+        }
+        ContentResolver resolver = null;
+        try { resolver = context.getContentResolver(); } catch (RuntimeException ignored) {}
+        if (resolver == null) {
             return java.util.Collections.emptyList();
         }
         String needle = "%" + query.trim() + "%";

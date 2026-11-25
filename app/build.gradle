@@ -247,6 +247,16 @@ dependencies {
 }
 
 ksp { arg('room.schemaLocation', "$projectDir/schemas"); arg('room.generateKotlin', 'false') }
+// Room KSP reads and rewrites app/schemas/.../6.json; serialize flavor KSP tasks so
+// multi-flavor Gradle builds (e.g. assemblePhoneDebug + assembleDeviceCheckDebug) never race.
+afterEvaluate {
+    def kspKotlinTasks = tasks.matching { it.name ==~ /ksp.*Kotlin/ && !it.name.contains('Test') }
+            .toList()
+            .sort { it.name }
+    for (int i = 1; i < kspKotlinTasks.size(); i++) {
+        kspKotlinTasks[i].mustRunAfter(kspKotlinTasks[i - 1])
+    }
+}
 android.sourceSets.androidTest.assets.srcDirs += files("$projectDir/schemas")
 // Apache-2.0 NOTICE/LICENSE for the optional Cactus runtime redistributed in phone ARM64 builds.
 android.sourceSets.main.assets.srcDirs += file("${rootProject.projectDir}/licenses/cactus")
