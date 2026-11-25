@@ -11,6 +11,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,6 +60,33 @@ import com.notcherry.lfm3pocket.ui.theme.atlasColors
 import com.notcherry.lfm3pocket.ui.theme.atlasSpacing
 import com.notcherry.lfm3pocket.ui.theme.atlasTypography
 import kotlinx.coroutines.delay
+
+internal data class UserAttachmentBadge(val kind: String, val label: String)
+internal data class ParsedUserTurn(val body: String, val attachments: List<UserAttachmentBadge>)
+
+internal fun parseUserTurnAttachments(raw: String): ParsedUserTurn {
+    if (raw.isEmpty()) return ParsedUserTurn("", emptyList())
+    val bodyLines = ArrayList<String>()
+    val badges = ArrayList<UserAttachmentBadge>()
+    for (line in raw.split('\n')) {
+        val trimmed = line.trim()
+        when {
+            trimmed == "[photo attached]" -> badges.add(UserAttachmentBadge("PHOTO", "Photo"))
+            trimmed == "[photo context]" -> badges.add(UserAttachmentBadge("PHOTO", "Photo context"))
+            trimmed == "[voice recording attached]" -> badges.add(UserAttachmentBadge("AUDIO", "Voice recording"))
+            trimmed.startsWith("[documents attached:") && trimmed.endsWith("]") -> {
+                val inner = trimmed.removePrefix("[documents attached:").removeSuffix("]").trim()
+                if (inner.isNotEmpty()) {
+                    inner.split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach { name ->
+                        badges.add(UserAttachmentBadge("DOC", name))
+                    }
+                }
+            }
+            else -> bodyLines.add(line)
+        }
+    }
+    return ParsedUserTurn(bodyLines.joinToString("\n").trimEnd(), badges)
+}
 
 /**
  * Atlas chat transcript visuals: open text blocks, Reasoning rail, markdown, sources.
@@ -117,6 +146,7 @@ fun ChatTurnList(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChatTurn(
     turn: ChatSnapshot.Turn,
@@ -144,9 +174,10 @@ fun ChatTurn(
         )
         Spacer(Modifier.height(space.space2))
         if (isUser) {
+            val parsed = remember(turn.text) { parseUserTurnAttachments(turn.text) }
             SelectionContainer {
                 Text(
-                    text = turn.text,
+                    text = parsed.body.ifBlank { turn.text },
                     style = type.body,
                     color = atlas.inkSoft,
                     modifier = Modifier
@@ -163,6 +194,40 @@ fun ChatTurn(
                         // History E2E uses By.desc(user text) for voice/transcript exposure.
                         .semantics { contentDescription = turn.text },
                 )
+            }
+            if (parsed.attachments.isNotEmpty()) {
+                Spacer(Modifier.height(space.space2))
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = space.space4),
+                    horizontalArrangement = Arrangement.spacedBy(space.space2),
+                    verticalArrangement = Arrangement.spacedBy(space.space1),
+                ) {
+                    parsed.attachments.forEach { badge ->
+                        Row(
+                            modifier = Modifier
+                                .background(atlas.surfaceRaised, MaterialTheme.shapes.small)
+                                .border(1.dp, atlas.borderStrong, MaterialTheme.shapes.small)
+                                .padding(horizontal = space.space2, vertical = 4.dp)
+                                .testTag("$packageName:id/turn_attachment_chip"),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = badge.kind,
+                                style = type.mono,
+                                color = atlas.accent,
+                            )
+                            Text(
+                                text = " · ${badge.label}",
+                                style = type.bodySmall,
+                                color = atlas.ink,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
         } else {
             // Always place collapsible reasoning above the answer across all viewports so

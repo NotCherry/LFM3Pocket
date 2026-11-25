@@ -9,6 +9,7 @@ public final class NativeBridge {
 
     public interface TokenSink {
         void onToken(String piece);
+        default void onProgress(String stage, int done, int total) {}
     }
 
     public interface AudioSink {

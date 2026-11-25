@@ -14,6 +14,7 @@ import java.util.List;
  */
 public class Lfm3PocketApplication extends Application {
     private final LocalDiagnostics diagnostics = new LocalDiagnostics(SystemClock::elapsedRealtime);
+    private final ProcessingTelemetry processingTelemetry = new ProcessingTelemetry();
     private ModelRuntime modelRuntime;
     private ExternalModelStore externalModels;
     private int startedActivities;
@@ -52,6 +53,10 @@ public class Lfm3PocketApplication extends Application {
 
     public final LocalDiagnostics diagnostics() {
         return diagnostics;
+    }
+
+    public final ProcessingTelemetry processingTelemetry() {
+        return processingTelemetry;
     }
 
     public final synchronized ExternalModelStore externalModels() {

@@ -7,6 +7,7 @@ package com.notcherry.lfm3pocket;
 public interface InferenceEngine {
     interface TokenSink {
         void onToken(String piece);
+        default void onProgress(String stage, int done, int total) {}
     }
 
     /** Receives local model-generated PCM speech. Format is announced once before the first PCM chunk. */

@@ -38,11 +38,20 @@ final class AttachmentImportCoordinator {
         final Runnable recomputeBusy;
         final Consumer<CharSequence> setChatStatus;
         final Runnable updateControls;
+        final ProcessingTelemetry telemetry;
 
         Deps(Activity activity, ExecutorService worker, Supplier<ChatPanel> chatPanel,
                 Supplier<ImageSettings> imageSettings, BooleanSupplier isDestroyed,
                 Runnable recomputeBusy, Consumer<CharSequence> setChatStatus,
                 Runnable updateControls) {
+            this(activity, worker, chatPanel, imageSettings, isDestroyed, recomputeBusy,
+                    setChatStatus, updateControls, null);
+        }
+
+        Deps(Activity activity, ExecutorService worker, Supplier<ChatPanel> chatPanel,
+                Supplier<ImageSettings> imageSettings, BooleanSupplier isDestroyed,
+                Runnable recomputeBusy, Consumer<CharSequence> setChatStatus,
+                Runnable updateControls, ProcessingTelemetry telemetry) {
             this.activity = activity;
             this.worker = worker;
             this.chatPanel = chatPanel;
@@ -51,6 +60,7 @@ final class AttachmentImportCoordinator {
             this.recomputeBusy = recomputeBusy;
             this.setChatStatus = setChatStatus;
             this.updateControls = updateControls;
+            this.telemetry = telemetry;
         }
     }
 
@@ -120,28 +130,54 @@ final class AttachmentImportCoordinator {
             return;
         }
         AtomicBoolean cancellation = beginImport();
-        deps.setChatStatus.accept(deps.activity.getString(R.string.importing_document));
+        ArrayList<String> loadingLabels = new ArrayList<>(uris.size());
+        for (Uri uri : uris) {
+            String name = displayNameForUri(uri);
+            long size = selectedUriSize(uri);
+            loadingLabels.add(size > 0 ? name + " (" + formatByteSize(size) + ")" : name);
+        }
+        ChatPanel initialPanel = deps.chatPanel.get();
+        if (initialPanel != null) initialPanel.setImportingDocuments(loadingLabels);
+        String firstLabel = loadingLabels.isEmpty() ? "" : loadingLabels.get(0);
+        deps.setChatStatus.accept(firstLabel.isEmpty()
+                ? deps.activity.getString(R.string.importing_document)
+                : "Extracting " + firstLabel + "…");
         deps.worker.execute(() -> {
             ArrayList<ChatSession.Attachment> imported = new ArrayList<>();
             String error = null;
             boolean cancelled = false;
             try {
-                for (Uri uri : uris) {
+                for (int idx = 0; idx < uris.size(); idx++) {
+                    Uri uri = uris.get(idx);
                     if (deps.isDestroyed.getAsBoolean() || cancellation.get()) {
                         cancelled = true;
                         break;
                     }
                     File temp = null;
+                    long startedAt = System.currentTimeMillis();
+                    String displayName = displayNameForUri(uri);
+                    String mime = deps.activity.getContentResolver().getType(uri);
+                    boolean isPdf = DocumentAttachmentReader.isPdfMimeOrName(mime, displayName);
+                    String stageTag = isPdf ? "PDF_IMPORT" : "DOC_IMPORT";
                     try {
-                        String displayName = displayNameForUri(uri);
-                        String mime = deps.activity.getContentResolver().getType(uri);
                         long size = selectedUriSize(uri);
-                        long maxBytes = DocumentAttachmentReader.isPdfMimeOrName(mime, displayName)
+                        String sizeSuffix = size > 0 ? " (" + formatByteSize(size) + ")" : "";
+                        final String progressMsg = "Extracting " + (isPdf ? "PDF" : "file")
+                                + ": " + displayName + sizeSuffix + "…";
+                        deps.activity.runOnUiThread(() -> {
+                            if (!deps.isDestroyed.getAsBoolean() && !cancellation.get()) {
+                                deps.setChatStatus.accept(progressMsg);
+                            }
+                        });
+                        recordTelemetry(stageTag, 0L, "start " + displayName + sizeSuffix);
+                        long maxBytes = isPdf
                                 ? DocumentAttachmentReader.MAX_PDF_BYTES : DocumentAttachmentReader.MAX_TEXT_BYTES;
                         if (size >= 0 && size > maxBytes) {
-                            error = DocumentAttachmentReader.isPdfMimeOrName(mime, displayName)
+                            error = isPdf
                                     ? displayName + ": This PDF is too large to attach."
                                     : displayName + ": This file is too large to attach.";
+                            recordTelemetry(stageTag, System.currentTimeMillis() - startedAt,
+                                    "rejected too_large " + displayName + sizeSuffix);
                             break;
                         }
                         temp = copyUriToCache(uri, "doc-" + System.currentTimeMillis() + "-" + imported.size() + ".tmp",
@@ -156,21 +192,28 @@ final class AttachmentImportCoordinator {
                             cancelled = true;
                             break;
                         }
+                        long elapsedMs = System.currentTimeMillis() - startedAt;
                         if (!result.isOk()) {
                             error = result.displayName + ": " + result.error;
+                            recordTelemetry(stageTag, elapsedMs, "error " + result.displayName + ": " + result.error);
                             break;
                         }
+                        recordTelemetry(stageTag, elapsedMs, "ok " + result.displayName + sizeSuffix
+                                + " chars=" + result.text.length()
+                                + " ~" + Math.max(1, (result.text.length() + 3) / 4) + "tok");
                         imported.add(ChatSession.Attachment.document(result.displayName, result.text));
                     } catch (Throwable e) {
+                        long elapsedMs = System.currentTimeMillis() - startedAt;
                         if (cancellation.get()) {
                             cancelled = true;
+                            recordTelemetry(stageTag, elapsedMs, "cancelled " + displayName);
                             break;
                         }
-                        String name = displayNameForUri(uri);
                         String message = e instanceof OutOfMemoryError
                                 ? "This file is too large to process on this phone."
                                 : (e.getMessage() == null ? "Could not read this file." : e.getMessage());
-                        error = name + ": " + message;
+                        recordTelemetry(stageTag, elapsedMs, "failed " + displayName + ": " + message);
+                        error = displayName + ": " + message;
                         break;
                     } finally {
                         if (temp != null && temp.exists()) temp.delete();
@@ -183,6 +226,8 @@ final class AttachmentImportCoordinator {
                 deps.activity.runOnUiThread(() -> {
                     endImport(cancellation);
                     if (deps.isDestroyed.getAsBoolean()) return;
+                    ChatPanel panel = deps.chatPanel.get();
+                    if (panel != null) panel.setImportingDocuments(java.util.Collections.emptyList());
                     if (wasCancelled) {
                         deps.setChatStatus.accept("Document import cancelled.");
                     } else if (importError != null) {
@@ -489,8 +534,34 @@ final class AttachmentImportCoordinator {
             return;
         }
         ArrayList<String> names = new ArrayList<>(pendingDocuments.size());
-        for (ChatSession.Attachment doc : pendingDocuments) names.add(doc.displayName);
+        for (ChatSession.Attachment doc : pendingDocuments) names.add(formatDocChipLabel(doc));
         panel.setDocumentAttachments(names, this::removePendingDocument);
+    }
+
+    private void recordTelemetry(String stage, long durationMs, String detail) {
+        if (deps.telemetry != null) {
+            deps.telemetry.record(stage, durationMs, detail);
+        }
+    }
+
+    static String formatByteSize(long bytes) {
+        if (bytes < 1024L) return bytes + " B";
+        if (bytes < 1024L * 1024L) return String.format(java.util.Locale.US, "%.0f KB", bytes / 1024.0);
+        return String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0));
+    }
+
+    static String formatDocChipLabel(ChatSession.Attachment doc) {
+        if (doc == null) return "";
+        int chars = doc.extractedText == null ? 0 : doc.extractedText.length();
+        if (chars <= 0) return doc.displayName;
+        int approxTokens = Math.max(1, (chars + 3) / 4);
+        String charPart = chars >= 1000
+                ? String.format(java.util.Locale.US, "%.1fk chars", chars / 1000.0)
+                : chars + " chars";
+        String tokPart = approxTokens >= 1000
+                ? String.format(java.util.Locale.US, "~%.1fk tok", approxTokens / 1000.0)
+                : "~" + approxTokens + " tok";
+        return doc.displayName + " · " + charPart + " (" + tokPart + ")";
     }
 
     private void clearPendingDocuments() {

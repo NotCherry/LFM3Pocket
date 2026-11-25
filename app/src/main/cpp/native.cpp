@@ -135,14 +135,32 @@ size_t common_prefix_len(const std::vector<llama_token> & a, const std::vector<l
     return i;
 }
 
+void report_progress(JNIEnv * env, jobject sink, jmethodID cb, const char * stage, int done, int total) {
+    if (!cb || !sink || !stage) return;
+    jstring jstage = env->NewStringUTF(stage);
+    if (!jstage) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        return;
+    }
+    env->CallVoidMethod(sink, cb, jstage, static_cast<jint>(done), static_cast<jint>(total));
+    env->DeleteLocalRef(jstage);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+}
+
 // Returns false on decode error or cancel. On cancel, sets error empty and
 // cancelled stays true — caller must release_session() so cached_tokens cannot
 // claim a partially evaluated prompt.
 bool eval_tokens(ModelHandle * state, const llama_token * tokens, int count, int start_pos,
-                 bool mrope, std::string & error) {
+                 bool mrope, std::string & error,
+                 JNIEnv * env = nullptr, jobject sink = nullptr,
+                 jmethodID progress_cb = nullptr, int total_tokens = 0) {
     int position = start_pos;
     int remaining = count;
+    const int total = total_tokens > 0 ? total_tokens : (start_pos + count);
     const int chunk = static_cast<int>(choose_batch_size(state->ctx_tokens));
+    if (remaining > 0) {
+        report_progress(env, sink, progress_cb, "prefill", position, total);
+    }
     while (remaining > 0) {
         if (state->cancelled.load()) {
             error.clear();
@@ -156,6 +174,7 @@ bool eval_tokens(ModelHandle * state, const llama_token * tokens, int count, int
         }
         position += n;
         remaining -= n;
+        report_progress(env, sink, progress_cb, "prefill", position, total);
     }
     return true;
 }
@@ -423,6 +442,8 @@ static jstring run_generate_utf8(
     jclass sink_class = env->GetObjectClass(sink);
     jmethodID callback = sink_class ? env->GetMethodID(sink_class, "onToken", "(Ljava/lang/String;)V") : nullptr;
     if (!callback && env->ExceptionCheck()) env->ExceptionClear();
+    jmethodID progress_cb = sink_class ? env->GetMethodID(sink_class, "onProgress", "(Ljava/lang/String;II)V") : nullptr;
+    if (!progress_cb && env->ExceptionCheck()) env->ExceptionClear();
     if (sink_class) env->DeleteLocalRef(sink_class);
 
     std::string error;
@@ -430,6 +451,8 @@ static jstring run_generate_utf8(
     bool prompt_ready = false;
     if (!callback) {
         error = "Cannot locate Java token callback";
+    } else {
+        report_progress(env, sink, progress_cb, "tokenize", converted, context_tokens);
     }
 
     const jsize media_count = media_paths ? env->GetArrayLength(media_paths) : 0;
@@ -493,6 +516,7 @@ static jstring run_generate_utf8(
                                                   bitmaps.data(), bitmaps.size()) != 0) {
                         error = "Could not prepare the selected media for LFM3";
                     } else {
+                        report_progress(env, sink, progress_cb, "projector", 0, static_cast<int>(media_count));
                         llama_pos next_position = 0;
                         if (mtmd_helper_eval_chunks(state->multimodal, state->ctx, chunks, 0, 0,
                                                     choose_batch_size(context_tokens), true,
@@ -500,6 +524,7 @@ static jstring run_generate_utf8(
                             error = "Model failed while evaluating the selected media";
                         } else {
                             position = static_cast<int>(next_position);
+                            report_progress(env, sink, progress_cb, "projector_done", position, context_tokens);
                             if (position + 1 >= context_tokens) {
                                 error = "Selected media is too large for the selected phone context";
                             }
@@ -547,7 +572,7 @@ static jstring run_generate_utf8(
             position = static_cast<int>(shared);
             if (position < converted) {
                 if (!eval_tokens(state.get(), tokens.data() + position, converted - position,
-                                 position, mrope, error)) {
+                                 position, mrope, error, env, sink, progress_cb, converted)) {
                     // Cancel or decode error: drop partial session so the next turn
                     // cannot reuse a half-evaluated prompt (blocking review #1).
                     state->release_session();
@@ -571,12 +596,16 @@ static jstring run_generate_utf8(
             llama_memory_t mem = llama_get_memory(state->ctx);
             if (mem) llama_memory_clear(mem, true);
             state->cached_tokens.clear();
-            if (!eval_tokens(state.get(), tokens.data(), converted, 0, mrope, error)) {
+            if (!eval_tokens(state.get(), tokens.data(), converted, 0, mrope, error,
+                             env, sink, progress_cb, converted)) {
                 state->release_session();
                 prompt_ready = false;
                 use_ngram = false;
             }
         }
+    }
+    if (error.empty() && prompt_ready && state->ctx && !state->cancelled.load()) {
+        report_progress(env, sink, progress_cb, "decode", 0, max_tokens);
     }
     bool ngram_fallback_sequential = false;
     if (use_ngram) {

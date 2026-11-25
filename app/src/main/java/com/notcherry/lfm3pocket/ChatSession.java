@@ -178,6 +178,8 @@ public final class ChatSession {
     private final LongSupplier model;
     private final Search search;
     private volatile ToolHost toolHost;
+    private volatile ProcessingTelemetry telemetry;
+    private volatile java.util.function.Supplier<String> resourceBadgeSupplier;
     private final List<Message> messages=new ArrayList<>();
     private final List<Attachment> activeDocuments=new ArrayList<>();
     private final StringBuilder pending=new StringBuilder(), partial=new StringBuilder();
@@ -211,6 +213,11 @@ public final class ChatSession {
     }
     /** Installs the on-device LFM3 tool harness for this session. */
     public void setToolHost(ToolHost host) { this.toolHost=host; }
+    /** Installs optional live processing telemetry and resource badge sampler. */
+    public void setTelemetry(ProcessingTelemetry telemetry, java.util.function.Supplier<String> resourceBadgeSupplier) {
+        this.telemetry=telemetry;
+        this.resourceBadgeSupplier=resourceBadgeSupplier;
+    }
     /** Latest structured snapshot (immutable). Safe for UI / tests after emit. */
     public synchronized ChatSnapshot snapshot() { return latestSnapshot; }
     public synchronized boolean isGenerating() { return active!=null; }
@@ -536,9 +543,11 @@ public final class ChatSession {
                 if(!useToolLoop) {
                     engine.resetStop();
                     if(turn.cancelled) engine.stop();
+                    ProgressSink progressSink=createProgressSink(turn,useSearch);
                     try { error=engine.generateWithMedia(turn.handle,prompt(replyHistory,sources,turn.documents,mediaPaths.length),
-                            mediaPaths,maxTokens,piece -> queue(turn,piece)); }
+                            mediaPaths,maxTokens,progressSink); }
                     catch(Throwable e) { error=safeFailureMessage(e); }
+                    progressSink.finishSummary(error);
                 } else {
                     LfmToolCatalog.Capabilities caps=host.capabilities(useSearch,endpoint);
                     Locale locale=host.locale();
@@ -557,9 +566,11 @@ public final class ChatSession {
                         String stepPrompt=promptWithTools(replyHistory,sources,turn.documents,stepMedia.length,
                                 caps,locale,toolTrace.toString());
                         String grammar=LfmToolGrammar.build(activeTools.values());
+                        ProgressSink progressSink=createProgressSink(turn,useSearch);
                         try { error=engine.generateWithMediaAndGrammar(turn.handle,stepPrompt,stepMedia,maxTokens,
-                                grammar,LfmToolGrammar.LAZY_TRIGGER_PATTERN,piece -> queue(turn,piece)); }
+                                grammar,LfmToolGrammar.LAZY_TRIGGER_PATTERN,progressSink); }
                         catch(Throwable e) { error=safeFailureMessage(e); }
+                        progressSink.finishSummary(error);
                         if(error!=null || turn.cancelled || !current(turn)) break;
                         String rawStep=ThinkingSanitizer.clean(partialFor(turn)).answer;
                         ToolRegistry.Parsed parsed=ModelToolBridge.parseFromAssistant(host.registry(),rawStep);
@@ -834,6 +845,134 @@ public final class ChatSession {
         listener.changed(flat,status,busy);
         if(snapshotListener!=null) snapshotListener.onSnapshot(snapshot);
     }
+    private ProgressSink createProgressSink(Turn turn, boolean useSearch) {
+        return new ProgressSink(turn, useSearch);
+    }
+
+    private final class ProgressSink implements InferenceEngine.TokenSink {
+        private final Turn turn;
+        private final boolean useSearch;
+        private long projectorStartMs;
+        private long prefillStartMs;
+        private long decodeStartMs;
+        private long lastDecodeStatusMs;
+        private int decodedTokens;
+        private boolean sawNativeProgress;
+
+        ProgressSink(Turn turn, boolean useSearch) {
+            this.turn = turn;
+            this.useSearch = useSearch;
+        }
+
+        private String resourceSuffix() {
+            java.util.function.Supplier<String> sampler = resourceBadgeSupplier;
+            if (sampler == null) return "";
+            try {
+                String badge = sampler.get();
+                return badge == null || badge.isEmpty() ? "" : " · " + badge;
+            } catch (Throwable ignored) {
+                return "";
+            }
+        }
+
+        private void record(String stage, long durationMs, String detail) {
+            ProcessingTelemetry sink = telemetry;
+            if (sink != null) sink.record(stage, durationMs, detail);
+        }
+
+        private void postStatus(String nextStatus) {
+            ui.post(() -> {
+                synchronized (ChatSession.this) {
+                    if (current(turn) && !turn.cancelled) {
+                        status = nextStatus;
+                        emit();
+                    }
+                }
+            }, 0);
+        }
+
+        @Override public void onProgress(String stage, int done, int total) {
+            if (stage == null || turn.cancelled || !current(turn)) return;
+            sawNativeProgress = true;
+            long now = System.currentTimeMillis();
+            String res = resourceSuffix();
+            switch (stage) {
+                case "tokenize": {
+                    boolean nearCap = total > 0 && done * 100 >= total * 85;
+                    String warn = nearCap ? " (>85% ctx)" : "";
+                    record("TOKENIZE", 0L, done + "/" + total + " tok" + warn + res);
+                    if (nearCap) {
+                        postStatus("Prompt near context limit · " + done + "/" + total + " tok" + res);
+                    }
+                    break;
+                }
+                case "projector":
+                    projectorStartMs = now;
+                    record("PROJECTOR", 0L, "start media=" + total + res);
+                    postStatus("Running multimodal projector…" + res);
+                    break;
+                case "projector_done": {
+                    long elapsed = projectorStartMs > 0 ? Math.max(0L, now - projectorStartMs) : 0L;
+                    record("PROJECTOR", elapsed, "done " + done + "/" + total + " tok" + res);
+                    break;
+                }
+                case "prefill": {
+                    if (prefillStartMs == 0L) prefillStartMs = now;
+                    int pct = total > 0 ? Math.min(100, Math.max(0, (done * 100) / total)) : 0;
+                    record("PREFILL", Math.max(0L, now - prefillStartMs),
+                            done + "/" + total + " tok (" + pct + "%)" + res);
+                    postStatus("Prefilling prompt · " + done + "/" + total + " tok (" + pct + "%)" + res);
+                    break;
+                }
+                case "decode": {
+                    if (prefillStartMs > 0L && decodeStartMs == 0L) {
+                        record("PREFILL_DONE", Math.max(0L, now - prefillStartMs), "ready" + res);
+                    }
+                    decodeStartMs = now;
+                    lastDecodeStatusMs = now;
+                    postStatus((useSearch ? "Generating locally · " : "Generating · ") + "streaming reply…" + res);
+                    break;
+                }
+                default:
+                    record(stage.toUpperCase(Locale.ROOT), 0L, done + "/" + total + res);
+                    break;
+            }
+        }
+
+        @Override public void onToken(String piece) {
+            queue(turn, piece);
+            if (!sawNativeProgress) return;
+            decodedTokens++;
+            long now = System.currentTimeMillis();
+            if (decodeStartMs == 0L) decodeStartMs = now;
+            if (decodedTokens % 12 == 0 || (now - lastDecodeStatusMs) >= 800L) {
+                lastDecodeStatusMs = now;
+                long elapsed = Math.max(1L, now - decodeStartMs);
+                if (elapsed >= 250L) {
+                    double tps = (decodedTokens * 1000.0) / elapsed;
+                    postStatus(String.format(Locale.US, "Generating · %.1f tok/s (%d tok)%s",
+                            tps, decodedTokens, resourceSuffix()));
+                }
+            }
+        }
+
+        void finishSummary(String error) {
+            if (!sawNativeProgress && error == null) return;
+            long now = System.currentTimeMillis();
+            long decodeElapsed = decodeStartMs > 0L ? Math.max(0L, now - decodeStartMs) : 0L;
+            String res = resourceSuffix();
+            if (error != null) {
+                record("ERROR", decodeElapsed, error + res);
+            } else if (turn.cancelled) {
+                record("STOPPED", decodeElapsed, decodedTokens + " tok" + res);
+            } else if (decodedTokens > 0 && decodeElapsed > 0L) {
+                double tps = (decodedTokens * 1000.0) / decodeElapsed;
+                record("DECODE", decodeElapsed, String.format(Locale.US,
+                        "%d tok (%.1f tok/s)%s", decodedTokens, tps, res));
+            }
+        }
+    }
+
     private ChatSnapshot buildSnapshot() {
         List<ChatSnapshot.Turn> turns=new ArrayList<>();
         for(Message message:messages) {
@@ -846,7 +985,17 @@ public final class ChatSession {
             turns.add(new ChatSnapshot.Turn("assistant",visible,cleaned.reasoning,
                     Collections.emptyList(),true));
         }
-        return new ChatSnapshot(turns,status,active!=null || compacting);
+        List<String> docNames=new ArrayList<>(activeDocuments.size());
+        for(Attachment doc:activeDocuments) {
+            int chars=doc.extractedText==null?0:doc.extractedText.length();
+            String label=chars>=1000
+                    ? String.format(Locale.US,"%s · %.1fk chars",doc.displayName,chars/1000.0)
+                    : chars>0 ? doc.displayName+" · "+chars+" chars" : doc.displayName;
+            docNames.add(label);
+        }
+        ProcessingTelemetry sink=telemetry;
+        List<String> traces=sink==null?Collections.emptyList():sink.recentLines(8);
+        return new ChatSnapshot(turns,status,active!=null || compacting,docNames,traces);
     }
     private static List<ChatSnapshot.Source> toSnapshotSources(List<WebSearch.Source> sources) {
         List<ChatSnapshot.Source> out=new ArrayList<>(sources.size());
