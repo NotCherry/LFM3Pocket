@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
@@ -28,18 +29,29 @@ public final class PdfTextExtractor {
      * Returns an empty string if the PDF is encrypted, image-only (scanned), or has no text streams.
      */
     public static String extract(File file, int maxChars) throws IOException {
+        return extract(file, maxChars, null);
+    }
+
+    public static String extract(File file, int maxChars, AtomicBoolean cancelled) throws IOException {
         if (file == null || !file.isFile() || maxChars <= 0) return "";
+        if (cancelled != null && cancelled.get()) return "";
         long len = file.length();
         if (len < 16 || len > DocumentAttachmentReader.MAX_PDF_BYTES) return "";
         byte[] data = readAllBytes(file, (int) len);
-        return extract(data, maxChars);
+        return extract(data, maxChars, cancelled);
     }
 
     public static String extract(byte[] data, int maxChars) {
+        return extract(data, maxChars, null);
+    }
+
+    public static String extract(byte[] data, int maxChars, AtomicBoolean cancelled) {
         if (data == null || data.length < 16 || maxChars <= 0) return "";
+        if (cancelled != null && cancelled.get()) return "";
         String latin = new String(data, StandardCharsets.ISO_8859_1);
         if (!latin.startsWith("%PDF-")) return "";
-        if (latin.contains("/Encrypt ")) return "";
+        if (latin.contains("/Encrypt ") || latin.contains("/Encrypt\n")
+                || latin.contains("/Encrypt\r") || latin.contains("/Encrypt<")) return "";
 
         Map<Integer, String> toUnicode = new HashMap<>();
         StringBuilder extracted = new StringBuilder(Math.min(maxChars, 4096));
@@ -52,6 +64,7 @@ public final class PdfTextExtractor {
         java.util.List<String> contentStreams = new java.util.ArrayList<>();
         int cursor = 0;
         while (cursor < data.length && streamCount < MAX_STREAMS && totalInflated < MAX_TOTAL_INFLATED_BYTES) {
+            if (cancelled != null && cancelled.get()) return "";
             int streamIdx = indexOfToken(latin, "stream", cursor);
             if (streamIdx < 0) break;
             int dictStart = Math.max(0, latin.lastIndexOf("<<", streamIdx));
@@ -66,7 +79,7 @@ public final class PdfTextExtractor {
             while (bodyEnd > bodyStart && (data[bodyEnd - 1] == '\n' || data[bodyEnd - 1] == '\r')) {
                 bodyEnd--;
             }
-            cursor = endIdx + 9;
+            cursor = Math.max(cursor + 1, endIdx + 9);
             streamCount++;
 
             boolean isFlate = dict.contains("/FlateDecode");
@@ -78,7 +91,7 @@ public final class PdfTextExtractor {
             byte[] decoded;
             if (isFlate) {
                 int remaining = Math.min(MAX_STREAM_INFLATED_BYTES, MAX_TOTAL_INFLATED_BYTES - totalInflated);
-                decoded = inflateBounded(data, bodyStart, bodyEnd - bodyStart, remaining);
+                decoded = inflateBounded(data, bodyStart, bodyEnd - bodyStart, remaining, cancelled);
                 if (decoded == null) continue;
                 totalInflated += decoded.length;
             } else {
@@ -99,7 +112,8 @@ public final class PdfTextExtractor {
 
         for (String content : contentStreams) {
             if (extracted.length() >= maxChars) break;
-            extractTextOperators(content, toUnicode, extracted, maxChars);
+            if (cancelled != null && cancelled.get()) return "";
+            extractTextOperators(content, toUnicode, extracted, maxChars, cancelled);
             if (extracted.length() > 0 && extracted.charAt(extracted.length() - 1) != '\n') {
                 extracted.append('\n');
             }
@@ -174,46 +188,61 @@ public final class PdfTextExtractor {
     }
 
     private static void extractTextOperators(String stream, Map<Integer, String> toUnicode,
-                                             StringBuilder out, int maxChars) {
+                                             StringBuilder out, int maxChars, AtomicBoolean cancelled) {
         int n = stream.length();
         int i = 0;
         boolean inText = false;
         StringBuilder pendingToken = new StringBuilder();
         while (i < n && out.length() < maxChars) {
+            if (cancelled != null && cancelled.get()) return;
             char c = stream.charAt(i);
             if (c == '%') {
                 while (i < n && stream.charAt(i) != '\n' && stream.charAt(i) != '\r') i++;
                 continue;
             }
-            if (c == '(' && inText) {
-                StringBuilder lit = new StringBuilder();
-                i = readLiteralString(stream, i + 1, lit);
-                pendingToken.setLength(0);
-                pendingToken.append(lit);
+            if (c == '(') {
+                if (inText) {
+                    StringBuilder lit = new StringBuilder();
+                    i = readLiteralString(stream, i + 1, lit);
+                    pendingToken.setLength(0);
+                    pendingToken.append(lit);
+                } else {
+                    i = readLiteralString(stream, i + 1, null);
+                }
                 continue;
             }
-            if (c == '<' && inText) {
+            if (c == '<') {
                 if (i + 1 < n && stream.charAt(i + 1) == '<') {
                     i += 2;
                     continue;
                 }
                 int close = stream.indexOf('>', i + 1);
                 if (close > i) {
-                    String hex = stream.substring(i + 1, close);
-                    pendingToken.setLength(0);
-                    pendingToken.append(decodePdfHex(hex, toUnicode));
+                    if (inText) {
+                        String hex = stream.substring(i + 1, close);
+                        pendingToken.setLength(0);
+                        pendingToken.append(decodePdfHex(hex, toUnicode));
+                    }
                     i = close + 1;
                     continue;
                 }
-            }
-            if (c == '[' && inText) {
-                StringBuilder arr = new StringBuilder();
-                i = readTextArray(stream, i + 1, toUnicode, arr);
-                pendingToken.setLength(0);
-                pendingToken.append(arr);
+                // Unclosed '<': skip past it so the parser always makes forward progress.
+                i++;
                 continue;
             }
-            if (Character.isWhitespace(c) || c == ']' || c == '>' || c == '/') {
+            if (c == '[') {
+                if (inText) {
+                    StringBuilder arr = new StringBuilder();
+                    i = readTextArray(stream, i + 1, toUnicode, arr);
+                    pendingToken.setLength(0);
+                    pendingToken.append(arr);
+                } else {
+                    // Graphics arrays (e.g. dash patterns `[3 3] 0 d`) appear outside BT..ET.
+                    i++;
+                }
+                continue;
+            }
+            if (Character.isWhitespace(c) || c == '/' || isDelimiter(c)) {
                 if (c == '/') {
                     i++;
                     while (i < n && !isDelimiter(stream.charAt(i))) i++;
@@ -224,6 +253,11 @@ public final class PdfTextExtractor {
             }
             int start = i;
             while (i < n && !isDelimiter(stream.charAt(i))) i++;
+            if (i == start) {
+                // Defensive progress guard: never spin on any unexpected character.
+                i++;
+                continue;
+            }
             String op = stream.substring(start, i);
             if ("BT".equals(op)) {
                 inText = true;
@@ -288,14 +322,14 @@ public final class PdfTextExtractor {
             if (c == '\\' && i < n) {
                 char esc = s.charAt(i++);
                 switch (esc) {
-                    case 'n': out.append('\n'); break;
-                    case 'r': out.append('\r'); break;
-                    case 't': out.append('\t'); break;
-                    case 'b': out.append('\b'); break;
-                    case 'f': out.append('\f'); break;
-                    case '(': out.append('('); break;
-                    case ')': out.append(')'); break;
-                    case '\\': out.append('\\'); break;
+                    case 'n': if (out != null) out.append('\n'); break;
+                    case 'r': if (out != null) out.append('\r'); break;
+                    case 't': if (out != null) out.append('\t'); break;
+                    case 'b': if (out != null) out.append('\b'); break;
+                    case 'f': if (out != null) out.append('\f'); break;
+                    case '(': if (out != null) out.append('('); break;
+                    case ')': if (out != null) out.append(')'); break;
+                    case '\\': if (out != null) out.append('\\'); break;
                     case '\r':
                         if (i < n && s.charAt(i) == '\n') i++;
                         break;
@@ -313,20 +347,20 @@ public final class PdfTextExtractor {
                                     break;
                                 }
                             }
-                            out.append((char) (val & 0xFF));
+                            if (out != null) out.append((char) (val & 0xFF));
                         } else {
-                            out.append(esc);
+                            if (out != null) out.append(esc);
                         }
                         break;
                 }
             } else if (c == '(') {
                 depth++;
-                out.append('(');
+                if (out != null) out.append('(');
             } else if (c == ')') {
                 depth--;
-                if (depth > 0) out.append(')');
+                if (depth > 0 && out != null) out.append(')');
             } else {
-                out.append(c);
+                if (out != null) out.append(c);
             }
         }
         return i;
@@ -407,18 +441,23 @@ public final class PdfTextExtractor {
         }
     }
 
-    private static byte[] inflateBounded(byte[] data, int offset, int length, int maxOutput) {
+    private static byte[] inflateBounded(byte[] data, int offset, int length, int maxOutput,
+                                         AtomicBoolean cancelled) {
         if (length <= 0 || maxOutput <= 0) return null;
         Inflater inflater = new Inflater();
         try {
             inflater.setInput(data, offset, length);
             ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(length * 3, 16384));
             byte[] buf = new byte[4096];
+            int zeroProgress = 0;
             while (!inflater.finished()) {
+                if (cancelled != null && cancelled.get()) return null;
                 int n = inflater.inflate(buf);
                 if (n == 0) {
-                    if (inflater.needsInput() || inflater.needsDictionary()) break;
+                    if (inflater.needsInput() || inflater.needsDictionary() || ++zeroProgress > 4) break;
+                    continue;
                 }
+                zeroProgress = 0;
                 if (out.size() + n > maxOutput) {
                     out.write(buf, 0, Math.max(0, maxOutput - out.size()));
                     break;

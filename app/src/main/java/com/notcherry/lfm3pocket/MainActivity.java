@@ -28,6 +28,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class MainActivity extends androidx.activity.ComponentActivity implements MainActivitySettingsHost {
     public static final String EXTRA_HISTORY_CONVERSATION_ID = "history_conversation_id";
@@ -58,6 +59,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private static final int REQUEST_READ_CONTACTS = 56;
 
     private ExecutorService worker;
+    /** Dedicated non-inference I/O pool for attachments and Settings probes so hanami-infer never stalls. */
+    private final ExecutorService ioWorker = Executors.newFixedThreadPool(2, r -> {
+        Thread t = new Thread(r, "hanami-io");
+        t.setDaemon(true);
+        return t;
+    });
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private ModelRuntime runtime;
     private ChatSession session;
@@ -217,19 +224,19 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private void initCoordinators() {
         attachmentCoordinator = new AttachmentImportCoordinator(new AttachmentImportCoordinator.Deps(
-                this, worker, () -> chatPanel, () -> imageSettings, () -> destroyed,
-                value -> busy = value, this::setChatStatus, this::updateControls));
+                this, ioWorker, () -> chatPanel, () -> imageSettings, () -> destroyed,
+                this::recomputeBusy, this::setChatStatus, this::updateControls));
         voiceCoordinator = new VoiceInputCoordinator(new VoiceInputCoordinator.Deps(
                 this, runtime, playbackController, mainHandler, this::pocketPreferences,
                 () -> chatPanel, () -> destroyed, () -> foreground, () -> busy,
                 () -> generating, () -> speaking, () -> settingsLoaded, () -> lastAssistantReply,
-                value -> busy = value, value -> speaking = value, this::recomputeBusy,
+                value -> recomputeBusy(), value -> { speaking = value; recomputeBusy(); }, this::recomputeBusy,
                 this::setChatStatus, attachmentCoordinator::onCompletedRecordingAudio,
                 this::send, () -> requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQUEST_AUDIO),
                 this::updateControls));
         modelImportCoordinator = new ModelImportCoordinator(new ModelImportCoordinator.Deps(
                 this, runtime, worker, this::pocketPreferences, () -> destroyed,
-                () -> busy, value -> busy = value, this::setChatStatus, this::updateControls,
+                () -> busy, value -> recomputeBusy(), this::setChatStatus, this::updateControls,
                 voiceCoordinator::maybeStartPendingAssistantVoiceSession,
                 () -> {
                     if (integrationsSettingsSection != null) integrationsSettingsSection.paintSpeechInputControls();
@@ -323,7 +330,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private void recomputeBusy() {
         busy = generating || speaking
-                || (voiceCoordinator != null && (voiceCoordinator.recordingActive() || voiceCoordinator.playbackActive()));
+                || (voiceCoordinator != null && (voiceCoordinator.recordingActive()
+                        || voiceCoordinator.playbackActive() || voiceCoordinator.isTranscribing()))
+                || (attachmentCoordinator != null && attachmentCoordinator.isImporting())
+                || (modelImportCoordinator != null && modelImportCoordinator.isBusy());
     }
 
     private void scheduleResumeRestores(String resumeId) {
@@ -472,6 +482,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void onChatPanelNewChat() {
         cancelPendingResumeRestores();
         voiceCoordinator.cancelPendingStt();
+        attachmentCoordinator.cancelPendingImportSilently();
         attachmentCoordinator.clearAndDeletePending(true);
         lastAssistantReply = "";
         if (voiceCoordinator.playbackActive()) playbackController.stop();
@@ -610,7 +621,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                             .putBoolean("search_enabled", searchEnabled).apply();
                 },
                 enabled -> chatPanel.setIdleMode(enabled), this::updateControls, () -> busy,
-                this::showSearchSettings, this::setChatStatus, worker, this::runOnUiThread));
+                this::showSearchSettings, this::setChatStatus, ioWorker, this::runOnUiThread));
         searchSettingsSection.mount(configuration, ink, inkMuted);
 
         imageSettingsSection.mount(configuration, ink, inkMuted);
@@ -635,7 +646,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         externalToolsSection = new ExternalToolsSettingsSection(this, new ExternalToolsSettingsSection.Deps(
                 app::customShortcutStore, app::mcpToolProvider,
                 () -> requestPermissions(new String[] { Manifest.permission.READ_CONTACTS }, REQUEST_READ_CONTACTS),
-                worker, this::runOnUiThread, this::setChatStatus));
+                ioWorker, this::runOnUiThread, this::setChatStatus));
         externalToolsSection.mount(configuration, ink);
 
         new DefaultAssistantSettingsSection(this, new DefaultAssistantSettingsSection.Deps(
@@ -705,12 +716,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         boolean playback = voiceCoordinator.playbackActive();
         boolean transcribing = voiceCoordinator.isTranscribing();
         boolean importing = modelImportCoordinator.isImporting();
+        boolean importingAttachment = attachmentCoordinator != null && attachmentCoordinator.isImporting();
         boolean canCompact = !busy && !speaking && !recording && !playback
-                && !importing && modelHandle() != 0L && settingsLoaded;
+                && !importing && !importingAttachment && modelHandle() != 0L && settingsLoaded;
         chatPanel.setModelReady(modelHandle() != 0L);
         chatPanel.updateControls(!busy && modelHandle() != 0L && settingsLoaded,
-                generating || speaking || recording || playback || transcribing || importing,
-                !busy || generating || transcribing,
+                generating || speaking || recording || playback || transcribing || importing || importingAttachment,
+                !busy || generating || transcribing || importingAttachment,
                 canCompact);
 
         if (modelImportSection != null) {
@@ -984,6 +996,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private void startFreshChat(boolean fromSystemAssist) {
         cancelPendingResumeRestores();
+        attachmentCoordinator.cancelPendingImportSilently();
         attachmentCoordinator.clearAndDeletePending(true);
         lastAssistantReply = "";
         if (voiceCoordinator.playbackActive()) playbackController.stop();
@@ -1008,6 +1021,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private void stopActiveWork() {
         if (voiceCoordinator.stopActiveWorkIfHandling()) return;
+        if (attachmentCoordinator.cancelImportIfActive()) return;
         if (voiceCoordinator.playbackActive()) {
             playbackController.stop();
         } else if (speaking) {
@@ -1092,13 +1106,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     @Override protected void onDestroy() {
         destroyed = true;
         if (runtime != null) runtime.detach(viewer);
-        if (attachmentCoordinator != null) attachmentCoordinator.clearAndDeletePending(false);
+        if (attachmentCoordinator != null) {
+            attachmentCoordinator.cancelPendingImportSilently();
+            attachmentCoordinator.clearAndDeletePending(false);
+        }
         if (settingsStore != null) settingsStore.close();
         if (imageSettingsStore != null) imageSettingsStore.close();
         if (appearanceSettings != null) appearanceSettings.dispose();
         mainHandler.removeCallbacksAndMessages(null);
         if (modelImportCoordinator != null) modelImportCoordinator.cancelOnDestroy();
         if (voiceCoordinator != null) voiceCoordinator.onDestroy();
+        ioWorker.shutdownNow();
         if (runtime != null && isFinishing() && !isChangingConfigurations()) runtime.onChatFinished();
         super.onDestroy();
     }

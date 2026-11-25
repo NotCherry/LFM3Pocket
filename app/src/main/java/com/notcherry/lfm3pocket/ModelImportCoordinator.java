@@ -15,6 +15,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -57,6 +58,7 @@ final class ModelImportCoordinator {
     }
 
     private final Deps deps;
+    private final AtomicInteger activeOperations = new AtomicInteger();
     private volatile AtomicBoolean importCancellation;
 
     ModelImportCoordinator(Deps deps) {
@@ -69,6 +71,20 @@ final class ModelImportCoordinator {
 
     boolean isImporting() {
         return importCancellation != null;
+    }
+
+    boolean isBusy() {
+        return activeOperations.get() > 0 || importCancellation != null;
+    }
+
+    private void beginOp() {
+        activeOperations.incrementAndGet();
+        deps.setBusy.accept(true);
+    }
+
+    private void endOp() {
+        if (activeOperations.decrementAndGet() < 0) activeOperations.set(0);
+        deps.setBusy.accept(false);
     }
 
     boolean cancelImportIfActive() {
@@ -93,19 +109,19 @@ final class ModelImportCoordinator {
 
     void unloadSelectedModel() {
         if (deps.isBusy.getAsBoolean() || deps.runtime.handle() == 0L) return;
-        deps.setBusy.accept(true);
+        beginOp();
         deps.setChatStatus.accept("Unloading model...");
         deps.updateControls.run();
         deps.runtime.unload("user", () -> {
+            endOp();
             if (deps.isDestroyed.getAsBoolean()) return;
-            deps.setBusy.accept(false);
             deps.setChatStatus.accept("Model unloaded. Selected files remain available for reload.");
             deps.updateControls.run();
         });
     }
 
     void importPickedGguf(Uri uri, boolean isProjector) {
-        deps.setBusy.accept(true);
+        beginOp();
         deps.updateControls.run();
         deps.setChatStatus.accept(isProjector
                 ? "Importing projector into private storage..."
@@ -155,7 +171,7 @@ final class ModelImportCoordinator {
                     if (!isProjector) deleteImportedModel(previousProjector);
                     imported = null;
                 }
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 deps.activity.runOnUiThread(() -> {
                     if (!deps.isDestroyed.getAsBoolean()) {
                         deps.setChatStatus.accept("Import failed: " + e.getMessage());
@@ -165,8 +181,8 @@ final class ModelImportCoordinator {
                 if (imported != null) imported.delete();
                 importCancellation = null;
                 deps.activity.runOnUiThread(() -> {
+                    endOp();
                     if (!deps.isDestroyed.getAsBoolean()) {
-                        deps.setBusy.accept(false);
                         deps.updateControls.run();
                         deps.onModelOperationFinished.run();
                     }
@@ -176,7 +192,7 @@ final class ModelImportCoordinator {
     }
 
     void openExternalDocument(Uri uri, boolean projector) {
-        deps.setBusy.accept(true);
+        beginOp();
         deps.updateControls.run();
         deps.setChatStatus.accept(deps.activity.getString(R.string.opening_external_model));
         deps.worker.execute(() -> {
@@ -234,7 +250,7 @@ final class ModelImportCoordinator {
                     if (isContentUri(previousProjector)) active.add(previousProjector);
                     store.releaseExcept(active);
                 }
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 deps.activity.runOnUiThread(() -> {
                     if (!deps.isDestroyed.getAsBoolean()) {
                         deps.setChatStatus.accept("Could not open storage model: " + e.getMessage());
@@ -242,8 +258,8 @@ final class ModelImportCoordinator {
                 });
             } finally {
                 deps.activity.runOnUiThread(() -> {
+                    endOp();
                     if (!deps.isDestroyed.getAsBoolean()) {
-                        deps.setBusy.accept(false);
                         deps.updateControls.run();
                         deps.onModelOperationFinished.run();
                     }
@@ -253,7 +269,7 @@ final class ModelImportCoordinator {
     }
 
     void importWhistleModel(Uri uri) {
-        deps.setBusy.accept(true);
+        beginOp();
         deps.updateControls.run();
         deps.setChatStatus.accept(deps.activity.getString(R.string.opening_external_model));
         deps.worker.execute(() -> {
@@ -288,21 +304,21 @@ final class ModelImportCoordinator {
                         StandardCopyOption.ATOMIC_MOVE);
                 File saved = dest;
                 deps.activity.runOnUiThread(() -> {
+                    endOp();
                     if (deps.isDestroyed.getAsBoolean()) return;
                     CactusWhistleBridge.resetLoadedModel();
                     new RuntimePreferences(deps.activity).setCactusWhistleModelPath(saved.getAbsolutePath());
                     if (deps.runtime != null) deps.runtime.refreshVoiceAvailability();
                     deps.onWhistleImported.run();
-                    deps.setBusy.accept(false);
                     deps.setChatStatus.accept(saved.getName() + " selected for Cactus Whistle STT.");
                     deps.updateControls.run();
                 });
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 if (dest != null) dest.delete();
                 final String message = e.getMessage() == null ? e.toString() : e.getMessage();
                 deps.activity.runOnUiThread(() -> {
+                    endOp();
                     if (deps.isDestroyed.getAsBoolean()) return;
-                    deps.setBusy.accept(false);
                     deps.setChatStatus.accept("Could not import Whistle model: " + message);
                     deps.updateControls.run();
                 });
@@ -314,7 +330,7 @@ final class ModelImportCoordinator {
         if (isContentUri(model) || isContentUri(projector)) {
             final String targetModel = model;
             final String targetProjector = projector == null ? "" : projector;
-            deps.setBusy.accept(true);
+            beginOp();
             deps.updateControls.run();
             deps.setChatStatus.accept(deps.activity.getString(R.string.opening_external_model));
             deps.worker.execute(() -> {
@@ -340,7 +356,7 @@ final class ModelImportCoordinator {
                                     deps.setChatStatus.accept("Could not load the selected storage model."));
                         }
                     }
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     ExternalModelStore store = ((Lfm3PocketApplication) deps.activity.getApplication())
                             .externalModels();
                     releaseStaleExternalLeases(store, targetModel, targetProjector);
@@ -351,8 +367,8 @@ final class ModelImportCoordinator {
                     });
                 } finally {
                     deps.activity.runOnUiThread(() -> {
+                        endOp();
                         if (!deps.isDestroyed.getAsBoolean()) {
-                            deps.setBusy.accept(false);
                             deps.updateControls.run();
                             deps.onModelOperationFinished.run();
                         }
@@ -365,12 +381,12 @@ final class ModelImportCoordinator {
     }
 
     private void loadModelInBackground(String path, String projector) {
-        deps.setBusy.accept(true);
+        beginOp();
         deps.updateControls.run();
         deps.setChatStatus.accept(deps.activity.getString(R.string.loading_model));
         deps.runtime.load(path, projector, statusText -> {
+            endOp();
             if (deps.isDestroyed.getAsBoolean()) return;
-            deps.setBusy.accept(false);
             deps.setChatStatus.accept(statusText);
             deps.updateControls.run();
             deps.onModelOperationFinished.run();

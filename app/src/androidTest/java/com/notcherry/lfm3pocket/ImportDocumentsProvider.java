@@ -29,9 +29,12 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
                 .add(Document.COLUMN_DISPLAY_NAME, id.equals("root") ? "LFM test files" : id)
                 .add(Document.COLUMN_MIME_TYPE, id.equals("root") ? Document.MIME_TYPE_DIR
                         : id.endsWith(".jpg") ? "image/jpeg"
-                        : id.endsWith(".png") ? "image/png" : "application/octet-stream")
+                        : id.endsWith(".png") ? "image/png"
+                        : id.endsWith(".pdf") ? "application/pdf"
+                        : id.endsWith(".txt") ? "text/plain" : "application/octet-stream")
                 .add(Document.COLUMN_SIZE, id.equals("root") ? 0
-                        : id.equals("oversized-photo.jpg") ? ImageAttachmentFiles.MAX_IMAGE_BYTES + 1 : 1024 * 1024)
+                        : id.equals("oversized-photo.jpg") ? ImageAttachmentFiles.MAX_IMAGE_BYTES + 1
+                        : (id.endsWith(".txt") || id.endsWith(".pdf")) ? 4096 : 1024 * 1024)
                 .add(Document.COLUMN_FLAGS, 0);
     }
     @Override public Cursor queryDocument(String id, String[] projection) {
@@ -42,17 +45,34 @@ public final class ImportDocumentsProvider extends DocumentsProvider {
         row(c, "valid.gguf"); row(c, "damaged.gguf");
         row(c, "projector.gguf"); row(c, "wrong-family.gguf");
         row(c, "valid-photo.jpg"); row(c, "replacement-photo.jpg"); row(c, "invalid-photo.jpg");
-        row(c, "truncated-photo.png"); row(c, "large-dimensions-photo.jpg"); row(c, "oversized-photo.jpg"); return c;
+        row(c, "truncated-photo.png"); row(c, "large-dimensions-photo.jpg"); row(c, "oversized-photo.jpg");
+        row(c, "sample-notes.txt"); row(c, "sample-graphics.pdf");
+        return c;
     }
     @Override public ParcelFileDescriptor openDocument(String id, String mode, CancellationSignal signal)
             throws FileNotFoundException {
         if (!java.util.Arrays.asList("valid.gguf","damaged.gguf","projector.gguf","wrong-family.gguf",
                 "valid-photo.jpg","replacement-photo.jpg","invalid-photo.jpg","truncated-photo.png",
-                "large-dimensions-photo.jpg","oversized-photo.jpg").contains(id))
+                "large-dimensions-photo.jpg","oversized-photo.jpg","sample-notes.txt","sample-graphics.pdf").contains(id))
             throw new FileNotFoundException(id);
         File f = new File(getContext().getCacheDir(), id);
         try {
-            if (id.equals("oversized-photo.jpg")) {
+            if (id.equals("sample-notes.txt")) {
+                try (FileOutputStream output = new FileOutputStream(f)) {
+                    output.write("Hanami text fixture: codeword SOLAR-77.\n"
+                            .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+            } else if (id.equals("sample-graphics.pdf")) {
+                // Includes real-world graphics dash arrays `[3 3] 0 d` and marked content `<< /MCID 0 >> BDC`
+                // outside BT..ET that previously triggered an infinite loop in PdfTextExtractor.
+                String stream = "q [3 3] 0 d << /MCID 0 >> BDC BT /F1 12 Tf 72 720 Td "
+                        + "(Hanami PDF fixture: codeword SUNRISE-42) Tj ET EMC Q";
+                String pdf = "%PDF-1.4\n1 0 obj\n<< /Length " + stream.length() + " >>\nstream\n"
+                        + stream + "\nendstream\nendobj\n%%EOF\n";
+                try (FileOutputStream output = new FileOutputStream(f)) {
+                    output.write(pdf.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+                }
+            } else if (id.equals("oversized-photo.jpg")) {
                 try (FileOutputStream output = new FileOutputStream(f)) {
                     byte[] block=new byte[64*1024];long remaining=ImageAttachmentFiles.MAX_IMAGE_BYTES+1;
                     while(remaining>0){int count=(int)Math.min(block.length,remaining);output.write(block,0,count);remaining-=count;}

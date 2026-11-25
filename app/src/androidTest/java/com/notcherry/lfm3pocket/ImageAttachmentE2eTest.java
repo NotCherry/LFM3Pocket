@@ -104,43 +104,108 @@ public final class ImageAttachmentE2eTest {
         }
     }
 
+    @Test public void attachRealWorldPdfAndTextDocumentWithoutHangingAndSubmitPrompt() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        TestLfm3PocketApplication app = (TestLfm3PocketApplication) context.getApplicationContext();
+        app.scriptedEngine().resetForTest();
+        File model = new File(context.getFilesDir(), "doc-attachment-e2e.gguf");
+        TestGgufFixtures.model(model);
+        assertTrue(context.getSharedPreferences("MainActivity", Context.MODE_PRIVATE).edit().clear()
+                .putString("model", model.getAbsolutePath()).putBoolean("search_enabled", false).commit());
+
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        String packageName = context.getPackageName();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            assertNotNull("Chat should be ready before opening the document picker", device.wait(
+                    Until.findObject(By.res(packageName, "chat_send").enabled(true)), WAIT));
+
+            chooseDocument(device, packageName, "sample-graphics.pdf");
+            assertNotNull("PDF attachment chip must render without endless loading", device.wait(
+                    Until.findObject(By.res(packageName, "document_attachment_0")), WAIT));
+            assertNotNull("Send must re-enable after PDF attachment completes", device.wait(
+                    Until.findObject(By.res(packageName, "chat_send").enabled(true)), WAIT));
+
+            chooseDocument(device, packageName, "sample-notes.txt");
+            assertNotNull("Second document attachment chip must render", device.wait(
+                    Until.findObject(By.res(packageName, "document_attachment_1")), WAIT));
+            assertNotNull("Send must re-enable after second document attachment", device.wait(
+                    Until.findObject(By.res(packageName, "chat_send").enabled(true)), WAIT));
+
+            app.scriptedEngine().completeFirstTurn();
+            scenario.onActivity(activity -> activity.sendForTest("What are the codewords?"));
+            assertNotNull("Assistant response must stream after PDF + text attachment", device.wait(
+                    Until.findObject(By.res(packageName, "chat_transcript").textContains("FAKE_STREAM_BEGIN")), WAIT));
+            String prompt = app.scriptedEngine().lastPrompt();
+            assertNotNull(prompt);
+            assertTrue("Prompt must include extracted PDF text: " + prompt, prompt.contains("SUNRISE-42"));
+            assertTrue("Prompt must include attached text file: " + prompt, prompt.contains("SOLAR-77"));
+            assertNotNull("Send must recover after response completes", device.wait(
+                    Until.findObject(By.res(packageName, "chat_send").enabled(true)), WAIT));
+        }
+    }
+
     private static String currentPendingPath(ActivityScenario<MainActivity> scenario) {
         final String[] path = new String[1];
         scenario.onActivity(activity -> path[0] = activity.pendingMediaPathForTest());
         return path[0];
     }
 
+    private static void chooseDocument(UiDevice device, String packageName, String name) throws Exception {
+        UiObject2 docButton = device.wait(Until.findObject(By.res(packageName, "chat_document").enabled(true)), WAIT);
+        assertNotNull("Document picker button should be available", docButton);
+        docButton.click();
+        selectFixtureDocument(device, name);
+    }
+
     private static void chooseImage(UiDevice device, String packageName, String name) throws Exception {
         UiObject2 photoButton = device.wait(Until.findObject(By.res(packageName, "chat_photo").enabled(true)), WAIT);
         assertNotNull("Photo picker button should be available", photoButton);
         photoButton.click();
+        selectFixtureDocument(device, name);
+    }
 
+    static void selectFixtureDocument(UiDevice device, String name) throws Exception {
         java.util.regex.Pattern documentDescription = java.util.regex.Pattern.compile(
                 "^" + java.util.regex.Pattern.quote(name) + ",.*");
-        UiObject2 file = device.wait(Until.findObject(By.desc(documentDescription)), 1500);
+        UiObject2 file = findDocumentItem(device, name, documentDescription, 1500);
         if (file == null) {
             UiObject2 roots = device.wait(Until.findObject(By.descContains("Show roots")), WAIT);
             assertNotNull("SAF storage drawer", roots);
             roots.click();
             UiObject root = device.findObject(new UiSelector().resourceIdMatches(".*:id/roots_list")
                     .childSelector(new UiSelector().text("LFM test files")));
-            assertTrue("SAF image fixture root", root.waitForExists(WAIT));
+            assertTrue("SAF fixture root", root.waitForExists(WAIT));
             root.click();
             device.wait(Until.hasObject(By.res(java.util.regex.Pattern.compile(".*:id/dir_list"))), WAIT);
-            new UiScrollable(new UiSelector().resourceIdMatches(".*:id/dir_list"))
-                    .scrollIntoView(new UiSelector().descriptionMatches(documentDescription.pattern()));
-            file = device.wait(Until.findObject(By.desc(documentDescription)), WAIT);
+            UiScrollable list = new UiScrollable(new UiSelector().resourceIdMatches(".*:id/dir_list"));
+            try {
+                list.scrollIntoView(new UiSelector().text(name));
+            } catch (Exception ignored) {
+                list.scrollIntoView(new UiSelector().descriptionMatches(documentDescription.pattern()));
+            }
+            file = findDocumentItem(device, name, documentDescription, WAIT);
         }
         if (file == null) {
             java.io.ByteArrayOutputStream hierarchy = new java.io.ByteArrayOutputStream();
             device.dumpWindowHierarchy(hierarchy);
-            org.junit.Assert.fail("SAF image document should be listed: " + name + ". "
+            org.junit.Assert.fail("SAF document should be listed: " + name + ". "
                     + hierarchy.toString("UTF-8"));
         }
-        // In grid mode the thumbnail opens a platform quick-view on some API images.
-        // Clicking the filename label selects the document in the picker instead.
         android.graphics.Rect bounds = file.getVisibleBounds();
-        device.click(bounds.centerX(), bounds.top + (bounds.height() * 9 / 10));
+        if (name.equals(file.getText())) {
+            // Filename TextView directly: tap center so multi-select/single-select picks the file (not preview).
+            device.click(bounds.centerX(), bounds.centerY());
+        } else {
+            // Card container in grid mode: click the bottom nameplate label to avoid platform quick-view.
+            device.click(bounds.centerX(), bounds.top + (bounds.height() * 9 / 10));
+        }
         device.waitForIdle();
+    }
+
+    private static UiObject2 findDocumentItem(UiDevice device, String name,
+                                              java.util.regex.Pattern documentDescription, long timeoutMs) {
+        UiObject2 byDesc = device.wait(Until.findObject(By.desc(documentDescription)), timeoutMs);
+        if (byDesc != null) return byDesc;
+        return device.wait(Until.findObject(By.res("android:id/title").text(name)), Math.min(timeoutMs, 2000L));
     }
 }
