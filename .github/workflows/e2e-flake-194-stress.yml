@@ -62,6 +62,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+          cache-read-only: true
       - name: Set up ccache
         run: |
           if ! command -v ccache >/dev/null 2>&1; then
@@ -145,4 +146,4 @@ jobs:
           path: |
             app/build/ci-artifacts/stress-194/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3

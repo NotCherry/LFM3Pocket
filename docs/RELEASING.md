@@ -56,13 +56,14 @@ If any of the four secrets is missing, the auto-release (and a versioned tag bui
 
 ## What the release workflow publishes
 
-On each auto-tagged `main` push (and on a manual `v*` tag):
+On each non-docs push to `main` (and on a manual `v*` tag):
 
-1. Checks out the pinned llama.cpp revision from `vendor/LLAMA_CPP_COMMIT` and builds the `phone` release flavor (`arm64-v8a` only), native code included.
-2. Sets `versionName` / `versionCode` from the tag.
-3. Signs the APK when the four secrets are present and checks the signature with `apksigner`. Otherwise attaches an unsigned APK and notes that in the release body.
-4. Writes a changelog from commit subjects since the previous `vMAJOR.MINOR.PATCH` tag (or the latest 30 subjects if there is no previous tag).
-5. Publishes a GitHub Release. The APK is `Hanami-v<versionName>-arm64-v8a.apk`, plus a `.sha256` file.
+1. Runs JVM unit tests (`:app:testSmokeDebugUnitTest`) and release helper self-tests before creating any version tag.
+2. Checks out the pinned llama.cpp revision from `vendor/LLAMA_CPP_COMMIT`, voca, and Cactus Whistle runtime, and builds the `phone` release flavor (`arm64-v8a` only), native code included.
+3. Sets `versionName` / `versionCode` from the tag.
+4. Signs the APK when the four secrets are present and checks the signature with `apksigner`, plus verifies dizione JNI and Cactus runtime packaging. Otherwise attaches an unsigned APK and notes that in the release body.
+5. Pushes the annotated `v*` tag (after build and verification pass), writes a changelog from commit subjects since the previous `vMAJOR.MINOR.PATCH` tag (or the latest 30 subjects if there is no previous tag), and publishes a GitHub Release with `Hanami-v<versionName>-arm64-v8a.apk` plus `.sha256`.
+6. Prunes older GitHub Releases via `.github/scripts/prune-old-releases.py` so only the newest 5 published releases remain (all git tags are kept so version numbering stays monotonic).
 
 `workflow_dispatch` without a tag still rebuilds the rolling `latest` debug APK. That path is manual so a normal `main` merge does not build twice.
 
