@@ -94,6 +94,12 @@ public final class RuntimePreferences {
     /** Optional human-readable label for the picked calendar (Settings display only). */
     public String calendarWriteLabel() { return prefs.getString("calendar_write_label", ""); }
 
+    /** Persisted SAF tree URI for the offline Local Workspace folder; empty means unmounted. */
+    public String workspaceTreeUri() { return prefs.getString("workspace_tree_uri", ""); }
+
+    /** Human-readable display label for the mounted Local Workspace folder. */
+    public String workspaceLabel() { return prefs.getString("workspace_label", ""); }
+
     /**
      * App-level interface size multiplier (0.80–1.30). Applied via densityDpi so typography and
      * spacing scale together on top of the system font scale. Default is {@link InterfaceSize#DEFAULT}.
@@ -154,6 +160,27 @@ public final class RuntimePreferences {
                 .putString("calendar_write_id", id == null ? "" : id)
                 .putString("calendar_write_label", label == null ? "" : label)
                 .apply();
+    }
+
+    public void setWorkspaceTarget(String treeUri, String label) {
+        prefs.edit()
+                .putString("workspace_tree_uri", treeUri == null ? "" : treeUri.trim())
+                .putString("workspace_label", label == null ? "" : label.trim())
+                .apply();
+    }
+
+    /** Serialized JSON array of user-defined offline local Intent/URI shortcuts. */
+    public String customShortcutsJson() { return prefs.getString("custom_shortcuts_json", "[]"); }
+
+    public void setCustomShortcutsJson(String json) {
+        prefs.edit().putString("custom_shortcuts_json", json == null ? "[]" : json).apply();
+    }
+
+    /** Serialized JSON array of configured MCP Streamable HTTP servers and cached tool lists. */
+    public String mcpServersJson() { return prefs.getString("mcp_servers_json", "[]"); }
+
+    public void setMcpServersJson(String json) {
+        prefs.edit().putString("mcp_servers_json", json == null ? "[]" : json).apply();
     }
 
     /** Per-install secret required by the opt-in localhost prompt API. Never logged. */

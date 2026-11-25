@@ -34,6 +34,15 @@ public interface InferenceEngine {
         return generate(handle, prompt, mediaPaths[0], maxTokens, sink);
     }
     /**
+     * Generates with an optional lazy GBNF grammar triggered by {@code grammarTrigger} (e.g.
+     * LFM3 {@code <tool_call>}). Adapters without native grammar support ignore the grammar cleanly.
+     */
+    default String generateWithMediaAndGrammar(long handle, String prompt, String[] mediaPaths,
+                                               int maxTokens, String grammar, String grammarTrigger,
+                                               TokenSink sink) {
+        return generateWithMedia(handle, prompt, mediaPaths, maxTokens, sink);
+    }
+    /**
      * Generates spoken audio for {@code prompt} through the local Omni/llama.cpp speech path.
      * Default adapters reject clearly; production JNI fails when the loaded projector has no audio generator.
      */

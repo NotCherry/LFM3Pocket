@@ -5,24 +5,30 @@ import java.util.*;
 /** Small bounded JSON reader for the tool protocol; duplicate keys and malformed Unicode fail closed. */
 final class StrictToolJson {
     private final String input;private int position;
-    private StrictToolJson(String input){this.input=input;}
+    private final int maxDepth,maxItems;
+    private StrictToolJson(String input,int maxDepth,int maxItems){
+        this.input=input;this.maxDepth=maxDepth;this.maxItems=maxItems;
+    }
     static Object parse(String text){
-        if(text==null || text.length()>8192)throw new IllegalArgumentException();
-        StrictToolJson parser=new StrictToolJson(text);Object value=parser.value(0);parser.space();
+        return parseBounded(text, 8192, 4, 64);
+    }
+    static Object parseBounded(String text,int maxLength,int maxDepth,int maxItems){
+        if(text==null || text.length()>maxLength)throw new IllegalArgumentException();
+        StrictToolJson parser=new StrictToolJson(text,maxDepth,maxItems);Object value=parser.value(0);parser.space();
         if(parser.position!=text.length())throw new IllegalArgumentException();return value;
     }
     private Object value(int depth){
-        if(depth>4)throw new IllegalArgumentException();space();char c=peek();
+        if(depth>maxDepth)throw new IllegalArgumentException();space();char c=peek();
         if(c=='"')return string();
         if(c=='{'){
             position++;Map<String,Object> map=new LinkedHashMap<>();space();if(take('}'))return map;
             do{space();String key=string();space();require(':');
-                if(map.containsKey(key) || map.size()>=64)throw new IllegalArgumentException();
+                if(map.containsKey(key) || map.size()>=maxItems)throw new IllegalArgumentException();
                 map.put(key,value(depth+1));space();if(take('}'))return map;require(',');
             }while(true);
         }
         if(c=='['){position++;List<Object> list=new ArrayList<>();space();if(take(']'))return list;
-            do{if(list.size()>=64)throw new IllegalArgumentException();list.add(value(depth+1));space();
+            do{if(list.size()>=maxItems)throw new IllegalArgumentException();list.add(value(depth+1));space();
                 if(take(']'))return list;require(',');}while(true);
         }
         for(String literal:new String[]{"true","false","null"})if(input.startsWith(literal,position)){

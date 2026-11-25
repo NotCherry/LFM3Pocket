@@ -52,10 +52,21 @@ public final class NativeBridge {
 
     public static String generateWithMediaAndSettings(long handle, String prompt, String[] mediaPaths,
                                                       InferenceSettings settings, TokenSink sink) {
+        return generateWithMediaSettingsAndGrammar(handle, prompt, mediaPaths, settings, null, null, sink);
+    }
+
+    public static String generateWithMediaSettingsAndGrammar(long handle, String prompt, String[] mediaPaths,
+                                                             InferenceSettings settings, String grammar,
+                                                             String grammarTrigger, TokenSink sink) {
         if (prompt == null || sink == null) return "Missing prompt or callback";
         InferenceSettings limits = settings == null ? InferenceSettings.DEFAULT : settings;
-        return generateUtf8(handle, PromptEncoding.encode(prompt), mediaPaths, limits.maxTokens,
-                limits.contextTokens, limits.threads, limits.promptLookup, sink);
+        byte[] encoded = PromptEncoding.encode(prompt);
+        if (grammar == null || grammar.isEmpty() || grammarTrigger == null || grammarTrigger.isEmpty()) {
+            return generateUtf8(handle, encoded, mediaPaths, limits.maxTokens,
+                    limits.contextTokens, limits.threads, limits.promptLookup, sink);
+        }
+        return generateWithGrammarUtf8(handle, encoded, mediaPaths, limits.maxTokens,
+                limits.contextTokens, limits.threads, limits.promptLookup, grammar, grammarTrigger, sink);
     }
 
     public static String generateSpeech(long handle, String prompt, SpeechOptions options, AudioSink sink) {
@@ -85,6 +96,10 @@ public final class NativeBridge {
     private static native String generateUtf8(long handle, byte[] prompt, String[] mediaPaths,
                                                int maxTokens, int contextTokens, int threads,
                                                boolean promptLookup, TokenSink sink);
+    private static native String generateWithGrammarUtf8(long handle, byte[] prompt, String[] mediaPaths,
+                                                         int maxTokens, int contextTokens, int threads,
+                                                         boolean promptLookup, String grammar,
+                                                         String grammarTrigger, TokenSink sink);
     private static native String generateSpeechUtf8(long handle, byte[] prompt, String language, String voice,
                                                     int maxFrames, int contextTokens, int threads, AudioSink sink);
     public static native void requestStop(long handle);

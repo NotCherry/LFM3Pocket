@@ -38,7 +38,7 @@ public final class ClearStopRecoveryContractTest {
         assertFalse("stopActiveWork must not toggle runtime.speak()", stopBody.contains("runtime.speak("));
 
         String clearBody = methodBody(source, "private void onChatPanelNewChat()");
-        assertTrue("Clear must reset transcribingVoiceInput", clearBody.contains("transcribingVoiceInput = false"));
+        assertTrue("Clear must cancel voice/STT via coordinator", clearBody.contains("voiceCoordinator.cancelAllOnClear()"));
         assertTrue("Clear must reset speaking", clearBody.contains("speaking = false"));
         assertTrue("Clear must refresh UI controls", clearBody.contains("updateControls()"));
     }

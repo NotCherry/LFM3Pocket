@@ -10,7 +10,11 @@ public final class ToolRegistry {
         COPY("copy_text"),SHARE("share_text"),CURRENT_TIME("current_time"),CALCULATOR("calculator"),
         UNIT_CONVERT("unit_convert"),WEATHER("weather"),LIST_NOTIFICATIONS("list_notifications"),
         DRAFT_MESSAGE("draft_message"),SEND_MESSAGE("send_message"),
-        LIST_EVENTS("list_events"),CREATE_EVENT("create_event"),UPDATE_EVENT("update_event"),DELETE_EVENT("delete_event");
+        LIST_EVENTS("list_events"),CREATE_EVENT("create_event"),UPDATE_EVENT("update_event"),DELETE_EVENT("delete_event"),
+        WEB_SEARCH("web_search"),SEARCH_TOOLS("search_tools"),
+        FS_LIST("fs_list"),FS_SEARCH("fs_search"),FS_READ("fs_read"),
+        NOTE_CREATE("note_create"),FS_APPEND("fs_append"),FS_EDIT("fs_edit"),FS_DELETE("fs_delete"),
+        LOOKUP_CONTACT("lookup_contact"),EXTERNAL("external");
         public final String wireName;Tool(String name){wireName=name;}
     }
     public static abstract class Request {
@@ -141,6 +145,97 @@ public final class ToolRegistry {
         public final String eventId;
         private DeleteEventRequest(Map<String,Object> a){super(Tool.DELETE_EVENT,a);eventId=(String)a.get("event_id");}
     }
+    public static final class WebSearchRequest extends Request {
+        public final String query,timeRange;
+        private WebSearchRequest(Map<String,Object> a){
+            super(Tool.WEB_SEARCH,a);
+            query=(String)a.get("query");
+            timeRange=(String)a.get("time_range");
+        }
+    }
+    public static final class SearchToolsRequest extends Request {
+        public final String query;
+        private SearchToolsRequest(Map<String,Object> a){
+            super(Tool.SEARCH_TOOLS,a);
+            query=(String)a.get("query");
+        }
+    }
+    public static final class FsListRequest extends Request {
+        public final String path;public final int maxDepth;
+        private FsListRequest(Map<String,Object> a){
+            super(Tool.FS_LIST,a);
+            path=(String)a.get("path");
+            maxDepth=((Number)a.get("max_depth")).intValue();
+        }
+    }
+    public static final class FsSearchRequest extends Request {
+        public final String query,path;
+        private FsSearchRequest(Map<String,Object> a){
+            super(Tool.FS_SEARCH,a);
+            query=(String)a.get("query");
+            path=(String)a.get("path");
+        }
+    }
+    public static final class FsReadRequest extends Request {
+        public final String path;public final int startLine,maxLines;
+        private FsReadRequest(Map<String,Object> a){
+            super(Tool.FS_READ,a);
+            path=(String)a.get("path");
+            startLine=((Number)a.get("start_line")).intValue();
+            maxLines=((Number)a.get("max_lines")).intValue();
+        }
+    }
+    public static final class NoteCreateRequest extends Request {
+        public final String title,content,folder,tags;
+        private NoteCreateRequest(Map<String,Object> a){
+            super(Tool.NOTE_CREATE,a);
+            title=(String)a.get("title");
+            content=(String)a.get("content");
+            folder=(String)a.get("folder");
+            tags=(String)a.get("tags");
+        }
+    }
+    public static final class FsAppendRequest extends Request {
+        public final String path,content;
+        private FsAppendRequest(Map<String,Object> a){
+            super(Tool.FS_APPEND,a);
+            path=(String)a.get("path");
+            content=(String)a.get("content");
+        }
+    }
+    public static final class FsEditRequest extends Request {
+        public final String path,oldText,newText;
+        private FsEditRequest(Map<String,Object> a){
+            super(Tool.FS_EDIT,a);
+            path=(String)a.get("path");
+            oldText=(String)a.get("old_text");
+            newText=(String)a.get("new_text");
+        }
+    }
+    public static final class FsDeleteRequest extends Request {
+        public final String path;
+        private FsDeleteRequest(Map<String,Object> a){
+            super(Tool.FS_DELETE,a);
+            path=(String)a.get("path");
+        }
+    }
+    public static final class LookupContactRequest extends Request {
+        public final String query;public final int limit;
+        private LookupContactRequest(Map<String,Object> a){
+            super(Tool.LOOKUP_CONTACT,a);
+            query=(String)a.get("query");
+            limit=((Number)a.get("limit")).intValue();
+        }
+    }
+    public static final class ExternalToolRequest extends Request {
+        public final String externalWireName;
+        public final String displaySummary;
+        private ExternalToolRequest(String externalWireName,String displaySummary,Map<String,Object> a){
+            super(Tool.EXTERNAL,a);
+            this.externalWireName=externalWireName;
+            this.displaySummary=displaySummary==null?"":displaySummary;
+        }
+    }
     private static Request request(Tool tool,Map<String,Object> args){
         switch(tool){
             case FLASHLIGHT:return new FlashlightRequest(args);case VOLUME:return new VolumeRequest(args);
@@ -159,15 +254,32 @@ public final class ToolRegistry {
             case CREATE_EVENT:return new CreateEventRequest(args);
             case UPDATE_EVENT:return new UpdateEventRequest(args);
             case DELETE_EVENT:return new DeleteEventRequest(args);
+            case WEB_SEARCH:return new WebSearchRequest(args);
+            case SEARCH_TOOLS:return new SearchToolsRequest(args);
+            case FS_LIST:return new FsListRequest(args);
+            case FS_SEARCH:return new FsSearchRequest(args);
+            case FS_READ:return new FsReadRequest(args);
+            case NOTE_CREATE:return new NoteCreateRequest(args);
+            case FS_APPEND:return new FsAppendRequest(args);
+            case FS_EDIT:return new FsEditRequest(args);
+            case FS_DELETE:return new FsDeleteRequest(args);
+            case LOOKUP_CONTACT:return new LookupContactRequest(args);
             default:throw new IllegalArgumentException("Unregistered tool");
         }
     }
     private static final Set<String> ALLOWED_SHARE_PKGS = new HashSet<>(Arrays.asList("com.whatsapp","org.telegram.messenger","org.thoughtcrime.securesms"));
     private final java.util.function.LongSupplier nowEpochSec;
-    public ToolRegistry(){this(()->System.currentTimeMillis()/1000L);}
+    private final List<ExternalToolProvider> externalProviders;
+    public ToolRegistry(){this(()->System.currentTimeMillis()/1000L,Collections.emptyList());}
     public ToolRegistry(java.util.function.LongSupplier nowEpochSec){
+        this(nowEpochSec,Collections.emptyList());
+    }
+    public ToolRegistry(java.util.function.LongSupplier nowEpochSec,List<ExternalToolProvider> externalProviders){
         if(nowEpochSec==null)throw new IllegalArgumentException("Missing clock");
         this.nowEpochSec=nowEpochSec;
+        this.externalProviders=externalProviders==null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(externalProviders));
     }
     public static final class Parsed {
         public final Request request;public final String status,message;
@@ -183,18 +295,50 @@ public final class ToolRegistry {
         Map<String,Object> call=(Map<String,Object>)root;
         if(call.size()!=2 || !(call.get("tool") instanceof String) || !(call.get("arguments") instanceof Map))
             return reject("INVALID_REQUEST","Expected exactly tool and arguments");
-        Tool selected=null;for(Tool tool:Tool.values())if(tool.wireName.equals(call.get("tool")))selected=tool;
-        if(selected==null)return reject("UNKNOWN_TOOL","Tool is not allowlisted");
-        Map<String,Object> args=new LinkedHashMap<>((Map<String,Object>)call.get("arguments"));
+        return parseCall((String)call.get("tool"),(Map<String,Object>)call.get("arguments"));
+    }
+
+    /** Validates an already-extracted tool name and raw arguments map (used by XML/Pythonic/JSON parsers). */
+    public Parsed parseCall(String toolName, Map<String,Object> rawArgs){
+        if(toolName==null || rawArgs==null)return reject("INVALID_REQUEST","Expected tool name and arguments");
+        Tool selected=null;
+        for(Tool tool:Tool.values()){
+            if(tool!=Tool.EXTERNAL && tool.wireName.equals(toolName)){selected=tool;break;}
+        }
+        if(selected==null){
+            for(ExternalToolProvider provider:externalProviders){
+                if(provider!=null && provider.supportsTool(toolName)){
+                    Map<String,Object> clean=new LinkedHashMap<>();
+                    if(rawArgs.size()>24)return reject("INVALID_ARGUMENTS","Too many arguments for external tool");
+                    for(Map.Entry<String,Object> e:rawArgs.entrySet()){
+                        String k=e.getKey();
+                        if(k==null || k.isEmpty() || k.length()>64)return reject("INVALID_ARGUMENTS","Invalid argument key");
+                        Object v=e.getValue();
+                        if(v instanceof String && (((String)v).length()>8000 || ((String)v).indexOf('\0')>=0))
+                            return reject("INVALID_ARGUMENTS","Invalid argument value for "+k);
+                        clean.put(k,v);
+                    }
+                    String summary=provider.formatForDisplay(toolName,clean);
+                    return new Parsed(new ExternalToolRequest(toolName,summary,clean),
+                            "VALIDATED","External tool validated; authorization still required");
+                }
+            }
+            return reject("UNKNOWN_TOOL","Tool is not allowlisted");
+        }
+        Map<String,Object> args=new LinkedHashMap<>(rawArgs);
         try{
             switch(selected){
                 case FLASHLIGHT:keys(args,"on");if(!(args.get("on") instanceof Boolean))bad("on must be boolean");break;
                 case VOLUME:keys(args,"stream","percent");choice(args,"stream","music","alarm","ring","notification");integer(args,"percent",0,100);break;
                 case TIMER:keys(args,"seconds","label");integer(args,"seconds",1,86400);label(args);break;
                 case ALARM:keys(args,"hour","minute","label","days");integer(args,"hour",0,23);integer(args,"minute",0,59);label(args);days(args);break;
-                case REMINDER:keys(args,"when_epoch_sec","title","body");
+                case REMINDER:keys(args,"when_epoch_sec","when","title","body");
+                    if(args.containsKey("when") && !args.containsKey("when_epoch_sec")){
+                        args.put("when_epoch_sec",parseIsoToEpochSec(args.remove("when"),"when",false));
+                        if(!args.containsKey("body"))args.put("body","");
+                    }
                     if(!args.containsKey("when_epoch_sec") || !args.containsKey("title") || !args.containsKey("body"))
-                        bad("Expected exactly when_epoch_sec, title, and body");
+                        bad("Expected when_epoch_sec (or when), title, and body");
                     reminder(args,nowEpochSec.getAsLong());break;
                 case SHOW_ALARMS:keys(args);break;
                 case APPLICATION:keys(args,"package");String name=text(args,"package",1,255);
@@ -240,19 +384,118 @@ public final class ToolRegistry {
                     text(args,"draft_id",1,128);
                     break;
                 }
-                case LIST_EVENTS:keys(args,"window_start_epoch_sec","window_end_epoch_sec","limit");
+                case LIST_EVENTS:keys(args,"window_start_epoch_sec","window_end_epoch_sec","window_start","window_end","limit");
+                    if(args.containsKey("window_start") && !args.containsKey("window_start_epoch_sec")){
+                        args.put("window_start_epoch_sec",parseIsoToEpochSec(args.remove("window_start"),"window_start",false));
+                    }
+                    if(args.containsKey("window_end") && !args.containsKey("window_end_epoch_sec")){
+                        args.put("window_end_epoch_sec",parseIsoToEpochSec(args.remove("window_end"),"window_end",true));
+                    }
+                    if(!args.containsKey("limit")) args.put("limit",20L);
                     epochSec(args,"window_start_epoch_sec");epochSec(args,"window_end_epoch_sec");integer(args,"limit",1,50);
                     eventWindow(args,"window_start_epoch_sec","window_end_epoch_sec");break;
-                case CREATE_EVENT:keys(args,"title","start_epoch_sec","end_epoch_sec","calendar_id","all_day","location","notes");
+                case CREATE_EVENT:keys(args,"title","start_epoch_sec","end_epoch_sec","start","end","duration_minutes","calendar_id","all_day","location","notes");
                     textBounded(args,"title",1,200,true);
-                    epochSec(args,"start_epoch_sec");epochSec(args,"end_epoch_sec");eventRange(args,"start_epoch_sec","end_epoch_sec");
-                    calendarId(args,"calendar_id");
+                    boolean dateOnlyStart=false;
+                    if(args.containsKey("start") && !args.containsKey("start_epoch_sec")){
+                        Object rawStart=args.remove("start");
+                        dateOnlyStart=isDateOnlyIso(rawStart);
+                        args.put("start_epoch_sec",parseIsoToEpochSec(rawStart,"start",false));
+                    }
+                    if(!args.containsKey("all_day")) args.put("all_day",dateOnlyStart);
                     if(!(args.get("all_day") instanceof Boolean))bad("all_day must be boolean");
+                    boolean allDay=(Boolean)args.get("all_day");
+                    if(args.containsKey("end") && !args.containsKey("end_epoch_sec")){
+                        args.put("end_epoch_sec",parseIsoToEpochSec(args.remove("end"),"end",allDay));
+                    }
+                    if(!args.containsKey("end_epoch_sec") && args.containsKey("start_epoch_sec") && args.get("start_epoch_sec") instanceof Long){
+                        long startVal=(Long)args.get("start_epoch_sec");
+                        long durSec=allDay ? 86400L : 3600L;
+                        if(args.containsKey("duration_minutes")){
+                            integer(args,"duration_minutes",1,24*60*30);
+                            durSec=((Integer)args.remove("duration_minutes")).longValue()*60L;
+                        }
+                        args.put("end_epoch_sec",startVal+durSec);
+                    } else if(args.containsKey("duration_minutes")){
+                        args.remove("duration_minutes");
+                    }
+                    epochSec(args,"start_epoch_sec");epochSec(args,"end_epoch_sec");eventRange(args,"start_epoch_sec","end_epoch_sec");
+                    if(args.containsKey("calendar_id")) calendarId(args,"calendar_id");
+                    else args.put("calendar_id","");
+                    if(!args.containsKey("location")) args.put("location","");
+                    if(!args.containsKey("notes")) args.put("notes","");
                     textBounded(args,"location",0,2000,false);textBounded(args,"notes",0,4000,false);break;
-                case UPDATE_EVENT:keys(args,"event_id","title","start_epoch_sec","end_epoch_sec");
+                case UPDATE_EVENT:keys(args,"event_id","title","start_epoch_sec","end_epoch_sec","start","end");
                     eventId(args,"event_id");textBounded(args,"title",1,200,true);
+                    if(args.containsKey("start") && !args.containsKey("start_epoch_sec")){
+                        args.put("start_epoch_sec",parseIsoToEpochSec(args.remove("start"),"start",false));
+                    }
+                    if(args.containsKey("end") && !args.containsKey("end_epoch_sec")){
+                        args.put("end_epoch_sec",parseIsoToEpochSec(args.remove("end"),"end",false));
+                    }
                     epochSec(args,"start_epoch_sec");epochSec(args,"end_epoch_sec");eventRange(args,"start_epoch_sec","end_epoch_sec");break;
                 case DELETE_EVENT:keys(args,"event_id");eventId(args,"event_id");break;
+                case WEB_SEARCH:keys(args,"query","time_range");
+                    textBounded(args,"query",1,300,true);
+                    if(!args.containsKey("time_range")) args.put("time_range","");
+                    String range=text(args,"time_range",0,16);
+                    if(!range.isEmpty() && !Arrays.asList("day","week","month","year").contains(range))
+                        bad("time_range must be day, week, month, or year");
+                    break;
+                case SEARCH_TOOLS:keys(args,"query");
+                    textBounded(args,"query",1,200,true);
+                    break;
+                case FS_LIST:keys(args,"path","max_depth");
+                    if(!args.containsKey("path")) args.put("path","");
+                    args.put("path",WorkspacePath.normalize(text(args,"path",0,512),true));
+                    if(!args.containsKey("max_depth")) args.put("max_depth",2);
+                    else integer(args,"max_depth",1,4);
+                    break;
+                case FS_SEARCH:keys(args,"query","path");
+                    textBounded(args,"query",1,200,true);
+                    if(!args.containsKey("path")) args.put("path","");
+                    args.put("path",WorkspacePath.normalize(text(args,"path",0,512),true));
+                    break;
+                case FS_READ:keys(args,"path","start_line","max_lines");
+                    args.put("path",WorkspacePath.normalize(text(args,"path",1,512),false));
+                    if(!args.containsKey("start_line")) args.put("start_line",1);
+                    else integer(args,"start_line",1,100000);
+                    if(!args.containsKey("max_lines")) args.put("max_lines",120);
+                    else integer(args,"max_lines",1,300);
+                    break;
+                case NOTE_CREATE:keys(args,"title","content","folder","tags");
+                    textBounded(args,"title",1,120,true);
+                    textBounded(args,"content",1,16000,false);
+                    if(!args.containsKey("folder")) args.put("folder","");
+                    args.put("folder",WorkspacePath.normalize(text(args,"folder",0,512),true));
+                    if(!args.containsKey("tags")) args.put("tags","");
+                    else if(args.get("tags") instanceof List){
+                        StringBuilder joined=new StringBuilder();
+                        for(Object item:(List<?>)args.get("tags")){
+                            if(joined.length()>0)joined.append(',');
+                            joined.append(String.valueOf(item));
+                        }
+                        args.put("tags",joined.toString());
+                    }
+                    textBounded(args,"tags",0,300,true);
+                    break;
+                case FS_APPEND:keys(args,"path","content");
+                    args.put("path",WorkspacePath.normalize(text(args,"path",1,512),false));
+                    textBounded(args,"content",1,8000,false);
+                    break;
+                case FS_EDIT:keys(args,"path","old_text","new_text");
+                    args.put("path",WorkspacePath.normalize(text(args,"path",1,512),false));
+                    textBounded(args,"old_text",1,4000,false);
+                    textBounded(args,"new_text",0,4000,false);
+                    break;
+                case FS_DELETE:keys(args,"path");
+                    args.put("path",WorkspacePath.normalize(text(args,"path",1,512),false));
+                    break;
+                case LOOKUP_CONTACT:keys(args,"query","limit");
+                    textBounded(args,"query",1,120,true);
+                    if(!args.containsKey("limit")) args.put("limit",5);
+                    else integer(args,"limit",1,10);
+                    break;
             }
         }catch(IllegalArgumentException e){return reject("INVALID_ARGUMENTS",e.getMessage());}
         return new Parsed(request(selected,args),"VALIDATED","Arguments validated; authorization still required");
@@ -414,6 +657,33 @@ public final class ToolRegistry {
         for(int i=0;i<id.length();i++){
             char c=id.charAt(i);
             if(Character.isISOControl(c) || c=='\u2028' || c=='\u2029')bad(key+" is invalid");
+        }
+    }
+    private static boolean isDateOnlyIso(Object raw){
+        if(!(raw instanceof String))return false;
+        String s=((String)raw).trim();
+        return s.matches("\\d{4}-\\d{2}-\\d{2}");
+    }
+    private static long parseIsoToEpochSec(Object raw,String key,boolean endOfDateIfDateOnly){
+        if(raw instanceof Long)return (Long)raw;
+        if(!(raw instanceof String))bad(key+" must be an ISO-8601 date/datetime string");
+        String s=((String)raw).trim();
+        if(s.isEmpty() || s.length()>64)bad(key+" is not a valid ISO-8601 datetime");
+        try{
+            if(s.matches("\\d{4}-\\d{2}-\\d{2}")){
+                java.time.LocalDate date=java.time.LocalDate.parse(s);
+                if(endOfDateIfDateOnly)date=date.plusDays(1);
+                return date.atStartOfDay(java.time.ZoneId.systemDefault()).toEpochSecond();
+            }
+            String normalized=s.contains(" ") && !s.contains("T") ? s.replaceFirst(" ","T") : s;
+            if(normalized.endsWith("Z") || normalized.matches(".*[+-]\\d{2}:?\\d{2}$")){
+                return java.time.OffsetDateTime.parse(normalized).toEpochSecond();
+            }
+            return java.time.LocalDateTime.parse(normalized)
+                    .atZone(java.time.ZoneId.systemDefault()).toEpochSecond();
+        }catch(Exception e){
+            bad(key+" must be an ISO-8601 datetime like YYYY-MM-DDTHH:MM");
+            return 0L;
         }
     }
     private static void choice(Map<String,Object> args,String key,String... values){

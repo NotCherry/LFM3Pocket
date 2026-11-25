@@ -1,44 +1,40 @@
 package com.notcherry.lfm3pocket;
 
+import java.time.ZonedDateTime;
 import java.util.Locale;
 
-/** Short tool card for LFM3-Omni voice-action turns (one strict JSON object, no prose scrape). */
+/** LFM3-native tool card for voice-action turns (XML tool call or concise spoken reply). */
 public final class VoiceToolPromptCard {
-    private static final String TOOL_CARD =
-            "You may emit exactly one JSON tool object from this allowlist, or reply in the user's language.\n"
-                    + "Tools: toggle_flashlight, set_volume, set_timer, set_alarm, set_reminder, show_alarms, open_application, "
-                    + "open_settings, copy_text, share_text, draft_message, send_message, current_time, calculator, unit_convert, weather, "
-                    + "list_events, create_event, update_event, delete_event.\n"
-                    + "Example: {\"tool\":\"set_timer\",\"arguments\":{\"seconds\":300,\"label\":\"Tea\"}}";
-
     private VoiceToolPromptCard() {}
 
     public static String onePassAudioPrompt(Locale locale) {
-        String languageHint = locale != null && "pl".equals(locale.getLanguage())
-                ? "Reply in Polish when appropriate."
-                : "Reply in English when appropriate.";
+        return onePassAudioPrompt(locale, LfmToolCatalog.Capabilities.offlineDefaults());
+    }
+
+    public static String onePassAudioPrompt(Locale locale, LfmToolCatalog.Capabilities capabilities) {
         return "<|startoftext|><|im_start|>system\n"
-                + "You are Hanami, a concise on-device assistant. "
-                + TOOL_CARD + "\n"
-                + languageHint + " If you need an Android action, emit exactly one JSON tool object and no other prose.\n"
+                + LfmToolCatalog.voiceOnePassSystemPrompt(capabilities, locale) + "\n"
                 + "<|im_end|>\n"
-                + "<|im_start|>user\nListen to the attached audio. Answer the user or emit one tool JSON object.\n"
+                + "<|im_start|>user\n"
+                + LfmToolCatalog.turnContextLine(ZonedDateTime.now(), capabilities) + "\n"
+                + "Listen to the attached audio. Answer the user or emit a <tool_call>.\n"
                 + "<__media__><|im_end|>\n"
                 + "<|im_start|>assistant\n";
     }
 
     /** Text-only voice-action prompt for STT-transcribed input (no media attachment). */
     public static String onePassTextPrompt(Locale locale, String userText) {
-        String languageHint = locale != null && "pl".equals(locale.getLanguage())
-                ? "Reply in Polish when appropriate."
-                : "Reply in English when appropriate.";
+        return onePassTextPrompt(locale, userText, LfmToolCatalog.Capabilities.offlineDefaults());
+    }
+
+    public static String onePassTextPrompt(Locale locale, String userText, LfmToolCatalog.Capabilities capabilities) {
         String safeText = userText == null ? "" : userText.trim();
         return "<|startoftext|><|im_start|>system\n"
-                + "You are Hanami, a concise on-device assistant. "
-                + TOOL_CARD + "\n"
-                + languageHint + " If you need an Android action, emit exactly one JSON tool object and no other prose.\n"
+                + LfmToolCatalog.voiceOnePassSystemPrompt(capabilities, locale) + "\n"
                 + "<|im_end|>\n"
-                + "<|im_start|>user\n" + safeText + "<|im_end|>\n"
+                + "<|im_start|>user\n"
+                + LfmToolCatalog.turnContextLine(ZonedDateTime.now(), capabilities) + "\n"
+                + safeText + "<|im_end|>\n"
                 + "<|im_start|>assistant\n";
     }
 

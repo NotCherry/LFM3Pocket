@@ -198,14 +198,21 @@ com.whatsapp</string>
     <string name="notification_access_allowlist_saved">Zapisano listę dozwolonych powiadomień.</string>
 
     <string name="calendar_heading">KALENDARZ</string>
-    <string name="calendar_help">Wybierz jeden kalendarz dla głosowych akcji zapisu. Odczyt i zapis wymagają uprawnień Kalendarza i wyraźnego potwierdzenia.</string>
+    <string name="calendar_help">Wybierz jeden kalendarz z możliwością zapisu dla akcji w czacie i głosie. Odczyt i zapis wymagają uprawnień Kalendarza oraz wyraźnego potwierdzenia.</string>
     <string name="calendar_none_picked">Nie wybrano kalendarza. Zapis jest zablokowany do czasu wyboru.</string>
     <string name="calendar_picked">Wybrany kalendarz: %1$s</string>
     <string name="calendar_pick_button">Wybierz kalendarz</string>
     <string name="calendar_clear_button">Wyczyść kalendarz</string>
-    <string name="calendar_permission_needed">Do wyświetlenia listy kalendarzy potrzebne jest uprawnienie Kalendarza.</string>
+    <string name="calendar_permission_needed">Do korzystania z akcji kalendarza potrzebne są uprawnienia odczytu i zapisu Kalendarza.</string>
     <string name="calendar_no_calendars">Na tym urządzeniu nie znaleziono kalendarzy.</string>
+    <string name="calendar_no_writable_calendars">Na tym urządzeniu nie znaleziono kalendarzy z uprawnieniami zapisu.</string>
     <string name="calendar_pick_title">Wybierz kalendarz</string>
+    <string name="search_test_button">Testuj wyszukiwanie</string>
+    <string name="search_testing">Testowanie punktu końcowego SearXNG…</string>
+    <string name="search_test_ok">Wyszukiwanie działa · %1$d wyników (%2$d ms)</string>
+    <string name="search_test_empty">Połączono (%1$d ms), ale wyszukiwanie zwróciło 0 wyników.</string>
+    <string name="search_test_failed">Test wyszukiwania nie powiódł się: %1$s</string>
+    <string name="search_help">Skonfiguruj instancję HTTPS SearXNG z włączonym formatem JSON. Po włączeniu Hanami może wywoływać web_search, gdy to potrzebne.</string>
 
     <!-- Home & About -->
     <string name="home_on_device">NA URZĄDZENIU</string>
@@ -296,4 +303,45 @@ com.whatsapp</string>
     <string name="tool_not_pending">Ta akcja nie oczekuje już na decyzję.</string>
     <string name="tool_confirm_prompt">Zatwierdź tylko wtedy, gdy chcesz wykonać dokładnie powyższą akcję i jej argumenty.</string>
     <string name="tool_action_result_format">Wynik akcji: %1$s — %2$s</string>
+
+    <!-- Local Workspace (Offline Vault / Notes) -->
+    <string name="workspace_heading">LOKALNY FOLDER ROBOCZY</string>
+    <string name="workspace_help">Wybierz lokalny folder (np. skarbiec Obsidian lub folder notatek), aby Hanami mogło przeszukiwać, czytać, tworzyć i edytować notatki Markdown offline. Zmiany plików zawsze wymagają Twojego zatwierdzenia.</string>
+    <string name="workspace_none_picked">Nie wybrano folderu (narzędzia plików wyłączone).</string>
+    <string name="workspace_picked">Folder roboczy: %1$s</string>
+    <string name="workspace_pick_button">Wybierz folder</string>
+    <string name="workspace_clear_button">Wyczyść</string>
+    <string name="workspace_cleared">Wyczyszczono lokalny folder roboczy.</string>
+
+    <!-- External Tools: Contacts, Custom Shortcuts & Open MCP Client -->
+    <string name="external_tools_heading">ZEWNĘTRZNE NARZĘDZIA I MCP</string>
+    <string name="external_tools_help">Podłącz lokalne kontakty offline, własne skróty aplikacji (Obsidian, Tasker, geo) lub otwarte serwery MCP Streamable HTTP (lokalny Termux, domowa sieć LAN albo zdalne HTTPS, np. Composio). Narzędzia zewnętrzne zawsze wymagają Twojego zatwierdzenia.</string>
+    <string name="contacts_status_off">Wyszukiwanie kontaktów offline: brak uprawnienia.</string>
+    <string name="contacts_status_ready">Wyszukiwanie kontaktów offline: gotowe (tylko odczyt).</string>
+    <string name="contacts_grant_button">Przyznaj dostęp do kontaktów</string>
+    <string name="shortcuts_subheading">Własne skróty lokalne (offline)</string>
+    <string name="shortcuts_help">Zdefiniuj linki URI z parametrami {{param}}, np. obsidian://new?name={{title}}&amp;content={{content}}.</string>
+    <string name="shortcuts_add_button">Dodaj skrót lokalny</string>
+    <string name="shortcuts_empty">Brak skonfigurowanych skrótów.</string>
+    <string name="shortcuts_name_hint">Nazwa (np. Notatka Obsidian)</string>
+    <string name="shortcuts_uri_hint">Szablon URI (np. obsidian://new?name={{title}})</string>
+    <string name="shortcuts_desc_hint">Krótki opis dla modelu</string>
+    <string name="shortcuts_pkg_hint">Opcjonalna nazwa pakietu Android</string>
+    <string name="shortcuts_saved">Zapisano skrót lokalny: %1$s</string>
+    <string name="shortcuts_removed">Usunięto skrót: %1$s</string>
+    <string name="mcp_subheading">Serwery MCP (lokalny Termux / LAN / HTTPS)</string>
+    <string name="mcp_help">Dodaj http://127.0.0.1:PORT/mcp dla lokalnego serwera Termux offline albo adres https:// dla zdalnych hubów MCP (Composio, GitHub, Notion). Kliknij Synchronizuj, aby zapisać schematy narzędzi offline.</string>
+    <string name="mcp_add_button">Dodaj serwer MCP</string>
+    <string name="mcp_empty">Brak skonfigurowanych serwerów MCP.</string>
+    <string name="mcp_label_hint">Nazwa serwera (np. Termux lub Composio)</string>
+    <string name="mcp_url_hint">Adres URL (http://127.0.0.1:3000/mcp lub https://…)</string>
+    <string name="mcp_token_hint">Opcjonalny token Bearer / klucz API</string>
+    <string name="mcp_allow_lan_http">Zezwól na lokalne HTTP w LAN (10.x / 192.168.x / .local)</string>
+    <string name="mcp_saved">Zapisano serwer MCP: %1$s. Kliknij Synchronizuj, aby pobrać narzędzia.</string>
+    <string name="mcp_removed">Usunięto serwer MCP: %1$s</string>
+    <string name="mcp_sync_button">Synchronizuj</string>
+    <string name="mcp_syncing">Synchronizowanie narzędzi z %1$s…</string>
+    <string name="mcp_sync_ok">Zsynchronizowano %2$d narzędzi z %1$s.</string>
+    <string name="mcp_sync_failed">Błąd synchronizacji %1$s: %2$s</string>
+    <string name="remove_item">Usuń</string>
 </resources>

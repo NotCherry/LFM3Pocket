@@ -218,6 +218,17 @@ void emit_token(const llama_vocab * vocab, llama_token id, hanami::TokenDelivery
 
 namespace hanami {
 
+static void append_chat_sampling_stages(llama_sampler * smpl, const llama_vocab * vocab) {
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_k(kChatTopK));
+    const int32_t n_vocab = vocab ? llama_vocab_n_tokens(vocab) : 0;
+    if (n_vocab > 0) {
+        llama_sampler_chain_add(smpl, llama_sampler_init_penalties(
+                n_vocab, kChatPenaltyLastN, kChatRepeatPenalty, 0.0f, 0.0f));
+    }
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(kChatTemp));
+    llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+}
+
 llama_sampler * make_chat_sampler(const llama_vocab * vocab) {
     llama_sampler * smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
     if (!smpl) return nullptr;
@@ -229,6 +240,30 @@ llama_sampler * make_chat_sampler(const llama_vocab * vocab) {
     }
     llama_sampler_chain_add(smpl, llama_sampler_init_temp(kChatTemp));
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    return smpl;
+}
+
+llama_sampler * make_chat_sampler_with_lazy_grammar(
+        const llama_vocab * vocab,
+        const char * grammar_str,
+        const char * grammar_root,
+        const char * trigger_pattern) {
+    llama_sampler * smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    if (!smpl) return nullptr;
+    if (vocab && grammar_str && grammar_str[0] != '\0' && trigger_pattern && trigger_pattern[0] != '\0') {
+        try {
+            const char * patterns[1] = { trigger_pattern };
+            const char * root = (grammar_root && grammar_root[0] != '\0') ? grammar_root : "root";
+            llama_sampler * grammar_smpl = llama_sampler_init_grammar_lazy_patterns(
+                    vocab, grammar_str, root, patterns, 1, nullptr, 0);
+            if (grammar_smpl) {
+                llama_sampler_chain_add(smpl, grammar_smpl);
+            }
+        } catch (...) {
+            // Fall back cleanly to unconstrained sampling if regex/grammar setup fails.
+        }
+    }
+    append_chat_sampling_stages(smpl, vocab);
     return smpl;
 }
 

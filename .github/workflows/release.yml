@@ -1,11 +1,17 @@
 name: Publish GitHub Release
+run-name: >-
+  Publish GitHub Release (${{ github.event_name == 'workflow_dispatch' && (inputs.tag || 'latest') || github.ref_name }})
 
-# Releases are published only after Android Stage 1 CI (build-apk.yml) succeeds
-# for the exact release commit SHA. Failed, cancelled, skipped, timed out, stale,
-# or non-matching CI results cannot create a version tag or publish any APK/release
-# asset. The gate runs before tag creation so a failed gate never consumes a version.
+# Releases are published immediately on every non-doc merge/push to main without
+# waiting for the deep emulator E2E suite in Android Stage 1 CI. Before creating
+# any version tag or publishing an asset, this workflow runs JVM unit tests,
+# builds the ARM64 release APK, and verifies JNI/Cactus/signature integrity so a
+# broken build never consumes a version number.
 #
-# Triggers (all owner-controlled, all gated on exact-SHA CI success):
+# After publishing, older GitHub Releases beyond the newest 5 are pruned to keep
+# storage minimal while preserving all git tags for monotonic versioning.
+#
+# Triggers:
 #   - Non-doc push to main: bump/create a v* tag and publish Hanami-v<ver>-arm64-v8a.apk.
 #   - Push v* tag: publish a versioned release for that exact tagged commit SHA.
 #   - workflow_dispatch: rebuild rolling `latest` debug when no tag is supplied, or
@@ -17,10 +23,11 @@ name: Publish GitHub Release
 #   HANAMI_KEYSTORE_BASE64, HANAMI_STORE_PASSWORD, HANAMI_KEY_ALIAS, HANAMI_KEY_PASSWORD
 # Missing secrets → unsigned APK with a clear note in the release body. Main stays green.
 on:
-  workflow_run:
-    workflows: ["Android Stage 1 CI"]
-    types: [completed]
   push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
     tags:
       - 'v*'
   workflow_dispatch:
@@ -32,24 +39,19 @@ on:
 
 permissions:
   contents: write
-  actions: read
 
 concurrency:
-  group: publish-github-release-${{ github.event_name }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
+  group: publish-github-release-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   publish:
-    name: Attach APK to GitHub Release
-    if: >-
-      github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.conclusion == 'success')
+    name: Build, Verify & Publish APK Release
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      RELEASE_SHA: ${{ github.sha }}
+      KEEP_RELEASES: '5'
     steps:
       - name: Checkout application
         uses: actions/checkout@v4
@@ -59,29 +61,12 @@ jobs:
           # Need a token that can push the auto-release tag.
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify Android Stage 1 CI succeeded for release commit
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EVENT_NAME: ${{ github.event_name }}
+      - name: Prove release helper scripts
         run: |
-          if [ "$EVENT_NAME" = 'workflow_run' ]; then
-            attempts=5
-            sleep_s=5
-          else
-            attempts=180
-            sleep_s=30
-          fi
-          python3 .github/scripts/assert-release-ci-gate.py wait \
-            --repo "$GITHUB_REPOSITORY" \
-            --workflow build-apk.yml \
-            --sha "$RELEASE_SHA" \
-            --api-url "$GITHUB_API_URL" \
-            --token-env GH_TOKEN \
-            --attempts "$attempts" \
-            --sleep "$sleep_s"
-
-      - name: Prove version bump logic
-        run: python3 .github/scripts/next-hanami-version.py --self-test
+          python3 .github/scripts/next-hanami-version.py --self-test
+          python3 .github/scripts/prune-old-releases.py --self-test
+          python3 .github/scripts/assert-dizione-jni-in-apk.py --self-test
+          python3 .github/scripts/assert-cactus-runtime-in-apk.py --self-test
 
       - name: Resolve release metadata
         id: meta
@@ -93,6 +78,8 @@ jobs:
           PUSH_SHA: ${{ env.RELEASE_SHA }}
         run: |
           set -euo pipefail
+          # Refresh tags so queued runs see tags pushed by an immediately preceding run.
+          git fetch --tags --force origin
           short_sha() { echo "$1" | cut -c1-7; }
 
           if [ "$EVENT_NAME" = 'push' ] && [ "$REF_TYPE" = 'tag' ]; then
@@ -104,12 +91,14 @@ jobs:
             echo "make_latest=true" >> "$GITHUB_OUTPUT"
             echo "sha=$PUSH_SHA" >> "$GITHUB_OUTPUT"
             echo "source=build" >> "$GITHUB_OUTPUT"
-          elif [ "$EVENT_NAME" = 'workflow_run' ] || { [ "$EVENT_NAME" = 'push' ] && [ "$REF_NAME" = 'main' ]; }; then
+          elif [ "$EVENT_NAME" = 'push' ] && [ "$REF_NAME" = 'main' ]; then
             existing_tag="$(git tag --points-at "$PUSH_SHA" --list 'v[0-9]*.[0-9]*.[0-9]*' | head -n 1 || true)"
             if [ -n "$existing_tag" ]; then
               echo "Commit $PUSH_SHA is already tagged as $existing_tag; skipping duplicate auto-release."
               echo "mode=skip" >> "$GITHUB_OUTPUT"
+              echo "tag=$existing_tag" >> "$GITHUB_OUTPUT"
               echo "create_tag=false" >> "$GITHUB_OUTPUT"
+              echo "sha=$PUSH_SHA" >> "$GITHUB_OUTPUT"
               echo "source=skip" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -155,25 +144,36 @@ jobs:
             echo "short_sha=$(short_sha "$sha")" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create auto-release tag
-        if: steps.meta.outputs.create_tag == 'true'
-        env:
-          TAG: ${{ steps.meta.outputs.tag }}
-          SHA: ${{ steps.meta.outputs.sha }}
-        run: |
-          set -euo pipefail
-          # Annotated tags need an identity; Actions runners do not set one.
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-          git tag -a "$TAG" "$SHA" -m "Hanami $TAG"
-          git push origin "refs/tags/$TAG"
-
       - name: Set up Java
         if: steps.meta.outputs.source == 'build'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Verify runner Android SDK
+        if: steps.meta.outputs.source == 'build'
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+
+      - name: Install phone-build SDK packages
+        if: steps.meta.outputs.source == 'build'
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+
+      - name: Set up Gradle
+        if: steps.meta.outputs.source == 'build'
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Verify JVM unit contracts before release build
+        if: steps.meta.outputs.source == 'build'
+        timeout-minutes: 15
+        run: gradle :app:testSmokeDebugUnitTest -Phanami.skipNative=true --no-daemon --stacktrace
 
       - name: Derive versionName and versionCode from the tag
         if: steps.meta.outputs.mode == 'versioned'
@@ -263,25 +263,6 @@ jobs:
         if: steps.meta.outputs.source == 'build'
         run: bash scripts/fetch-cactus.sh
 
-      - name: Verify runner Android SDK
-        if: steps.meta.outputs.source == 'build'
-        run: |
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
-          test -n "$SDKMANAGER"
-          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
-
-      - name: Install phone-build SDK packages
-        if: steps.meta.outputs.source == 'build'
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
-
-      - name: Set up Gradle
-        if: steps.meta.outputs.source == 'build'
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.13'
-
       - name: Set up ccache
         if: steps.meta.outputs.source == 'build'
         run: |
@@ -367,6 +348,7 @@ jobs:
           ccache -s || true
 
       - name: Stage release APK
+        id: stage
         if: steps.meta.outputs.mode != 'skip'
         env:
           MODE: ${{ steps.meta.outputs.mode }}
@@ -395,9 +377,32 @@ jobs:
             python3 .github/scripts/assert-cactus-runtime-in-apk.py "release-out/$ASSET"
           fi
           sha256sum "release-out/$ASSET" | tee "release-out/$ASSET.sha256"
+          digest="$(cut -d' ' -f1 "release-out/$ASSET.sha256")"
+          size_mb="$(python3 -c 'import os, sys; print(f"{os.path.getsize(sys.argv[1]) / (1024*1024):.1f}")' "release-out/$ASSET")"
+          echo "sha256=$digest" >> "$GITHUB_OUTPUT"
+          echo "size_mb=$size_mb" >> "$GITHUB_OUTPUT"
           ls -lh "release-out/$ASSET"
 
+      - name: Create auto-release tag
+        if: steps.meta.outputs.create_tag == 'true'
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          SHA: ${{ steps.meta.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists; refusing to overwrite." >&2
+            exit 1
+          fi
+          # Annotated tags need an identity; Actions runners do not set one.
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git tag -a "$TAG" "$SHA" -m "Hanami $TAG"
+          git push origin "refs/tags/$TAG"
+
       - name: Publish GitHub Release
+        id: publish
         if: steps.meta.outputs.mode != 'skip'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -500,3 +505,55 @@ jobs:
               --target "$SHA" \
               --prerelease
           fi
+          release_url="$(gh release view "$TAG" --json url --jq .url)"
+          echo "release_url=$release_url" >> "$GITHUB_OUTPUT"
+
+      - name: Prune old GitHub Releases (keep last 5)
+        id: prune
+        if: steps.meta.outputs.mode != 'skip'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          python3 .github/scripts/prune-old-releases.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --keep "$KEEP_RELEASES" \
+            --protect-tag "$TAG" \
+            --api-url "$GITHUB_API_URL" \
+            --token-env GH_TOKEN \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Write release status summary
+        if: always()
+        env:
+          MODE: ${{ steps.meta.outputs.mode }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          SHA: ${{ steps.meta.outputs.sha || env.RELEASE_SHA }}
+          ASSET: ${{ steps.version.outputs.asset || steps.meta.outputs.asset }}
+          SIGNING: ${{ steps.signing.outputs.mode }}
+          SHA256: ${{ steps.stage.outputs.sha256 }}
+          SIZE_MB: ${{ steps.stage.outputs.size_mb }}
+          RELEASE_URL: ${{ steps.publish.outputs.release_url }}
+          KEPT_COUNT: ${{ steps.prune.outputs.kept_count }}
+          DELETED_COUNT: ${{ steps.prune.outputs.deleted_count }}
+          FREED_MB: ${{ steps.prune.outputs.freed_mb }}
+          KEPT_TAGS: ${{ steps.prune.outputs.kept_tags }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+        run: |
+          {
+            echo "## Hanami Release Summary"
+            echo
+            if [ "${MODE:-}" = 'skip' ]; then
+              echo "- **Status:** Skipped (commit \`${SHA}\` is already tagged as \`${TAG}\`)"
+            elif [ "${PUBLISH_OUTCOME:-}" = 'success' ]; then
+              echo "- **Status:** Published"
+              echo "- **Release:** [${TAG}](${RELEASE_URL})"
+              echo "- **Asset:** \`${ASSET}\` (${SIZE_MB:-?} MB, signature: \`${SIGNING:-debug}\`)"
+              echo "- **SHA-256:** \`${SHA256:-n/a}\`"
+              echo "- **Commit:** \`${SHA}\`"
+              echo "- **Retention:** Kept ${KEPT_COUNT:-?} release(s) (\`${KEPT_TAGS:-n/a}\`); pruned ${DELETED_COUNT:-0} older release(s) (${FREED_MB:-0.0} MB freed; git tags preserved)"
+            else
+              echo "- **Status:** Failed before publishing (no release created for \`${SHA}\`)"
+              echo "- **Target tag:** \`${TAG:-unassigned}\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

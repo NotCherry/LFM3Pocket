@@ -76,9 +76,39 @@ public class Lfm3PocketApplication extends Application {
     private AndroidActionExecutor actionExecutor;
     private ToolCoordinator toolCoordinator;
     private MessageDraftStore messageDraftStore;
+    private CustomShortcutStore customShortcutStore;
+    private McpToolProvider mcpToolProvider;
     public final synchronized MessageDraftStore messageDraftStore() {
         if (messageDraftStore == null) messageDraftStore = new MessageDraftStore();
         return messageDraftStore;
+    }
+    public final synchronized CustomShortcutStore customShortcutStore() {
+        if (customShortcutStore == null) {
+            customShortcutStore = new CustomShortcutStore(
+                    () -> new RuntimePreferences(this).customShortcutsJson(),
+                    json -> new RuntimePreferences(this).setCustomShortcutsJson(json),
+                    (renderedUri, optionalPkg) -> {
+                        android.content.Intent intent = new android.content.Intent(
+                                android.content.Intent.ACTION_VIEW, android.net.Uri.parse(renderedUri));
+                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                        if (optionalPkg != null && !optionalPkg.trim().isEmpty()) {
+                            intent.setPackage(optionalPkg.trim());
+                        }
+                        startActivity(intent);
+                    });
+        }
+        return customShortcutStore;
+    }
+    public final synchronized McpToolProvider mcpToolProvider() {
+        if (mcpToolProvider == null) {
+            mcpToolProvider = new McpToolProvider(
+                    () -> new RuntimePreferences(this).mcpServersJson(),
+                    json -> new RuntimePreferences(this).setMcpServersJson(json));
+        }
+        return mcpToolProvider;
+    }
+    public final List<ExternalToolProvider> externalToolProviders() {
+        return java.util.Arrays.asList(customShortcutStore(), mcpToolProvider());
     }
     public final synchronized ToolCoordinator toolCoordinator() {
         if (toolCoordinator == null) toolCoordinator = new ToolCoordinator(
@@ -88,6 +118,16 @@ public class Lfm3PocketApplication extends Application {
 
     protected ToolCoordinator.Handler createToolHandler() {
         return request -> {
+            if (request instanceof ToolRegistry.ExternalToolRequest) {
+                ToolRegistry.ExternalToolRequest ext = (ToolRegistry.ExternalToolRequest) request;
+                for (ExternalToolProvider provider : externalToolProviders()) {
+                    if (provider.supportsTool(ext.externalWireName)) {
+                        return provider.execute(ext.externalWireName, ext.arguments);
+                    }
+                }
+                return new AndroidActionExecutor.ActionResult(false, "UNKNOWN_TOOL",
+                        "This external tool is no longer configured.");
+            }
             if (!(request instanceof ToolRegistry.FlashlightRequest) &&
                     !(request instanceof ToolRegistry.VolumeRequest) &&
                     !(request instanceof ToolRegistry.TimerRequest) &&
@@ -107,7 +147,16 @@ public class Lfm3PocketApplication extends Application {
                     !(request instanceof ToolRegistry.ListEventsRequest) &&
                     !(request instanceof ToolRegistry.CreateEventRequest) &&
                     !(request instanceof ToolRegistry.UpdateEventRequest) &&
-                    !(request instanceof ToolRegistry.DeleteEventRequest)) {
+                    !(request instanceof ToolRegistry.DeleteEventRequest) &&
+                    !(request instanceof ToolRegistry.WebSearchRequest) &&
+                    !(request instanceof ToolRegistry.FsListRequest) &&
+                    !(request instanceof ToolRegistry.FsSearchRequest) &&
+                    !(request instanceof ToolRegistry.FsReadRequest) &&
+                    !(request instanceof ToolRegistry.NoteCreateRequest) &&
+                    !(request instanceof ToolRegistry.FsAppendRequest) &&
+                    !(request instanceof ToolRegistry.FsEditRequest) &&
+                    !(request instanceof ToolRegistry.FsDeleteRequest) &&
+                    !(request instanceof ToolRegistry.LookupContactRequest)) {
                 return new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
                         "This Android tool is not enabled yet");
             }
@@ -148,6 +197,12 @@ public class Lfm3PocketApplication extends Application {
                 if (request.tool == ToolRegistry.Tool.WEATHER) {
                     return new RuntimePreferences(Lfm3PocketApplication.this).networkToolsEnabled();
                 }
+                if (request.tool == ToolRegistry.Tool.WEB_SEARCH) {
+                    android.content.SharedPreferences prefs = new RuntimePreferences(Lfm3PocketApplication.this).raw();
+                    return SearchEndpointPolicy.enabled(
+                            prefs.getBoolean("search_enabled", false),
+                            prefs.getString("search_endpoint", ""));
+                }
                 if (request.tool == ToolRegistry.Tool.LIST_NOTIFICATIONS) {
                     // Policy is enforced in the executor so callers get specific, testable error states.
                     return true;
@@ -172,15 +227,46 @@ public class Lfm3PocketApplication extends Application {
                     if (picked == null || picked.trim().isEmpty()) return false;
                     if (request instanceof ToolRegistry.CreateEventRequest) {
                         String target = ((ToolRegistry.CreateEventRequest) request).calendarId;
-                        return picked.trim().equals(target == null ? "" : target.trim());
+                        String trimmedTarget = target == null ? "" : target.trim();
+                        return trimmedTarget.isEmpty() || picked.trim().equals(trimmedTarget);
                     }
                     return true;
+                }
+                if (request.tool == ToolRegistry.Tool.FS_LIST || request.tool == ToolRegistry.Tool.FS_SEARCH
+                        || request.tool == ToolRegistry.Tool.FS_READ || request.tool == ToolRegistry.Tool.NOTE_CREATE
+                        || request.tool == ToolRegistry.Tool.FS_APPEND || request.tool == ToolRegistry.Tool.FS_EDIT
+                        || request.tool == ToolRegistry.Tool.FS_DELETE) {
+                    String uri = new RuntimePreferences(Lfm3PocketApplication.this).workspaceTreeUri();
+                    return uri != null && !uri.trim().isEmpty();
+                }
+                if (request.tool == ToolRegistry.Tool.LOOKUP_CONTACT) {
+                    return checkSelfPermission(android.Manifest.permission.READ_CONTACTS)
+                            == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                }
+                if (request instanceof ToolRegistry.ExternalToolRequest) {
+                    String wire = ((ToolRegistry.ExternalToolRequest) request).externalWireName;
+                    for (ExternalToolProvider provider : externalToolProviders()) {
+                        if (provider.supportsTool(wire)) return true;
+                    }
+                    return false;
                 }
                 return true;
             }
 
             @Override public String denialMessage(ToolRegistry.Request request) {
                 if (request == null) return "Required permission or policy is unavailable.";
+                if (request.tool == ToolRegistry.Tool.WEB_SEARCH) {
+                    return "Configure an HTTPS SearXNG endpoint and enable Web search in Settings.";
+                }
+                if (request.tool == ToolRegistry.Tool.FS_LIST || request.tool == ToolRegistry.Tool.FS_SEARCH
+                        || request.tool == ToolRegistry.Tool.FS_READ || request.tool == ToolRegistry.Tool.NOTE_CREATE
+                        || request.tool == ToolRegistry.Tool.FS_APPEND || request.tool == ToolRegistry.Tool.FS_EDIT
+                        || request.tool == ToolRegistry.Tool.FS_DELETE) {
+                    return "Pick a Local Workspace folder in Settings before accessing files or notes.";
+                }
+                if (request.tool == ToolRegistry.Tool.LOOKUP_CONTACT) {
+                    return "Grant Contacts permission in Settings → External Tools & Shortcuts.";
+                }
                 if (request.tool == ToolRegistry.Tool.REMINDER) {
                     if (android.os.Build.VERSION.SDK_INT >= 33
                             && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -199,7 +285,7 @@ public class Lfm3PocketApplication extends Application {
                         || request.tool == ToolRegistry.Tool.DELETE_EVENT) {
                     if (checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR)
                             != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                        return "Grant Calendar permission in Android app settings to change events.";
+                        return "Grant Calendar write permission in Settings → Calendar before changing events.";
                     }
                     String picked = new RuntimePreferences(Lfm3PocketApplication.this).calendarWriteId();
                     if (picked == null || picked.trim().isEmpty()) {
@@ -207,7 +293,8 @@ public class Lfm3PocketApplication extends Application {
                     }
                     if (request instanceof ToolRegistry.CreateEventRequest) {
                         String target = ((ToolRegistry.CreateEventRequest) request).calendarId;
-                        if (!picked.trim().equals(target == null ? "" : target.trim())) {
+                        String trimmedTarget = target == null ? "" : target.trim();
+                        if (!trimmedTarget.isEmpty() && !picked.trim().equals(trimmedTarget)) {
                             return "Pick the same calendar in Settings before creating events.";
                         }
                     }
@@ -274,6 +361,12 @@ public class Lfm3PocketApplication extends Application {
         return new AndroidCalendarGateway(this, () -> new RuntimePreferences(Lfm3PocketApplication.this).calendarWriteId());
     }
 
+    protected WorkspaceGateway createWorkspaceGateway() {
+        String uri = new RuntimePreferences(this).workspaceTreeUri();
+        if (uri == null || uri.trim().isEmpty()) return null;
+        return new AndroidWorkspaceGateway(this, android.net.Uri.parse(uri));
+    }
+
     protected AndroidActionExecutor createActionExecutor() {
         FlashlightController controller = new FlashlightController(new AndroidFlashlightCamera(this),
                 () -> checkSelfPermission(android.Manifest.permission.CAMERA)
@@ -291,7 +384,10 @@ public class Lfm3PocketApplication extends Application {
                 new TextActionController(textActions, textActions));
         AndroidActionExecutor builtins = new BuiltinToolsExecutor(
                 () -> new RuntimePreferences(this).networkToolsEnabled(),
-                OpenMeteoWeather.httpTransport());
+                OpenMeteoWeather.httpTransport(),
+                () -> new RuntimePreferences(this).raw().getBoolean("search_enabled", false),
+                () -> new RuntimePreferences(this).raw().getString("search_endpoint", ""),
+                WebSearch::search);
         AndroidActionExecutor notifications = new NotificationListActionExecutor(
                 () -> new RuntimePreferences(this),
                 HanamiNotificationListenerService::snapshotOrNull,
@@ -299,6 +395,17 @@ public class Lfm3PocketApplication extends Application {
         MessageActionController mc = new MessageActionController(messageDraftStore(), new AndroidMessageActions(this));
         MessageActionExecutor message = new MessageActionExecutor(mc);
         AndroidActionExecutor calendar = new CalendarActionExecutor(createCalendarGateway());
-        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, reminder, message, calendar);
+        AndroidActionExecutor workspace = new WorkspaceActionExecutor(
+                () -> {
+                    String uri = new RuntimePreferences(this).workspaceTreeUri();
+                    return uri != null && !uri.trim().isEmpty();
+                },
+                this::createWorkspaceGateway);
+        AndroidActionExecutor contacts = new ContactsActionExecutor(
+                () -> checkSelfPermission(android.Manifest.permission.READ_CONTACTS)
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED,
+                new AndroidContactsGateway(this));
+        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text,
+                builtins, notifications, reminder, message, calendar, workspace, contacts);
     }
 }

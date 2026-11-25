@@ -44,6 +44,16 @@ size_t kv_token_count(llama_context * ctx, llama_seq_id seq_id);
  */
 llama_sampler * make_chat_sampler(const llama_vocab * vocab);
 
+/**
+ * Same chat sampler chain, optionally prepending a lazy GBNF grammar sampler that activates only
+ * when generation matches {@code trigger_pattern} (e.g. LFM3 {@code <tool_call>}).
+ */
+llama_sampler * make_chat_sampler_with_lazy_grammar(
+        const llama_vocab * vocab,
+        const char * grammar_str,
+        const char * grammar_root,
+        const char * trigger_pattern);
+
 // Target-model ngram-mod speculative decode (no draft GGUF, no llama-common dependency).
 // KV must contain prompt minus last token.
 bool generate_ngram_mod(

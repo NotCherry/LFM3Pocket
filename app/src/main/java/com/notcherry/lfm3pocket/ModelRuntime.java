@@ -1024,6 +1024,101 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                     if (born != sessionEpoch) return;
                     onSnapshot(snapshot);
                 });
+        session.setToolHost(createChatToolHost());
+    }
+
+    private ChatSession.ToolHost createChatToolHost() {
+        return new ChatSession.ToolHost() {
+            @Override public LfmToolCatalog.Capabilities capabilities(boolean useSearch, String searchEndpoint) {
+                boolean webReady = useSearch && SearchEndpointPolicy.enabled(true, searchEndpoint);
+                boolean weatherReady = preferences.networkToolsEnabled();
+                boolean calRead = app.checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                String pickedId = preferences.calendarWriteId();
+                boolean calWrite = calRead
+                        && app.checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR)
+                                == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        && pickedId != null && !pickedId.trim().isEmpty();
+                boolean notifReady = preferences.notificationAccessEnabled()
+                        && !preferences.notificationAllowlist().isEmpty();
+                String wsUri = preferences.workspaceTreeUri();
+                boolean wsReady = wsUri != null && !wsUri.trim().isEmpty();
+                java.util.List<LfmToolCatalog.ToolSpec> extraTools = new java.util.ArrayList<>();
+                for (ExternalToolProvider provider : app.externalToolProviders()) {
+                    extraTools.addAll(provider.discoverTools());
+                }
+                return new LfmToolCatalog.Capabilities(
+                        webReady, weatherReady, calRead, calWrite, preferences.calendarWriteLabel(), notifReady,
+                        wsReady, preferences.workspaceLabel(), extraTools);
+            }
+
+            @Override public java.util.Locale locale() {
+                return userLocale();
+            }
+
+            @Override public ToolRegistry registry() {
+                return new ToolRegistry(() -> System.currentTimeMillis() / 1000L, app.externalToolProviders());
+            }
+
+            @Override public boolean canAutoExecute(ToolRegistry.Request request) {
+                if (request == null) return false;
+                switch (request.tool) {
+                    case CURRENT_TIME:
+                    case CALCULATOR:
+                    case UNIT_CONVERT:
+                    case SEARCH_TOOLS:
+                        return true;
+                    case WEATHER:
+                        return preferences.networkToolsEnabled();
+                    case WEB_SEARCH:
+                        return SearchEndpointPolicy.enabled(
+                                preferences.raw().getBoolean("search_enabled", false),
+                                preferences.raw().getString("search_endpoint", ""));
+                    case LIST_EVENTS:
+                        return app.checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
+                                == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                    case LOOKUP_CONTACT:
+                        return app.checkSelfPermission(android.Manifest.permission.READ_CONTACTS)
+                                == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                    case FS_LIST:
+                    case FS_SEARCH:
+                    case FS_READ: {
+                        String wsUri = preferences.workspaceTreeUri();
+                        return wsUri != null && !wsUri.trim().isEmpty();
+                    }
+                    default:
+                        return false;
+                }
+            }
+
+            @Override public AndroidActionExecutor.ActionResult executeReadOnly(ToolRegistry.Request request) {
+                return app.createToolHandler().execute(request);
+            }
+
+            @Override public void proposeTool(ToolRegistry.Request request) {
+                proposeTool(request, false);
+            }
+
+            @Override public void proposeTool(ToolRegistry.Request request, boolean tainted) {
+                ToolCoordinator.Outcome outcome = tainted
+                        ? app.toolCoordinator().proposeTainted(request, ToolCoordinator.Source.MODEL_PROPOSAL)
+                        : app.toolCoordinator().propose(request, ToolCoordinator.Source.MODEL_PROPOSAL);
+                if (outcome == null) return;
+                String pickedLabel = preferences.calendarWriteLabel();
+                main.post(() -> {
+                    if ("PENDING_CONFIRMATION".equals(outcome.status) && outcome.proposal != null) {
+                        showConsent(outcome.proposal.id,
+                                ToolCoordinator.formatForDisplay(outcome.proposal.request, pickedLabel,
+                                        outcome.proposal.tainted),
+                                !outcome.proposal.tainted && outcome.proposal.risk == ToolCoordinator.Risk.SAFE);
+                    }
+                    if (ui != null && ui.isUsable()) {
+                        ToolRegistry.Request req = outcome.proposal == null ? request : outcome.proposal.request;
+                        ui.onToolOutcome(req, outcome);
+                    }
+                });
+            }
+        };
     }
 
     private void beginTurn(ChatSession.StartedTurn turn) throws Exception {
@@ -1065,7 +1160,8 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             // Only COMPLETED replies become tool proposals. Cancelled text is inert.
             // Document content is DOCUMENT/untrusted and must not authorize tool proposals.
             if ("COMPLETED".equals(turn.status == null ? "" : turn.status.name())
-                    && !turn.untrustedDocumentContext) {
+                    && !turn.untrustedDocumentContext
+                    && !turn.toolHandledInLoop) {
                 proposeToolsFromAssistant(turn.assistantText);
             }
         }
@@ -1238,10 +1334,16 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                     maxTokens, sink);
         }
         @Override public String generateWithMedia(long model, String prompt, String[] mediaPaths, int maxTokens, TokenSink sink) {
-            return delegate.generateWithMedia(model, prompt, mediaPaths, maxTokens, piece -> {
-                onDecodedTokens(1);
-                sink.onToken(piece);
-            });
+            return generateWithMediaAndGrammar(model, prompt, mediaPaths, maxTokens, null, null, sink);
+        }
+        @Override public String generateWithMediaAndGrammar(long model, String prompt, String[] mediaPaths,
+                                                            int maxTokens, String grammar, String grammarTrigger,
+                                                            TokenSink sink) {
+            return delegate.generateWithMediaAndGrammar(model, prompt, mediaPaths, maxTokens, grammar, grammarTrigger,
+                    piece -> {
+                        onDecodedTokens(1);
+                        sink.onToken(piece);
+                    });
         }
         @Override public String generateSpeech(long model, String prompt, SpeechOptions options, AudioSink sink) {
             return delegate.generateSpeech(model, prompt, options, sink);

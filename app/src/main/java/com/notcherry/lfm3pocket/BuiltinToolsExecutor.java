@@ -8,16 +8,34 @@ import java.util.function.BooleanSupplier;
  * untrusted so callers must not treat them as instructions for later turns.
  */
 public final class BuiltinToolsExecutor implements AndroidActionExecutor {
+    public interface WebSearchRunner {
+        java.util.List<WebSearch.Source> search(String endpoint, String query, String timeRange) throws Exception;
+    }
+
     private final BooleanSupplier networkToolsEnabled;
     private final OpenMeteoWeather.Transport weatherTransport;
+    private final BooleanSupplier webSearchEnabled;
+    private final java.util.function.Supplier<String> webSearchEndpoint;
+    private final WebSearchRunner webSearchRunner;
 
     public BuiltinToolsExecutor(BooleanSupplier networkToolsEnabled,
                                 OpenMeteoWeather.Transport weatherTransport) {
+        this(networkToolsEnabled, weatherTransport, () -> false, () -> "", WebSearch::search);
+    }
+
+    public BuiltinToolsExecutor(BooleanSupplier networkToolsEnabled,
+                                OpenMeteoWeather.Transport weatherTransport,
+                                BooleanSupplier webSearchEnabled,
+                                java.util.function.Supplier<String> webSearchEndpoint,
+                                WebSearchRunner webSearchRunner) {
         if (networkToolsEnabled == null || weatherTransport == null) {
             throw new IllegalArgumentException("Missing builtin tool dependencies");
         }
         this.networkToolsEnabled = networkToolsEnabled;
         this.weatherTransport = weatherTransport;
+        this.webSearchEnabled = webSearchEnabled == null ? () -> false : webSearchEnabled;
+        this.webSearchEndpoint = webSearchEndpoint == null ? () -> "" : webSearchEndpoint;
+        this.webSearchRunner = webSearchRunner == null ? WebSearch::search : webSearchRunner;
     }
 
     @Override public ActionResult execute(String approvedToolName, Map<String, String> arguments) {
@@ -25,6 +43,7 @@ public final class BuiltinToolsExecutor implements AndroidActionExecutor {
         if ("calculator".equals(approvedToolName)) return calculator(arguments);
         if ("unit_convert".equals(approvedToolName)) return unitConvert(arguments);
         if ("weather".equals(approvedToolName)) return weather(arguments);
+        if ("web_search".equals(approvedToolName)) return webSearch(arguments);
         return new ActionResult(false, "UNKNOWN_TOOL", "This Android action is not enabled.");
     }
 
@@ -94,6 +113,43 @@ public final class BuiltinToolsExecutor implements AndroidActionExecutor {
             String detail = e.getMessage() == null ? "Weather request failed" : e.getMessage();
             return new ActionResult(false, "WEATHER_UNAVAILABLE",
                     "Weather is unavailable offline or the request failed: " + detail);
+        }
+    }
+
+    private ActionResult webSearch(Map<String, String> arguments) {
+        String endpoint = webSearchEndpoint.get();
+        if (!webSearchEnabled.getAsBoolean() || !SearchEndpointPolicy.enabled(true, endpoint)) {
+            return new ActionResult(false, "WEB_SEARCH_DISABLED",
+                    "Web search is off. Configure an HTTPS SearXNG endpoint and enable Web search in Settings.");
+        }
+        if (arguments == null || !arguments.containsKey("query")) {
+            return new ActionResult(false, "INVALID_ARGUMENTS", "Expected query.");
+        }
+        String query = arguments.get("query");
+        String timeRange = arguments.get("time_range");
+        if (query == null || query.trim().isEmpty()) {
+            return new ActionResult(false, "INVALID_ARGUMENTS", "query is required.");
+        }
+        try {
+            java.util.List<WebSearch.Source> sources = webSearchRunner.search(
+                    endpoint, query.trim(), timeRange == null ? "" : timeRange.trim());
+            if (sources == null || sources.isEmpty()) {
+                return new ActionResult(true, "WEB_SEARCH_EMPTY",
+                        "UNTRUSTED_WEB_SEARCH No search results found for: " + query.trim());
+            }
+            StringBuilder out = new StringBuilder("UNTRUSTED_WEB_SEARCH results");
+            for (int i = 0; i < sources.size(); i++) {
+                WebSearch.Source s = sources.get(i);
+                out.append('\n').append('[').append(i + 1).append("] ")
+                        .append(s.title == null ? "" : s.title.replace('\n', ' '))
+                        .append(" — ").append(s.snippet == null ? "" : s.snippet.replace('\n', ' '))
+                        .append(" (").append(s.url == null ? "" : s.url).append(')');
+            }
+            return new ActionResult(true, "WEB_SEARCH_RESULT", out.toString());
+        } catch (Exception e) {
+            String detail = e.getMessage() == null ? "Search request failed" : e.getMessage();
+            return new ActionResult(false, "WEB_SEARCH_FAILED",
+                    "Web search failed: " + detail);
         }
     }
 
