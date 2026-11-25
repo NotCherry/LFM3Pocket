@@ -1,27 +1,20 @@
 package com.notcherry.lfm3pocket;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.Manifest;
-import android.content.pm.PackageManager;
+import android.content.Context;
 import android.content.Intent;
-import android.graphics.Color;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.net.Uri;
-import android.database.Cursor;
-import android.provider.OpenableColumns;
-import java.util.concurrent.atomic.AtomicBoolean;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.util.Linkify;
-import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
-import android.view.inputmethod.InputMethodManager;
-import android.content.Context;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -30,18 +23,15 @@ import android.widget.TextView;
 import androidx.annotation.StringRes;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public final class MainActivity extends androidx.activity.ComponentActivity implements MainActivitySettingsHost {
-    public static final String EXTRA_HISTORY_CONVERSATION_ID="history_conversation_id";
-    public static final String EXTRA_HISTORY_TITLE="history_title";
+    public static final String EXTRA_HISTORY_CONVERSATION_ID = "history_conversation_id";
+    public static final String EXTRA_HISTORY_TITLE = "history_title";
     public static final String EXTRA_OPEN_SETTINGS = "open_settings";
     public static final String EXTRA_DRAFT_TEXT = "draft_text";
     public static final String EXTRA_FRESH_CHAT = "fresh_chat";
@@ -64,52 +54,48 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private static final int PICK_DOCUMENT = 53;
     private static final int REQUEST_ASSISTANT_ROLE = 54;
 
-
     private ExecutorService worker;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private ModelRuntime runtime;
     private ChatSession session;
     private ChatPanel chatPanel;
-    private ToolCoordinator toolCoordinator;
     private HistoryRepository historyRepository;
-    private String historyConversationId="default";
-    private String historyTitle="Hanami";
+    private String historyConversationId = "default";
+    private String historyTitle = "Hanami";
     private InferenceEngine inferenceEngine;
     private boolean busy = false;
     private boolean generating = false;
     private boolean speaking = false;
     private volatile boolean destroyed = false;
-    private volatile AtomicBoolean importCancellation;
-    private final ExecutorService audioWorker = Executors.newSingleThreadExecutor();
-    private RecordingController recordingController;
-    private VoicePttCoordinator voicePtt;
-    private final java.util.concurrent.atomic.AtomicBoolean voiceSttCancelled = new java.util.concurrent.atomic.AtomicBoolean();
-    private volatile boolean transcribingVoiceInput;
     private PlaybackController playbackController;
     private float attachedInterfaceScale = InterfaceSize.DEFAULT;
+
     private AppearanceSettingsSection appearanceSettings;
     private ImageSettingsSection imageSettingsSection;
     private InferenceSettingsSection inferenceSettingsSection;
     private SearchSettingsSection searchSettingsSection;
     private BackgroundSettingsSection backgroundSettingsSection;
     private IntegrationsSettingsSection integrationsSettingsSection;
+    private ChatShellSection chatShellSection;
+    private ModelImportSettingsSection modelImportSection;
+
+    private ModelImportCoordinator modelImportCoordinator;
+    private AttachmentImportCoordinator attachmentCoordinator;
+    private VoiceInputCoordinator voiceCoordinator;
+    private ModelDownloadDialogs modelDownloadDialogs;
+    private ToolOutcomePresenter toolOutcomePresenter;
+    private CalendarPickerHelper calendarPickerHelper;
+
     private boolean foreground;
-    private boolean microphoneRequested;
     private boolean cameraRequested;
-    private String pendingImagePath = "";
-    private String pendingAudioPath = "";
-    private final java.util.List<ChatSession.Attachment> pendingDocuments = new java.util.ArrayList<>();
     private String lastAssistantReply = "";
-    private boolean pendingAssistantVoiceSession;
     boolean assistantVoiceSessionLaunchRequested;
     boolean freshChatRequestedFromAssist;
 
-    private ChatShellSection chatShellSection;
-    private ModelImportSettingsSection modelImportSection;
     private View settingsHost;
-    private InferenceSettings inferenceSettings=InferenceSettings.DEFAULT;
+    private InferenceSettings inferenceSettings = InferenceSettings.DEFAULT;
     private InferenceSettingsStore settingsStore;
-    private ImageSettings imageSettings=ImageSettings.DEFAULT;
+    private ImageSettings imageSettings = ImageSettings.DEFAULT;
     private ImageSettingsStore imageSettingsStore;
     private boolean settingsLoaded;
     private boolean imageSettingsLoaded;
@@ -118,14 +104,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private boolean searchEnabled = false;
     private String searchEndpoint = "";
     private String mmprojPath = "";
-
     private String voiceUiStatus = "";
+
+    private final List<Runnable> pendingResumeRestores = new ArrayList<>();
+    private String pendingSwitchId;
+    private String pendingSwitchTitle;
 
     private final ModelRuntime.Ui viewer = new ModelRuntime.Ui() {
         @Override public void onChat(String transcript, String message, boolean running) {
             if (destroyed || chatPanel == null || chatShellSection == null) return;
             generating = running;
-            busy = running || recordingActive() || playbackActive() || speaking;
+            recomputeBusy();
             chatPanel.render(transcript, message);
             chatShellSection.applyChatStatusDuringTurn(message, running);
             updateControls();
@@ -147,14 +136,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         }
         @Override public void onPlayback(String message) {
             if (destroyed || chatShellSection == null) return;
-            busy = recordingActive() || playbackActive() || generating || speaking;
+            recomputeBusy();
             setChatStatus(message);
             updateControls();
         }
         @Override public void onSpeech(boolean active, String message) {
             if (destroyed || chatShellSection == null) return;
             speaking = active;
-            busy = active || recordingActive() || playbackActive() || generating;
+            recomputeBusy();
             setChatStatus(message);
             updateControls();
         }
@@ -210,49 +199,88 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         playbackController = runtime.playback();
         historyRepository = new HistoryRepository(HistoryDatabase.get(this));
         adoptConversation(getIntent());
-        recordingController = new RecordingController(new File(getCacheDir(), "recordings"),
-                ((Lfm3PocketApplication)getApplication())::newRecordingSource,
-                () -> ((Lfm3PocketApplication)getApplication()).hasMicrophonePermission(),
-                audioWorker, task -> mainHandler.post(task), (captureState, message, completed) -> {
-                    if (destroyed) { if (completed != null) completed.delete(); return; }
-                    if (completed != null && SpeechInputProviders.usesSttTextPipeline(this)) {
-                        handleCompletedRecordingAsStt(completed);
-                        return;
-                    }
-                    busy = recordingActive() || playbackActive() || speaking || generating;
-                    setChatStatus(message);
-                    if (completed != null) {
-                        if (!pendingAudioPath.isEmpty()) HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
-                        pendingAudioPath = completed.getAbsolutePath();
-                    }
-                    updateControls();
-                });
-        settingsStore=new InferenceSettingsStore(this);
-        imageSettingsStore=new ImageSettingsStore(this);
+        initCoordinators();
+        settingsStore = new InferenceSettingsStore(this);
+        imageSettingsStore = new ImageSettingsStore(this);
         buildUi(state);
         session = runtime.session();
         runtime.attach(viewer);
         updateControls();
+        loadStoredSettings();
+        restoreModelAndStartupFlow(getIntent());
+    }
+
+    private void initCoordinators() {
+        attachmentCoordinator = new AttachmentImportCoordinator(new AttachmentImportCoordinator.Deps(
+                this, worker, () -> chatPanel, () -> imageSettings, () -> destroyed,
+                value -> busy = value, this::setChatStatus, this::updateControls));
+        voiceCoordinator = new VoiceInputCoordinator(new VoiceInputCoordinator.Deps(
+                this, runtime, playbackController, mainHandler, this::pocketPreferences,
+                () -> chatPanel, () -> destroyed, () -> foreground, () -> busy,
+                () -> generating, () -> speaking, () -> settingsLoaded, () -> lastAssistantReply,
+                value -> busy = value, value -> speaking = value, this::recomputeBusy,
+                this::setChatStatus, attachmentCoordinator::onCompletedRecordingAudio,
+                this::send, () -> requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQUEST_AUDIO),
+                this::updateControls));
+        modelImportCoordinator = new ModelImportCoordinator(new ModelImportCoordinator.Deps(
+                this, runtime, worker, this::pocketPreferences, () -> destroyed,
+                () -> busy, value -> busy = value, this::setChatStatus, this::updateControls,
+                voiceCoordinator::maybeStartPendingAssistantVoiceSession,
+                () -> {
+                    if (integrationsSettingsSection != null) integrationsSettingsSection.paintSpeechInputControls();
+                }));
+        modelDownloadDialogs = new ModelDownloadDialogs(new ModelDownloadDialogs.Deps(
+                this, this::requestNotificationPermissionForModelDownloadIfNeeded,
+                () -> chatShellSection != null, this::setChatStatus,
+                () -> {
+                    if (integrationsSettingsSection != null) integrationsSettingsSection.paintTinyVocaPackStatus();
+                },
+                () -> {
+                    if (integrationsSettingsSection != null) integrationsSettingsSection.paintSpeechInputControls();
+                }));
+        toolOutcomePresenter = new ToolOutcomePresenter(new ToolOutcomePresenter.Deps(
+                this, runtime, historyRepository, worker, mainHandler, () -> chatPanel,
+                () -> historyConversationId, () -> historyTitle, () -> destroyed));
+        calendarPickerHelper = new CalendarPickerHelper(new CalendarPickerHelper.Deps(
+                this, () -> requestPermissions(new String[] { Manifest.permission.READ_CALENDAR }, REQUEST_READ_CALENDAR),
+                this::setChatStatus,
+                () -> {
+                    if (integrationsSettingsSection != null) integrationsSettingsSection.refreshCalendarPickerStatus();
+                }));
+    }
+
+    private void loadStoredSettings() {
         settingsStore.load(settings -> {
             if (destroyed) return;
-            inferenceSettings=settings;inferenceEngine.configure(settings);settingsLoaded=true;
-            syncInlineSettingsFields();updateControls();
+            inferenceSettings = settings;
+            inferenceEngine.configure(settings);
+            settingsLoaded = true;
+            syncInlineSettingsFields();
+            updateControls();
         }, error -> {
             if (destroyed) return;
-            inferenceSettings=InferenceSettings.DEFAULT;inferenceEngine.configure(inferenceSettings);
-            settingsLoaded=true;setChatStatus("Settings unavailable; using defaults: "+error);
-            syncInlineSettingsFields();updateControls();
+            inferenceSettings = InferenceSettings.DEFAULT;
+            inferenceEngine.configure(inferenceSettings);
+            settingsLoaded = true;
+            setChatStatus("Settings unavailable; using defaults: " + error);
+            syncInlineSettingsFields();
+            updateControls();
         });
         imageSettingsStore.load(settings -> {
             if (destroyed) return;
-            imageSettings=settings;imageSettingsLoaded=true;
+            imageSettings = settings;
+            imageSettingsLoaded = true;
             if (imageSettingsSection != null) imageSettingsSection.syncFields();
         }, error -> {
             if (destroyed) return;
-            imageSettings=ImageSettings.DEFAULT;imageSettingsLoaded=true;
+            imageSettings = ImageSettings.DEFAULT;
+            imageSettingsLoaded = true;
             if (imageSettingsSection != null) imageSettingsSection.syncFields();
-            setChatStatus("Image settings unavailable; using defaults: "+error);
+            setChatStatus("Image settings unavailable; using defaults: " + error);
         });
+    }
+
+    private void restoreModelAndStartupFlow(Intent intent) {
         String previous = pocketPreferences().getString("model", "");
         mmprojPath = pocketPreferences().getString("mmproj", "");
         searchEndpoint = pocketPreferences().getString("search_endpoint", "");
@@ -260,31 +288,36 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         chatPanel.setIdleMode(searchEnabled);
         syncInlineSettingsFields();
         syncBackgroundControls();
-        final boolean launchNewChat = shouldDeferNewChat(getIntent());
-        consumeAssistantVoiceSessionIntent(getIntent());
+        final boolean launchNewChat = shouldDeferNewChat(intent);
+        consumeAssistantVoiceSessionIntent(intent);
         final boolean modelInMemory = runtime.handle() != 0L
-                && (previous.equals(runtime.loadedPath()) || isContentUri(previous));
+                && (previous.equals(runtime.loadedPath()) || ModelImportCoordinator.isContentUri(previous));
         if (modelInMemory) {
-            if (!launchNewChat && !runtime.isGenerating()) setChatStatus(mmprojPath == null || mmprojPath.isEmpty()
-                    ? getString(R.string.status_text_model_ready) : getString(R.string.status_omni_model_ready));
-        } else if (!previous.isEmpty() && (isContentUri(previous) || new File(previous).isFile())) {
-            loadSelectedModel(previous, mmprojPath);
+            if (!launchNewChat && !runtime.isGenerating()) {
+                setChatStatus(mmprojPath == null || mmprojPath.isEmpty()
+                        ? getString(R.string.status_text_model_ready)
+                        : getString(R.string.status_omni_model_ready));
+            }
+        } else if (!previous.isEmpty()
+                && (ModelImportCoordinator.isContentUri(previous) || new File(previous).isFile())) {
+            modelImportCoordinator.loadSelectedModel(previous, mmprojPath);
         } else if (runtime.handle() == 0L) {
             setChatStatus(R.string.status_no_model_loaded);
         }
         if (launchNewChat) {
-            mainHandler.post(() -> handlePendingNewChatRequests(getIntent()));
+            mainHandler.post(() -> handlePendingNewChatRequests(intent));
         } else {
             // Resume path: re-apply persisted history if async restore raced with startup/model load.
             scheduleResumeRestores(historyConversationId);
         }
         if (pendingSwitchId != null) confirmSwitchConversation();
-        maybeStartPendingAssistantVoiceSession();
+        voiceCoordinator.maybeStartPendingAssistantVoiceSession();
     }
 
-    private final java.util.List<Runnable> pendingResumeRestores = new java.util.ArrayList<>();
-    private String pendingSwitchId;
-    private String pendingSwitchTitle;
+    private void recomputeBusy() {
+        busy = generating || speaking
+                || (voiceCoordinator != null && (voiceCoordinator.recordingActive() || voiceCoordinator.playbackActive()));
+    }
 
     private void scheduleResumeRestores(String resumeId) {
         cancelPendingResumeRestores();
@@ -315,13 +348,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         String requested = intent == null ? null : intent.getStringExtra(EXTRA_HISTORY_CONVERSATION_ID);
         String requestedTitle = intent == null ? null : intent.getStringExtra(EXTRA_HISTORY_TITLE);
         boolean explicit = requested != null && !requested.isBlank();
-        android.content.SharedPreferences prefs = pocketPreferences();
+        SharedPreferences prefs = pocketPreferences();
         OpenConversation choice = OpenConversation.choose(
                 explicit ? requested : null,
                 prefs.getString("history_conversation_id", ""),
                 runtime.conversationId(),
                 runtime.isGenerating(),
-                java.util.UUID.randomUUID().toString());
+                UUID.randomUUID().toString());
         String id = choice.id;
         String title = requestedTitle != null && !requestedTitle.isBlank() ? requestedTitle
                 : prefs.getString("history_title", runtime.historyTitle());
@@ -362,7 +395,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                     runtime.clearConversation();
                     lastAssistantReply = "";
                     historyConversationId = id;
-                    historyTitle = title == null || title.isBlank() ? getString(R.string.new_conversation_title) : title;
+                    historyTitle = title == null || title.isBlank()
+                            ? getString(R.string.new_conversation_title) : title;
                     runtime.setConversation(historyConversationId, historyTitle);
                     if (chatShellSection != null) chatShellSection.setBrandTitle(historyTitle);
                 })
@@ -374,19 +408,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private long modelHandle() { return runtime == null ? 0L : runtime.handle(); }
 
-    @Override public Activity settingsActivity() {
-        return this;
-    }
+    @Override public Activity settingsActivity() { return this; }
 
     @Override public int dp(int n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
 
-    @Override public boolean isHostFinishing() {
-        return destroyed;
-    }
+    @Override public boolean isHostFinishing() { return destroyed; }
 
-    @Override public Handler settingsMainHandler() {
-        return mainHandler;
-    }
+    @Override public Handler settingsMainHandler() { return mainHandler; }
 
     @Override public void prepareSettingsRecreateForInterfaceSize() {
         if (getIntent() != null) getIntent().putExtra(EXTRA_OPEN_SETTINGS, true);
@@ -412,7 +440,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     @Override public EditText addSettingInput(LinearLayout form, String title, String hint, int value, int id,
             int step, int min, int max) {
-        return settingInput(form, title, hint, value, id, step, min, max);
+        return SettingStepperHelper.addSettingInput(this, form, title, hint, value, id, step, min, max);
     }
 
     @Override public TextView label(String s, int sp, int color) {
@@ -436,15 +464,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private void onChatPanelNewChat() {
         cancelPendingResumeRestores();
-        voiceSttCancelled.set(true);
-        HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
-        HistoryMediaCleanup.deleteAttachment(this, pendingAudioPath);
-        pendingImagePath = "";
-        pendingAudioPath = "";
-        clearPendingDocuments();
+        voiceCoordinator.cancelPendingStt();
+        attachmentCoordinator.clearAndDeletePending(true);
         lastAssistantReply = "";
-        if (playbackActive()) playbackController.stop();
-        chatPanel.clearImageAttachment();
+        if (voiceCoordinator.playbackActive()) playbackController.stop();
         chatPanel.clearToolCard();
         runtime.clearConversation();
         lastAssistantReply = "";
@@ -455,10 +478,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         runtime.noteSubmission("retry", inferenceSettings.maxTokens);
         if (runtime.retryInterrupted(turnId)) {
             session = runtime.session();
-            pendingImagePath = "";
-            pendingAudioPath = "";
-            clearPendingDocuments();
-            chatPanel.clearImageAttachment();
+            attachmentCoordinator.clearPendingForRetry();
             busy = true;
             updateControls();
         }
@@ -482,7 +502,36 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                         this::onChatPanelRetryTurn, this::requestCompact)));
         chatShellSection.mountChrome(root, ink, inkMuted, accent);
 
-        // --- Settings host (hidden by default) ---
+        settingsHost = buildSettingsHost(surface, ink, inkMuted, accent);
+        settingsHost.setVisibility(View.GONE);
+        root.addView(settingsHost, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        // --- Chat shell (primary viewport) ---
+        chatShellSection.mountViewport(root, surface);
+        chatPanel = chatShellSection.chatPanel();
+        photoButton = chatShellSection.photoButton();
+        cameraButton = chatShellSection.cameraButton();
+        documentButton = chatShellSection.documentButton();
+        recordButton = chatShellSection.recordButton();
+        speakButton = chatShellSection.speakButton();
+
+        setContentView(root);
+
+        photoButton.setOnClickListener(v -> pickPhoto());
+        cameraButton.setOnClickListener(v -> takePhoto());
+        documentButton.setOnClickListener(v -> pickDocument());
+        voiceCoordinator.bindRecordButton(recordButton);
+        speakButton.setOnClickListener(v -> voiceCoordinator.toggleSpokenReply());
+        // Keep Settings open across interface-size recreate via EXTRA_OPEN_SETTINGS only.
+        // Do not persist settings_open in savedInstanceState — InferenceSettingsE2eTest and
+        // other recreate paths expect to return to chat after scenario.recreate().
+        if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) {
+            setSettingsOpen(true);
+        }
+        applyDraft(getIntent());
+    }
+
+    private LinearLayout buildSettingsHost(int surface, int ink, int inkMuted, int accent) {
         LinearLayout settingsRoot = new LinearLayout(this);
         settingsRoot.setOrientation(LinearLayout.VERTICAL);
         settingsRoot.setBackgroundColor(surface);
@@ -517,7 +566,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 this::pickModel, this::pickMmproj,
                 () -> pickExternalModel(OPEN_MODEL_URI),
                 () -> pickExternalModel(OPEN_MMPROJ_URI),
-                this::reloadSelectedModel, this::unloadSelectedModel, this::showInferenceSettings));
+                modelImportCoordinator::reloadSelectedModel,
+                modelImportCoordinator::unloadSelectedModel,
+                this::showInferenceSettings));
         modelImportSection.mount(configuration, accent);
 
         appearanceSettings = new AppearanceSettingsSection(this);
@@ -565,8 +616,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 () -> new RuntimePreferences(this), () -> {
                     if (runtime != null) runtime.refreshVoiceAvailability();
                     updateControls();
-                }, this::pickCalendarTarget,
-                this::pickWhistleModel, this::downloadCactusWhistleModel, this::downloadTinyVocaPack,
+                }, calendarPickerHelper::pickCalendarTarget,
+                this::pickWhistleModel, modelDownloadDialogs::downloadCactusWhistleModel,
+                modelDownloadDialogs::downloadTinyVocaPack,
                 this::runOnUiThread, this::setChatStatus));
         integrationsSettingsSection.mount(configuration, ink, inkMuted);
 
@@ -604,60 +656,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             Button saveSearch = searchSettingsSection.createSaveButton();
             StillwaterReadable.setTextSizeSp(saveSearch, 15f);
             StillwaterReadable.addFlexibleButtonRow(settingsActions, this, 50,
-                    new float[]{1.15f, 1f}, saveInference, saveSearch);
+                    new float[] { 1.15f, 1f }, saveInference, saveSearch);
         } else {
             StillwaterReadable.addFlexibleFullWidth(settingsActions, saveInference, 50);
         }
         settingsRoot.addView(settingsActions, new LinearLayout.LayoutParams(-1, -2));
-
-        settingsHost = settingsRoot;
-        settingsHost.setVisibility(View.GONE);
-        root.addView(settingsHost, new LinearLayout.LayoutParams(-1, 0, 1f));
-
-        // --- Chat shell (primary viewport) ---
-        chatShellSection.mountViewport(root, surface);
-        chatPanel = chatShellSection.chatPanel();
-        photoButton = chatShellSection.photoButton();
-        cameraButton = chatShellSection.cameraButton();
-        documentButton = chatShellSection.documentButton();
-        recordButton = chatShellSection.recordButton();
-        speakButton = chatShellSection.speakButton();
-
-        setContentView(root);
-
-        photoButton.setOnClickListener(v -> pickPhoto());
-        cameraButton.setOnClickListener(v -> takePhoto());
-        documentButton.setOnClickListener(v -> pickDocument());
-        voicePtt = new VoicePttCoordinator(runtime, () -> {
-            if (!((Lfm3PocketApplication) getApplication()).hasMicrophonePermission()) {
-                microphoneRequested = true;
-                requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQUEST_AUDIO);
-            }
-        });
-        recordButton.setOnClickListener(v -> {
-            if (useVoicePttInChat() && voicePtt.onClick(v)) return;
-            if (useVoicePttInChat()) return;
-            toggleRecording();
-        });
-        recordButton.setOnTouchListener((v, event) -> useVoicePttInChat() && voicePtt.onTouch(v, event));
-        speakButton.setOnClickListener(v -> toggleSpokenReply());
-        // Keep Settings open across interface-size recreate via EXTRA_OPEN_SETTINGS only.
-        // Do not persist settings_open in savedInstanceState — InferenceSettingsE2eTest and
-        // other recreate paths expect to return to chat after scenario.recreate().
-        if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_OPEN_SETTINGS, false)) {
-            setSettingsOpen(true);
-        }
-        applyDraft(getIntent());
-    }
-
-    /**
-     * In Cactus Whistle STT mode, Chat's Voice input button always uses tap-to-record -> local STT
-     * -> normal text chat pipeline so transcribed turns appear in Chat and History. Hold-to-talk
-     * VoicePttCoordinator stays active only for LFM3-Omni voice actions.
-     */
-    private boolean useVoicePttInChat() {
-        if (SpeechInputProviders.usesSttTextPipeline(this)) return false;
-        return runtime != null && runtime.voice().isEnabled();
+        return settingsRoot;
     }
 
     private void setSettingsOpen(boolean open) {
@@ -679,46 +683,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         photoButton.setEnabled(!busy);
         cameraButton.setEnabled(!busy);
         if (documentButton != null) documentButton.setEnabled(!busy);
-        RecordingController.State capture = recordingController.state();
-        boolean voiceMic = useVoicePttInChat();
-        boolean voiceListening = runtime != null && runtime.voice().isEnabled() && runtime.voice().isListening();
-        recordButton.setText(capture == RecordingController.State.STOPPING ? getString(R.string.finishing)
-                : voiceListening ? getString(R.string.voice_listening)
-                : recordingActive() ? getString(R.string.stop_recording) : getString(R.string.voice_input));
-        if (voiceMic || voiceListening) {
-            String description = (voiceUiStatus != null && !voiceUiStatus.isEmpty())
-                    ? voiceUiStatus
-                    : (voiceListening ? getString(R.string.voice_listening)
-                            : getString(R.string.voice_record_talkback));
-            if (voiceListening && !description.toLowerCase(java.util.Locale.ROOT).contains("listen")) {
-                description = getString(R.string.voice_listening);
-            }
-            recordButton.setContentDescription(description);
-            if (!description.equals(recordButton.getTag(R.id.voice_record))) {
-                recordButton.setTag(R.id.voice_record, description);
-                if (voiceListening || (voiceUiStatus != null && !voiceUiStatus.isEmpty())) {
-                    recordButton.announceForAccessibility(description);
-                }
-            }
-        } else {
-            recordButton.setContentDescription(null);
-            recordButton.setTag(R.id.voice_record, null);
-        }
-        recordButton.setEnabled(capture != RecordingController.State.STOPPING && (!busy || recordingActive() || voiceMic));
-        PlaybackController.State playback = playbackController.state();
-        speakButton.setText(playback == PlaybackController.State.STOPPING
-                ? getString(R.string.stopping_speech)
-                : (playbackActive() || speaking) ? getString(R.string.stop_speech) : getString(R.string.speak_reply));
-        boolean canSpeakReply = !lastAssistantReply.isBlank()
-                && ((modelHandle() != 0L && settingsLoaded) || canSpeakWithoutOmniModel());
-        speakButton.setEnabled((!busy || playbackActive() || speaking)
-                && (playbackActive() || speaking || canSpeakReply));
-        boolean canCompact = !busy && !speaking && !recordingActive() && !playbackActive()
-                && importCancellation == null && modelHandle() != 0L && settingsLoaded;
+        voiceCoordinator.paintVoiceControls(recordButton, speakButton, voiceUiStatus);
+
+        boolean recording = voiceCoordinator.recordingActive();
+        boolean playback = voiceCoordinator.playbackActive();
+        boolean transcribing = voiceCoordinator.isTranscribing();
+        boolean importing = modelImportCoordinator.isImporting();
+        boolean canCompact = !busy && !speaking && !recording && !playback
+                && !importing && modelHandle() != 0L && settingsLoaded;
         chatPanel.setModelReady(modelHandle() != 0L);
         chatPanel.updateControls(!busy && modelHandle() != 0L && settingsLoaded,
-                generating || speaking || recordingActive() || playbackActive() || transcribingVoiceInput || importCancellation != null,
-                !busy || generating || transcribingVoiceInput,
+                generating || speaking || recording || playback || transcribing || importing,
+                !busy || generating || transcribing,
                 canCompact);
 
         if (modelImportSection != null) {
@@ -735,7 +711,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void requestCompact() {
-        if (busy || generating || speaking || recordingActive() || playbackActive() || modelHandle() == 0L || !settingsLoaded) {
+        if (busy || generating || speaking || voiceCoordinator.recordingActive()
+                || voiceCoordinator.playbackActive() || modelHandle() == 0L || !settingsLoaded) {
             if (modelHandle() == 0L) setChatStatus("No model loaded.");
             return;
         }
@@ -751,96 +728,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         }
     }
 
-    private void reloadSelectedModel() {
-        if (busy) return;
-        String model = pocketPreferences().getString("model", "");
-        if (!model.isEmpty()) loadSelectedModel(model, pocketPreferences().getString("mmproj", ""));
-    }
-
-    private void unloadSelectedModel() {
-        if (busy || modelHandle() == 0) return;
-        busy = true;
-        setChatStatus("Unloading model...");
-        updateControls();
-        runtime.unload("user", () -> {
-            if (destroyed) return;
-            busy = false;
-            setChatStatus("Model unloaded. Selected files remain available for reload.");
-            updateControls();
-        });
-    }
-
-    private EditText settingInput(LinearLayout form, String title, String hint, int value, int id,
-                                  int step, int min, int max) {
-        int minTouch = Math.max(dp(48), InterfaceSize.minTouchPx(this));
-        TextView name = label(title, 16, StillwaterUi.INK);
-        name.setTypeface(StillwaterUi.sansMedium(this));
-        name.setPadding(0, dp(12), 0, dp(2));
-        StillwaterReadable.prepareWrappingLabel(name);
-        form.addView(name);
-        TextView hintView = label(hint, 13, StillwaterUi.SOFT);
-        hintView.setTypeface(StillwaterUi.sans(this));
-        hintView.setLineSpacing(0f, 1.25f);
-        hintView.setPadding(0, 0, 0, dp(8));
-        StillwaterReadable.prepareWrappingLabel(hintView);
-        form.addView(hintView);
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        int stepperWidth = Math.max(dp(56), minTouch);
-        Button minus = button("–");
-        StillwaterUi.outlined(minus);
-        StillwaterReadable.setTextSizeSp(minus, 20);
-        minus.setMinWidth(stepperWidth);
-        minus.setMinimumWidth(stepperWidth);
-        minus.setMinimumHeight(minTouch);
-        StillwaterReadable.prepareWrappingControl(minus, minTouch);
-        EditText field = new EditText(this);
-        field.setId(id);
-        field.setSingleLine(true);
-        field.setInputType(InputType.TYPE_CLASS_NUMBER);
-        field.setText(Integer.toString(value));
-        StillwaterReadable.setTextSizeSp(field, 16);
-        field.setGravity(Gravity.CENTER);
-        field.setTypeface(StillwaterUi.mono(this));
-        StillwaterUi.styleBoxedInput(field);
-        field.setMinimumHeight(minTouch);
-        Button plus = button("+");
-        StillwaterUi.outlined(plus);
-        StillwaterReadable.setTextSizeSp(plus, 20);
-        plus.setMinWidth(stepperWidth);
-        plus.setMinimumWidth(stepperWidth);
-        plus.setMinimumHeight(minTouch);
-        StillwaterReadable.prepareWrappingControl(plus, minTouch);
-        minus.setOnClickListener(v -> nudge(field, -step, min, max));
-        plus.setOnClickListener(v -> nudge(field, step, min, max));
-        row.addView(minus, new LinearLayout.LayoutParams(stepperWidth, LinearLayout.LayoutParams.WRAP_CONTENT));
-        LinearLayout.LayoutParams fieldParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        fieldParams.leftMargin = dp(8);
-        fieldParams.rightMargin = dp(8);
-        row.addView(field, fieldParams);
-        row.addView(plus, new LinearLayout.LayoutParams(stepperWidth, LinearLayout.LayoutParams.WRAP_CONTENT));
-        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, -2);
-        rowParams.bottomMargin = dp(4);
-        form.addView(row, rowParams);
-        return field;
-    }
-
-    private void nudge(EditText field, int delta, int min, int max) {
-        int current;
-        try {
-            current = Integer.parseInt(field.getText().toString().trim());
-        } catch (NumberFormatException invalid) {
-            current = min;
-        }
-        int next = Math.max(min, Math.min(max, current + delta));
-        field.setText(Integer.toString(next));
-    }
-
     private void syncInlineSettingsFields() {
         if (inferenceSettingsSection != null) inferenceSettingsSection.syncFields();
         if (searchSettingsSection != null) searchSettingsSection.syncFields();
         if (integrationsSettingsSection != null) integrationsSettingsSection.syncFields();
+    }
+
+    private void syncBackgroundControls() {
+        if (backgroundSettingsSection != null) backgroundSettingsSection.syncControls();
+        if (integrationsSettingsSection != null) integrationsSettingsSection.syncControls();
     }
 
     private void showInferenceSettings() {
@@ -878,13 +774,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         startActivityForResult(new Intent(this, CameraCaptureActivity.class), TAKE_PHOTO);
     }
 
-
     private void pickDocument() {
         if (busy) return;
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         pick.addCategory(Intent.CATEGORY_OPENABLE);
         pick.setType("*/*");
-        pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+        pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
                 "text/plain", "text/markdown", "text/csv", "text/html", "text/xml",
                 "application/json", "application/xml", "application/pdf"
         });
@@ -892,448 +787,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         startActivityForResult(pick, PICK_DOCUMENT);
     }
 
-    private void importSelectedDocuments(Intent data) {
-        if (data == null) return;
-        java.util.ArrayList<Uri> uris = new java.util.ArrayList<>();
-        android.content.ClipData clip = data.getClipData();
-        if (clip != null) {
-            for (int i = 0; i < clip.getItemCount(); i++) {
-                Uri uri = clip.getItemAt(i).getUri();
-                if (uri != null) uris.add(uri);
-            }
-        } else if (data.getData() != null) {
-            uris.add(data.getData());
-        }
-        if (uris.isEmpty()) return;
-        if (pendingDocuments.size() + uris.size() > DocumentAttachmentReader.MAX_FILES) {
-            setChatStatus("You can attach up to " + DocumentAttachmentReader.MAX_FILES + " documents.");
-            return;
-        }
-        busy = true;
-        updateControls();
-        setChatStatus(getString(R.string.importing_document));
-        worker.execute(() -> {
-            java.util.ArrayList<ChatSession.Attachment> imported = new java.util.ArrayList<>();
-            String error = null;
-            for (Uri uri : uris) {
-                if (destroyed) return;
-                File temp = null;
-                try {
-                    String displayName = displayNameForUri(uri);
-                    String mime = getContentResolver().getType(uri);
-                    long size = selectedUriSize(uri);
-                    long maxBytes = DocumentAttachmentReader.isPdfMimeOrName(mime, displayName)
-                            ? DocumentAttachmentReader.MAX_PDF_BYTES : DocumentAttachmentReader.MAX_TEXT_BYTES;
-                    if (size >= 0 && size > maxBytes) {
-                        error = DocumentAttachmentReader.isPdfMimeOrName(mime, displayName)
-                                ? displayName + ": This PDF is too large to attach."
-                                : displayName + ": This file is too large to attach.";
-                        break;
-                    }
-                    temp = copyUriToCache(uri, "doc-" + System.currentTimeMillis() + "-" + imported.size() + ".tmp", maxBytes);
-                    DocumentAttachmentReader.Result result = DocumentAttachmentReader.read(temp, displayName, mime);
-                    if (!result.isOk()) {
-                        error = result.displayName + ": " + result.error;
-                        break;
-                    }
-                    imported.add(ChatSession.Attachment.document(result.displayName, result.text));
-                } catch (Exception e) {
-                    String name = displayNameForUri(uri);
-                    String message = e.getMessage() == null ? "Could not read this file." : e.getMessage();
-                    error = name + ": " + message;
-                    break;
-                } finally {
-                    if (temp != null && temp.exists()) temp.delete();
-                }
-            }
-            final String importError = error;
-            final java.util.ArrayList<ChatSession.Attachment> ok = imported;
-            runOnUiThread(() -> {
-                if (destroyed) return;
-                busy = false;
-                if (importError != null) {
-                    setChatStatus(importError);
-                } else if (!ok.isEmpty()) {
-                    pendingDocuments.addAll(ok);
-                    setChatStatus(getString(R.string.documents_attached_status, pendingDocuments.size()));
-                }
-                syncPendingDocumentsUi();
-                updateControls();
-            });
-        });
-    }
+    private void pickModel() { pickModel(PICK_MODEL); }
 
-    private boolean isPdfUri(Uri uri, String displayName) {
-        String mime = getContentResolver().getType(uri);
-        return DocumentAttachmentReader.isPdfMimeOrName(mime, displayName);
-    }
-
-    private long selectedUriSize(Uri uri) {
-        try (Cursor cursor = getContentResolver().query(uri,
-                new String[] { OpenableColumns.SIZE }, null, null, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                int column = cursor.getColumnIndex(OpenableColumns.SIZE);
-                if (column >= 0 && !cursor.isNull(column)) return cursor.getLong(column);
-            }
-        } catch (Exception ignored) {
-        }
-        return -1L;
-    }
-
-    private String displayNameForUri(Uri uri) {
-        try (Cursor cursor = getContentResolver().query(uri,
-                new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                int column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
-                if (column >= 0 && !cursor.isNull(column)) {
-                    String name = cursor.getString(column);
-                    if (name != null && !name.trim().isEmpty()) return name.trim();
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        String last = uri == null ? null : uri.getLastPathSegment();
-        return last == null || last.trim().isEmpty() ? "document" : last.trim();
-    }
-
-    private File copyUriToCache(Uri uri, String name, long maxBytes) throws IOException {
-        File out = new File(getCacheDir(), name);
-        try (InputStream input = getContentResolver().openInputStream(uri);
-             FileOutputStream output = new FileOutputStream(out)) {
-            if (input == null) throw new IOException("Could not read the selected file.");
-            byte[] buffer = new byte[64 * 1024];
-            long total = 0;
-            int count;
-            while ((count = input.read(buffer)) != -1) {
-                total += count;
-                if (maxBytes > 0 && total > maxBytes) {
-                    throw new IOException("This file is too large to attach.");
-                }
-                output.write(buffer, 0, count);
-            }
-            output.getFD().sync();
-            return out;
-        } catch (IOException e) {
-            out.delete();
-            throw e;
-        }
-    }
-
-    private void removePendingDocument(int index) {
-        if (index < 0 || index >= pendingDocuments.size()) return;
-        pendingDocuments.remove(index);
-        syncPendingDocumentsUi();
-        if (pendingDocuments.isEmpty()) {
-            setChatStatus("Document removed.");
-        } else {
-            setChatStatus(getString(R.string.documents_attached_status, pendingDocuments.size()));
-        }
-        updateControls();
-    }
-
-    private void syncPendingDocumentsUi() {
-        if (chatPanel == null) return;
-        if (pendingDocuments.isEmpty()) {
-            chatPanel.clearDocumentAttachments();
-            return;
-        }
-        java.util.ArrayList<String> names = new java.util.ArrayList<>(pendingDocuments.size());
-        for (ChatSession.Attachment doc : pendingDocuments) names.add(doc.displayName);
-        chatPanel.setDocumentAttachments(names, this::removePendingDocument);
-    }
-
-    private void clearPendingDocuments() {
-        pendingDocuments.clear();
-        if (chatPanel != null) chatPanel.clearDocumentAttachments();
-    }
-
-    private void copySelectedPhoto(Uri uri) {
-        busy = true;
-        updateControls();
-        setChatStatus(getString(R.string.importing_photo));
-        ImageSettings prepareSettings = imageSettings;
-        worker.execute(() -> {
-            File photo = new File(getCacheDir(), "photo-" + System.currentTimeMillis() + ".img");
-            File preparedCopy = null;
-            try {
-                Long reportedSize = selectedPhotoSize(uri);
-                if (reportedSize != null && reportedSize > ImageAttachmentFiles.MAX_IMAGE_BYTES)
-                    throw new IOException("Selected image exceeds the 32 MiB limit.");
-                try (InputStream input = getContentResolver().openInputStream(uri);
-                     FileOutputStream output = new FileOutputStream(photo)) {
-                    if (input == null) throw new IOException("Could not read the selected photo");
-                    byte[] buffer = new byte[64 * 1024];
-                    int count;
-                    long totalBytes = 0;
-                    while ((count = input.read(buffer)) != -1) {
-                        totalBytes += count;
-                        if (totalBytes > ImageAttachmentFiles.MAX_IMAGE_BYTES)
-                            throw new IOException("Selected image exceeds the 32 MiB limit.");
-                        output.write(buffer, 0, count);
-                    }
-                    output.getFD().sync();
-                }
-                String validationError = ImageAttachmentFiles.validationError(photo);
-                if (validationError != null) throw new IOException(validationError);
-                runOnUiThread(() -> {
-                    if (!destroyed) setChatStatus(getString(R.string.preparing_photo));
-                });
-                ImagePreprocessor.Result prepared = ImagePreprocessor.prepare(this, photo, prepareSettings);
-                preparedCopy = prepared.file;
-                if (prepared.prepared && !prepared.file.equals(photo)) photo.delete();
-                setPendingMedia(prepared.file.getAbsolutePath(), "photo", prepared.caption);
-            } catch (Exception e) {
-                photo.delete();
-                if (preparedCopy != null && !preparedCopy.equals(photo)) preparedCopy.delete();
-                runOnUiThread(() -> {
-                    busy = false;
-                    setChatStatus("Photo import failed: " + e.getMessage());
-                    updateControls();
-                });
-            }
-        });
-    }
-
-    private void prepareCapturedPhoto(String path) {
-        busy = true;
-        updateControls();
-        setChatStatus(getString(R.string.preparing_photo));
-        ImageSettings prepareSettings = imageSettings;
-        worker.execute(() -> {
-            File photo = new File(path);
-            File preparedCopy = null;
-            try {
-                String validationError = ImageAttachmentFiles.validationError(photo);
-                if (validationError != null) throw new IOException(validationError);
-                ImagePreprocessor.Result prepared = ImagePreprocessor.prepare(this, photo, prepareSettings);
-                preparedCopy = prepared.file;
-                if (prepared.prepared && !prepared.file.equals(photo)) photo.delete();
-                setPendingMedia(prepared.file.getAbsolutePath(), "photo", prepared.caption);
-            } catch (Exception e) {
-                if (preparedCopy != null && !preparedCopy.equals(photo)) preparedCopy.delete();
-                HistoryMediaCleanup.deleteAttachment(this, path);
-                runOnUiThread(() -> {
-                    busy = false;
-                    setChatStatus("Photo import failed: " + e.getMessage());
-                    updateControls();
-                });
-            }
-        });
-    }
-
-    private Long selectedPhotoSize(Uri uri) {
-        try (Cursor cursor = getContentResolver().query(uri,
-                new String[] { OpenableColumns.SIZE }, null, null, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                int column = cursor.getColumnIndex(OpenableColumns.SIZE);
-                if (column >= 0 && !cursor.isNull(column)) return cursor.getLong(column);
-            }
-        } catch (Exception ignored) {
-            // Some document providers omit size metadata. The bounded stream copy remains authoritative.
-        }
-        return null;
-    }
-
-    private void setPendingMedia(String path, String kind) {
-        setPendingMedia(path, kind, "");
-    }
-
-    private void setPendingMedia(String path, String kind, String caption) {
-        runOnUiThread(() -> {
-            if ("photo".equals(kind)) {
-                if (!pendingImagePath.isEmpty() && !pendingImagePath.equals(path))
-                    HistoryMediaCleanup.deleteAttachment(this,pendingImagePath);
-                pendingImagePath=path;
-                chatPanel.showImageAttachment(path, caption, () -> removePendingImage(path));
-            } else {
-                if (!pendingAudioPath.isEmpty() && !pendingAudioPath.equals(path))
-                    HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
-                pendingAudioPath=path;
-            }
-            busy = false;
-            setChatStatus("photo".equals(kind)
-                    ? getString(R.string.photo_attached_status)
-                    : (kind + " attached. Add a question and press Send."));
-            updateControls();
-        });
-    }
-
-    private void removePendingImage(String expectedPath) {
-        if (!expectedPath.equals(pendingImagePath)) return;
-        HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
-        pendingImagePath = "";
-        chatPanel.clearImageAttachment();
-        setChatStatus("Photo removed. Add a question and press Send.");
-        updateControls();
-    }
-
-    String pendingMediaPathForTest() { return !pendingAudioPath.isEmpty()?pendingAudioPath:pendingImagePath; }
-    String[] pendingMediaPathsForTest() {
-        if(pendingImagePath.isEmpty())return pendingAudioPath.isEmpty()?new String[0]:new String[]{pendingAudioPath};
-        if(pendingAudioPath.isEmpty())return new String[]{pendingImagePath};
-        return new String[]{pendingImagePath,pendingAudioPath};
-    }
-    /** Instrumentation seam: submit through the same path as the Send button without IME/focus races. */
-    void sendForTest(String text) { send(text == null ? "" : text); }
-
-    private boolean recordingActive() {
-        RecordingController.State state = recordingController.state();
-        return state == RecordingController.State.STARTING || state == RecordingController.State.RECORDING
-                || state == RecordingController.State.STOPPING;
-    }
-
-    private boolean playbackActive() {
-        PlaybackController.State state = playbackController.state();
-        return state == PlaybackController.State.STARTING || state == PlaybackController.State.PLAYING
-                || state == PlaybackController.State.STOPPING;
-    }
-
-    private void toggleRecording() {
-        if (recordingActive()) { recordingController.stop(); return; }
-        if (busy || !foreground) return;
-        if (!ensureSttInputReadyIfSelected()) return;
-        if (!((Lfm3PocketApplication)getApplication()).hasMicrophonePermission()) {
-            microphoneRequested = true;
-            requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQUEST_AUDIO);
-            return;
-        }
-        voiceSttCancelled.set(false);
-        recordingController.start();
-    }
-
-    private boolean ensureSttInputReadyIfSelected() {
-        if (!SpeechInputProviders.usesSttTextPipeline(this)) return true;
-        SttAvailability availability = SpeechInputProviders.current(this).availability(this);
-        if (availability.available) return true;
-        String detail = availability.message == null || availability.message.isEmpty()
-                ? getString(R.string.speech_input_cactus_status_missing)
-                : availability.message;
-        setChatStatus(getString(R.string.speech_input_cactus_unavailable, detail));
-        return false;
-    }
-
-    private void handleCompletedRecordingAsStt(File wav) {
-        if (wav == null || !wav.isFile()) return;
-        final File recording = wav;
-        voiceSttCancelled.set(false);
-        transcribingVoiceInput = true;
-        busy = true;
-        setChatStatus(getString(R.string.speech_input_transcribing));
-        updateControls();
-        audioWorker.execute(() -> {
-            SttResult result;
-            try {
-                result = SpeechInputProviders.current(this).transcribe(this, recording, voiceSttCancelled);
-            } catch (Throwable t) {
-                result = SttResult.error(t.getMessage() == null ? t.toString() : t.getMessage());
-            } finally {
-                recording.delete();
-            }
-            final SttResult stt = result;
-            mainHandler.post(() -> {
-                transcribingVoiceInput = false;
-                if (destroyed) return;
-                busy = recordingActive() || playbackActive() || speaking || generating;
-                if (stt == null || stt.status == SttResult.Status.CANCELLED || voiceSttCancelled.get()) {
-                    setChatStatus("Speech transcription cancelled.");
-                    updateControls();
-                    return;
-                }
-                if (!stt.isOk()) {
-                    if (stt.status == SttResult.Status.EMPTY) {
-                        String msg = stt.message == null || stt.message.isEmpty()
-                                ? getString(R.string.speech_input_transcript_empty)
-                                : stt.message;
-                        setChatStatus(msg);
-                    } else {
-                        String detail = stt.message == null || stt.message.isEmpty() ? "unknown error" : stt.message;
-                        setChatStatus(getString(R.string.speech_input_transcript_failed, detail));
-                    }
-                    updateControls();
-                    return;
-                }
-                updateControls();
-                if (modelHandle() == 0L || !settingsLoaded || busy) {
-                    if (chatPanel != null) chatPanel.setDraft(stt.text);
-                    setChatStatus(getString(R.string.speech_input_transcribed_draft));
-                    return;
-                }
-                // Route recognized text into the existing text/inference pipeline (same as typed text).
-                send(stt.text);
-            });
-        });
-    }
-
-    private boolean canSpeakWithoutOmniModel() {
-        return new RuntimePreferences(this).tinyVocaEnglishTtsEnabled();
-    }
-
-    private void toggleSpokenReply() {
-        if (playbackActive() || speaking) {
-            runtime.speak(lastAssistantReply);
-            return;
-        }
-        if (busy || !foreground || lastAssistantReply.isBlank()) return;
-        if (modelHandle() == 0L && !canSpeakWithoutOmniModel()) return;
-        busy = true;
-        speaking = true;
-        updateControls();
-        runtime.speak(lastAssistantReply);
-    }
-
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_CAMERA && cameraRequested) {
-            cameraRequested = false;
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED && !destroyed && !busy) {
-                launchCameraCapture();
-            } else {
-                setChatStatus("Camera access is needed to take a photo.");
-            }
-            updateControls();
-            return;
-        }
-        if (requestCode == REQUEST_AUDIO && microphoneRequested) {
-            microphoneRequested = false;
-            boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-            if (granted && pendingAssistantVoiceSession) {
-                maybeStartPendingAssistantVoiceSession();
-                return;
-            }
-            if (granted && foreground && !destroyed && !busy) {
-                if (ensureSttInputReadyIfSelected()) recordingController.start();
-            } else {
-                setChatStatus("Microphone access is needed for voice input.");
-            }
-            if (!granted) pendingAssistantVoiceSession = false;
-            return;
-        }
-        if (requestCode == REQUEST_READ_CALENDAR) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                showCalendarPickerDialog();
-            } else {
-                setChatStatus(getString(R.string.calendar_permission_needed));
-            }
-            if (integrationsSettingsSection != null) integrationsSettingsSection.refreshCalendarPickerStatus();
-        }
-    }
-
-    @Override protected void onStart() { super.onStart(); foreground = true; }
-
-    @Override protected void onStop() {
-        foreground = false;
-        voiceSttCancelled.set(true);
-        if (recordingController != null && recordingActive()) recordingController.cancel();
-        super.onStop();
-    }
-
-    private void pickModel() {
-        pickModel(PICK_MODEL);
-    }
-
-    private void pickMmproj() {
-        pickModel(PICK_MMPROJ);
-    }
+    private void pickMmproj() { pickModel(PICK_MMPROJ); }
 
     private void pickModel(int requestCode) {
         if (busy) return;
@@ -1360,15 +816,55 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         startActivityForResult(pick, PICK_WHISTLE_MODEL);
     }
 
+    String pendingMediaPathForTest() { return attachmentCoordinator.pendingMediaPathForTest(); }
+
+    String[] pendingMediaPathsForTest() { return attachmentCoordinator.pendingMediaPathsForTest(); }
+
+    /** Instrumentation seam: submit through the same path as the Send button without IME/focus races. */
+    void sendForTest(String text) { send(text == null ? "" : text); }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+        if (requestCode == REQUEST_CAMERA && cameraRequested) {
+            cameraRequested = false;
+            if (granted && !destroyed && !busy) {
+                launchCameraCapture();
+            } else {
+                setChatStatus("Camera access is needed to take a photo.");
+            }
+            updateControls();
+            return;
+        }
+        if (requestCode == REQUEST_AUDIO) {
+            voiceCoordinator.onAudioPermissionResult(granted);
+            return;
+        }
+        if (requestCode == REQUEST_READ_CALENDAR) {
+            calendarPickerHelper.onPermissionResult(granted);
+        }
+    }
+
+    @Override protected void onStart() {
+        super.onStart();
+        foreground = true;
+    }
+
+    @Override protected void onStop() {
+        foreground = false;
+        if (voiceCoordinator != null) voiceCoordinator.onStop();
+        super.onStop();
+    }
+
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
         if (code == PICK_PHOTO && result == RESULT_OK && data != null && data.getData() != null) {
-            copySelectedPhoto(data.getData());
+            attachmentCoordinator.copySelectedPhoto(data.getData());
             return;
         }
         if (code == TAKE_PHOTO && result == RESULT_OK && data != null) {
             String path = data.getStringExtra(CameraCaptureActivity.EXTRA_PHOTO_PATH);
-            if (path != null && new File(path).isFile()) prepareCapturedPhoto(path);
+            if (path != null && new File(path).isFile()) attachmentCoordinator.prepareCapturedPhoto(path);
             else setChatStatus("The camera did not return a photo.");
             return;
         }
@@ -1377,308 +873,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             return;
         }
         if (code == PICK_DOCUMENT && result == RESULT_OK && data != null) {
-            importSelectedDocuments(data);
+            attachmentCoordinator.importSelectedDocuments(data);
             return;
         }
         if ((code == OPEN_MODEL_URI || code == OPEN_MMPROJ_URI)
                 && result == RESULT_OK && data != null && data.getData() != null) {
-            openExternalDocument(data.getData(), code == OPEN_MMPROJ_URI);
+            modelImportCoordinator.openExternalDocument(data.getData(), code == OPEN_MMPROJ_URI);
             return;
         }
         if (code == PICK_WHISTLE_MODEL && result == RESULT_OK && data != null && data.getData() != null) {
-            importWhistleModel(data.getData());
+            modelImportCoordinator.importWhistleModel(data.getData());
             return;
         }
-        if ((code != PICK_MODEL && code != PICK_MMPROJ) || result != RESULT_OK || data == null || data.getData() == null) return;
-        final Uri uri = data.getData();
-        busy = true;
-        updateControls();
-        setChatStatus(code == PICK_MODEL ? getString(R.string.importing_model) : "Importing projector into private storage...");
-        AtomicBoolean cancellation = new AtomicBoolean();
-        importCancellation = cancellation;
-        updateControls();
-        worker.execute(() -> {
-            File imported = null;
-            boolean isProjector = code == PICK_MMPROJ;
-            try {
-                String previousModel = pocketPreferences().getString("model", "");
-                String previousProjector = pocketPreferences().getString("mmproj", "");
-                if (isProjector && previousModel.isEmpty()) throw new IOException("Import a model before its multimodal projector");
-                long expected = -1;
-                String importedName = "Imported GGUF";
-                try (Cursor cursor = getContentResolver().query(uri,
-                        new String[] { OpenableColumns.SIZE, OpenableColumns.DISPLAY_NAME }, null, null, null)) {
-                    if (cursor != null && cursor.moveToFirst()) {
-                        if (!cursor.isNull(0)) expected = cursor.getLong(0);
-                        if (!cursor.isNull(1)) importedName = cursor.getString(1);
-                    }
-                }
-                imported = new ModelImporter(new File(getFilesDir(), "models")).importFile(
-                        () -> getContentResolver().openInputStream(uri), expected, cancellation,
-                        bytes -> runOnUiThread(() -> {
-                            if (!destroyed && !cancellation.get()) setChatStatus("Importing GGUF: " + (bytes / 1024 / 1024) + " MiB. Stop to cancel.");
-                        }));
-                if (cancellation.get()) throw new IOException("Import cancelled");
-                String model = isProjector ? previousModel : imported.getAbsolutePath();
-                String projector = isProjector ? imported.getAbsolutePath() : "";
-                if (runtime.loadBlocking(model, projector, statusText -> runOnUiThread(() -> {
-                    if (!destroyed) setChatStatus(statusText);
-                }))) {
-                    pocketPreferences().edit().putString("model", model)
-                            .putString("mmproj", projector)
-                            .putString(isProjector ? "projector_name" : "model_name", importedName).apply();
-                    if (!isProjector) pocketPreferences().edit().remove("projector_name").apply();
-                    // Only delete owned obsolete imports after the new selection loads.
-                    deleteImportedModel(isProjector ? previousProjector : previousModel);
-                    if (!isProjector) deleteImportedModel(previousProjector);
-                    imported = null;
-                }
-            } catch (Exception e) {
-                runOnUiThread(() -> {
-                    if (!destroyed) setChatStatus("Import failed: " + e.getMessage());
-                });
-            } finally {
-                if (imported != null) imported.delete();
-                importCancellation = null;
-                runOnUiThread(() -> {
-                    if (!destroyed) {
-                        busy = false;
-                        updateControls();
-                        maybeStartPendingAssistantVoiceSession();
-                    }
-                });
-            }
-        });
-    }
-
-    private void openExternalDocument(Uri uri, boolean projector) {
-        busy = true;
-        updateControls();
-        setChatStatus(getString(R.string.opening_external_model));
-        worker.execute(() -> {
-            ExternalModelStore store = ((Lfm3PocketApplication) getApplication()).externalModels();
-            try {
-                String previousModel = pocketPreferences().getString("model", "");
-                String previousProjector = pocketPreferences().getString("mmproj", "");
-                if (projector && previousModel.isEmpty()) {
-                    throw new IOException("Open or import a model before its multimodal projector");
-                }
-                String displayName = "GGUF";
-                try (Cursor cursor = getContentResolver().query(uri,
-                        new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
-                    if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) {
-                        displayName = cursor.getString(0);
-                    }
-                }
-                java.util.HashSet<String> protectedUris = new java.util.HashSet<>();
-                if (isContentUri(previousModel)) protectedUris.add(previousModel);
-                if (isContentUri(previousProjector)) protectedUris.add(previousProjector);
-                store.remember(uri, displayName, projector, protectedUris);
-                ExternalModelStore.Opened opened = store.open(uri);
-                String modelPath;
-                String projectorPath;
-                String nextModelUri = projector ? previousModel : uri.toString();
-                String nextProjectorUri = projector ? uri.toString() : "";
-                if (projector) {
-                    modelPath = resolveLoadPath(previousModel, store);
-                    projectorPath = opened.path;
-                } else {
-                    modelPath = opened.path;
-                    projectorPath = "";
-                }
-                GgufSelection.validate(new File(modelPath),
-                        projectorPath.isEmpty() ? null : new File(projectorPath));
-                boolean loaded = runtime.loadBlocking(modelPath, projectorPath, statusText -> runOnUiThread(() -> {
-                    if (!destroyed) setChatStatus(statusText);
-                }));
-                if (loaded) {
-                    pocketPreferences().edit()
-                            .putString("model", nextModelUri)
-                            .putString("mmproj", nextProjectorUri)
-                            .putString(projector ? "projector_name" : "model_name", displayName)
-                            .apply();
-                    if (!projector) pocketPreferences().edit().remove("projector_name").apply();
-                    java.util.HashSet<String> active = new java.util.HashSet<>();
-                    if (isContentUri(nextModelUri)) active.add(nextModelUri);
-                    if (isContentUri(nextProjectorUri)) active.add(nextProjectorUri);
-                    store.releaseExcept(active);
-                } else {
-                    java.util.HashSet<String> active = new java.util.HashSet<>();
-                    if (isContentUri(previousModel)) active.add(previousModel);
-                    if (isContentUri(previousProjector)) active.add(previousProjector);
-                    store.releaseExcept(active);
-                }
-            } catch (Exception e) {
-                runOnUiThread(() -> {
-                    if (!destroyed) setChatStatus("Could not open storage model: " + e.getMessage());
-                });
-            } finally {
-                runOnUiThread(() -> {
-                    if (!destroyed) {
-                        busy = false;
-                        updateControls();
-                        maybeStartPendingAssistantVoiceSession();
-                    }
-                });
-            }
-        });
-    }
-
-    private String resolveLoadPath(String stored, ExternalModelStore store) throws IOException {
-        if (isContentUri(stored)) {
-            return store.open(Uri.parse(stored)).path;
+        if ((code == PICK_MODEL || code == PICK_MMPROJ)
+                && result == RESULT_OK && data != null && data.getData() != null) {
+            modelImportCoordinator.importPickedGguf(data.getData(), code == PICK_MMPROJ);
         }
-        if (stored == null || stored.isEmpty() || !new File(stored).isFile()) {
-            throw new IOException("Selected model is missing");
-        }
-        return stored;
-    }
-
-    private void deleteImportedModel(String path) {
-        if (path == null || isContentUri(path)) return;
-        File file = new File(path);
-        if (new File(getFilesDir(), "models").equals(file.getParentFile())) file.delete();
-    }
-
-    private void importWhistleModel(Uri uri) {
-        busy = true;
-        updateControls();
-        setChatStatus(getString(R.string.opening_external_model));
-        worker.execute(() -> {
-            File dest = null;
-            try {
-                String name = "whistle.cact";
-                try (Cursor cursor = getContentResolver().query(uri,
-                        new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
-                    if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) {
-                        String display = cursor.getString(0);
-                        if (display != null && !display.trim().isEmpty()) name = new File(display.trim()).getName();
-                    }
-                } catch (Exception ignored) { }
-                if (!name.toLowerCase().endsWith(".cact")) {
-                    // Keep original name but accept; provider will validate availability/load.
-                }
-                File dir = new File(getFilesDir(), "cactus");
-                if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("Cannot create Cactus model directory");
-                dest = new File(dir, name);
-                File temp = new File(dir, name + ".partial");
-                try (InputStream in = getContentResolver().openInputStream(uri);
-                     FileOutputStream out = new FileOutputStream(temp)) {
-                    if (in == null) throw new IOException("Cannot read the selected document");
-                    byte[] buffer = new byte[1024 * 64];
-                    int read;
-                    while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
-                    out.getFD().sync();
-                }
-                java.nio.file.Files.move(temp.toPath(), dest.toPath(),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-                File saved = dest;
-                runOnUiThread(() -> {
-                    if (destroyed) return;
-                    CactusWhistleBridge.resetLoadedModel();
-                    new RuntimePreferences(this).setCactusWhistleModelPath(saved.getAbsolutePath());
-                    if (runtime != null) runtime.refreshVoiceAvailability();
-                    if (integrationsSettingsSection != null) integrationsSettingsSection.paintSpeechInputControls();
-                    busy = false;
-                    setChatStatus(saved.getName() + " selected for Cactus Whistle STT.");
-                    updateControls();
-                });
-                return;
-            } catch (Exception e) {
-                if (dest != null) dest.delete();
-                final String message = e.getMessage() == null ? e.toString() : e.getMessage();
-                runOnUiThread(() -> {
-                    if (destroyed) return;
-                    busy = false;
-                    setChatStatus("Could not import Whistle model: " + message);
-                    updateControls();
-                });
-            }
-        });
-    }
-
-
-    private void loadSelectedModel(String model, String projector) {
-        if (isContentUri(model) || isContentUri(projector)) {
-            final String targetModel = model;
-            final String targetProjector = projector == null ? "" : projector;
-            busy = true;
-            updateControls();
-            setChatStatus(getString(R.string.opening_external_model));
-            worker.execute(() -> {
-                try {
-                    ExternalModelStore store = ((Lfm3PocketApplication) getApplication()).externalModels();
-                    String modelPath = resolveLoadPath(targetModel, store);
-                    String projectorPath = targetProjector.isEmpty()
-                            ? "" : resolveLoadPath(targetProjector, store);
-                    boolean ok = runtime.loadBlocking(modelPath, projectorPath, statusText -> runOnUiThread(() -> {
-                        if (!destroyed) setChatStatus(statusText);
-                    }));
-                    if (ok) {
-                        java.util.HashSet<String> active = new java.util.HashSet<>();
-                        if (isContentUri(targetModel)) active.add(targetModel);
-                        if (isContentUri(targetProjector)) active.add(targetProjector);
-                        store.releaseExcept(active);
-                    } else {
-                        String currentModel = pocketPreferences().getString("model", "");
-                        String currentProjector = pocketPreferences().getString("mmproj", "");
-                        java.util.HashSet<String> active = new java.util.HashSet<>();
-                        if (isContentUri(currentModel)) active.add(currentModel);
-                        if (isContentUri(currentProjector)) active.add(currentProjector);
-                        // Keep current model usable; release only candidate descriptors not needed by it.
-                        // If the failed target differs from current, drop its descriptors.
-                        if (isContentUri(targetModel) && !active.contains(targetModel)) store.release(targetModel);
-                        if (isContentUri(targetProjector) && !active.contains(targetProjector)) store.release(targetProjector);
-                        // Defensive: do not retain unrelated stale leases beyond current selection.
-                        store.releaseExcept(active);
-                        if (!destroyed) {
-                            runOnUiThread(() -> setChatStatus("Could not load the selected storage model."));
-                        }
-                    }
-                } catch (Exception e) {
-                    ExternalModelStore store = ((Lfm3PocketApplication) getApplication()).externalModels();
-                    String currentModel = pocketPreferences().getString("model", "");
-                    String currentProjector = pocketPreferences().getString("mmproj", "");
-                    java.util.HashSet<String> active = new java.util.HashSet<>();
-                    if (isContentUri(currentModel)) active.add(currentModel);
-                    if (isContentUri(currentProjector)) active.add(currentProjector);
-                    if (isContentUri(targetModel) && !active.contains(targetModel)) store.release(targetModel);
-                    if (isContentUri(targetProjector) && !active.contains(targetProjector)) store.release(targetProjector);
-                    store.releaseExcept(active);
-                    runOnUiThread(() -> {
-                        if (!destroyed) setChatStatus("Could not open storage model: " + e.getMessage());
-                    });
-                } finally {
-                    runOnUiThread(() -> {
-                        if (!destroyed) {
-                            busy = false;
-                            updateControls();
-                            maybeStartPendingAssistantVoiceSession();
-                        }
-                    });
-                }
-            });
-            return;
-        }
-        loadModelInBackground(model, projector);
-    }
-
-    private void loadModelInBackground(String path, String projector) {
-        busy = true;
-        updateControls();
-        setChatStatus(getString(R.string.loading_model));
-        runtime.load(path, projector, statusText -> {
-            if (destroyed) return;
-            busy = false;
-            setChatStatus(statusText);
-            updateControls();
-            maybeStartPendingAssistantVoiceSession();
-        });
-    }
-
-    private static boolean isContentUri(String value) {
-        return value != null && value.startsWith("content:");
     }
 
     private static boolean shouldDeferNewChat(Intent intent) {
@@ -1701,40 +911,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     }
 
     private void consumeAssistantVoiceSessionIntent(Intent intent) {
-        if (intent == null) return;
-        if (intent.getBooleanExtra(EXTRA_ASSISTANT_VOICE_SESSION, false)) {
+        if (voiceCoordinator.consumeAssistantVoiceSessionIntent(intent)) {
             assistantVoiceSessionLaunchRequested = true;
-            pendingAssistantVoiceSession = true;
-            intent.removeExtra(EXTRA_ASSISTANT_VOICE_SESSION);
         }
-    }
-
-    private void maybeStartPendingAssistantVoiceSession() {
-        if (!pendingAssistantVoiceSession || destroyed) return;
-        if (runtime == null || runtime.isGenerating()) return;
-        if (runtime.handle() == 0L) {
-            String model = pocketPreferences().getString("model", "");
-            if (!busy && (model == null || model.isEmpty())) {
-                pendingAssistantVoiceSession = false;
-                setChatStatus(getString(R.string.assistant_voice_needs_model));
-                updateControls();
-            }
-            return;
-        }
-        if (!runtime.voice().isEnabled()) {
-            pendingAssistantVoiceSession = false;
-            setChatStatus(runtime.voice().disabledReason());
-            updateControls();
-            return;
-        }
-        if (!((Lfm3PocketApplication) getApplication()).hasMicrophonePermission()) {
-            microphoneRequested = true;
-            requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQUEST_AUDIO);
-            return;
-        }
-        pendingAssistantVoiceSession = false;
-        runtime.voice().beginShadeTalk();
-        updateControls();
     }
 
     private void requestNewChat(boolean fromSystemAssist) {
@@ -1754,18 +933,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private void startFreshChat(boolean fromSystemAssist) {
         cancelPendingResumeRestores();
-        HistoryMediaCleanup.deleteAttachment(this, pendingImagePath);
-        HistoryMediaCleanup.deleteAttachment(this, pendingAudioPath);
-        pendingImagePath = "";
-        pendingAudioPath = "";
-        clearPendingDocuments();
+        attachmentCoordinator.clearAndDeletePending(true);
         lastAssistantReply = "";
-        if (playbackActive()) playbackController.stop();
-        if (chatPanel != null) {
-            chatPanel.clearImageAttachment();
-            chatPanel.clearToolCard();
-        }
-        String id = java.util.UUID.randomUUID().toString();
+        if (voiceCoordinator.playbackActive()) playbackController.stop();
+        if (chatPanel != null) chatPanel.clearToolCard();
+        String id = UUID.randomUUID().toString();
         historyConversationId = id;
         historyTitle = getString(R.string.new_conversation_title);
         if (chatShellSection != null) chatShellSection.setBrandTitle(historyTitle);
@@ -1777,107 +949,31 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 : getString(R.string.new_chat_ready);
         setChatStatus(freshStatus);
         if (chatPanel != null) {
-            chatPanel.renderSnapshot(new ChatSnapshot(java.util.Collections.emptyList(), freshStatus, false));
+            chatPanel.renderSnapshot(new ChatSnapshot(Collections.emptyList(), freshStatus, false));
             chatPanel.render(FlatTranscriptFormatter.EMPTY_TRANSCRIPT, freshStatus);
         }
         updateControls();
     }
 
     private void stopActiveWork() {
-        if (transcribingVoiceInput) {
-            voiceSttCancelled.set(true);
-            transcribingVoiceInput = false;
-            busy = false;
-            setChatStatus("Speech transcription cancelled.");
-            updateControls();
-        } else if (recordingActive()) {
-            recordingController.stop();
-        } else if (playbackActive()) {
+        if (voiceCoordinator.stopActiveWorkIfHandling()) return;
+        if (voiceCoordinator.playbackActive()) {
             playbackController.stop();
         } else if (speaking) {
             runtime.speak(lastAssistantReply);
-        } else if (importCancellation != null) {
-            importCancellation.set(true);
-            setChatStatus("Cancelling import...");
-        } else {
+        } else if (!modelImportCoordinator.cancelImportIfActive()) {
             runtime.stopTurn();
         }
     }
 
     /** Presents a validated coordinator result in the conversation and keeps authorization in the coordinator. */
     public void presentToolOutcome(ToolCoordinator.Outcome outcome) {
-        if (outcome == null) return;
-        ToolRegistry.Request request = outcome.proposal == null ? null : outcome.proposal.request;
-        presentToolOutcome(request, outcome);
+        toolOutcomePresenter.present(outcome);
     }
 
     /** Includes the request because immediate safe actions have no confirmation proposal to carry it. */
     public void presentToolOutcome(ToolRegistry.Request request, ToolCoordinator.Outcome outcome) {
-        if (outcome == null || chatPanel == null) return;
-        toolCoordinator = ((Lfm3PocketApplication)getApplication()).toolCoordinator();
-        renderToolOutcome(outcome.proposal, request, outcome);
-    }
-
-    private void renderToolOutcome(ToolCoordinator.Proposal proposal, ToolRegistry.Request request,
-                                  ToolCoordinator.Outcome outcome) {
-        boolean pending = proposal != null && "PENDING_CONFIRMATION".equals(outcome.status);
-        if (proposal != null) request = proposal.request;
-        String details = request == null ? "Android action" : ToolCoordinator.describe(request);
-        ToolCoordinator.Risk actionRisk = proposal == null ? ToolCoordinator.risk(request) : proposal.risk;
-        String risk = request == null ? "Risk unavailable"
-                : actionRisk == ToolCoordinator.Risk.CONFIRM ? "Risk: confirmation required" : "Risk: safe action";
-        String result = outcome.result == null ? "" : outcome.result.message;
-        ToolRegistry.Request actionRequest = request;
-        Runnable approve = pending ? () -> resolveToolOutcome(proposal, actionRequest, true) : null;
-        Runnable reject = pending ? () -> resolveToolOutcome(proposal, actionRequest, false) : null;
-        chatPanel.renderToolCard(details, risk, toolOutcomeLabel(outcome), result, pending, approve, reject);
-        if (pending && proposal != null) {
-            runtime.showConsent(proposal.id, ToolCoordinator.describe(proposal.request),
-                    proposal.risk == ToolCoordinator.Risk.SAFE);
-        } else {
-            runtime.clearConsent();
-        }
-        if(!pending && request!=null && outcome.result!=null) persistToolOutcome(proposal,request,outcome);
-    }
-
-    private void syncBackgroundControls() {
-        if (backgroundSettingsSection != null) backgroundSettingsSection.syncControls();
-        if (integrationsSettingsSection != null) integrationsSettingsSection.syncControls();
-    }
-
-    private void downloadTinyVocaPack() {
-        requestNotificationPermissionForModelDownloadIfNeeded();
-        ModelDownloadManager manager = ModelDownloadManager.getInstance(this);
-        ModelDownloadManager.StartResult outcome = manager.startTinyVoca(false);
-        if (outcome == ModelDownloadManager.StartResult.METERED_NEEDS_CONFIRMATION) {
-            StillwaterUi.showDialog(new AlertDialog.Builder(this)
-                    .setTitle(R.string.model_download_metered_title)
-                    .setMessage(R.string.model_download_metered_message)
-                    .setPositiveButton(android.R.string.ok, (d, w) -> {
-                        ModelDownloadManager.StartResult retry = manager.startTinyVoca(true);
-                        handleTinyVocaDownloadStart(retry, manager);
-                    })
-                    .setNegativeButton(R.string.cancel, null));
-            return;
-        }
-        handleTinyVocaDownloadStart(outcome, manager);
-    }
-
-    private void handleTinyVocaDownloadStart(ModelDownloadManager.StartResult outcome, ModelDownloadManager manager) {
-        if (chatShellSection == null) return;
-        if (outcome == ModelDownloadManager.StartResult.INSUFFICIENT_SPACE) {
-            setChatStatus(R.string.model_download_insufficient_space,
-                    formatMb(manager.insufficientSpaceRequiredBytes(ModelDownloadKind.TINY_VOCA)),
-                    formatMb(manager.insufficientSpaceUsableBytes()));
-        } else if (outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
-            setChatStatus(R.string.model_download_already_running);
-        } else if (outcome == ModelDownloadManager.StartResult.SCHEDULE_FAILED) {
-            setChatStatus(R.string.model_download_schedule_failed);
-        }
-        if (outcome == ModelDownloadManager.StartResult.STARTED
-                || outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
-            if (integrationsSettingsSection != null) integrationsSettingsSection.paintTinyVocaPackStatus();
-        }
+        toolOutcomePresenter.present(request, outcome);
     }
 
     private void requestNotificationPermissionForModelDownloadIfNeeded() {
@@ -1887,45 +983,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         }
         requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS },
                 REQUEST_POST_NOTIFICATIONS_WHISTLE);
-    }
-
-    private void downloadCactusWhistleModel() {
-        requestNotificationPermissionForModelDownloadIfNeeded();
-        ModelDownloadManager manager = ModelDownloadManager.getInstance(this);
-        ModelDownloadManager.StartResult outcome = manager.startWhistle(false);
-        if (outcome == ModelDownloadManager.StartResult.METERED_NEEDS_CONFIRMATION) {
-            StillwaterUi.showDialog(new AlertDialog.Builder(this)
-                    .setTitle(R.string.model_download_metered_title)
-                    .setMessage(R.string.model_download_metered_message)
-                    .setPositiveButton(android.R.string.ok, (d, w) -> {
-                        ModelDownloadManager.StartResult retry = manager.startWhistle(true);
-                        handleWhistleDownloadStart(retry, manager);
-                    })
-                    .setNegativeButton(R.string.cancel, null));
-            return;
-        }
-        handleWhistleDownloadStart(outcome, manager);
-    }
-
-    private void handleWhistleDownloadStart(ModelDownloadManager.StartResult outcome, ModelDownloadManager manager) {
-        if (chatShellSection == null) return;
-        if (outcome == ModelDownloadManager.StartResult.INSUFFICIENT_SPACE) {
-            setChatStatus(R.string.model_download_insufficient_space,
-                    formatMb(manager.insufficientSpaceRequiredBytes(ModelDownloadKind.CACTUS_WHISTLE)),
-                    formatMb(manager.insufficientSpaceUsableBytes()));
-        } else if (outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
-            setChatStatus(R.string.model_download_already_running);
-        } else if (outcome == ModelDownloadManager.StartResult.SCHEDULE_FAILED) {
-            setChatStatus(R.string.model_download_schedule_failed);
-        }
-        if (outcome == ModelDownloadManager.StartResult.STARTED
-                || outcome == ModelDownloadManager.StartResult.ALREADY_RUNNING) {
-            if (integrationsSettingsSection != null) integrationsSettingsSection.paintSpeechInputControls();
-        }
-    }
-
-    private static String formatMb(long bytes) {
-        return String.format(java.util.Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0));
     }
 
     private void applyDraft(Intent intent) {
@@ -1939,52 +996,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         if (shared != null && !shared.isBlank()) {
             intent.removeExtra(EXTRA_SHARED_IMAGE);
             try {
-                copySelectedPhoto(Uri.parse(shared));
+                attachmentCoordinator.copySelectedPhoto(Uri.parse(shared));
             } catch (Exception failed) {
                 setChatStatus("Photo import failed: " + failed.getMessage());
             }
         }
-    }
-
-    private void persistToolOutcome(ToolCoordinator.Proposal proposal,ToolRegistry.Request request,
-                                   ToolCoordinator.Outcome outcome) {
-        String requestId=proposal==null?java.util.UUID.randomUUID().toString():proposal.id;
-        String arguments=new org.json.JSONObject(request.arguments).toString();
-        HistoryRepository.ToolExecution execution=new HistoryRepository.ToolExecution(requestId,
-                request.tool.wireName,arguments,outcome.result.succeeded,outcome.result.status,
-                outcome.result.message,System.currentTimeMillis());
-        try {
-            worker.execute(() -> historyRepository.appendToolOutcome(historyConversationId,historyTitle,execution));
-        } catch(java.util.concurrent.RejectedExecutionException ignored) {
-            // Activity teardown owns no UI work; the in-flight generation path remains unaffected.
-        }
-    }
-
-    private static String toolOutcomeLabel(ToolCoordinator.Outcome outcome) {
-        switch (outcome.status) {
-            case "PENDING_CONFIRMATION": return "Needs your approval";
-            case "DECLINED": return "Declined";
-            case "EXPIRED": return "Approval expired";
-            case "PERMISSION_DENIED": return "Permission denied";
-            case "UNTRUSTED_SOURCE": return "Request blocked";
-            case "ALREADY_RESOLVED": return "Action already resolved";
-            case "UNKNOWN_PROPOSAL": return "Action no longer available";
-            default:
-                if (outcome.result == null) return "Action unavailable";
-                return outcome.result.succeeded ? "Action complete" : "Action failed";
-        }
-    }
-
-    private void resolveToolOutcome(ToolCoordinator.Proposal proposal, ToolRegistry.Request request, boolean approve) {
-        if (destroyed) return;
-        chatPanel.renderToolCard(ToolCoordinator.describe(request),
-                proposal.risk == ToolCoordinator.Risk.CONFIRM ? "Risk: confirmation required" : "Risk: safe action",
-                approve ? "Executing Android action…" : "Declining Android action…", "", false, null, null);
-        worker.execute(() -> {
-            ToolCoordinator.Outcome outcome = approve
-                    ? toolCoordinator.approve(proposal.id) : toolCoordinator.reject(proposal.id);
-            mainHandler.post(() -> { if (!destroyed) renderToolOutcome(proposal, request, outcome); });
-        });
     }
 
     private void send(String text) {
@@ -1995,18 +1011,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         }
         runtime.noteSubmission(text, inferenceSettings.maxTokens);
         session = runtime.session();
-        List<ChatSession.Attachment> attachments=new ArrayList<>();
-        if(!pendingImagePath.isEmpty())attachments.add(new ChatSession.Attachment(
-                pendingImagePath,ChatSession.AttachmentKind.PHOTO));
-        if(!pendingAudioPath.isEmpty())attachments.add(new ChatSession.Attachment(
-                pendingAudioPath,ChatSession.AttachmentKind.VOICE_RECORDING));
-        if(!pendingDocuments.isEmpty()) attachments.addAll(pendingDocuments);
+        List<ChatSession.Attachment> attachments = attachmentCoordinator.buildPendingAttachments();
         if (session.submit(text, attachments, searchEnabled, searchEndpoint, inferenceSettings.maxTokens)) {
-            pendingImagePath = "";
-            pendingAudioPath = "";
-            pendingDocuments.clear();
-            chatPanel.clearImageAttachment();
-            chatPanel.clearDocumentAttachments();
+            attachmentCoordinator.clearPendingAfterSubmit();
         }
     }
 
@@ -2019,91 +1026,19 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         consumeAssistantVoiceSessionIntent(intent);
         handlePendingNewChatRequests(intent);
         applyDraft(intent);
-        maybeStartPendingAssistantVoiceSession();
-    }
-
-    private void pickCalendarTarget() {
-        if (checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[] { android.Manifest.permission.READ_CALENDAR }, REQUEST_READ_CALENDAR);
-            return;
-        }
-        showCalendarPickerDialog();
-    }
-
-    private void showCalendarPickerDialog() {
-        if (checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            setChatStatus(getString(R.string.calendar_permission_needed));
-            return;
-        }
-        final java.util.ArrayList<String> ids = new java.util.ArrayList<>();
-        final java.util.ArrayList<String> labels = new java.util.ArrayList<>();
-        String[] projection = {
-                android.provider.CalendarContract.Calendars._ID,
-                android.provider.CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
-                android.provider.CalendarContract.Calendars.ACCOUNT_NAME
-        };
-        try (android.database.Cursor cursor = getContentResolver().query(
-                android.provider.CalendarContract.Calendars.CONTENT_URI,
-                projection, null, null,
-                android.provider.CalendarContract.Calendars.CALENDAR_DISPLAY_NAME + " ASC")) {
-            if (cursor != null) {
-                int idIdx = cursor.getColumnIndex(android.provider.CalendarContract.Calendars._ID);
-                int nameIdx = cursor.getColumnIndex(android.provider.CalendarContract.Calendars.CALENDAR_DISPLAY_NAME);
-                int accountIdx = cursor.getColumnIndex(android.provider.CalendarContract.Calendars.ACCOUNT_NAME);
-                while (cursor.moveToNext()) {
-                    String id = idIdx >= 0 ? cursor.getString(idIdx) : null;
-                    if (id == null || id.trim().isEmpty()) continue;
-                    String name = nameIdx >= 0 ? cursor.getString(nameIdx) : null;
-                    String account = accountIdx >= 0 ? cursor.getString(accountIdx) : null;
-                    String label = (name == null || name.trim().isEmpty()) ? id : name.trim();
-                    if (account != null && !account.trim().isEmpty() && !account.equals(name)) {
-                        label = label + " (" + account.trim() + ")";
-                    }
-                    ids.add(id.trim());
-                    labels.add(label);
-                }
-            }
-        } catch (SecurityException e) {
-            setChatStatus(getString(R.string.calendar_permission_needed));
-            if (integrationsSettingsSection != null) integrationsSettingsSection.refreshCalendarPickerStatus();
-            return;
-        } catch (Exception ignored) {
-            // Fall through to empty-state dialog.
-        }
-        if (ids.isEmpty()) {
-            setChatStatus(getString(R.string.calendar_no_calendars));
-            return;
-        }
-        CharSequence[] items = labels.toArray(new CharSequence[0]);
-        StillwaterUi.showDialog(new android.app.AlertDialog.Builder(this)
-                .setTitle(R.string.calendar_pick_title)
-                .setItems(items, (dialog, which) -> {
-                    if (which < 0 || which >= ids.size()) return;
-                    new RuntimePreferences(this).setCalendarWriteTarget(ids.get(which), labels.get(which));
-                    if (integrationsSettingsSection != null) {
-                        integrationsSettingsSection.refreshCalendarPickerStatus();
-                    }
-                })
-                .setNegativeButton(R.string.cancel, null));
+        voiceCoordinator.maybeStartPendingAssistantVoiceSession();
     }
 
     @Override protected void onDestroy() {
         destroyed = true;
         if (runtime != null) runtime.detach(viewer);
-        HistoryMediaCleanup.deleteAttachment(this,pendingImagePath);
-        HistoryMediaCleanup.deleteAttachment(this,pendingAudioPath);
-        pendingImagePath = "";
-        pendingAudioPath = "";
-        pendingDocuments.clear();
+        if (attachmentCoordinator != null) attachmentCoordinator.clearAndDeletePending(false);
         if (settingsStore != null) settingsStore.close();
         if (imageSettingsStore != null) imageSettingsStore.close();
         if (appearanceSettings != null) appearanceSettings.dispose();
         mainHandler.removeCallbacksAndMessages(null);
-        if (importCancellation != null) importCancellation.set(true);
-        if (recordingController != null) recordingController.close();
-        audioWorker.shutdown();
+        if (modelImportCoordinator != null) modelImportCoordinator.cancelOnDestroy();
+        if (voiceCoordinator != null) voiceCoordinator.onDestroy();
         if (runtime != null && isFinishing() && !isChangingConfigurations()) runtime.onChatFinished();
         super.onDestroy();
     }
@@ -2112,8 +1047,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
      * The shared model and conversation file. {@code getPreferences} would name
      * that file from the install id and miss the seeded {@code MainActivity} file.
      */
-    private android.content.SharedPreferences pocketPreferences() {
+    private SharedPreferences pocketPreferences() {
         return getSharedPreferences(RuntimePreferences.FILE, MODE_PRIVATE);
     }
 }
-
