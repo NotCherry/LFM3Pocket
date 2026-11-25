@@ -11,7 +11,9 @@ public final class ToolRegistry {
         UNIT_CONVERT("unit_convert"),WEATHER("weather"),LIST_NOTIFICATIONS("list_notifications"),
         DRAFT_MESSAGE("draft_message"),SEND_MESSAGE("send_message"),
         LIST_EVENTS("list_events"),CREATE_EVENT("create_event"),UPDATE_EVENT("update_event"),DELETE_EVENT("delete_event"),
-        WEB_SEARCH("web_search");
+        WEB_SEARCH("web_search"),SEARCH_TOOLS("search_tools"),
+        FS_LIST("fs_list"),FS_SEARCH("fs_search"),FS_READ("fs_read"),
+        NOTE_CREATE("note_create"),FS_APPEND("fs_append"),FS_EDIT("fs_edit"),FS_DELETE("fs_delete");
         public final String wireName;Tool(String name){wireName=name;}
     }
     public static abstract class Request {
@@ -150,6 +152,72 @@ public final class ToolRegistry {
             timeRange=(String)a.get("time_range");
         }
     }
+    public static final class SearchToolsRequest extends Request {
+        public final String query;
+        private SearchToolsRequest(Map<String,Object> a){
+            super(Tool.SEARCH_TOOLS,a);
+            query=(String)a.get("query");
+        }
+    }
+    public static final class FsListRequest extends Request {
+        public final String path;public final int maxDepth;
+        private FsListRequest(Map<String,Object> a){
+            super(Tool.FS_LIST,a);
+            path=(String)a.get("path");
+            maxDepth=((Number)a.get("max_depth")).intValue();
+        }
+    }
+    public static final class FsSearchRequest extends Request {
+        public final String query,path;
+        private FsSearchRequest(Map<String,Object> a){
+            super(Tool.FS_SEARCH,a);
+            query=(String)a.get("query");
+            path=(String)a.get("path");
+        }
+    }
+    public static final class FsReadRequest extends Request {
+        public final String path;public final int startLine,maxLines;
+        private FsReadRequest(Map<String,Object> a){
+            super(Tool.FS_READ,a);
+            path=(String)a.get("path");
+            startLine=((Number)a.get("start_line")).intValue();
+            maxLines=((Number)a.get("max_lines")).intValue();
+        }
+    }
+    public static final class NoteCreateRequest extends Request {
+        public final String title,content,folder,tags;
+        private NoteCreateRequest(Map<String,Object> a){
+            super(Tool.NOTE_CREATE,a);
+            title=(String)a.get("title");
+            content=(String)a.get("content");
+            folder=(String)a.get("folder");
+            tags=(String)a.get("tags");
+        }
+    }
+    public static final class FsAppendRequest extends Request {
+        public final String path,content;
+        private FsAppendRequest(Map<String,Object> a){
+            super(Tool.FS_APPEND,a);
+            path=(String)a.get("path");
+            content=(String)a.get("content");
+        }
+    }
+    public static final class FsEditRequest extends Request {
+        public final String path,oldText,newText;
+        private FsEditRequest(Map<String,Object> a){
+            super(Tool.FS_EDIT,a);
+            path=(String)a.get("path");
+            oldText=(String)a.get("old_text");
+            newText=(String)a.get("new_text");
+        }
+    }
+    public static final class FsDeleteRequest extends Request {
+        public final String path;
+        private FsDeleteRequest(Map<String,Object> a){
+            super(Tool.FS_DELETE,a);
+            path=(String)a.get("path");
+        }
+    }
     private static Request request(Tool tool,Map<String,Object> args){
         switch(tool){
             case FLASHLIGHT:return new FlashlightRequest(args);case VOLUME:return new VolumeRequest(args);
@@ -169,6 +237,14 @@ public final class ToolRegistry {
             case UPDATE_EVENT:return new UpdateEventRequest(args);
             case DELETE_EVENT:return new DeleteEventRequest(args);
             case WEB_SEARCH:return new WebSearchRequest(args);
+            case SEARCH_TOOLS:return new SearchToolsRequest(args);
+            case FS_LIST:return new FsListRequest(args);
+            case FS_SEARCH:return new FsSearchRequest(args);
+            case FS_READ:return new FsReadRequest(args);
+            case NOTE_CREATE:return new NoteCreateRequest(args);
+            case FS_APPEND:return new FsAppendRequest(args);
+            case FS_EDIT:return new FsEditRequest(args);
+            case FS_DELETE:return new FsDeleteRequest(args);
             default:throw new IllegalArgumentException("Unregistered tool");
         }
     }
@@ -317,6 +393,55 @@ public final class ToolRegistry {
                     String range=text(args,"time_range",0,16);
                     if(!range.isEmpty() && !Arrays.asList("day","week","month","year").contains(range))
                         bad("time_range must be day, week, month, or year");
+                    break;
+                case SEARCH_TOOLS:keys(args,"query");
+                    textBounded(args,"query",1,200,true);
+                    break;
+                case FS_LIST:keys(args,"path","max_depth");
+                    if(!args.containsKey("path")) args.put("path","");
+                    args.put("path",WorkspacePath.normalize(text(args,"path",0,512),true));
+                    if(!args.containsKey("max_depth")) args.put("max_depth",2);
+                    else integer(args,"max_depth",1,4);
+                    break;
+                case FS_SEARCH:keys(args,"query","path");
+                    textBounded(args,"query",1,200,true);
+                    if(!args.containsKey("path")) args.put("path","");
+                    args.put("path",WorkspacePath.normalize(text(args,"path",0,512),true));
+                    break;
+                case FS_READ:keys(args,"path","start_line","max_lines");
+                    args.put("path",WorkspacePath.normalize(text(args,"path",1,512),false));
+                    if(!args.containsKey("start_line")) args.put("start_line",1);
+                    else integer(args,"start_line",1,100000);
+                    if(!args.containsKey("max_lines")) args.put("max_lines",120);
+                    else integer(args,"max_lines",1,300);
+                    break;
+                case NOTE_CREATE:keys(args,"title","content","folder","tags");
+                    textBounded(args,"title",1,120,true);
+                    textBounded(args,"content",1,16000,false);
+                    if(!args.containsKey("folder")) args.put("folder","");
+                    args.put("folder",WorkspacePath.normalize(text(args,"folder",0,512),true));
+                    if(!args.containsKey("tags")) args.put("tags","");
+                    else if(args.get("tags") instanceof List){
+                        StringBuilder joined=new StringBuilder();
+                        for(Object item:(List<?>)args.get("tags")){
+                            if(joined.length()>0)joined.append(',');
+                            joined.append(String.valueOf(item));
+                        }
+                        args.put("tags",joined.toString());
+                    }
+                    textBounded(args,"tags",0,300,true);
+                    break;
+                case FS_APPEND:keys(args,"path","content");
+                    args.put("path",WorkspacePath.normalize(text(args,"path",1,512),false));
+                    textBounded(args,"content",1,8000,false);
+                    break;
+                case FS_EDIT:keys(args,"path","old_text","new_text");
+                    args.put("path",WorkspacePath.normalize(text(args,"path",1,512),false));
+                    textBounded(args,"old_text",1,4000,false);
+                    textBounded(args,"new_text",0,4000,false);
+                    break;
+                case FS_DELETE:keys(args,"path");
+                    args.put("path",WorkspacePath.normalize(text(args,"path",1,512),false));
                     break;
             }
         }catch(IllegalArgumentException e){return reject("INVALID_ARGUMENTS",e.getMessage());}

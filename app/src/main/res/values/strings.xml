@@ -303,4 +303,13 @@ com.whatsapp</string>
     <string name="tool_not_pending">This action is no longer pending.</string>
     <string name="tool_confirm_prompt">Approve only if you want the exact action and arguments shown above.</string>
     <string name="tool_action_result_format">Action result: %1$s — %2$s</string>
+
+    <!-- Local Workspace (Offline Vault / Notes) -->
+    <string name="workspace_heading">LOCAL WORKSPACE</string>
+    <string name="workspace_help">Pick a local folder (such as an Obsidian vault or Notes folder) so Hanami can search, read, create, and edit Markdown notes offline. File changes always ask for your approval.</string>
+    <string name="workspace_none_picked">No folder selected (local file tools off).</string>
+    <string name="workspace_picked">Workspace folder: %1$s</string>
+    <string name="workspace_pick_button">Pick folder</string>
+    <string name="workspace_clear_button">Clear</string>
+    <string name="workspace_cleared">Local workspace folder cleared.</string>
 </resources>

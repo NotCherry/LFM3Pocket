@@ -108,7 +108,14 @@ public class Lfm3PocketApplication extends Application {
                     !(request instanceof ToolRegistry.CreateEventRequest) &&
                     !(request instanceof ToolRegistry.UpdateEventRequest) &&
                     !(request instanceof ToolRegistry.DeleteEventRequest) &&
-                    !(request instanceof ToolRegistry.WebSearchRequest)) {
+                    !(request instanceof ToolRegistry.WebSearchRequest) &&
+                    !(request instanceof ToolRegistry.FsListRequest) &&
+                    !(request instanceof ToolRegistry.FsSearchRequest) &&
+                    !(request instanceof ToolRegistry.FsReadRequest) &&
+                    !(request instanceof ToolRegistry.NoteCreateRequest) &&
+                    !(request instanceof ToolRegistry.FsAppendRequest) &&
+                    !(request instanceof ToolRegistry.FsEditRequest) &&
+                    !(request instanceof ToolRegistry.FsDeleteRequest)) {
                 return new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
                         "This Android tool is not enabled yet");
             }
@@ -184,6 +191,13 @@ public class Lfm3PocketApplication extends Application {
                     }
                     return true;
                 }
+                if (request.tool == ToolRegistry.Tool.FS_LIST || request.tool == ToolRegistry.Tool.FS_SEARCH
+                        || request.tool == ToolRegistry.Tool.FS_READ || request.tool == ToolRegistry.Tool.NOTE_CREATE
+                        || request.tool == ToolRegistry.Tool.FS_APPEND || request.tool == ToolRegistry.Tool.FS_EDIT
+                        || request.tool == ToolRegistry.Tool.FS_DELETE) {
+                    String uri = new RuntimePreferences(Lfm3PocketApplication.this).workspaceTreeUri();
+                    return uri != null && !uri.trim().isEmpty();
+                }
                 return true;
             }
 
@@ -191,6 +205,12 @@ public class Lfm3PocketApplication extends Application {
                 if (request == null) return "Required permission or policy is unavailable.";
                 if (request.tool == ToolRegistry.Tool.WEB_SEARCH) {
                     return "Configure an HTTPS SearXNG endpoint and enable Web search in Settings.";
+                }
+                if (request.tool == ToolRegistry.Tool.FS_LIST || request.tool == ToolRegistry.Tool.FS_SEARCH
+                        || request.tool == ToolRegistry.Tool.FS_READ || request.tool == ToolRegistry.Tool.NOTE_CREATE
+                        || request.tool == ToolRegistry.Tool.FS_APPEND || request.tool == ToolRegistry.Tool.FS_EDIT
+                        || request.tool == ToolRegistry.Tool.FS_DELETE) {
+                    return "Pick a Local Workspace folder in Settings before accessing files or notes.";
                 }
                 if (request.tool == ToolRegistry.Tool.REMINDER) {
                     if (android.os.Build.VERSION.SDK_INT >= 33
@@ -286,6 +306,12 @@ public class Lfm3PocketApplication extends Application {
         return new AndroidCalendarGateway(this, () -> new RuntimePreferences(Lfm3PocketApplication.this).calendarWriteId());
     }
 
+    protected WorkspaceGateway createWorkspaceGateway() {
+        String uri = new RuntimePreferences(this).workspaceTreeUri();
+        if (uri == null || uri.trim().isEmpty()) return null;
+        return new AndroidWorkspaceGateway(this, android.net.Uri.parse(uri));
+    }
+
     protected AndroidActionExecutor createActionExecutor() {
         FlashlightController controller = new FlashlightController(new AndroidFlashlightCamera(this),
                 () -> checkSelfPermission(android.Manifest.permission.CAMERA)
@@ -314,6 +340,13 @@ public class Lfm3PocketApplication extends Application {
         MessageActionController mc = new MessageActionController(messageDraftStore(), new AndroidMessageActions(this));
         MessageActionExecutor message = new MessageActionExecutor(mc);
         AndroidActionExecutor calendar = new CalendarActionExecutor(createCalendarGateway());
-        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text, builtins, notifications, reminder, message, calendar);
+        AndroidActionExecutor workspace = new WorkspaceActionExecutor(
+                () -> {
+                    String uri = new RuntimePreferences(this).workspaceTreeUri();
+                    return uri != null && !uri.trim().isEmpty();
+                },
+                this::createWorkspaceGateway);
+        return new AndroidToolsExecutor(flashlight, volume, timer, alarm, application, settings, text,
+                builtins, notifications, reminder, message, calendar, workspace);
     }
 }

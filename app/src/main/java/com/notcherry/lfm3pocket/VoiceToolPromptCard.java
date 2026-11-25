@@ -13,7 +13,7 @@ public final class VoiceToolPromptCard {
 
     public static String onePassAudioPrompt(Locale locale, LfmToolCatalog.Capabilities capabilities) {
         return "<|startoftext|><|im_start|>system\n"
-                + LfmToolCatalog.systemPrompt(capabilities, locale) + "\n"
+                + LfmToolCatalog.voiceOnePassSystemPrompt(capabilities, locale) + "\n"
                 + "<|im_end|>\n"
                 + "<|im_start|>user\n"
                 + LfmToolCatalog.turnContextLine(ZonedDateTime.now(), capabilities) + "\n"
@@ -30,7 +30,7 @@ public final class VoiceToolPromptCard {
     public static String onePassTextPrompt(Locale locale, String userText, LfmToolCatalog.Capabilities capabilities) {
         String safeText = userText == null ? "" : userText.trim();
         return "<|startoftext|><|im_start|>system\n"
-                + LfmToolCatalog.systemPrompt(capabilities, locale) + "\n"
+                + LfmToolCatalog.voiceOnePassSystemPrompt(capabilities, locale) + "\n"
                 + "<|im_end|>\n"
                 + "<|im_start|>user\n"
                 + LfmToolCatalog.turnContextLine(ZonedDateTime.now(), capabilities) + "\n"

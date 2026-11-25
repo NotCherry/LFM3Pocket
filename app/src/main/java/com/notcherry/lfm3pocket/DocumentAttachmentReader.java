@@ -53,7 +53,18 @@ final class DocumentAttachmentReader {
             if (file.length() > MAX_PDF_BYTES) {
                 return Result.error(name, "This PDF is too large to attach.");
             }
-            return Result.error(name, "PDF text extraction is not supported yet. Attach a text file instead.");
+            try {
+                String extracted = PdfTextExtractor.extract(file, MAX_EXTRACTED_CHARS);
+                if (extracted == null || extracted.trim().isEmpty()) {
+                    return Result.error(name,
+                            "No extractable text found in this PDF (it may be scanned, image-only, or encrypted). Attach a text file or screenshot instead.");
+                }
+                return Result.ok(name, extracted.trim());
+            } catch (IOException e) {
+                return Result.error(name, "Could not read this PDF file.");
+            } catch (OutOfMemoryError e) {
+                return Result.error(name, "This PDF is too large to attach.");
+            }
         }
         if (!isSupportedText(mime, lowerName)) {
             return Result.error(name, "Unsupported file type. Attach a plain text file.");
