@@ -49,6 +49,8 @@
     <item name="web_search" type="id"/>
     <item name="search_endpoint" type="id"/>
     <item name="search_enabled" type="id"/>
+    <item name="search_test" type="id"/>
+    <item name="search_test_status" type="id"/>
     <item name="settings_keep_loaded" type="id"/>
     <item name="settings_idle_unload" type="id"/>
     <item name="settings_idle_off" type="id"/>

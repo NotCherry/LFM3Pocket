@@ -198,14 +198,21 @@ com.whatsapp</string>
     <string name="chat_interrupted_retry">Interrupted — Retry</string>
 
     <string name="calendar_heading">CALENDAR</string>
-    <string name="calendar_help">Pick one calendar for voice write actions. Reads and writes need Calendar permission and explicit confirmation.</string>
+    <string name="calendar_help">Pick one writable calendar for chat and voice event actions. Reads and writes need Calendar permission and explicit confirmation.</string>
     <string name="calendar_none_picked">No calendar picked. Writes are blocked until you choose one.</string>
     <string name="calendar_picked">Picked calendar: %1$s</string>
     <string name="calendar_pick_button">Pick calendar</string>
     <string name="calendar_clear_button">Clear calendar</string>
-    <string name="calendar_permission_needed">Calendar permission is needed to list calendars.</string>
+    <string name="calendar_permission_needed">Read and write Calendar permissions are needed to use calendar actions.</string>
     <string name="calendar_no_calendars">No calendars found on this device.</string>
+    <string name="calendar_no_writable_calendars">No writable calendars found on this device.</string>
     <string name="calendar_pick_title">Pick a calendar</string>
+    <string name="search_test_button">Test search</string>
+    <string name="search_testing">Testing SearXNG endpoint…</string>
+    <string name="search_test_ok">Search OK · %1$d results (%2$d ms)</string>
+    <string name="search_test_empty">Connected (%1$d ms), but search returned 0 results.</string>
+    <string name="search_test_failed">Search test failed: %1$s</string>
+    <string name="search_help">Configure an HTTPS SearXNG instance with JSON format enabled. When on, Hanami can call web_search when needed.</string>
 
     <!-- Home & About -->
     <string name="home_on_device">ON DEVICE</string>

@@ -107,7 +107,8 @@ public class Lfm3PocketApplication extends Application {
                     !(request instanceof ToolRegistry.ListEventsRequest) &&
                     !(request instanceof ToolRegistry.CreateEventRequest) &&
                     !(request instanceof ToolRegistry.UpdateEventRequest) &&
-                    !(request instanceof ToolRegistry.DeleteEventRequest)) {
+                    !(request instanceof ToolRegistry.DeleteEventRequest) &&
+                    !(request instanceof ToolRegistry.WebSearchRequest)) {
                 return new AndroidActionExecutor.ActionResult(false, "NOT_IMPLEMENTED",
                         "This Android tool is not enabled yet");
             }
@@ -148,6 +149,12 @@ public class Lfm3PocketApplication extends Application {
                 if (request.tool == ToolRegistry.Tool.WEATHER) {
                     return new RuntimePreferences(Lfm3PocketApplication.this).networkToolsEnabled();
                 }
+                if (request.tool == ToolRegistry.Tool.WEB_SEARCH) {
+                    android.content.SharedPreferences prefs = new RuntimePreferences(Lfm3PocketApplication.this).raw();
+                    return SearchEndpointPolicy.enabled(
+                            prefs.getBoolean("search_enabled", false),
+                            prefs.getString("search_endpoint", ""));
+                }
                 if (request.tool == ToolRegistry.Tool.LIST_NOTIFICATIONS) {
                     // Policy is enforced in the executor so callers get specific, testable error states.
                     return true;
@@ -172,7 +179,8 @@ public class Lfm3PocketApplication extends Application {
                     if (picked == null || picked.trim().isEmpty()) return false;
                     if (request instanceof ToolRegistry.CreateEventRequest) {
                         String target = ((ToolRegistry.CreateEventRequest) request).calendarId;
-                        return picked.trim().equals(target == null ? "" : target.trim());
+                        String trimmedTarget = target == null ? "" : target.trim();
+                        return trimmedTarget.isEmpty() || picked.trim().equals(trimmedTarget);
                     }
                     return true;
                 }
@@ -181,6 +189,9 @@ public class Lfm3PocketApplication extends Application {
 
             @Override public String denialMessage(ToolRegistry.Request request) {
                 if (request == null) return "Required permission or policy is unavailable.";
+                if (request.tool == ToolRegistry.Tool.WEB_SEARCH) {
+                    return "Configure an HTTPS SearXNG endpoint and enable Web search in Settings.";
+                }
                 if (request.tool == ToolRegistry.Tool.REMINDER) {
                     if (android.os.Build.VERSION.SDK_INT >= 33
                             && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -199,7 +210,7 @@ public class Lfm3PocketApplication extends Application {
                         || request.tool == ToolRegistry.Tool.DELETE_EVENT) {
                     if (checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR)
                             != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                        return "Grant Calendar permission in Android app settings to change events.";
+                        return "Grant Calendar write permission in Settings → Calendar before changing events.";
                     }
                     String picked = new RuntimePreferences(Lfm3PocketApplication.this).calendarWriteId();
                     if (picked == null || picked.trim().isEmpty()) {
@@ -207,7 +218,8 @@ public class Lfm3PocketApplication extends Application {
                     }
                     if (request instanceof ToolRegistry.CreateEventRequest) {
                         String target = ((ToolRegistry.CreateEventRequest) request).calendarId;
-                        if (!picked.trim().equals(target == null ? "" : target.trim())) {
+                        String trimmedTarget = target == null ? "" : target.trim();
+                        if (!trimmedTarget.isEmpty() && !picked.trim().equals(trimmedTarget)) {
                             return "Pick the same calendar in Settings before creating events.";
                         }
                     }
@@ -291,7 +303,10 @@ public class Lfm3PocketApplication extends Application {
                 new TextActionController(textActions, textActions));
         AndroidActionExecutor builtins = new BuiltinToolsExecutor(
                 () -> new RuntimePreferences(this).networkToolsEnabled(),
-                OpenMeteoWeather.httpTransport());
+                OpenMeteoWeather.httpTransport(),
+                () -> new RuntimePreferences(this).raw().getBoolean("search_enabled", false),
+                () -> new RuntimePreferences(this).raw().getString("search_endpoint", ""),
+                WebSearch::search);
         AndroidActionExecutor notifications = new NotificationListActionExecutor(
                 () -> new RuntimePreferences(this),
                 HanamiNotificationListenerService::snapshotOrNull,

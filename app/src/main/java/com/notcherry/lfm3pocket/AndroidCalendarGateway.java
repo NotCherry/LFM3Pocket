@@ -85,14 +85,22 @@ public final class AndroidCalendarGateway implements CalendarGateway {
         if (picked.isEmpty()) {
             return fail("PERMISSION_DENIED", "Pick a calendar in Settings before creating events.");
         }
-        if (calendarId == null || !picked.equals(calendarId)) {
+        String requested = normalize(calendarId);
+        if (!requested.isEmpty() && !picked.equals(requested)) {
             return fail("PERMISSION_DENIED", "Event must target the calendar picked in Settings.");
+        }
+        long startSec = startEpochSec;
+        long endSec = endEpochSec;
+        if (allDay) {
+            long[] snapped = snapAllDayUtcMidnight(startEpochSec, endEpochSec);
+            startSec = snapped[0];
+            endSec = snapped[1];
         }
         ContentValues values = new ContentValues();
         values.put(CalendarContract.Events.CALENDAR_ID, parseCalendarId(picked));
         values.put(CalendarContract.Events.TITLE, title == null ? "" : title);
-        values.put(CalendarContract.Events.DTSTART, startEpochSec * 1000L);
-        values.put(CalendarContract.Events.DTEND, endEpochSec * 1000L);
+        values.put(CalendarContract.Events.DTSTART, startSec * 1000L);
+        values.put(CalendarContract.Events.DTEND, endSec * 1000L);
         values.put(CalendarContract.Events.ALL_DAY, allDay ? 1 : 0);
         values.put(CalendarContract.Events.EVENT_LOCATION, location == null ? "" : location);
         values.put(CalendarContract.Events.DESCRIPTION, notes == null ? "" : notes);
@@ -105,8 +113,8 @@ public final class AndroidCalendarGateway implements CalendarGateway {
             if (id <= 0) return fail("CALENDAR_WRITE_FAILED", "Calendar provider returned an invalid event id.");
             return ok("EVENT_CREATED", "UNTRUSTED_CALENDAR created event_id=" + id
                     + " title=" + quote(sanitize(title))
-                    + " start=" + formatSec(startEpochSec, allDay)
-                    + " end=" + formatSec(endEpochSec, allDay));
+                    + " start=" + formatSec(startSec, allDay)
+                    + " end=" + formatSec(endSec, allDay));
         } catch (SecurityException e) {
             return fail("PERMISSION_DENIED", "Calendar write permission is required.");
         } catch (IllegalArgumentException e) {
@@ -124,20 +132,32 @@ public final class AndroidCalendarGateway implements CalendarGateway {
         }
         long id = parseEventId(eventId);
         if (id <= 0) return fail("INVALID_ARGUMENTS", "Event id is invalid.");
-        if (!eventExists(id)) return fail("STALE_EVENT", "Calendar event was not found; it may be stale or deleted.");
+        EventMeta meta = loadEventMeta(id);
+        if (meta == null) return fail("STALE_EVENT", "Calendar event was not found; it may be stale or deleted.");
+        if (meta.calendarId > 0 && !String.valueOf(meta.calendarId).equals(picked)) {
+            return fail("PERMISSION_DENIED", "Event does not belong to the calendar picked in Settings.");
+        }
+        long startSec = startEpochSec;
+        long endSec = endEpochSec;
+        if (meta.allDay) {
+            long[] snapped = snapAllDayUtcMidnight(startEpochSec, endEpochSec);
+            startSec = snapped[0];
+            endSec = snapped[1];
+        }
         ContentValues values = new ContentValues();
         values.put(CalendarContract.Events.TITLE, title == null ? "" : title);
-        values.put(CalendarContract.Events.DTSTART, startEpochSec * 1000L);
-        values.put(CalendarContract.Events.DTEND, endEpochSec * 1000L);
-        values.put(CalendarContract.Events.EVENT_TIMEZONE, ZoneId.systemDefault().getId());
+        values.put(CalendarContract.Events.DTSTART, startSec * 1000L);
+        values.put(CalendarContract.Events.DTEND, endSec * 1000L);
+        values.put(CalendarContract.Events.EVENT_TIMEZONE,
+                meta.allDay ? "UTC" : ZoneId.systemDefault().getId());
         try {
             Uri uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id);
             int updated = resolver().update(uri, values, null, null);
             if (updated <= 0) return fail("STALE_EVENT", "Calendar event could not be updated; it may be stale.");
             return ok("EVENT_UPDATED", "UNTRUSTED_CALENDAR updated event_id=" + id
                     + " title=" + quote(sanitize(title))
-                    + " start=" + formatSec(startEpochSec, false)
-                    + " end=" + formatSec(endEpochSec, false));
+                    + " start=" + formatSec(startSec, meta.allDay)
+                    + " end=" + formatSec(endSec, meta.allDay));
         } catch (SecurityException e) {
             return fail("PERMISSION_DENIED", "Calendar write permission is required.");
         } catch (Exception e) {
@@ -153,7 +173,11 @@ public final class AndroidCalendarGateway implements CalendarGateway {
         }
         long id = parseEventId(eventId);
         if (id <= 0) return fail("INVALID_ARGUMENTS", "Event id is invalid.");
-        if (!eventExists(id)) return fail("STALE_EVENT", "Calendar event was not found; it may be stale or deleted.");
+        EventMeta meta = loadEventMeta(id);
+        if (meta == null) return fail("STALE_EVENT", "Calendar event was not found; it may be stale or deleted.");
+        if (meta.calendarId > 0 && !String.valueOf(meta.calendarId).equals(picked)) {
+            return fail("PERMISSION_DENIED", "Event does not belong to the calendar picked in Settings.");
+        }
         try {
             Uri uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id);
             int deleted = resolver().delete(uri, null, null);
@@ -166,15 +190,49 @@ public final class AndroidCalendarGateway implements CalendarGateway {
         }
     }
 
-    private boolean eventExists(long id) {
+    /** Snaps all-day start/end epochs to UTC midnight boundaries required by Android CalendarContract. */
+    static long[] snapAllDayUtcMidnight(long startEpochSec, long endEpochSec) {
+        ZoneId local = ZoneId.systemDefault();
+        java.time.LocalDate startDate = Instant.ofEpochSecond(startEpochSec).atZone(local).toLocalDate();
+        java.time.LocalDate endDate = Instant.ofEpochSecond(Math.max(startEpochSec, endEpochSec))
+                .atZone(local).toLocalDate();
+        if (!endDate.isAfter(startDate)) {
+            endDate = startDate.plusDays(1);
+        }
+        ZoneId utc = ZoneId.of("UTC");
+        return new long[] {
+                startDate.atStartOfDay(utc).toEpochSecond(),
+                endDate.atStartOfDay(utc).toEpochSecond()
+        };
+    }
+
+    private static final class EventMeta {
+        final long calendarId;
+        final boolean allDay;
+        EventMeta(long calendarId, boolean allDay) {
+            this.calendarId = calendarId;
+            this.allDay = allDay;
+        }
+    }
+
+    private EventMeta loadEventMeta(long id) {
         Uri uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id);
-        String[] projection = { CalendarContract.Events._ID };
+        String[] projection = {
+                CalendarContract.Events._ID,
+                CalendarContract.Events.CALENDAR_ID,
+                CalendarContract.Events.ALL_DAY
+        };
         try (Cursor cursor = resolver().query(uri, projection, null, null, null)) {
-            return cursor != null && cursor.moveToFirst();
+            if (cursor == null || !cursor.moveToFirst()) return null;
+            int calIdx = cursor.getColumnIndex(CalendarContract.Events.CALENDAR_ID);
+            int allDayIdx = cursor.getColumnIndex(CalendarContract.Events.ALL_DAY);
+            long calId = calIdx >= 0 && !cursor.isNull(calIdx) ? cursor.getLong(calIdx) : -1L;
+            boolean allDay = allDayIdx >= 0 && !cursor.isNull(allDayIdx) && cursor.getInt(allDayIdx) != 0;
+            return new EventMeta(calId, allDay);
         } catch (SecurityException e) {
             throw e;
         } catch (Exception e) {
-            return false;
+            return null;
         }
     }
 

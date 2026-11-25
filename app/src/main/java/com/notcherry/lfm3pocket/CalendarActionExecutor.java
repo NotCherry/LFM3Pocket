@@ -27,7 +27,7 @@ public final class CalendarActionExecutor implements AndroidActionExecutor {
                 String title = requireString(arguments.get("title"), "title");
                 long start = parseLong(arguments.get("start_epoch_sec"), "start_epoch_sec");
                 long end = parseLong(arguments.get("end_epoch_sec"), "end_epoch_sec");
-                String calendarId = requireString(arguments.get("calendar_id"), "calendar_id");
+                String calendarId = arguments.get("calendar_id") == null ? "" : arguments.get("calendar_id");
                 boolean allDay = parseBoolean(arguments.get("all_day"), "all_day");
                 String location = arguments.get("location") == null ? "" : arguments.get("location");
                 String notes = arguments.get("notes") == null ? "" : arguments.get("notes");

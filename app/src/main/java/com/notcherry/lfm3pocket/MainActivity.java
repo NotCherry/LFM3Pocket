@@ -242,7 +242,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 this, runtime, historyRepository, worker, mainHandler, () -> chatPanel,
                 () -> historyConversationId, () -> historyTitle, () -> destroyed));
         calendarPickerHelper = new CalendarPickerHelper(new CalendarPickerHelper.Deps(
-                this, () -> requestPermissions(new String[] { Manifest.permission.READ_CALENDAR }, REQUEST_READ_CALENDAR),
+                this, () -> requestPermissions(new String[] {
+                        Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR },
+                        REQUEST_READ_CALENDAR),
                 this::setChatStatus,
                 () -> {
                     if (integrationsSettingsSection != null) integrationsSettingsSection.refreshCalendarPickerStatus();
@@ -603,7 +605,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                             .putBoolean("search_enabled", searchEnabled).apply();
                 },
                 enabled -> chatPanel.setIdleMode(enabled), this::updateControls, () -> busy,
-                this::showSearchSettings, this::setChatStatus));
+                this::showSearchSettings, this::setChatStatus, worker, this::runOnUiThread));
         searchSettingsSection.mount(configuration, ink, inkMuted);
 
         imageSettingsSection.mount(configuration, ink, inkMuted);
@@ -841,7 +843,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
             return;
         }
         if (requestCode == REQUEST_READ_CALENDAR) {
-            calendarPickerHelper.onPermissionResult(granted);
+            boolean allGranted = grantResults.length > 0;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    allGranted = false;
+                    break;
+                }
+            }
+            calendarPickerHelper.onPermissionResult(allGranted);
         }
     }
 

@@ -39,7 +39,8 @@ public final class ToolCoordinator {
         if(request==null)return Risk.CONFIRM;
         switch(request.tool){
             case FLASHLIGHT:case TIMER:case SHOW_ALARMS:case APPLICATION:case SETTINGS:
-            case CURRENT_TIME:case CALCULATOR:case UNIT_CONVERT:case WEATHER:return Risk.SAFE;
+            case CURRENT_TIME:case CALCULATOR:case UNIT_CONVERT:case WEATHER:
+            case WEB_SEARCH:return Risk.SAFE;
             case VOLUME:return request instanceof ToolRegistry.VolumeRequest && ((ToolRegistry.VolumeRequest)request).stream.equals("music")?Risk.SAFE:Risk.CONFIRM;
             case LIST_NOTIFICATIONS:return Risk.CONFIRM;
             default:return Risk.CONFIRM;
@@ -89,6 +90,8 @@ public final class ToolCoordinator {
                 message = "Grant Camera permission in Android app settings to control the flashlight.";
             } else if (request != null && request.tool == ToolRegistry.Tool.WEATHER) {
                 message = "Enable network tools in Settings before fetching weather.";
+            } else if (request != null && request.tool == ToolRegistry.Tool.WEB_SEARCH) {
+                message = "Configure an HTTPS SearXNG endpoint and enable Web search in Settings.";
             } else if (request != null && request.tool == ToolRegistry.Tool.LIST_NOTIFICATIONS) {
                 message = "Enable notification access in Settings, choose allowed apps, and grant system notification access.";
             } else if (request != null && (request.tool == ToolRegistry.Tool.LIST_EVENTS
@@ -111,6 +114,7 @@ public final class ToolCoordinator {
             case REMINDER:return "Reminder";
             case CURRENT_TIME:return "Current time";case CALCULATOR:return "Calculator";
             case UNIT_CONVERT:return "Unit conversion";case WEATHER:return "Weather";
+            case WEB_SEARCH:return "Web search";
             case LIST_NOTIFICATIONS:return "List notifications";
             case DRAFT_MESSAGE:return "Draft message";case SEND_MESSAGE:return "Send message (open composer)";
             case LIST_EVENTS:return "List calendar events";
@@ -125,17 +129,104 @@ public final class ToolCoordinator {
         for(Map.Entry<String,Object> entry:request.arguments.entrySet()){
             out.append('\n').append(entry.getKey()).append(": ");Object value=entry.getValue();
             if(!(value instanceof String)){out.append(value);continue;}
-            out.append('"');String text=(String)value;
-            for(int i=0;i<text.length();i++){
-                char c=text.charAt(i);
-                if(Character.isISOControl(c) || Character.getType(c)==Character.FORMAT || c=='\u2028' || c=='\u2029')
-                    out.append(String.format(Locale.ROOT,"\\u%04X",(int)c));
-                else {if(c=='"' || c=='\\')out.append('\\');out.append(c);}
-            }
-            out.append('"');
+            out.append('"');appendEscaped(out,(String)value);out.append('"');
         }
         appendCalendarReadback(out, request);
         return out.toString();
+    }
+
+    /**
+     * Human-readable card summary for UI display. Formats calendar, reminder, and web-search
+     * requests cleanly (local times, no raw 10-digit epochs or empty optional fields), while
+     * delegating other tools to {@link #describe(ToolRegistry.Request)}.
+     */
+    public static String formatForDisplay(ToolRegistry.Request request, String pickedCalendarLabel) {
+        if (request == null) return "Android action";
+        if (request instanceof ToolRegistry.CreateEventRequest) {
+            ToolRegistry.CreateEventRequest r = (ToolRegistry.CreateEventRequest) request;
+            StringBuilder out = new StringBuilder(title(request));
+            out.append("\nTitle: "); appendEscaped(out, r.title);
+            if (r.allDay) {
+                out.append("\nDate: ").append(formatLocalDateRange(r.startEpochSec, r.endEpochSec)).append(" (All day)");
+            } else {
+                out.append("\nWhen: ").append(formatLocalTime(r.startEpochSec))
+                        .append(" – ").append(formatLocalTime(r.endEpochSec));
+            }
+            if (pickedCalendarLabel != null && !pickedCalendarLabel.trim().isEmpty()) {
+                out.append("\nCalendar: "); appendEscaped(out, pickedCalendarLabel.trim());
+            }
+            if (r.location != null && !r.location.trim().isEmpty()) {
+                out.append("\nLocation: "); appendEscaped(out, r.location.trim());
+            }
+            if (r.notes != null && !r.notes.trim().isEmpty()) {
+                out.append("\nNotes: "); appendEscaped(out, r.notes.trim());
+            }
+            return out.toString();
+        }
+        if (request instanceof ToolRegistry.UpdateEventRequest) {
+            ToolRegistry.UpdateEventRequest r = (ToolRegistry.UpdateEventRequest) request;
+            StringBuilder out = new StringBuilder(title(request));
+            out.append("\nTitle: "); appendEscaped(out, r.title);
+            out.append("\nWhen: ").append(formatLocalTime(r.startEpochSec))
+                    .append(" – ").append(formatLocalTime(r.endEpochSec));
+            out.append("\nEvent ID: "); appendEscaped(out, r.eventId);
+            return out.toString();
+        }
+        if (request instanceof ToolRegistry.ListEventsRequest) {
+            ToolRegistry.ListEventsRequest r = (ToolRegistry.ListEventsRequest) request;
+            return title(request)
+                    + "\nWindow: " + formatLocalTime(r.windowStartEpochSec)
+                    + " – " + formatLocalTime(r.windowEndEpochSec)
+                    + "\nLimit: " + r.limit;
+        }
+        if (request instanceof ToolRegistry.DeleteEventRequest) {
+            ToolRegistry.DeleteEventRequest r = (ToolRegistry.DeleteEventRequest) request;
+            StringBuilder out = new StringBuilder(title(request));
+            out.append("\nEvent ID: "); appendEscaped(out, r.eventId);
+            return out.toString();
+        }
+        if (request instanceof ToolRegistry.ReminderRequest) {
+            ToolRegistry.ReminderRequest r = (ToolRegistry.ReminderRequest) request;
+            StringBuilder out = new StringBuilder(title(request));
+            if (r.title != null && !r.title.isEmpty()) {
+                out.append("\nTitle: "); appendEscaped(out, r.title);
+            }
+            out.append("\nWhen: ").append(formatLocalTime(r.whenEpochSec));
+            if (r.body != null && !r.body.isEmpty()) {
+                out.append("\nDetails: "); appendEscaped(out, r.body);
+            }
+            return out.toString();
+        }
+        if (request instanceof ToolRegistry.WebSearchRequest) {
+            ToolRegistry.WebSearchRequest r = (ToolRegistry.WebSearchRequest) request;
+            StringBuilder out = new StringBuilder(title(request));
+            out.append("\nQuery: "); appendEscaped(out, r.query);
+            if (r.timeRange != null && !r.timeRange.isEmpty()) {
+                out.append("\nRange: ").append(r.timeRange);
+            }
+            return out.toString();
+        }
+        return describe(request);
+    }
+
+    /** Strips internal prompt-boundary markers (e.g. {@code UNTRUSTED_CALENDAR}) for human UI display. */
+    public static String stripUntrustedPrefix(String message) {
+        if (message == null || message.isEmpty()) return "";
+        String cleaned = message.replaceFirst("^UNTRUSTED_[A-Z_]+\\s*", "");
+        return cleaned.trim();
+    }
+
+    private static void appendEscaped(StringBuilder out, String text) {
+        if (text == null) return;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (Character.isISOControl(c) || Character.getType(c) == Character.FORMAT || c == '\u2028' || c == '\u2029')
+                out.append(String.format(Locale.ROOT, "\\u%04X", (int) c));
+            else {
+                if (c == '"' || c == '\\') out.append('\\');
+                out.append(c);
+            }
+        }
     }
 
     private static void appendCalendarReadback(StringBuilder out, ToolRegistry.Request request) {
@@ -158,6 +249,18 @@ public final class ToolCoordinator {
             }
         } catch (RuntimeException ignored) {
             // Read-back must not fail proposal display.
+        }
+    }
+
+    private static String formatLocalDateRange(long startEpochSec, long endEpochSec) {
+        try {
+            java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+            java.time.LocalDate start = java.time.Instant.ofEpochSecond(startEpochSec).atZone(zone).toLocalDate();
+            java.time.LocalDate end = java.time.Instant.ofEpochSecond(Math.max(startEpochSec, endEpochSec)).atZone(zone).toLocalDate();
+            if (!end.isAfter(start.plusDays(1))) return start.toString();
+            return start + " – " + end.minusDays(1);
+        } catch (RuntimeException e) {
+            return formatLocalTime(startEpochSec);
         }
     }
 

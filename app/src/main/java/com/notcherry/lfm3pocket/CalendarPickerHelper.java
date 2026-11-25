@@ -37,8 +37,7 @@ final class CalendarPickerHelper {
     }
 
     void pickCalendarTarget() {
-        if (deps.activity.checkSelfPermission(Manifest.permission.READ_CALENDAR)
-                != PackageManager.PERMISSION_GRANTED) {
+        if (!hasCalendarPermissions()) {
             deps.requestReadCalendarPermission.run();
             return;
         }
@@ -46,12 +45,19 @@ final class CalendarPickerHelper {
     }
 
     void onPermissionResult(boolean granted) {
-        if (granted) {
+        if (granted && hasCalendarPermissions()) {
             showCalendarPickerDialog();
         } else {
             deps.setChatStatus.accept(deps.activity.getString(R.string.calendar_permission_needed));
         }
         deps.refreshCalendarPickerStatus.run();
+    }
+
+    private boolean hasCalendarPermissions() {
+        return deps.activity.checkSelfPermission(Manifest.permission.READ_CALENDAR)
+                == PackageManager.PERMISSION_GRANTED
+                && deps.activity.checkSelfPermission(Manifest.permission.WRITE_CALENDAR)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
     private void showCalendarPickerDialog() {
@@ -65,38 +71,27 @@ final class CalendarPickerHelper {
         String[] projection = {
                 CalendarContract.Calendars._ID,
                 CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
-                CalendarContract.Calendars.ACCOUNT_NAME
+                CalendarContract.Calendars.ACCOUNT_NAME,
+                CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL,
+                CalendarContract.Calendars.VISIBLE
         };
+        String writableSelection = CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL + " >= ? AND "
+                + CalendarContract.Calendars.VISIBLE + " = 1";
+        String[] writableArgs = { String.valueOf(CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR) };
         try (Cursor cursor = deps.activity.getContentResolver().query(
                 CalendarContract.Calendars.CONTENT_URI,
-                projection, null, null,
+                projection, writableSelection, writableArgs,
                 CalendarContract.Calendars.CALENDAR_DISPLAY_NAME + " ASC")) {
-            if (cursor != null) {
-                int idIdx = cursor.getColumnIndex(CalendarContract.Calendars._ID);
-                int nameIdx = cursor.getColumnIndex(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME);
-                int accountIdx = cursor.getColumnIndex(CalendarContract.Calendars.ACCOUNT_NAME);
-                while (cursor.moveToNext()) {
-                    String id = idIdx >= 0 ? cursor.getString(idIdx) : null;
-                    if (id == null || id.trim().isEmpty()) continue;
-                    String name = nameIdx >= 0 ? cursor.getString(nameIdx) : null;
-                    String account = accountIdx >= 0 ? cursor.getString(accountIdx) : null;
-                    String label = (name == null || name.trim().isEmpty()) ? id : name.trim();
-                    if (account != null && !account.trim().isEmpty() && !account.equals(name)) {
-                        label = label + " (" + account.trim() + ")";
-                    }
-                    ids.add(id.trim());
-                    labels.add(label);
-                }
-            }
+            collectCalendars(cursor, ids, labels);
         } catch (SecurityException e) {
             deps.setChatStatus.accept(deps.activity.getString(R.string.calendar_permission_needed));
             deps.refreshCalendarPickerStatus.run();
             return;
         } catch (Exception ignored) {
-            // Fall through to empty-state dialog.
+            // Fall through to empty-state handling.
         }
         if (ids.isEmpty()) {
-            deps.setChatStatus.accept(deps.activity.getString(R.string.calendar_no_calendars));
+            deps.setChatStatus.accept(deps.activity.getString(R.string.calendar_no_writable_calendars));
             return;
         }
         CharSequence[] items = labels.toArray(new CharSequence[0]);
@@ -108,5 +103,24 @@ final class CalendarPickerHelper {
                     deps.refreshCalendarPickerStatus.run();
                 })
                 .setNegativeButton(R.string.cancel, null));
+    }
+
+    private static void collectCalendars(Cursor cursor, ArrayList<String> ids, ArrayList<String> labels) {
+        if (cursor == null) return;
+        int idIdx = cursor.getColumnIndex(CalendarContract.Calendars._ID);
+        int nameIdx = cursor.getColumnIndex(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME);
+        int accountIdx = cursor.getColumnIndex(CalendarContract.Calendars.ACCOUNT_NAME);
+        while (cursor.moveToNext()) {
+            String id = idIdx >= 0 ? cursor.getString(idIdx) : null;
+            if (id == null || id.trim().isEmpty()) continue;
+            String name = nameIdx >= 0 ? cursor.getString(nameIdx) : null;
+            String account = accountIdx >= 0 ? cursor.getString(accountIdx) : null;
+            String label = (name == null || name.trim().isEmpty()) ? id : name.trim();
+            if (account != null && !account.trim().isEmpty() && !account.equals(name)) {
+                label = label + " (" + account.trim() + ")";
+            }
+            ids.add(id.trim());
+            labels.add(label);
+        }
     }
 }

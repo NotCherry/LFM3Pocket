@@ -68,17 +68,21 @@ final class ToolOutcomePresenter {
         if (panel == null) return;
         boolean pending = proposal != null && "PENDING_CONFIRMATION".equals(outcome.status);
         if (proposal != null) request = proposal.request;
-        String details = request == null ? "Android action" : ToolCoordinator.describe(request);
+        String pickedCalendarLabel = "";
+        try { pickedCalendarLabel = new RuntimePreferences(deps.activity).calendarWriteLabel(); } catch (RuntimeException ignored) {}
+        String details = request == null ? "Android action"
+                : ToolCoordinator.formatForDisplay(request, pickedCalendarLabel);
         ToolCoordinator.Risk actionRisk = proposal == null ? ToolCoordinator.risk(request) : proposal.risk;
         String risk = request == null ? "Risk unavailable"
                 : actionRisk == ToolCoordinator.Risk.CONFIRM ? "Risk: confirmation required" : "Risk: safe action";
-        String result = outcome.result == null ? "" : outcome.result.message;
+        String result = outcome.result == null ? ""
+                : ToolCoordinator.stripUntrustedPrefix(outcome.result.message);
         ToolRegistry.Request actionRequest = request;
         Runnable approve = pending ? () -> resolve(proposal, actionRequest, true) : null;
         Runnable reject = pending ? () -> resolve(proposal, actionRequest, false) : null;
         panel.renderToolCard(details, risk, labelFor(outcome), result, pending, approve, reject);
         if (pending && proposal != null) {
-            deps.runtime.showConsent(proposal.id, ToolCoordinator.describe(proposal.request),
+            deps.runtime.showConsent(proposal.id, details,
                     proposal.risk == ToolCoordinator.Risk.SAFE);
         } else {
             deps.runtime.clearConsent();
@@ -91,8 +95,10 @@ final class ToolOutcomePresenter {
     private void resolve(ToolCoordinator.Proposal proposal, ToolRegistry.Request request, boolean approve) {
         if (deps.isDestroyed.getAsBoolean()) return;
         ChatPanel panel = deps.chatPanel.get();
+        String pickedCalendarLabel = "";
+        try { pickedCalendarLabel = new RuntimePreferences(deps.activity).calendarWriteLabel(); } catch (RuntimeException ignored) {}
         if (panel != null) {
-            panel.renderToolCard(ToolCoordinator.describe(request),
+            panel.renderToolCard(ToolCoordinator.formatForDisplay(request, pickedCalendarLabel),
                     proposal.risk == ToolCoordinator.Risk.CONFIRM
                             ? "Risk: confirmation required" : "Risk: safe action",
                     approve ? "Executing Android action…" : "Declining Android action…",
