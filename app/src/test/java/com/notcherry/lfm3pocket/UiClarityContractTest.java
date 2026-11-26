@@ -6,7 +6,10 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
+import java.io.BufferedReader;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -75,7 +78,13 @@ public final class UiClarityContractTest {
     }
 
     private static String read(Path path) throws IOException {
-        return Files.readString(path, StandardCharsets.UTF_8);
+        StringBuilder text = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(path.toFile()), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) text.append(line).append('\n');
+        }
+        return text.toString();
     }
 
     private static Path repoRoot() {
