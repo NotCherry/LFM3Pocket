@@ -25,7 +25,11 @@ public class Lfm3PocketApplication extends Application {
         CrashLog.captureExitInfo(this);
         HanamiNotifications.ensureChannels(this);
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
-            @Override public void onActivityStarted(Activity activity) { startedActivities++; }
+            @Override public void onActivityStarted(Activity activity) {
+                boolean wasBackground = startedActivities == 0;
+                startedActivities++;
+                if (wasBackground && modelRuntime != null) modelRuntime.onAppForegrounded();
+            }
             @Override public void onActivityStopped(Activity activity) {
                 startedActivities = Math.max(0, startedActivities - 1);
                 if (startedActivities == 0 && !activity.isChangingConfigurations() && modelRuntime != null)

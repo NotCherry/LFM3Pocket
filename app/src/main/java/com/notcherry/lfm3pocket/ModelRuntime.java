@@ -59,6 +59,14 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         }, "hanami-audio");
         return t;
     });
+    /** Offloads periodic Room partial-turn saves so SQLite writes never stall token decode. */
+    private final ExecutorService partialSaveWorker = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(() -> {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            r.run();
+        }, "hanami-db-partial");
+        return t;
+    });
     private final InferenceEngine engine;
     private final PlaybackController playback;
     private final AndroidPlaybackFocus playbackFocus;
@@ -78,6 +86,8 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private boolean serviceStartRequested;
     private volatile boolean loading;
     private volatile boolean unloading;
+    private long lastKvTrimReleaseMs;
+    private String lastPolicyUnloadReason = "";
     private int sessionEpoch;
     private final AtomicInteger conversationEpoch = new AtomicInteger();
     private String pendingQuestion = "";
@@ -96,7 +106,11 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private final AndroidSystemSpeechSynthesizer systemSpeech;
     private final Runnable idleTick = new Runnable() {
         @Override public void run() {
-            dispatchPolicy(() -> policy.onClock(SystemClock.elapsedRealtime()));
+            dispatchPolicy(() -> {
+                RuntimePolicy.Effects effects = policy.onClock(SystemClock.elapsedRealtime());
+                if (effects.unloadModel) lastPolicyUnloadReason = "policy-idle";
+                return effects;
+            });
             main.postDelayed(this, 15_000L);
         }
     };
@@ -254,6 +268,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     public void attach(Ui next) {
         ui = next;
         ensureSession();
+        onAppForegrounded();
         if (next == null || !next.isUsable()) return;
         if (lastSnapshot != null) next.onSnapshot(lastSnapshot);
         if (!lastTranscript.isEmpty() || lastGenerating || !lastStatus.isEmpty())
@@ -333,6 +348,8 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         main.post(() -> {
             loading = false;
             if (loaded != 0L) {
+                lastKvTrimReleaseMs = 0L;
+                lastPolicyUnloadReason = "";
                 dispatchPolicy(() -> policy.onLoaded(name, SystemClock.elapsedRealtime()));
                 dispatchPolicy(() -> policy.onVoiceTalkAvailable(voiceActions.isEnabled()));
             } else {
@@ -392,9 +409,11 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 if (done != null) {
                     done.run();
                 } else {
+                    String statusMsg = unloadStatusFor(why);
+                    lastStatus = statusMsg;
                     Ui finishTarget = ui;
                     if (finishTarget != null && finishTarget.isUsable()) {
-                        finishTarget.onModelStateChanged(handle != 0L, unloadStatusFor(why));
+                        finishTarget.onModelStateChanged(handle != 0L, statusMsg);
                     }
                 }
             });
@@ -402,6 +421,15 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     }
 
     private static String unloadStatusFor(String why) {
+        if (why != null && why.startsWith("policy-thermal")) {
+            return "Model unloaded due to severe device heat. Reload it in Settings once cooled.";
+        }
+        if (why != null && why.startsWith("policy-memory")) {
+            return "Model unloaded due to critical memory pressure. Reload it in Settings to continue.";
+        }
+        if (why != null && why.startsWith("policy-idle")) {
+            return "Model unloaded after idle timeout. Reload it in Settings to continue.";
+        }
         if ("policy-cancel".equals(why) || "policy".equals(why)) {
             return "Model unloaded due to memory or thermal pressure. Reload it in Settings to continue.";
         }
@@ -638,6 +666,14 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         dispatchPolicy(() -> policy.onConsentCleared(SystemClock.elapsedRealtime()));
     }
 
+    public void onAppForegrounded() {
+        onPolicyThread(() -> {
+            if (!unloading && handle != 0L && service == null && last != null && last.wantService) {
+                publish(last);
+            }
+        });
+    }
+
     public void onAppBackgrounded() {
         if (!preferences.keepLoaded()) unload("left", null);
     }
@@ -646,24 +682,71 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         if (!preferences.keepLoaded()) unload("chat-closed", null);
     }
 
+    /**
+     * Only shed the KV/hybrid session on actual memory pressure — never on routine
+     * {@code TRIM_MEMORY_UI_HIDDEN} (20), {@code TRIM_MEMORY_BACKGROUND} (40), or
+     * {@code TRIM_MEMORY_RUNNING_LOW} (10) fired whenever the user switches apps or locks the screen.
+     */
+    static boolean shouldReleaseKvForTrim(int level) {
+        return level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+                || level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE;
+    }
+
+    /**
+     * Decides whether a memory trim should escalate to unloading the model weights.
+     * When {@code keepLoaded} is enabled, prefer releasing the KV session first (Stage 1)
+     * and only unload weights if the kernel reports {@code lowMemory}, a second critical trim
+     * arrives within 60 seconds, or the process has no active foreground service / low headroom.
+     */
+    static boolean shouldEscalateTrimToUnload(int level, boolean keepLoaded, boolean fgsActive,
+                                              boolean systemLowMemory, long availRamMb,
+                                              long nowMs, long lastKvReleaseMs) {
+        boolean complete = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE;
+        boolean critical = level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL;
+        if (!complete && !critical) return false;
+        if (!keepLoaded) return true;
+        if (systemLowMemory) return true;
+        if (complete) {
+            return !(fgsActive && availRamMb >= 512L);
+        }
+        // TRIM_MEMORY_RUNNING_CRITICAL while keepLoaded is on: shed KV first; escalate only if
+        // pressure repeats within 60 seconds after KV release.
+        return lastKvReleaseMs > 0L && (nowMs - lastKvReleaseMs) <= 60_000L;
+    }
+
     public void onTrimMemory(int level) {
         main.post(() -> {
             boolean complete = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE;
             boolean critical = level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL;
-            // Always drop the text KV/hybrid session under pressure (ADR 0001).
-            // Weights may still unload via policy below.
+            long now = SystemClock.elapsedRealtime();
+            boolean releaseKv = shouldReleaseKvForTrim(level);
+            long previousKvReleaseMs = lastKvTrimReleaseMs;
+            // Drop the text KV/hybrid session under real memory pressure (ADR 0001),
+            // without wiping KV on routine UI_HIDDEN / BACKGROUND app switches.
             long current = handle;
-            if (current != 0L && (complete || critical
-                    || level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW)) {
+            if (current != 0L && releaseKv) {
+                lastKvTrimReleaseMs = now;
                 worker.execute(() -> {
                     if (handle == current) engine.releaseSession(current);
                 });
             }
             if (!complete && !critical) {
-                app.diagnostics().record(LocalDiagnostics.Kind.MEMORY, 0L, "trim=" + level);
+                app.diagnostics().record(LocalDiagnostics.Kind.MEMORY, 0L,
+                        "trim=" + level + (releaseKv ? ",kv-released" : ""));
                 return;
             }
-            dispatchPolicy(() -> policy.onTrim(complete, SystemClock.elapsedRealtime()));
+            DeviceResourceMonitor.Snapshot mem = DeviceResourceMonitor.sample(app);
+            boolean keep = preferences.keepLoaded();
+            boolean fgsActive = service != null;
+            if (!shouldEscalateTrimToUnload(level, keep, fgsActive, mem.lowMemory, mem.availRamMb,
+                    now, previousKvReleaseMs)) {
+                app.diagnostics().record(LocalDiagnostics.Kind.MEMORY, 0L,
+                        "trim=" + level + ",kv-released-keep-weights,availMb=" + mem.availRamMb
+                                + ",fgs=" + fgsActive);
+                return;
+            }
+            lastPolicyUnloadReason = "policy-memory";
+            dispatchPolicy(() -> policy.onTrim(complete, now));
         });
     }
 
@@ -999,9 +1082,29 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             @Override public void begin(ChatSession.StartedTurn turn) throws Exception {
                 beginTurn(turn);
             }
+            private final java.util.concurrent.atomic.AtomicReference<Runnable> pendingPartialSave =
+                    new java.util.concurrent.atomic.AtomicReference<>();
             @Override public void updatePartial(String turnId, String assistantText, long atMs) {
-                if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
-                history.updateTurnPartial(turnId, assistantText == null ? "" : assistantText, atMs);
+                final String text = assistantText == null ? "" : assistantText;
+                final Runnable task = () -> {
+                    try {
+                        HistoryRepository repo = history;
+                        if (repo == null) {
+                            repo = new HistoryRepository(HistoryDatabase.get(app));
+                            history = repo;
+                        }
+                        repo.updateTurnPartial(turnId, text, atMs);
+                    } catch (Exception ignored) {
+                        // Best-effort partial write; terminal save persists final state.
+                    }
+                };
+                boolean first = pendingPartialSave.getAndSet(task) == null;
+                if (first) {
+                    partialSaveWorker.execute(() -> {
+                        Runnable latest = pendingPartialSave.getAndSet(null);
+                        if (latest != null) latest.run();
+                    });
+                }
             }
             @Override public void saveCompactSummary(String summary, int summarizedMessageCount, long atMs) throws Exception {
                 if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
@@ -1226,7 +1329,14 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private void apply(RuntimePolicy.Effects effects) {
         if (unloading) return;
         if (effects.unloadModel) {
-            unload(effects.cancelTurn ? "policy-cancel" : "policy", null);
+            String reason = lastPolicyUnloadReason;
+            lastPolicyUnloadReason = "";
+            if (reason == null || reason.isEmpty()) {
+                reason = effects.cancelTurn ? "policy-cancel" : "policy";
+            } else if (effects.cancelTurn) {
+                reason = reason + "-cancel";
+            }
+            unload(reason, null);
             return;
         }
         last = effects;
@@ -1285,7 +1395,10 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         PowerManager manager = (PowerManager) app.getSystemService(Context.POWER_SERVICE);
         if (manager == null) return;
         manager.addThermalStatusListener(main::post, status ->
-                dispatchPolicy(() -> policy.onThermal(status, SystemClock.elapsedRealtime())));
+                dispatchPolicy(() -> {
+                    if (status >= 3) lastPolicyUnloadReason = "policy-thermal";
+                    return policy.onThermal(status, SystemClock.elapsedRealtime());
+                }));
     }
 
     private void listenForBattery() {

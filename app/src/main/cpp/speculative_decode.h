@@ -10,6 +10,10 @@
 #include <vector>
 
 namespace hanami {
+// Maximum draft tokens verified per step in ngram-mod prompt lookup (ADR 0011).
+// Also used as llama_context_params.n_rs_seq when prompt lookup is active on hybrid models.
+constexpr int kNgramMaxDraft = 12;
+
 struct SpecDecodeStats {
     int n_predict = 0;
     int n_drafted = 0;

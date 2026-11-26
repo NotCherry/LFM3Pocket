@@ -12,7 +12,7 @@ public final class ChatSession {
             + "<|im_start|>user\n<__media__><|im_end|>\n<|im_start|>assistant\n";
     /** Default user text when a voice recording is submitted without typed input. */
     static final String DEFAULT_VOICE_QUESTION = "Listen to this recording and answer.";
-    private static final long PARTIAL_SAVE_INTERVAL_MS = 500L;
+    private static final long PARTIAL_SAVE_INTERVAL_MS = 1000L;
     public interface Dispatcher { void post(Runnable work, long delayMs); }
     /** Flat-string listener kept for MainActivity / ChatPanel / E2E compatibility. */
     public interface Listener { void changed(String transcript, String status, boolean generating); }
@@ -128,17 +128,26 @@ public final class ChatSession {
         final boolean interrupted;
         final String turnId;
         final String mediaRef;
+        /** Frozen per-turn [Context: ...] line so earlier user turns never mutate on follow-ups. */
+        volatile String contextPrefix;
+        /** Exact raw model text for clean assistant replies so KV prefix reuse matches token-for-token. */
+        final String rawPromptText;
         Message(String role,String text,List<WebSearch.Source> sources) {
-            this(role,text,null,sources,false,null,null);
+            this(role,text,null,sources,false,null,null,null);
         }
         Message(String role,String text,String reasoning,List<WebSearch.Source> sources) {
-            this(role,text,reasoning,sources,false,null,null);
+            this(role,text,reasoning,sources,false,null,null,null);
         }
         Message(String role,String text,String reasoning,List<WebSearch.Source> sources,
                 boolean interrupted,String turnId,String mediaRef) {
+            this(role,text,reasoning,sources,interrupted,turnId,mediaRef,null);
+        }
+        Message(String role,String text,String reasoning,List<WebSearch.Source> sources,
+                boolean interrupted,String turnId,String mediaRef,String rawPromptText) {
             this.role=role;this.text=text;this.reasoning=reasoning;
             this.sources=new ArrayList<>(sources);
             this.interrupted=interrupted;this.turnId=turnId;this.mediaRef=mediaRef;
+            this.rawPromptText=rawPromptText;
         }
     }
     private static final class Turn {
@@ -597,6 +606,19 @@ public final class ChatSession {
                 } else {
                     LfmToolCatalog.Capabilities caps=host.capabilities(useSearch,endpoint);
                     Locale locale=host.locale();
+                    String frozenContext=LfmToolCatalog.turnContextLine(java.time.ZonedDateTime.now(),caps);
+                    if(!replyHistory.isEmpty()) {
+                        Message lastReply=replyHistory.get(replyHistory.size()-1);
+                        if("user".equals(lastReply.role) && lastReply.contextPrefix==null) {
+                            lastReply.contextPrefix=frozenContext;
+                        }
+                    }
+                    if(!history.isEmpty()) {
+                        Message lastHistory=history.get(history.size()-1);
+                        if("user".equals(lastHistory.role) && lastHistory.contextPrefix==null) {
+                            lastHistory.contextPrefix=frozenContext;
+                        }
+                    }
                     LinkedHashMap<String,LfmToolCatalog.ToolSpec> activeTools=new LinkedHashMap<>();
                     for(LfmToolCatalog.ToolSpec spec:LfmToolCatalog.coreTools(caps)) {
                         activeTools.put(spec.name,spec);
@@ -864,13 +886,19 @@ public final class ChatSession {
         if(!current(turn)) return;
         drain();
         if(partial.length()>0 || failure!=null || overrideVisibleAnswer!=null) {
-            ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(partial.toString());
+            String raw=partial.toString();
+            ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(raw);
             String answer=overrideVisibleAnswer!=null
                     ? overrideVisibleAnswer
                     : (stripToolMarkup ? ModelToolBridge.stripToolCallMarkup(cleaned.answer) : cleaned.answer);
             if(failure!=null && answer.isEmpty())
                 answer="Could not finish this reply: "+failure;
-            messages.add(new Message("assistant",answer,cleaned.reasoning,sources));
+            // Preserve exact raw model output for clean replies (no <think>, no template/tool markup)
+            // so whitespace trimming does not break llama.cpp KV prefix matching on the next turn.
+            String rawForPrompt=(failure==null && overrideVisibleAnswer==null && cleaned.reasoning==null
+                    && !raw.isEmpty() && !ThinkingSanitizer.containsRawMarkers(raw)
+                    && !ModelToolBridge.containsToolMarkup(raw)) ? raw : null;
+            messages.add(new Message("assistant",answer,cleaned.reasoning,sources,false,null,null,rawForPrompt));
         }
         partial.setLength(0);active=null;
         String mode=searched?"web search + local model":"local model · offline";
@@ -897,12 +925,16 @@ public final class ChatSession {
     }
 
     private final class ProgressSink implements InferenceEngine.TokenSink {
+        private static final long RESOURCE_BADGE_TTL_MS = 3000L;
+        private static final long DECODE_STATUS_INTERVAL_MS = 1000L;
         private final Turn turn;
         private final boolean useSearch;
         private long projectorStartMs;
         private long prefillStartMs;
         private long decodeStartMs;
         private long lastDecodeStatusMs;
+        private long lastResourceSampleMs;
+        private String cachedResourceSuffix = "";
         private int decodedTokens;
         private boolean sawNativeProgress;
 
@@ -911,15 +943,21 @@ public final class ChatSession {
             this.useSearch = useSearch;
         }
 
-        private String resourceSuffix() {
+        private String resourceSuffix(long now, boolean forceRefresh) {
             java.util.function.Supplier<String> sampler = resourceBadgeSupplier;
             if (sampler == null) return "";
+            if (!forceRefresh && lastResourceSampleMs > 0L
+                    && (now - lastResourceSampleMs) < RESOURCE_BADGE_TTL_MS) {
+                return cachedResourceSuffix;
+            }
+            lastResourceSampleMs = now;
             try {
                 String badge = sampler.get();
-                return badge == null || badge.isEmpty() ? "" : " · " + badge;
+                cachedResourceSuffix = (badge == null || badge.isEmpty()) ? "" : " · " + badge;
             } catch (Throwable ignored) {
-                return "";
+                cachedResourceSuffix = "";
             }
+            return cachedResourceSuffix;
         }
 
         private void record(String stage, long durationMs, String detail) {
@@ -942,7 +980,8 @@ public final class ChatSession {
             if (stage == null || turn.cancelled || !current(turn)) return;
             sawNativeProgress = true;
             long now = System.currentTimeMillis();
-            String res = resourceSuffix();
+            boolean stageBoundary = !"prefill".equals(stage) || prefillStartMs == 0L;
+            String res = resourceSuffix(now, stageBoundary);
             switch (stage) {
                 case "tokenize": {
                     boolean nearCap = total > 0 && done * 100 >= total * 85;
@@ -992,13 +1031,13 @@ public final class ChatSession {
             decodedTokens++;
             long now = System.currentTimeMillis();
             if (decodeStartMs == 0L) decodeStartMs = now;
-            if (decodedTokens % 12 == 0 || (now - lastDecodeStatusMs) >= 800L) {
+            if ((now - lastDecodeStatusMs) >= DECODE_STATUS_INTERVAL_MS) {
                 lastDecodeStatusMs = now;
                 long elapsed = Math.max(1L, now - decodeStartMs);
                 if (elapsed >= 250L) {
                     double tps = (decodedTokens * 1000.0) / elapsed;
                     postStatus(String.format(Locale.US, "Generating · %.1f tok/s (%d tok)%s",
-                            tps, decodedTokens, resourceSuffix()));
+                            tps, decodedTokens, resourceSuffix(now, false)));
                 }
             }
         }
@@ -1007,7 +1046,7 @@ public final class ChatSession {
             if (!sawNativeProgress && error == null) return;
             long now = System.currentTimeMillis();
             long decodeElapsed = decodeStartMs > 0L ? Math.max(0L, now - decodeStartMs) : 0L;
-            String res = resourceSuffix();
+            String res = resourceSuffix(now, true);
             if (error != null) {
                 record("ERROR", decodeElapsed, error + res);
             } else if (turn.cancelled) {
@@ -1201,10 +1240,18 @@ public final class ChatSession {
         for(int i=start;i<history.size();i++) {
             Message m=history.get(i);
             out.append("<|im_start|>").append(m.role).append('\n');
-            if(capabilities!=null && i==history.size()-1 && "user".equals(m.role)) {
-                out.append(LfmToolCatalog.turnContextLine(java.time.ZonedDateTime.now(),capabilities)).append('\n');
+            if("user".equals(m.role)) {
+                String ctx=m.contextPrefix;
+                if((ctx==null || ctx.isEmpty()) && capabilities!=null && i==history.size()-1) {
+                    ctx=LfmToolCatalog.turnContextLine(java.time.ZonedDateTime.now(),capabilities);
+                }
+                if(ctx!=null && !ctx.isEmpty()) {
+                    out.append(ctx).append('\n');
+                }
             }
-            out.append(escapePromptContent(m.text));
+            String body=("assistant".equals(m.role) && m.rawPromptText!=null && !m.rawPromptText.isEmpty())
+                    ? m.rawPromptText : m.text;
+            out.append(escapePromptContent(body));
             if(i==history.size()-1)for(int media=0;media<mediaCount;media++)out.append("\n<__media__>");
             out.append("<|im_end|>\n");
         }

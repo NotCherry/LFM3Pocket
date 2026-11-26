@@ -9,7 +9,7 @@
 namespace {
 // Phone-tuned ngram-mod parameters (see docs/adr/0011-ngram-mod-prompt-lookup.md).
 constexpr uint16_t kNgramMatch = 16;
-constexpr int kNgramMaxDraft = 12;
+constexpr int kNgramMaxDraft = hanami::kNgramMaxDraft;
 constexpr int kNgramMinDraft = 2;
 constexpr size_t kNgramTableEntries = 1024 * 1024; // 4 MB open-address table (int32_t entries)
 
@@ -270,10 +270,13 @@ llama_sampler * make_chat_sampler_with_lazy_grammar(
 size_t kv_token_count(llama_context * ctx, llama_seq_id seq_id) {
     llama_memory_t mem = llama_get_memory(ctx);
     if (!mem) return 0;
-    const llama_pos mn = llama_memory_seq_pos_min(mem, seq_id);
     const llama_pos mx = llama_memory_seq_pos_max(mem, seq_id);
-    if (mn < 0 || mx < 0) return 0;
-    return static_cast<size_t>(mx - mn + 1);
+    if (mx < 0) return 0;
+    // Hybrid/recurrent models (LFM2/LFM3) keep only the latest recurrent state cell, so
+    // llama_memory_seq_pos_min(mem, seq_id) equals mx rather than 0. Hanami always fills
+    // seq 0 contiguously from position 0, so mx + 1 is the true evaluated token count for
+    // both pure-attention KV caches and hybrid/recurrent memories.
+    return static_cast<size_t>(mx + 1);
 }
 
 bool drop_last_prompt_token_from_kv(llama_context * ctx, llama_seq_id seq_id, size_t prompt_token_count,
@@ -385,6 +388,14 @@ bool generate_ngram_mod(
         return false;
     }
 
+    const llama_model * model = llama_get_model(ctx);
+    const bool is_hybrid_or_recr = model && (llama_model_is_hybrid(model) || llama_model_is_recurrent(model));
+    const int max_rs_draft = is_hybrid_or_recr ? static_cast<int>(llama_n_rs_seq(ctx)) : kNgramMaxDraft;
+    if (is_hybrid_or_recr && max_rs_draft < kNgramMinDraft) {
+        error = "Cannot trim last prompt token for prompt lookup (hybrid memory)";
+        return false;
+    }
+
     if (!drop_last_prompt_token_from_kv(ctx, 0, prompt_tokens.size(), error)) {
         return false;
     }
@@ -410,7 +421,8 @@ bool generate_ngram_mod(
 
     (void) mrope;
     const llama_seq_id seq_id = 0;
-    const int max_batch_draft = std::max(0, static_cast<int>(llama_n_batch(ctx)) - 1);
+    const int max_batch_draft = std::min(
+            max_rs_draft, std::max(0, static_cast<int>(llama_n_batch(ctx)) - 1));
 
     std::vector<llama_token> prompt_tgt;
     if (prompt_tokens.size() > 1) {
@@ -428,8 +440,13 @@ bool generate_ngram_mod(
     generated.clear();
     llama_memory_t mem = llama_get_memory(ctx);
 
-    auto trim_kv_tail = [&](int from_pos) {
-        if (mem) llama_memory_seq_rm(mem, seq_id, from_pos, -1);
+    auto trim_kv_tail = [&](int from_pos) -> bool {
+        if (!mem) return false;
+        const size_t cur_kv = kv_token_count(ctx, seq_id);
+        if (from_pos >= 0 && static_cast<size_t>(from_pos) >= cur_kv) {
+            return true;
+        }
+        return llama_memory_seq_rm(mem, seq_id, from_pos, -1);
     };
 
     auto add_token = [&](llama_token tok, int pos) {
@@ -516,8 +533,8 @@ bool generate_ngram_mod(
             const llama_token t = ids[static_cast<size_t>(i)];
             if (llama_vocab_is_eog(vocab, t)) {
                 has_eos = true;
-                trim_kv_tail(batch_id_last_pos + i);
                 n_past = batch_id_last_pos + i;
+                trim_kv_tail(n_past);
                 break;
             }
             prompt_tgt.push_back(id_last);
@@ -541,7 +558,10 @@ bool generate_ngram_mod(
 
         if (!has_eos) {
             n_past = batch_id_last_pos + n_committed;
-            trim_kv_tail(n_past);
+            if (!trim_kv_tail(n_past)) {
+                error = "Cannot trim KV tail during prompt lookup (hybrid memory)";
+                break;
+            }
         }
 
         draft.clear();
