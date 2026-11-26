@@ -116,6 +116,9 @@
     <item name="settings_interface_value" type="id"/>
     <item name="chat_clear" type="id"/>
     <item name="chat_empty_open_settings" type="id"/>
+    <item name="chat_empty_loading_model" type="id"/>
+    <item name="chat_empty_loading_button" type="id"/>
+    <item name="chat_model_loading_banner" type="id"/>
     <item name="tool_dismiss" type="id"/>
     <item name="tool_done" type="id"/>
     <item name="home_import_model" type="id"/>

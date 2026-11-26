@@ -81,7 +81,7 @@ Complete checklist from `app/src/main/res/values/ids.xml`:
 | `voice_speak` | Voice output |
 | `import_model` | Model GGUF import |
 | `import_projector` | Projector import |
-| `settings_open` | Chat top-bar entry into Settings host |
+| `chat_overflow` | Chat top-bar overflow menu (`History`, `Web search`, `Settings`) |
 | `settings_back` | Leave Settings back to chat |
 | `settings_context` | Context-length setting |
 | `settings_threads` | Threads setting |
@@ -106,22 +106,21 @@ Complete checklist from `app/src/main/res/values/ids.xml`:
 | `image_attachment` | Attachment row |
 | `image_preview` | Attachment preview |
 | `image_remove` | Remove attachment |
-| `web_search` | Web search control |
 | `search_endpoint` | SearXNG endpoint field |
-| `search_enabled` | Search opt-in |
+| `search_enabled` | Search opt-in checkbox |
 
 **Compose `testTag` resource-id style** (package-qualified): same names as above via `"{package}:id/{name}"`. Host/history: `history_open`, `history_new_chat`, `home_new_chat` (and other host tags used by E2E) remain stable under U09/U12.
 
-**Additive IDs (U11/U13):** `tool_risk`, `tool_result`, `settings_open`, `settings_back`, `chat_overflow`, `chat_new_chat`, `settings_save`, `search_save` — keep discovering the Stage 1 chat IDs above; do not replace them.
+**Additive IDs (U11/U13):** `tool_risk`, `tool_result`, `settings_back`, `chat_overflow`, `chat_new_chat`, `settings_save`, `search_save`, `chat_empty_loading_model`, `chat_empty_loading_button`, `chat_model_loading_banner` — keep discovering the Stage 1 chat IDs above; do not replace them.
 
 **Do not** rename or remove IDs to “look cleaner.”
 
 ## Settings navigation (U10 / U13 / U15)
 
-Model import, inference steppers, and SearXNG controls live on the **Settings host** (hidden until opened). EMU-FAKE tests that touch `model_configuration_scroll`, `import_*`, `web_search`, `settings_*`, or `search_*` must:
+Model import, inference steppers, and SearXNG controls live on the **Settings host** (hidden until opened). EMU-FAKE tests that touch `model_configuration_scroll`, `import_*`, `settings_*`, or `search_*` must:
 
 1. Wait for chat ready (`chat_send`).
-2. Open Settings via `settings_open` (or overflow → Settings).
+2. Open Settings via `chat_overflow` → Settings.
 3. Interact inside `model_configuration_scroll`.
 4. Save inference with `settings_save`; save search with `search_save` (never `android:button1`).
 5. Return to chat via `settings_back` before asserting `chat_send` / composer IDs (those hosts are `GONE` while Settings is open).

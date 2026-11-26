@@ -250,6 +250,13 @@ com.whatsapp</string>
     <string name="chat_empty_no_model_title">Load an LFM3 model to begin</string>
     <string name="chat_empty_no_model_body">Import or open a quantized LFM3 GGUF model from Settings. Once loaded, replies stream offline.</string>
     <string name="chat_empty_open_settings">Set up model in Settings</string>
+    <string name="chat_empty_loading_model_title">Auto-loading model…</string>
+    <string name="chat_empty_loading_model_body">Your previously selected model is loading into memory automatically. Chat will unlock as soon as it is ready.</string>
+    <string name="model_auto_loading_status">Auto-loading selected model into memory…</string>
+    <string name="model_unloading_status">Unloading model from memory…</string>
+    <string name="unloading_model">Unloading…</string>
+    <string name="unload_model_loading">Unload (loading…)</string>
+    <string name="loading_short">Loading…</string>
     <string name="chat_suggest_photo_prompt">What colors and shapes are in the image?</string>
     <string name="chat_suggest_photo_hint">Photo · on device</string>
     <string name="chat_suggest_text_prompt">Write one concise paragraph about local on-device privacy.</string>
