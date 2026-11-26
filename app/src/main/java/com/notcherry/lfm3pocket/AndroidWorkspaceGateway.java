@@ -305,8 +305,12 @@ public final class AndroidWorkspaceGateway implements WorkspaceGateway {
     }
 
     private DocNode findChild(String dirDocId, String exactName) {
-        for (DocNode child : listChildren(dirDocId)) {
+        List<DocNode> children = listChildren(dirDocId);
+        for (DocNode child : children) {
             if (exactName.equals(child.name)) return child;
+        }
+        for (DocNode child : children) {
+            if (exactName.equalsIgnoreCase(child.name)) return child;
         }
         return null;
     }
@@ -325,6 +329,8 @@ public final class AndroidWorkspaceGateway implements WorkspaceGateway {
                     result.add(new DocNode(id, name, mime, size));
                 }
             }
+        } catch (SecurityException e) {
+            throw e;
         } catch (RuntimeException ignored) {}
         result.sort(Comparator.comparing((DocNode d) -> !d.isDir()).thenComparing(d -> d.name.toLowerCase(Locale.ROOT)));
         return result;

@@ -88,6 +88,7 @@ final class ToolOutcomePresenter {
             deps.runtime.clearConsent();
         }
         if (!pending && request != null && outcome.result != null) {
+            deps.runtime.recordToolOutcomeInSession(proposal, request, outcome);
             persist(proposal, request, outcome);
         }
     }
@@ -117,9 +118,10 @@ final class ToolOutcomePresenter {
             ToolCoordinator.Outcome outcome) {
         String requestId = proposal == null ? UUID.randomUUID().toString() : proposal.id;
         String arguments = new JSONObject(request.arguments).toString();
+        String wire = ToolCoordinator.wireName(request);
         HistoryRepository.ToolExecution execution = new HistoryRepository.ToolExecution(requestId,
-                request.tool.wireName, arguments, outcome.result.succeeded, outcome.result.status,
-                outcome.result.message, System.currentTimeMillis());
+                wire, arguments, outcome.result.succeeded, outcome.result.status,
+                ToolCoordinator.stripUntrustedPrefix(outcome.result.message), System.currentTimeMillis());
         String conversationId = deps.historyConversationId.get();
         String title = deps.historyTitle.get();
         try {

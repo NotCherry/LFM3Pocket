@@ -269,6 +269,7 @@ public final class ModelToolBridge {
         }
         if ("seconds".equals(key) || "hour".equals(key) || "minute".equals(key)
                 || "percent".equals(key) || "limit".equals(key) || "duration_minutes".equals(key)
+                || "max_depth".equals(key) || "start_line".equals(key) || "max_lines".equals(key)
                 || key.endsWith("_epoch_sec")) {
             try {
                 return Long.parseLong(raw.trim());

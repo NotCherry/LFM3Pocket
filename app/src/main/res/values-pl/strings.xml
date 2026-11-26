@@ -393,4 +393,9 @@ com.whatsapp</string>
     <string name="pdf_images_attached_status">Załączono %1$d str. PDF jako obrazy (wizja). Wpisz pytanie i wyślij.</string>
     <string name="pdf_images_truncated_status">Załączono pierwsze %1$d z %2$d str. PDF jako obrazy (wizja). Wpisz pytanie i wyślij.</string>
     <string name="status_details_title">Szczegóły statusu</string>
+    <string name="tool_calls_count_header">Wywołania narzędzi: %1$d</string>
+    <string name="tool_call_arguments">Argumenty</string>
+    <string name="tool_call_output">Wynik</string>
+    <string name="tool_call_running">Wykonywanie…</string>
+    <string name="tool_call_pending">Oczekuje na zatwierdzenie</string>
 </resources>

@@ -227,20 +227,15 @@ public final class WorkspaceAndDeferredToolsTest {
         assertTrue(display.contains("attached/external content"));
     }
 
-    @Test public void deferredToolSearchExpandsActiveGrammarAndExecutesReadOnlyTool() throws Exception {
-        File vault = tmp.newFolder("vault2");
-        LocalFileWorkspaceGateway gw = new LocalFileWorkspaceGateway(vault);
-        gw.createFile("todo.md", "Buy batteries\nCall dentist");
-        WorkspaceActionExecutor wsExec = new WorkspaceActionExecutor(() -> true, () -> gw);
-
+    @Test public void deferredToolSearchExpandsActiveGrammarAndExecutesReadOnlyTool() {
         Queue worker = new Queue(), ui = new Queue();
         GrammarCapturingEngine engine = new GrammarCapturingEngine();
-        // Step 1: discover fs_read via search_tools
-        engine.replies.add("<tool_call><function=search_tools><parameter=query>read file</parameter></function></tool_call>");
-        // Step 2: call newly discovered fs_read
-        engine.replies.add("<tool_call><function=fs_read><parameter=path>todo.md</parameter></function></tool_call>");
+        // Step 1: discover deferred calculator via search_tools
+        engine.replies.add("<tool_call><function=search_tools><parameter=query>calculator math</parameter></function></tool_call>");
+        // Step 2: call newly discovered calculator
+        engine.replies.add("<tool_call><function=calculator><parameter=expression>6 * 7</parameter></function></tool_call>");
         // Step 3: final answer
-        engine.replies.add("Your todo list has: Buy batteries and Call dentist.");
+        engine.replies.add("6 * 7 equals 42.");
 
         ChatSession session = new ChatSession(engine, worker, ui, () -> 1L,
                 (ep, q) -> Collections.emptyList(), (t, s, g) -> {});
@@ -251,30 +246,149 @@ public final class WorkspaceAndDeferredToolsTest {
             @Override public Locale locale() { return Locale.US; }
             @Override public ToolRegistry registry() { return new ToolRegistry(); }
             @Override public boolean canAutoExecute(ToolRegistry.Request req) {
-                return req.tool == ToolRegistry.Tool.FS_READ;
+                return req.tool == ToolRegistry.Tool.CALCULATOR;
+            }
+            @Override public AndroidActionExecutor.ActionResult executeReadOnly(ToolRegistry.Request req) {
+                return new AndroidActionExecutor.ActionResult(true, "CALC_OK", "42");
+            }
+            @Override public void proposeTool(ToolRegistry.Request req) { fail("Expected read-only auto-exec"); }
+        });
+
+        assertTrue(session.submit("Calculate 6 * 7", "", "", false, "", 128));
+        worker.drain(); ui.drain();
+
+        assertEquals(3, engine.prompts.size());
+        // Step 1 grammar has core tools (including mounted fs_list & fs_read), NOT deferred calculator yet
+        assertTrue(engine.grammars.get(0).contains("<function=search_tools>"));
+        assertTrue(engine.grammars.get(0).contains("<function=fs_list>"));
+        assertTrue(engine.grammars.get(0).contains("<function=fs_read>"));
+        assertFalse(engine.grammars.get(0).contains("<function=calculator>"));
+        // Step 2 prompt contains <additional_tools> with calculator AND Step 2 grammar now allows calculator!
+        assertTrue(engine.prompts.get(1).contains("<additional_tools>"));
+        assertTrue(engine.prompts.get(1).contains("\"name\":\"calculator\""));
+        assertTrue("Grammar must expand dynamically after search_tools", engine.grammars.get(1).contains("<function=calculator>"));
+        // Step 3 prompt contains calculation result and snapshot exposes both expandable tool calls
+        assertTrue(engine.prompts.get(2).contains("42"));
+        ChatSnapshot.Turn reply = session.snapshot().turns.get(1);
+        assertEquals("6 * 7 equals 42.", reply.text);
+        assertEquals(2, reply.toolCalls.size());
+        assertEquals("search_tools", reply.toolCalls.get(0).toolName);
+        assertEquals("calculator", reply.toolCalls.get(1).toolName);
+        assertEquals("42", reply.toolCalls.get(1).resultText);
+    }
+
+    @Test public void modelToolBridgeCoercesWorkspaceIntegerParameters() {
+        ToolRegistry registry = new ToolRegistry();
+        ToolRegistry.Parsed listParsed = ModelToolBridge.parseFromAssistant(registry,
+                "<tool_call><function=fs_list><parameter=path></parameter><parameter=max_depth>3</parameter></function></tool_call>");
+        assertNotNull(listParsed);
+        assertTrue(listParsed.message, listParsed.isValid());
+        assertEquals(3, ((ToolRegistry.FsListRequest) listParsed.request).maxDepth);
+
+        ToolRegistry.Parsed readParsed = ModelToolBridge.parseFromAssistant(registry,
+                "<tool_call><function=fs_read><parameter=path>todo.md</parameter><parameter=start_line>2</parameter><parameter=max_lines>50</parameter></function></tool_call>");
+        assertNotNull(readParsed);
+        assertTrue(readParsed.message, readParsed.isValid());
+        ToolRegistry.FsReadRequest readReq = (ToolRegistry.FsReadRequest) readParsed.request;
+        assertEquals("todo.md", readReq.path);
+        assertEquals(2, readReq.startLine);
+        assertEquals(50, readReq.maxLines);
+    }
+
+    @Test public void workspaceExecutorResolvesRootLabelPrefixAndWildcardSearch() throws Exception {
+        File docs = tmp.newFolder("Documents");
+        LocalFileWorkspaceGateway gw = new LocalFileWorkspaceGateway(docs);
+        gw.createFile("todo.md", "Buy batteries\nCall dentist");
+        WorkspaceActionExecutor exec = new WorkspaceActionExecutor(
+                () -> true, () -> gw, ZonedDateTime::now, () -> "Documents");
+
+        // Model passes mounted folder's own display name ("Documents") as path
+        AndroidActionExecutor.ActionResult listed = exec.execute("fs_list",
+                Collections.singletonMap("path", "Documents"));
+        assertTrue(listed.message, listed.succeeded);
+        assertTrue(listed.message.contains("todo.md"));
+        assertTrue(listed.message.contains("Documents"));
+
+        AndroidActionExecutor.ActionResult read = exec.execute("fs_read",
+                Collections.singletonMap("path", "Documents/todo.md"));
+        assertTrue(read.message, read.succeeded);
+        assertTrue(read.message.contains("Buy batteries"));
+
+        // Wildcard search delegates to directory listing instead of returning 0 matches
+        AndroidActionExecutor.ActionResult wildcard = exec.execute("fs_search",
+                Collections.singletonMap("query", "*"));
+        assertTrue(wildcard.message, wildcard.succeeded);
+        assertTrue(wildcard.message.contains("todo.md"));
+    }
+
+    @Test public void workspaceToolLoopRecordsCleanToolCallsStripsUntrustedTokenFromPromptAndKeepsTaint() throws Exception {
+        File docs = tmp.newFolder("Documents2");
+        LocalFileWorkspaceGateway gw = new LocalFileWorkspaceGateway(docs);
+        gw.createFile("notes.md", "Project Alpha notes");
+        WorkspaceActionExecutor wsExec = new WorkspaceActionExecutor(
+                () -> true, () -> gw, ZonedDateTime::now, () -> "Documents");
+
+        Queue worker = new Queue(), ui = new Queue();
+        GrammarCapturingEngine engine = new GrammarCapturingEngine();
+        engine.replies.add("<tool_call><function=fs_list><parameter=path>Documents</parameter><parameter=max_depth>2</parameter></function></tool_call>");
+        engine.replies.add("<tool_call><function=fs_read><parameter=path>notes.md</parameter><parameter=start_line>1</parameter><parameter=max_lines>20</parameter></function></tool_call>");
+        engine.replies.add("Your Documents folder contains notes.md about Project Alpha.");
+
+        List<ChatSession.CompletedTurn> persisted = new ArrayList<>();
+        ChatSession session = new ChatSession(engine, worker, ui, () -> 1L,
+                (ep, q) -> Collections.emptyList(), persisted::add, path -> {}, (t, s, g) -> {}, null);
+        session.setToolHost(new ChatSession.ToolHost() {
+            @Override public LfmToolCatalog.Capabilities capabilities(boolean useSearch, String ep) {
+                return new LfmToolCatalog.Capabilities(false, false, false, false, "", false, true, "Documents");
+            }
+            @Override public Locale locale() { return new Locale("pl"); }
+            @Override public ToolRegistry registry() { return new ToolRegistry(); }
+            @Override public boolean canAutoExecute(ToolRegistry.Request req) {
+                return req.tool == ToolRegistry.Tool.FS_LIST || req.tool == ToolRegistry.Tool.FS_READ;
             }
             @Override public AndroidActionExecutor.ActionResult executeReadOnly(ToolRegistry.Request req) {
                 Map<String, String> strArgs = new LinkedHashMap<>();
                 for (Map.Entry<String, Object> e : req.arguments.entrySet()) strArgs.put(e.getKey(), String.valueOf(e.getValue()));
                 return wsExec.execute(req.tool.wireName, strArgs);
             }
-            @Override public void proposeTool(ToolRegistry.Request req) { fail("Expected read-only auto-exec"); }
+            @Override public void proposeTool(ToolRegistry.Request req) { fail("Expected auto-exec"); }
         });
 
-        assertTrue(session.submit("Read todo.md", "", "", false, "", 128));
+        assertTrue(session.submit("Sprawdź dostęp do plików w Documents", "", "", false, "", 128));
         worker.drain(); ui.drain();
 
         assertEquals(3, engine.prompts.size());
-        // Step 1 grammar has search_tools/fs_search/note_create, NOT deferred fs_read yet
-        assertTrue(engine.grammars.get(0).contains("<function=search_tools>"));
-        assertFalse(engine.grammars.get(0).contains("<function=fs_read>"));
-        // Step 2 prompt contains <additional_tools> with fs_read AND Step 2 grammar now allows fs_read!
-        assertTrue(engine.prompts.get(1).contains("<additional_tools>"));
-        assertTrue(engine.prompts.get(1).contains("\"name\":\"fs_read\""));
-        assertTrue("Grammar must expand dynamically after search_tools", engine.grammars.get(1).contains("<function=fs_read>"));
-        // Step 3 prompt contains file content
-        assertTrue(engine.prompts.get(2).contains("Buy batteries"));
-        assertEquals("Your todo list has: Buy batteries and Call dentist.", session.snapshot().turns.get(1).text);
+        assertFalse("Raw UNTRUSTED_WORKSPACE token must not confuse the LLM in <tool_response>",
+                engine.prompts.get(1).contains("UNTRUSTED_WORKSPACE"));
+        assertTrue(engine.prompts.get(1).contains("notes.md"));
+        assertTrue(engine.prompts.get(2).contains("Project Alpha notes"));
+
+        ChatSnapshot.Turn reply = session.snapshot().turns.get(1);
+        assertEquals(2, reply.toolCalls.size());
+        assertEquals("fs_list", reply.toolCalls.get(0).toolName);
+        assertTrue(reply.toolCalls.get(0).succeeded);
+        assertFalse(reply.toolCalls.get(0).resultText.contains("UNTRUSTED_WORKSPACE"));
+        assertEquals("fs_read", reply.toolCalls.get(1).toolName);
+        assertTrue(reply.toolCalls.get(1).resultText.contains("Project Alpha notes"));
+
+        assertEquals(1, persisted.size());
+        assertEquals(2, persisted.get(0).toolCalls.size());
+    }
+
+    @Test public void polishWorkspaceAndMcpQueriesEngageToolMode() {
+        McpServerConfig srv = new McpServerConfig("termux", "Termux", "http://127.0.0.1:3000/mcp", "",
+                true, false, Collections.singletonList(
+                        new McpServerConfig.ToolDef("git_status", "Show repository git status",
+                                Collections.emptyList(), "{\"type\":\"object\",\"properties\":{}}")));
+        LfmToolCatalog.Capabilities caps = new LfmToolCatalog.Capabilities(
+                false, false, false, false, "", false, true, "Documents",
+                Collections.singletonList(srv.toToolSpec(srv.cachedTools.get(0))));
+
+        assertTrue(LfmToolCatalog.shouldEngageToolMode("Nie działa dostęp do plików", false, caps));
+        assertTrue(LfmToolCatalog.shouldEngageToolMode("Co jest w folderze Documents?", false, caps));
+        assertTrue(LfmToolCatalog.shouldEngageToolMode("Jakie masz narzędzia?", false, caps));
+        assertTrue(LfmToolCatalog.shouldEngageToolMode("Sprawdź Termux", false, caps));
+        assertFalse(LfmToolCatalog.shouldEngageToolMode("Jak upiec szarlotkę?", false, caps));
     }
 
     @Test public void documentTaintedTurnBlocksAutoWebSearchAndRequiresTaintedConfirmation() {

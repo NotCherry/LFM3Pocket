@@ -95,7 +95,7 @@ final class WebSearch {
                 throw new Exception("SearXNG returned HTTP 403 (ensure JSON format is enabled on this instance)");
             }
             if (code == 429) {
-                throw new Exception("SearXNG returned HTTP 429 (rate limited)");
+                throw new Exception("SearXNG returned HTTP 429 (rate limited by this public instance; try another SearXNG instance or wait)");
             }
             if (code < 200 || code >= 300) {
                 throw new Exception("Search returned HTTP " + code);

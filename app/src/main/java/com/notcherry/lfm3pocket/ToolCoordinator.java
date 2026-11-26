@@ -312,6 +312,168 @@ public final class ToolCoordinator {
         return cleaned.trim();
     }
 
+    /** Returns the effective wire name for a validated request (including dynamic external/MCP wire names). */
+    public static String wireName(ToolRegistry.Request request) {
+        if (request == null) return "tool";
+        if (request instanceof ToolRegistry.ExternalToolRequest) {
+            return ((ToolRegistry.ExternalToolRequest) request).externalWireName;
+        }
+        return request.tool.wireName;
+    }
+
+    /** Human-readable title from a stored wire name (for History & restored live chat tool rows). */
+    public static String titleForWireName(String wireName) {
+        if (wireName == null || wireName.trim().isEmpty()) return "Tool call";
+        String w = wireName.trim();
+        switch (w) {
+            case "toggle_flashlight": return "Flashlight";
+            case "set_volume": return "Audio volume";
+            case "set_timer": return "Set timer";
+            case "set_alarm": return "Set alarm";
+            case "show_alarms": return "Show alarms";
+            case "open_application": return "Open app";
+            case "open_settings": return "Open settings";
+            case "copy_text": return "Copy text";
+            case "share_text": return "Share text";
+            case "set_reminder": return "Reminder";
+            case "current_time": return "Current time";
+            case "calculator": return "Calculator";
+            case "unit_convert": return "Unit conversion";
+            case "weather": return "Weather";
+            case "web_search": return "Web search";
+            case "search_tools": return "Search tools";
+            case "list_notifications": return "List notifications";
+            case "draft_message": return "Draft message";
+            case "send_message": return "Send message";
+            case "list_events": return "List calendar events";
+            case "create_event": return "Create calendar event";
+            case "update_event": return "Update calendar event";
+            case "delete_event": return "Delete calendar event";
+            case "fs_list": return "List workspace files";
+            case "fs_search": return "Search workspace";
+            case "fs_read": return "Read workspace file";
+            case "note_create": return "Create Markdown note";
+            case "fs_append": return "Append to file";
+            case "fs_edit": return "Edit workspace file";
+            case "fs_delete": return "Delete workspace file";
+            case "lookup_contact": return "Look up contact";
+            default:
+                if (w.startsWith("mcp.")) {
+                    int dot = w.lastIndexOf('.');
+                    return "MCP · " + (dot >= 0 && dot + 1 < w.length() ? w.substring(dot + 1) : w);
+                }
+                if (w.startsWith("shortcut.")) {
+                    int dot = w.lastIndexOf('.');
+                    return "Shortcut · " + (dot >= 0 && dot + 1 < w.length() ? w.substring(dot + 1) : w);
+                }
+                return w;
+        }
+    }
+
+    /** Short one-line argument target for collapsed Antigravity-style tool rows. */
+    public static String compactSummary(ToolRegistry.Request request) {
+        if (request == null) return "";
+        if (request instanceof ToolRegistry.FsListRequest) {
+            String p = ((ToolRegistry.FsListRequest) request).path;
+            return (p == null || p.isEmpty()) ? "/" : p;
+        }
+        if (request instanceof ToolRegistry.FsSearchRequest) {
+            return truncateInline(((ToolRegistry.FsSearchRequest) request).query, 64);
+        }
+        if (request instanceof ToolRegistry.FsReadRequest) {
+            return truncateInline(((ToolRegistry.FsReadRequest) request).path, 64);
+        }
+        if (request instanceof ToolRegistry.NoteCreateRequest) {
+            return truncateInline(((ToolRegistry.NoteCreateRequest) request).title, 64);
+        }
+        if (request instanceof ToolRegistry.FsAppendRequest) {
+            return truncateInline(((ToolRegistry.FsAppendRequest) request).path, 64);
+        }
+        if (request instanceof ToolRegistry.FsEditRequest) {
+            return truncateInline(((ToolRegistry.FsEditRequest) request).path, 64);
+        }
+        if (request instanceof ToolRegistry.FsDeleteRequest) {
+            return truncateInline(((ToolRegistry.FsDeleteRequest) request).path, 64);
+        }
+        if (request instanceof ToolRegistry.SearchToolsRequest) {
+            return truncateInline(((ToolRegistry.SearchToolsRequest) request).query, 64);
+        }
+        if (request instanceof ToolRegistry.WebSearchRequest) {
+            return truncateInline(((ToolRegistry.WebSearchRequest) request).query, 64);
+        }
+        if (request instanceof ToolRegistry.CalculatorRequest) {
+            return truncateInline(((ToolRegistry.CalculatorRequest) request).expression, 64);
+        }
+        if (request instanceof ToolRegistry.WeatherRequest) {
+            ToolRegistry.WeatherRequest w = (ToolRegistry.WeatherRequest) request;
+            return w.location != null && !w.location.isEmpty() ? truncateInline(w.location, 64) : "";
+        }
+        if (request instanceof ToolRegistry.TimerRequest) {
+            ToolRegistry.TimerRequest t = (ToolRegistry.TimerRequest) request;
+            return t.label != null && !t.label.isEmpty() ? t.seconds + "s · " + truncateInline(t.label, 40) : t.seconds + "s";
+        }
+        if (request instanceof ToolRegistry.CreateEventRequest) {
+            return truncateInline(((ToolRegistry.CreateEventRequest) request).title, 64);
+        }
+        if (request instanceof ToolRegistry.LookupContactRequest) {
+            return truncateInline(((ToolRegistry.LookupContactRequest) request).query, 64);
+        }
+        if (request instanceof ToolRegistry.CurrentTimeRequest) {
+            String tz = ((ToolRegistry.CurrentTimeRequest) request).timezone;
+            return tz == null || tz.isEmpty() ? "local" : truncateInline(tz, 48);
+        }
+        return firstArgSummary(request.arguments);
+    }
+
+    /** Short one-line argument target parsed from stored JSON arguments (for History / restored turns). */
+    @SuppressWarnings("unchecked")
+    public static String compactSummaryFromJson(String wireName, String argumentsJson) {
+        if (argumentsJson == null || argumentsJson.trim().isEmpty()) {
+            return "fs_list".equals(wireName) ? "/" : "";
+        }
+        try {
+            Object parsed = StrictToolJson.parseBounded(argumentsJson, 32_768, 6, 64);
+            if (!(parsed instanceof Map)) return "";
+            Map<String, Object> args = (Map<String, Object>) parsed;
+            if ("fs_list".equals(wireName)) {
+                Object p = args.get("path");
+                String s = p == null ? "" : String.valueOf(p).trim();
+                return s.isEmpty() ? "/" : truncateInline(s, 64);
+            }
+            if ("set_timer".equals(wireName) && args.containsKey("seconds")) {
+                Object sec = args.get("seconds");
+                Object lbl = args.get("label");
+                String label = lbl == null ? "" : String.valueOf(lbl).trim();
+                return label.isEmpty() ? sec + "s" : sec + "s · " + truncateInline(label, 40);
+            }
+            for (String preferred : new String[] { "path", "query", "title", "expression", "location", "package", "text" }) {
+                if (args.containsKey(preferred)) {
+                    String v = String.valueOf(args.get(preferred)).trim();
+                    if (!v.isEmpty()) return truncateInline(v, 64);
+                }
+            }
+            return firstArgSummary(args);
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
+    private static String firstArgSummary(Map<String, Object> args) {
+        if (args == null || args.isEmpty()) return "";
+        for (Map.Entry<String, Object> e : args.entrySet()) {
+            if (e.getValue() == null) continue;
+            String v = String.valueOf(e.getValue()).trim();
+            if (!v.isEmpty()) return truncateInline(v, 64);
+        }
+        return "";
+    }
+
+    private static String truncateInline(String value, int max) {
+        if (value == null) return "";
+        String clean = value.replace('\n', ' ').replace('\r', ' ').trim();
+        return clean.length() <= max ? clean : clean.substring(0, max - 1) + "…";
+    }
+
     private static void appendEscaped(StringBuilder out, String text) {
         if (text == null) return;
         for (int i = 0; i < text.length(); i++) {

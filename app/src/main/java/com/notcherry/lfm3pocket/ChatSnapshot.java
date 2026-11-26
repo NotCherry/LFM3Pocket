@@ -40,6 +40,40 @@ public final class ChatSnapshot {
     }
 
     /**
+     * Structured tool-call record rendered as an expandable Antigravity-style step in live chat
+     * and restored conversations.
+     */
+    public static final class ToolCall {
+        public final String id;
+        public final String toolName;
+        public final String title;
+        public final String summary;
+        public final String argumentsJson;
+        public final String status;
+        public final String resultText;
+        public final boolean running;
+        public final boolean pending;
+        public final boolean succeeded;
+        public final long durationMs;
+
+        public ToolCall(String id, String toolName, String title, String summary, String argumentsJson,
+                        String status, String resultText, boolean running, boolean pending,
+                        boolean succeeded, long durationMs) {
+            this.id = id == null ? "" : id;
+            this.toolName = toolName == null ? "" : toolName;
+            this.title = title == null ? "" : title;
+            this.summary = summary == null ? "" : summary;
+            this.argumentsJson = argumentsJson == null ? "{}" : argumentsJson;
+            this.status = status == null ? "" : status;
+            this.resultText = resultText == null ? "" : resultText;
+            this.running = running;
+            this.pending = pending;
+            this.succeeded = succeeded;
+            this.durationMs = Math.max(0L, durationMs);
+        }
+    }
+
+    /**
      * One visible turn. {@code role} is {@code "user"} or {@code "assistant"}.
      * {@code reasoning} is optional cleaned think-block text for the Reasoning rail (never in answer body).
      */
@@ -55,18 +89,25 @@ public final class ChatSnapshot {
         public final String turnId;
         /** Clickable attachment references for this turn (photos, PDF pages, documents, voice). */
         public final List<AttachmentRef> attachments;
+        /** Expandable tool calls executed or proposed during this assistant turn. */
+        public final List<ToolCall> toolCalls;
 
         public Turn(String role, String text, String reasoning, List<Source> sources, boolean streaming) {
-            this(role, text, reasoning, sources, streaming, false, null, Collections.emptyList());
+            this(role, text, reasoning, sources, streaming, false, null, Collections.emptyList(), Collections.emptyList());
         }
 
         public Turn(String role, String text, String reasoning, List<Source> sources, boolean streaming,
                     boolean interrupted, String turnId) {
-            this(role, text, reasoning, sources, streaming, interrupted, turnId, Collections.emptyList());
+            this(role, text, reasoning, sources, streaming, interrupted, turnId, Collections.emptyList(), Collections.emptyList());
         }
 
         public Turn(String role, String text, String reasoning, List<Source> sources, boolean streaming,
                     boolean interrupted, String turnId, List<AttachmentRef> attachments) {
+            this(role, text, reasoning, sources, streaming, interrupted, turnId, attachments, Collections.emptyList());
+        }
+
+        public Turn(String role, String text, String reasoning, List<Source> sources, boolean streaming,
+                    boolean interrupted, String turnId, List<AttachmentRef> attachments, List<ToolCall> toolCalls) {
             this.role = Objects.requireNonNull(role, "role");
             this.text = text == null ? "" : text;
             this.reasoning = reasoning == null || reasoning.isEmpty() ? null : reasoning;
@@ -78,6 +119,9 @@ public final class ChatSnapshot {
             this.attachments = attachments == null || attachments.isEmpty()
                     ? Collections.emptyList()
                     : Collections.unmodifiableList(new ArrayList<>(attachments));
+            this.toolCalls = toolCalls == null || toolCalls.isEmpty()
+                    ? Collections.emptyList()
+                    : Collections.unmodifiableList(new ArrayList<>(toolCalls));
         }
     }
 

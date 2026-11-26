@@ -19,21 +19,30 @@ public final class WorkspaceActionExecutor implements AndroidActionExecutor {
     private final BooleanSupplier workspaceConfigured;
     private final Supplier<WorkspaceGateway> gatewaySupplier;
     private final Supplier<ZonedDateTime> clock;
+    private final Supplier<String> workspaceLabelSupplier;
 
     public WorkspaceActionExecutor(BooleanSupplier workspaceConfigured,
                                    Supplier<WorkspaceGateway> gatewaySupplier) {
-        this(workspaceConfigured, gatewaySupplier, ZonedDateTime::now);
+        this(workspaceConfigured, gatewaySupplier, ZonedDateTime::now, () -> "");
     }
 
     public WorkspaceActionExecutor(BooleanSupplier workspaceConfigured,
                                    Supplier<WorkspaceGateway> gatewaySupplier,
                                    Supplier<ZonedDateTime> clock) {
+        this(workspaceConfigured, gatewaySupplier, clock, () -> "");
+    }
+
+    public WorkspaceActionExecutor(BooleanSupplier workspaceConfigured,
+                                   Supplier<WorkspaceGateway> gatewaySupplier,
+                                   Supplier<ZonedDateTime> clock,
+                                   Supplier<String> workspaceLabelSupplier) {
         if (workspaceConfigured == null || gatewaySupplier == null) {
             throw new IllegalArgumentException("Missing workspace executor dependencies");
         }
         this.workspaceConfigured = workspaceConfigured;
         this.gatewaySupplier = gatewaySupplier;
         this.clock = clock == null ? ZonedDateTime::now : clock;
+        this.workspaceLabelSupplier = workspaceLabelSupplier == null ? () -> "" : workspaceLabelSupplier;
     }
 
     @Override public ActionResult execute(String approvedToolName, Map<String, String> arguments) {
@@ -67,13 +76,23 @@ public final class WorkspaceActionExecutor implements AndroidActionExecutor {
         int maxDepth = parseIntOrDefault(args == null ? null : args.get("max_depth"), 2, 1, 4);
         try {
             String normalized = WorkspacePath.normalize(path, true);
-            List<WorkspaceGateway.Entry> entries = gateway.list(normalized, maxDepth, MAX_LIST_ENTRIES);
+            List<WorkspaceGateway.Entry> entries;
+            String effectivePath = normalized;
+            try {
+                entries = gateway.list(normalized, maxDepth, MAX_LIST_ENTRIES);
+            } catch (IOException primaryError) {
+                String fallback = fallbackStrippingRootLabel(normalized, true);
+                if (fallback == null) throw primaryError;
+                entries = gateway.list(fallback, maxDepth, MAX_LIST_ENTRIES);
+                effectivePath = fallback;
+            }
+            String location = formatLocation(effectivePath);
             if (entries.isEmpty()) {
                 return new ActionResult(true, "FS_LIST_OK",
-                        "UNTRUSTED_WORKSPACE Folder is empty: " + (normalized.isEmpty() ? "/" : normalized));
+                        "UNTRUSTED_WORKSPACE Folder is empty: " + location);
             }
             StringBuilder out = new StringBuilder("UNTRUSTED_WORKSPACE Listing ");
-            out.append(normalized.isEmpty() ? "/" : normalized).append(" (").append(entries.size()).append(" entries)");
+            out.append(location).append(" (").append(entries.size()).append(" entries)");
             for (WorkspaceGateway.Entry entry : entries) {
                 out.append('\n').append(entry.directory ? "[dir] " : "[file] ").append(entry.relativePath);
                 if (!entry.directory) out.append(" (").append(entry.sizeBytes).append(" B)");
@@ -81,7 +100,11 @@ public final class WorkspaceActionExecutor implements AndroidActionExecutor {
             return new ActionResult(true, "FS_LIST_OK", out.toString());
         } catch (IllegalArgumentException e) {
             return new ActionResult(false, "INVALID_ARGUMENTS", e.getMessage());
-        } catch (IOException | SecurityException e) {
+        } catch (SecurityException e) {
+            return new ActionResult(false, "FS_LIST_FAILED",
+                    "Workspace folder permission expired (" + safeMessage(e)
+                            + "). Re-pick the folder in Settings → Local Workspace.");
+        } catch (IOException e) {
             return new ActionResult(false, "FS_LIST_FAILED", "Could not list workspace folder: " + safeMessage(e));
         }
     }
@@ -92,12 +115,23 @@ public final class WorkspaceActionExecutor implements AndroidActionExecutor {
         if (query.isEmpty()) {
             return new ActionResult(false, "INVALID_ARGUMENTS", "query is required");
         }
+        // Small models sometimes call fs_search(query="*") or query="." when trying to list files.
+        if ("*".equals(query) || "*.*".equals(query) || ".".equals(query) || "/".equals(query)) {
+            return fsList(gateway, args);
+        }
         try {
             String normalized = WorkspacePath.normalize(path, true);
-            List<WorkspaceGateway.SearchMatch> matches = gateway.search(query, normalized, MAX_SEARCH_MATCHES);
+            List<WorkspaceGateway.SearchMatch> matches;
+            try {
+                matches = gateway.search(query, normalized, MAX_SEARCH_MATCHES);
+            } catch (IOException primaryError) {
+                String fallback = fallbackStrippingRootLabel(normalized, true);
+                if (fallback == null) throw primaryError;
+                matches = gateway.search(query, fallback, MAX_SEARCH_MATCHES);
+            }
             if (matches.isEmpty()) {
                 return new ActionResult(true, "FS_SEARCH_OK",
-                        "UNTRUSTED_WORKSPACE No files or lines matched \"" + query + "\"");
+                        "UNTRUSTED_WORKSPACE No files or lines matched \"" + query + "\" in " + formatLocation(normalized));
             }
             StringBuilder out = new StringBuilder("UNTRUSTED_WORKSPACE Found ");
             out.append(matches.size()).append(" match(es) for \"").append(query).append('"');
@@ -109,7 +143,11 @@ public final class WorkspaceActionExecutor implements AndroidActionExecutor {
             return new ActionResult(true, "FS_SEARCH_OK", out.toString());
         } catch (IllegalArgumentException e) {
             return new ActionResult(false, "INVALID_ARGUMENTS", e.getMessage());
-        } catch (IOException | SecurityException e) {
+        } catch (SecurityException e) {
+            return new ActionResult(false, "FS_SEARCH_FAILED",
+                    "Workspace folder permission expired (" + safeMessage(e)
+                            + "). Re-pick the folder in Settings → Local Workspace.");
+        } catch (IOException e) {
             return new ActionResult(false, "FS_SEARCH_FAILED", "Workspace search failed: " + safeMessage(e));
         }
     }
@@ -120,7 +158,14 @@ public final class WorkspaceActionExecutor implements AndroidActionExecutor {
         int maxLines = parseIntOrDefault(args == null ? null : args.get("max_lines"), 120, 1, 300);
         try {
             String normalized = WorkspacePath.normalize(path, false);
-            WorkspaceGateway.ReadResult read = gateway.read(normalized, startLine, maxLines);
+            WorkspaceGateway.ReadResult read;
+            try {
+                read = gateway.read(normalized, startLine, maxLines);
+            } catch (IOException primaryError) {
+                String fallback = fallbackStrippingRootLabel(normalized, false);
+                if (fallback == null) throw primaryError;
+                read = gateway.read(fallback, startLine, maxLines);
+            }
             StringBuilder out = new StringBuilder("UNTRUSTED_WORKSPACE File ");
             out.append(read.relativePath)
                     .append(" (lines ").append(read.startLine).append('-').append(read.endLine)
@@ -130,7 +175,11 @@ public final class WorkspaceActionExecutor implements AndroidActionExecutor {
             return new ActionResult(true, "FS_READ_OK", out.toString());
         } catch (IllegalArgumentException e) {
             return new ActionResult(false, "INVALID_ARGUMENTS", e.getMessage());
-        } catch (IOException | SecurityException e) {
+        } catch (SecurityException e) {
+            return new ActionResult(false, "FS_READ_FAILED",
+                    "Workspace folder permission expired (" + safeMessage(e)
+                            + "). Re-pick the folder in Settings → Local Workspace.");
+        } catch (IOException e) {
             return new ActionResult(false, "FS_READ_FAILED", "Could not read file: " + safeMessage(e));
         }
     }
@@ -144,6 +193,8 @@ public final class WorkspaceActionExecutor implements AndroidActionExecutor {
         if (content.trim().isEmpty()) return new ActionResult(false, "INVALID_ARGUMENTS", "content is required");
         try {
             String normalizedFolder = WorkspacePath.normalize(folder, true);
+            String strippedFolder = fallbackStrippingRootLabel(normalizedFolder, true);
+            if (strippedFolder != null) normalizedFolder = strippedFolder;
             String filename = WorkspacePath.noteFilename(title);
             String targetPath = normalizedFolder.isEmpty() ? filename : normalizedFolder + "/" + filename;
             String markdown = WorkspacePath.formatMarkdownNote(
@@ -163,7 +214,14 @@ public final class WorkspaceActionExecutor implements AndroidActionExecutor {
         if (content.isEmpty()) return new ActionResult(false, "INVALID_ARGUMENTS", "content is required");
         try {
             String normalized = WorkspacePath.normalize(path, false);
-            String updated = gateway.appendFile(normalized, content);
+            String updated;
+            try {
+                updated = gateway.appendFile(normalized, content);
+            } catch (IOException primaryError) {
+                String fallback = fallbackStrippingRootLabel(normalized, false);
+                if (fallback == null) throw primaryError;
+                updated = gateway.appendFile(fallback, content);
+            }
             return new ActionResult(true, "FS_APPENDED", "UNTRUSTED_WORKSPACE Appended to " + updated);
         } catch (IllegalArgumentException e) {
             return new ActionResult(false, "INVALID_ARGUMENTS", e.getMessage());
@@ -179,7 +237,14 @@ public final class WorkspaceActionExecutor implements AndroidActionExecutor {
         if (oldText.isEmpty()) return new ActionResult(false, "INVALID_ARGUMENTS", "old_text is required");
         try {
             String normalized = WorkspacePath.normalize(path, false);
-            WorkspaceGateway.EditResult res = gateway.editFile(normalized, oldText, newText);
+            WorkspaceGateway.EditResult res;
+            try {
+                res = gateway.editFile(normalized, oldText, newText);
+            } catch (IOException primaryError) {
+                String fallback = fallbackStrippingRootLabel(normalized, false);
+                if (fallback == null) throw primaryError;
+                res = gateway.editFile(fallback, oldText, newText);
+            }
             return new ActionResult(true, "FS_EDITED",
                     "UNTRUSTED_WORKSPACE Updated " + res.relativePath + " (" + res.replacedCount + " replacement)");
         } catch (IllegalArgumentException e) {
@@ -193,13 +258,44 @@ public final class WorkspaceActionExecutor implements AndroidActionExecutor {
         String path = args == null ? "" : nonNull(args.get("path"));
         try {
             String normalized = WorkspacePath.normalize(path, false);
-            String detail = gateway.deleteFile(normalized);
+            String detail;
+            try {
+                detail = gateway.deleteFile(normalized);
+            } catch (IOException primaryError) {
+                String fallback = fallbackStrippingRootLabel(normalized, false);
+                if (fallback == null) throw primaryError;
+                detail = gateway.deleteFile(fallback);
+            }
             return new ActionResult(true, "FS_DELETED", "UNTRUSTED_WORKSPACE " + detail);
         } catch (IllegalArgumentException e) {
             return new ActionResult(false, "INVALID_ARGUMENTS", e.getMessage());
         } catch (IOException | SecurityException e) {
             return new ActionResult(false, "FS_DELETE_FAILED", "Could not delete file: " + safeMessage(e));
         }
+    }
+
+    private String workspaceLabel() {
+        try {
+            String label = workspaceLabelSupplier.get();
+            return label == null ? "" : label.trim();
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
+    private String fallbackStrippingRootLabel(String normalized, boolean allowEmptyResult) {
+        String stripped = WorkspacePath.stripLeadingRootLabel(normalized, workspaceLabel());
+        if (stripped == null) return null;
+        if (!allowEmptyResult && stripped.isEmpty()) return null;
+        return stripped;
+    }
+
+    private String formatLocation(String normalized) {
+        String label = workspaceLabel();
+        if (normalized == null || normalized.isEmpty()) {
+            return label.isEmpty() ? "/" : label + " (/)";
+        }
+        return label.isEmpty() ? normalized : label + "/" + normalized;
     }
 
     private static int parseIntOrDefault(String raw, int fallback, int min, int max) {

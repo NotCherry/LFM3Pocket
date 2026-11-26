@@ -167,7 +167,11 @@ final class SearchSettingsSection {
             return;
         }
         if (!SearchEndpointPolicy.accepts(raw) || raw.isEmpty()) {
+            bindingFields = true;
+            searchEnabledBox.setChecked(false);
+            bindingFields = false;
             deps.chatStatus.accept("Use an HTTPS SearXNG search endpoint.");
+            deps.updateControls.run();
             return;
         }
         String normalized = WebSearch.normalizeEndpoint(raw);

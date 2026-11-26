@@ -466,6 +466,23 @@ private fun HistoryScreen(
                     .testTag(tag("history_reader")),
             ) {
                 selected.messages.forEach { message ->
+                    val messageCalls = selected.outcomes
+                        .filter { it.messageId == message.id }
+                        .map { outcome ->
+                            ChatSnapshot.ToolCall(
+                                outcome.requestId,
+                                outcome.tool,
+                                ToolCoordinator.titleForWireName(outcome.tool),
+                                ToolCoordinator.compactSummaryFromJson(outcome.tool, outcome.argumentsJson),
+                                outcome.argumentsJson,
+                                outcome.status,
+                                ToolCoordinator.stripUntrustedPrefix(outcome.resultText),
+                                false,
+                                false,
+                                outcome.succeeded,
+                                0L,
+                            )
+                        }
                     when (message.role) {
                         "tool" -> {
                             Column(
@@ -491,6 +508,16 @@ private fun HistoryScreen(
                                         .semantics { contentDescription = message.text },
                                 )
                             }
+                            if (messageCalls.isNotEmpty()) {
+                                ToolCallTimeline(
+                                    toolCalls = messageCalls,
+                                    packageName = packageName,
+                                    resultTag = "history_tool_outcome_result",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = space.space2),
+                                )
+                            }
                         }
                         else -> {
                             val cleaned = if (message.role == "assistant") {
@@ -504,16 +531,31 @@ private fun HistoryScreen(
                                 message.reasoning?.takeIf { it.isNotBlank() } ?: cleaned?.reasoning,
                                 emptyList(),
                                 false,
+                                false,
+                                null,
+                                emptyList(),
+                                if (message.role == "assistant") messageCalls else emptyList(),
                             )
                             ChatTurn(
                                 turn = turn,
                                 packageName = packageName,
                                 userMessageTag = if (message.role == "user") "history_message_user" else null,
                                 assistantMessageTag = if (message.role == "assistant") "history_message_assistant" else null,
+                                toolResultTag = if (message.role == "assistant") "history_tool_outcome_result" else null,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = space.space2),
                             )
+                            if (message.role != "assistant" && messageCalls.isNotEmpty()) {
+                                ToolCallTimeline(
+                                    toolCalls = messageCalls,
+                                    packageName = packageName,
+                                    resultTag = "history_tool_outcome_result",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = space.space2),
+                                )
+                            }
                         }
                     }
                     if (!message.speechTranscript.isNullOrBlank()) {
@@ -545,33 +587,6 @@ private fun HistoryScreen(
                             color = atlas.inkMuted,
                             modifier = Modifier.padding(top = space.space1),
                         )
-                    }
-                    selected.outcomes.filter { it.messageId == message.id }.forEach { outcome ->
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = space.space2)
-                                .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
-                                .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
-                                .padding(space.space3),
-                        ) {
-                            Text(
-                                "${outcome.tool} · ${outcome.status}",
-                                style = type.label,
-                                color = if (outcome.succeeded) atlas.ok else atlas.warn,
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(outcome.argumentsJson, style = type.mono, color = atlas.inkMuted)
-                            Spacer(Modifier.height(space.space1))
-                            Text(
-                                outcome.resultText,
-                                style = type.body,
-                                color = atlas.ink,
-                                modifier = Modifier
-                                    .testTag(tag("history_tool_outcome_result"))
-                                    .semantics { contentDescription = outcome.resultText },
-                            )
-                        }
                     }
                 }
             }

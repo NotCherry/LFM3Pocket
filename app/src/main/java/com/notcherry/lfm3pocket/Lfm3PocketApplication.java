@@ -409,7 +409,9 @@ public class Lfm3PocketApplication extends Application {
                     String uri = new RuntimePreferences(this).workspaceTreeUri();
                     return uri != null && !uri.trim().isEmpty();
                 },
-                this::createWorkspaceGateway);
+                this::createWorkspaceGateway,
+                java.time.ZonedDateTime::now,
+                () -> new RuntimePreferences(this).workspaceLabel());
         AndroidActionExecutor contacts = new ContactsActionExecutor(
                 () -> checkSelfPermission(android.Manifest.permission.READ_CONTACTS)
                         == android.content.pm.PackageManager.PERMISSION_GRANTED,
