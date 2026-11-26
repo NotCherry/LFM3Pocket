@@ -298,6 +298,68 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     public String loopbackToken() { return preferences.loopbackToken(); }
     public int loopbackPort() { return loopback.port(); }
 
+    /**
+     * Never overwrite a persisted model path or SAF {@code content://} URI with a transient
+     * {@code /proc/self/fd/NN} descriptor path that becomes invalid after process restart.
+     */
+    static boolean shouldPersistModelPath(String path) {
+        return path != null && !path.isEmpty() && !path.startsWith("/proc/self/fd/");
+    }
+
+    /**
+     * Start loading the last selected model in the background as soon as the app opens so
+     * weights are already mapped by the time the user enters chat.
+     */
+    public void preloadSavedModel() {
+        if (handle != 0L || loading || unloading) return;
+        String savedModel = preferences.raw().getString("model", "");
+        String savedProjector = preferences.raw().getString("mmproj", "");
+        if (savedModel == null || savedModel.isEmpty()) return;
+        if (ModelImportCoordinator.isContentUri(savedModel)
+                || ModelImportCoordinator.isContentUri(savedProjector)) {
+            loading = true;
+            String displayName = preferences.raw().getString("model_name", "GGUF");
+            dispatchPolicy(() -> policy.onLoading(displayName));
+            worker.execute(() -> {
+                if (handle != 0L || unloading) {
+                    main.post(() -> loading = false);
+                    return;
+                }
+                ExternalModelStore store = app.externalModels();
+                try {
+                    String modelPath = ModelImportCoordinator.isContentUri(savedModel)
+                            ? store.open(android.net.Uri.parse(savedModel)).path
+                            : savedModel;
+                    String projectorPath = savedProjector == null || savedProjector.isEmpty()
+                            ? ""
+                            : (ModelImportCoordinator.isContentUri(savedProjector)
+                                    ? store.open(android.net.Uri.parse(savedProjector)).path
+                                    : savedProjector);
+                    boolean ok = loadBlocking(modelPath, projectorPath, null);
+                    if (ok) {
+                        java.util.HashSet<String> active = new java.util.HashSet<>();
+                        if (ModelImportCoordinator.isContentUri(savedModel)) active.add(savedModel);
+                        if (ModelImportCoordinator.isContentUri(savedProjector)) active.add(savedProjector);
+                        store.releaseExcept(active);
+                    }
+                } catch (Throwable ignored) {
+                    main.post(() -> {
+                        loading = false;
+                        dispatchPolicy(policy::onLoadFailed);
+                        Ui target = ui;
+                        if (target != null && target.isUsable()) {
+                            target.onModelStateChanged(handle != 0L, null);
+                        }
+                    });
+                }
+            });
+            return;
+        }
+        if (new File(savedModel).isFile()) {
+            load(savedModel, savedProjector == null ? "" : savedProjector, null);
+        }
+    }
+
     public void load(String path, String projector, LoadCallback callback) {
         loading = true;
         dispatchPolicy(() -> policy.onLoading(path == null ? "" : new File(path).getName()));
@@ -307,7 +369,10 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     /** Caller is the runtime worker. Safe for import, which already runs there. */
     public boolean loadBlocking(String path, String projector, LoadCallback callback) {
         loading = true;
-        String name = path == null ? "" : new File(path).getName();
+        String fallbackName = path == null ? "" : new File(path).getName();
+        String name = shouldPersistModelPath(path)
+                ? fallbackName
+                : preferences.raw().getString("model_name", fallbackName);
         long started = SystemClock.elapsedRealtime();
         long next = 0L;
         String error = null;
@@ -338,7 +403,9 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             if (previous != 0L && previous != loaded) engine.unloadModel(previous);
             handle = loaded;
             loadedPath = path;
-            preferences.raw().edit().putString("model", path).apply();
+            if (shouldPersistModelPath(path)) {
+                preferences.raw().edit().putString("model", path).apply();
+            }
         }
         String status = failure == null
                 ? (projector == null || projector.isEmpty()

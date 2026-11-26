@@ -68,6 +68,7 @@ import com.notcherry.lfm3pocket.ui.theme.atlasTypography
  */
 class ComposeHostActivity : ComponentActivity() {
     private var attachedInterfaceScale = InterfaceSize.DEFAULT
+    private var preloadSettingsStore: InferenceSettingsStore? = null
 
     override fun attachBaseContext(newBase: Context) {
         attachedInterfaceScale = InterfaceSize.read(newBase)
@@ -79,9 +80,32 @@ class ComposeHostActivity : ComponentActivity() {
         InterfaceSize.recreateIfChanged(this, attachedInterfaceScale)
     }
 
+    override fun onDestroy() {
+        preloadSettingsStore?.close()
+        preloadSettingsStore = null
+        super.onDestroy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (routeExternalAsk(intent)) return
+        val runtime = (application as? Lfm3PocketApplication)?.modelRuntime()
+        if (runtime != null) {
+            val store = InferenceSettingsStore(this)
+            preloadSettingsStore = store
+            store.load(
+                { settings ->
+                    runtime.engine().configure(settings)
+                    store.close()
+                    if (preloadSettingsStore === store) preloadSettingsStore = null
+                },
+                {
+                    store.close()
+                    if (preloadSettingsStore === store) preloadSettingsStore = null
+                },
+            )
+            runtime.preloadSavedModel()
+        }
         window.statusBarColor = StillwaterUi.SURFACE
         window.navigationBarColor = StillwaterUi.SURFACE
         val insetsController = WindowCompat.getInsetsController(window, window.decorView)

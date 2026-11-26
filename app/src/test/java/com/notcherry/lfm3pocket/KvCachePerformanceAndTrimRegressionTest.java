@@ -28,6 +28,7 @@ public final class KvCachePerformanceAndTrimRegressionTest {
     private static final class CapturingEngine implements InferenceEngine {
         final Deque<String> replies = new ArrayDeque<>();
         final List<String> prompts = new ArrayList<>();
+        final List<String> grammars = new ArrayList<>();
         @Override public long loadModel(String m, String p) { return 1L; }
         @Override public void unloadModel(long h) {}
         @Override public String generate(long h, String p, String media, int max, TokenSink sink) {
@@ -36,6 +37,7 @@ public final class KvCachePerformanceAndTrimRegressionTest {
         @Override public String generateWithMediaAndGrammar(long h, String p, String[] media, int max,
                                                             String grammar, String trigger, TokenSink sink) {
             prompts.add(p);
+            grammars.add(grammar);
             sink.onProgress("tokenize", 100, 4096);
             sink.onProgress("prefill", 100, 100);
             sink.onProgress("decode", 0, max);
@@ -78,7 +80,7 @@ public final class KvCachePerformanceAndTrimRegressionTest {
                 (ep, q) -> Collections.emptyList(), (t, s, g) -> {});
         session.setToolHost(offlineToolHost());
 
-        assertTrue(session.submit("Hello", "", "", false, "", 128));
+        assertTrue(session.submit("Set a timer for 5 minutes", "", "", false, "", 128));
         worker.drain(); ui.drain();
         assertTrue(session.submit("Follow up question", "", "", false, "", 128));
         worker.drain(); ui.drain();
@@ -90,6 +92,11 @@ public final class KvCachePerformanceAndTrimRegressionTest {
         String p2 = engine.prompts.get(1);
         String p3 = engine.prompts.get(2);
 
+        assertTrue("Tool request must engage tool catalog", p1.contains("<tools>"));
+        assertFalse("Offline tool context must not emit web_search=off refusal cue",
+                p1.contains("web_search=off"));
+        assertNotNull("Tool turn should pass lazy grammar", engine.grammars.get(0));
+
         // Turn 2 must strictly extend Turn 1's prompt + exact raw reply so native KV reuse matches 100%.
         assertTrue("Turn 2 prompt must preserve Turn 1's frozen [Context: ...] and raw reply.\nP1:\n"
                         + p1 + "\nP2:\n" + p2,
@@ -99,6 +106,81 @@ public final class KvCachePerformanceAndTrimRegressionTest {
 
         // Visible UI snapshot must still show the clean trimmed reply.
         assertEquals("Sure! I can help with that.", session.snapshot().turns.get(1).text);
+    }
+
+    @Test public void casualOfflineChatSkipsToolPromptAndGrammarToEnableSpeculativeDecoding() {
+        Queue worker = new Queue(), ui = new Queue();
+        CapturingEngine engine = new CapturingEngine();
+        String raw1 = "Hi! Nice to meet you too.";
+        String raw2 = "Crispy fried chicken is great! Here is a simple recipe.";
+        String raw3 = "To bake an apple pie, start with sliced apples and pastry dough.";
+        engine.replies.add(raw1);
+        engine.replies.add(raw2);
+        engine.replies.add(raw3);
+
+        ChatSession session = new ChatSession(engine, worker, ui, () -> 1L,
+                (ep, q) -> Collections.emptyList(), (t, s, g) -> {});
+        session.setToolHost(offlineToolHost());
+
+        assertTrue(session.submit("ok hi nice to meet you", "", "", false, "", 128));
+        worker.drain(); ui.drain();
+        assertTrue(session.submit("so how about fired cholixken", "", "", false, "", 128));
+        worker.drain(); ui.drain();
+        assertTrue(session.submit("ok how to bake an apple pie", "", "", false, "", 128));
+        worker.drain(); ui.drain();
+
+        assertEquals(3, engine.prompts.size());
+        for (int i = 0; i < 3; i++) {
+            String p = engine.prompts.get(i);
+            assertFalse("Casual turn " + i + " must not inject 500-token <tools> catalog",
+                    p.contains("<tools>"));
+            assertFalse("Casual turn " + i + " must not inject [Context:] metadata",
+                    p.contains("[Context:"));
+            assertNull("Casual turn " + i + " must pass null grammar so ngram-mod speculative decoding stays active",
+                    engine.grammars.get(i));
+        }
+        assertTrue("Turn 2 must strictly extend Turn 1 for 100% KV reuse",
+                engine.prompts.get(1).startsWith(engine.prompts.get(0) + raw1 + "<|im_end|>\n"));
+        assertTrue("Turn 3 must strictly extend Turn 2 for 100% KV reuse",
+                engine.prompts.get(2).startsWith(engine.prompts.get(1) + raw2 + "<|im_end|>\n"));
+    }
+
+    @Test public void toolModeIntentGateAndTurnContextLineBehaveCleanly() {
+        LfmToolCatalog.Capabilities offline = LfmToolCatalog.Capabilities.offlineDefaults();
+        LfmToolCatalog.Capabilities workspace = new LfmToolCatalog.Capabilities(
+                false, false, false, false, "", false, true, "Vault");
+        LfmToolCatalog.Capabilities webOn = new LfmToolCatalog.Capabilities(
+                true, false, false, false, "", false);
+
+        assertFalse(LfmToolCatalog.shouldEngageToolMode("ok hi nice to meet you", false, offline));
+        assertFalse(LfmToolCatalog.shouldEngageToolMode("so how about fired cholixken", false, offline));
+        assertFalse(LfmToolCatalog.shouldEngageToolMode("how to make one", false, offline));
+        assertFalse(LfmToolCatalog.shouldEngageToolMode("ok how to bake an apple pie", false, offline));
+        assertFalse(LfmToolCatalog.shouldEngageToolMode("jak upiec szarlotkę", false, offline));
+        assertFalse(LfmToolCatalog.shouldEngageToolMode("explain how speculative decoding works", false, offline));
+
+        assertTrue(LfmToolCatalog.shouldEngageToolMode("Set a timer for 5 minutes", false, offline));
+        assertTrue(LfmToolCatalog.shouldEngageToolMode("Ustaw minutnik na 5 minut", false, offline));
+        assertTrue(LfmToolCatalog.shouldEngageToolMode("Schedule Dentist tomorrow at 15:00", false, offline));
+        assertTrue(LfmToolCatalog.shouldEngageToolMode("What time is it?", false, offline));
+        assertTrue(LfmToolCatalog.shouldEngageToolMode("Read my todo.md", false, workspace));
+        assertTrue(LfmToolCatalog.shouldEngageToolMode("Latest news today", true, offline));
+        assertTrue(LfmToolCatalog.shouldEngageToolMode("Latest news today", false, webOn));
+
+        String offlineCtx = LfmToolCatalog.turnContextLine(java.time.ZonedDateTime.now(), offline);
+        assertFalse("Offline context line must omit web_search=off", offlineCtx.contains("web_search=off"));
+        String onlineCtx = LfmToolCatalog.turnContextLine(java.time.ZonedDateTime.now(), webOn);
+        assertTrue("Online context line must include web_search=on", onlineCtx.contains("web_search=on"));
+    }
+
+    @Test public void modelRuntimeNeverPersistsTransientFdPath() {
+        assertFalse(ModelRuntime.shouldPersistModelPath(null));
+        assertFalse(ModelRuntime.shouldPersistModelPath(""));
+        assertFalse(ModelRuntime.shouldPersistModelPath("/proc/self/fd/74"));
+        assertTrue(ModelRuntime.shouldPersistModelPath(
+                "/data/user/0/com.notcherry.lfm3pocket/files/models/lfm3.gguf"));
+        assertTrue(ModelRuntime.shouldPersistModelPath(
+                "content://com.android.externalstorage.documents/document/primary:lfm3.gguf"));
     }
 
     @Test public void thinkingBlocksStayExcludedFromSubsequentTurnPrompts() {
@@ -212,6 +294,10 @@ public final class KvCachePerformanceAndTrimRegressionTest {
         assertFalse("kv_token_count must not use mx - mn + 1 (returns 1 on hybrid/recurrent models)",
                 kvBody.contains("mx - mn + 1"));
 
+        assertTrue("native.cpp must keep full physical ubatch size for fast prefill",
+                nat.contains("ctx_params.n_ubatch = batch;"));
+        assertTrue("native.cpp must guard partial checkpoints against SWA models like LFM3",
+                nat.contains("llama_model_n_swa"));
         assertTrue("native.cpp must snapshot hybrid partial checkpoints",
                 nat.contains("LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY"));
         assertTrue("native.cpp must defer literal lazy grammar until trigger appears",
