@@ -195,6 +195,7 @@ public final class ChatSession {
     private long epoch;
     private Turn active;
     private boolean closed, scheduled, compacting;
+    private volatile boolean toolModeEngaged;
     private volatile boolean compactCancelled, compactWorkerStarted, compactWorkerFinished;
     private long compactEpoch;
     private String status="";
@@ -258,6 +259,7 @@ public final class ChatSession {
         messages.clear();
         activeDocuments.clear();
         activeImagePath="";
+        toolModeEngaged=false;
         String lastInterruptedMedia="";
         for(RestoredMessage row:restored) {
             if(row.role==null || row.role.isEmpty()) continue;
@@ -413,7 +415,7 @@ public final class ChatSession {
         }
         activeDocuments.clear();
         ++epoch;active=null;messages.clear();pending.setLength(0);partial.setLength(0);scheduled=false;
-        rollingSummary="";summarizedMessageCount=0;compacting=false;compactCancelled=false;
+        rollingSummary="";summarizedMessageCount=0;compacting=false;compactCancelled=false;toolModeEngaged=false;
         status="Conversation cleared.";emit();
     }
     public synchronized void close() {
@@ -431,7 +433,7 @@ public final class ChatSession {
             if(doc.path!=null && !doc.path.isEmpty()) mediaCleanup.delete(doc.path);
         }
         activeDocuments.clear();
-        active=null;pending.setLength(0);partial.setLength(0);compacting=false;compactCancelled=false;
+        active=null;pending.setLength(0);partial.setLength(0);compacting=false;compactCancelled=false;toolModeEngaged=false;
     }
 
     /**
@@ -557,7 +559,12 @@ public final class ChatSession {
         }
         ToolHost host=toolHost;
         boolean docContext=turn.documents!=null && !turn.documents.isEmpty();
-        boolean useToolLoop=host!=null;
+        LfmToolCatalog.Capabilities caps=host!=null ? host.capabilities(useSearch,endpoint) : null;
+        String intentText=speechTranscript!=null && DEFAULT_VOICE_QUESTION.equals(question)
+                ? speechTranscript : question;
+        boolean useToolLoop=host!=null && (toolModeEngaged
+                || LfmToolCatalog.shouldEngageToolMode(intentText,useSearch,caps));
+        if(useToolLoop) toolModeEngaged=true;
         if(useSearch && !useToolLoop && !turn.cancelled) {
             String searchQuestion=speechTranscript!=null && DEFAULT_VOICE_QUESTION.equals(question)
                     ?speechTranscript:question;
@@ -604,7 +611,6 @@ public final class ChatSession {
                     catch(Throwable e) { error=safeFailureMessage(e); }
                     progressSink.finishSummary(error);
                 } else {
-                    LfmToolCatalog.Capabilities caps=host.capabilities(useSearch,endpoint);
                     Locale locale=host.locale();
                     String frozenContext=LfmToolCatalog.turnContextLine(java.time.ZonedDateTime.now(),caps);
                     if(!replyHistory.isEmpty()) {

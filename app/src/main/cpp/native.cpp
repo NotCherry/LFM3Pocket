@@ -105,9 +105,7 @@ llama_context_params make_ctx_params(ModelHandle * state, int context_tokens, in
     ctx_params.n_ctx = context_tokens;
     const int32_t batch = choose_batch_size(context_tokens);
     ctx_params.n_batch = batch;
-    // Keep physical ubatch <= 512 so peak compute scratch RAM stays mobile-friendly
-    // on 8192-context sessions while preserving large logical batches.
-    ctx_params.n_ubatch = std::min<int32_t>(batch, 512);
+    ctx_params.n_ubatch = batch;
     ctx_params.n_rs_seq = static_cast<uint32_t>(std::max(0, n_rs_seq));
     // flash_attn_type stays at llama.cpp default (AUTO); do not set it redundantly.
     const unsigned cpu = std::thread::hardware_concurrency();
@@ -195,15 +193,16 @@ bool eval_tokens(ModelHandle * state, const llama_token * tokens, int count, int
     return true;
 }
 
-constexpr size_t kMaxPartialCheckpointBytes = 4 * 1024 * 1024; // 4 MB cap per checkpoint
+constexpr size_t kMaxPartialCheckpointBytes = 512 * 1024; // 512 KB cap (pure recurrent state only)
 constexpr size_t kMaxPartialCheckpoints = 4;
 
-// Save a lightweight recurrent/SWA partial state snapshot at pos (tokens [0..pos-1] evaluated).
-// Full-attention KV layers write 0 bytes for PARTIAL_ONLY, so on LFM2/LFM3 this is ~250 KB
-// and takes <1 ms while enabling instant rewind without re-prefilling the system prompt.
+// Save a lightweight recurrent partial state snapshot at pos (tokens [0..pos-1] evaluated).
+// Skips SWA-hybrid models (e.g. LFM3 with llama_model_n_swa > 0) because PARTIAL_ONLY on
+// hybrid-ISWA serializes all sliding-window KV layers (multi-MB memcpy per turn).
 void save_partial_checkpoint(ModelHandle * state, size_t pos) {
     if (!state || !state->ctx || !state->model || pos == 0) return;
     if (!llama_model_is_hybrid(state->model) && !llama_model_is_recurrent(state->model)) return;
+    if (llama_model_n_swa(state->model) > 0) return;
     const size_t sz = llama_state_seq_get_size_ext(
             state->ctx, 0, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
     if (sz <= 16 || sz > kMaxPartialCheckpointBytes) return;
@@ -681,11 +680,12 @@ static jstring run_generate_utf8(
             // error set
         } else {
             const bool track_checkpoints =
-                    llama_model_is_hybrid(model) || llama_model_is_recurrent(model);
+                    (llama_model_is_hybrid(model) || llama_model_is_recurrent(model))
+                    && llama_model_n_swa(model) == 0;
             auto eval_with_checkpoints = [&](size_t start_pos) -> bool {
                 if (start_pos == 0 && track_checkpoints && state->checkpoints.empty()) {
                     const size_t sys_end = find_system_prompt_boundary(vocab, input, tokens);
-                    if (sys_end > 0 && sys_end < static_cast<size_t>(converted)) {
+                    if (sys_end >= 128 && sys_end < static_cast<size_t>(converted)) {
                         if (!eval_tokens(state.get(), tokens.data(), static_cast<int>(sys_end),
                                          0, mrope, error, env, sink, progress_cb, converted)) {
                             return false;

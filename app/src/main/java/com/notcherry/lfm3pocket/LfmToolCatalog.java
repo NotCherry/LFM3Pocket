@@ -340,12 +340,11 @@ public final class LfmToolCatalog {
         StringBuilder out = new StringBuilder(1536);
         out.append("You are Hanami, a concise helpful on-device Android assistant. ")
                 .append("Reply in the language of the user. Use attached media when present. Respond in text.\n")
-                .append("You can use the tools listed in <tools> below to perform real actions or look up information. ")
-                .append("If you need a capability not listed yet (e.g. alarms, reminders, calendar list/edit/delete, ")
-                .append("flashlight, volume, apps, settings, clipboard, messages, notifications, calculator, units, weather, ")
-                .append("local file read/list/edit/delete, custom shortcuts, or MCP tools), call search_tools first.\n")
-                .append("When a tool helps answer or fulfill the request, call it instead of claiming you cannot. ")
-                .append("Never claim an action succeeded before receiving a <tool_response>.\n")
+                .append("For general conversation, knowledge, recipes, writing, coding, and explanations, ")
+                .append("answer directly from your own knowledge without tools.\n")
+                .append("Use the tools listed in <tools> below only when the user asks for a device action, ")
+                .append("live lookup, calendar/notes/files, or external tool. If a needed tool is not listed yet, ")
+                .append("call search_tools first. Never claim a device action succeeded before receiving a <tool_response>.\n")
                 .append("To invoke a tool, output:\n")
                 .append("<tool_call>\n<function=TOOL_NAME>\n<parameter=KEY>VALUE</parameter>\n</function>\n</tool_call>\n");
         if (c.webSearchEnabled) {
@@ -363,6 +362,93 @@ public final class LfmToolCatalog {
         }
         out.append("</tools>");
         return out.toString();
+    }
+
+    /**
+     * Lightweight EN/PL intent gate so casual offline chat (greetings, recipes, knowledge, writing,
+     * explanations) uses the fast 23-token chat prompt with full ngram-mod speculative decoding,
+     * while device actions, web search, workspace notes/files, calendar, timers, and external tools
+     * seamlessly engage the full LFM3 tool loop.
+     */
+    public static boolean shouldEngageToolMode(String userText, boolean useSearch, Capabilities caps) {
+        if (useSearch) return true;
+        Capabilities c = caps == null ? Capabilities.offlineDefaults() : caps;
+        if (c.webSearchEnabled) return true;
+        if (userText == null) return false;
+        String q = userText.trim().toLowerCase(Locale.ROOT);
+        if (q.isEmpty()) return false;
+
+        // Check configured custom shortcut / MCP tool names & keywords first.
+        for (ToolSpec extra : c.extraTools) {
+            if (extra == null) continue;
+            if (extra.name != null && !extra.name.isEmpty()
+                    && q.contains(extra.name.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+
+        // Workspace / local file / note cues when a vault is mounted.
+        if (c.workspaceReady) {
+            if (q.contains(".md") || q.contains(".txt") || q.contains("vault")
+                    || q.contains("workspace") || q.contains("obsidian")
+                    || containsAnyWord(q, "note", "notes", "notatka", "notatkę", "notatki",
+                    "notatek", "file", "files", "plik", "pliki", "folder", "katalog", "todo")) {
+                return true;
+            }
+        }
+
+        // Device actions, calendar, timers, alarms, reminders, clock, weather, contacts,
+        // notifications, messaging, calculator/units, clipboard/share, and tool discovery.
+        if (containsAnyWord(q,
+                "timer", "countdown", "minutnik", "stoper", "odliczanie",
+                "alarm", "alarms", "budzik", "budziki", "obudź",
+                "reminder", "remind", "przypomnienie", "przypomnij",
+                "calendar", "kalendarz", "schedule", "appointment", "meeting",
+                "wydarzenie", "spotkanie", "zaplanuj", "agenda", "event", "events",
+                "flashlight", "torch", "latarka", "latarkę",
+                "volume", "mute", "głośność", "wycisz", "ścisz", "podgłośnij",
+                "settings", "ustawienia", "wifi", "bluetooth",
+                "weather", "forecast", "pogoda", "prognoza",
+                "notification", "notifications", "powiadomienie", "powiadomienia",
+                "contact", "contacts", "kontakt", "kontakty",
+                "sms", "whatsapp", "telegram", "signal", "wiadomość", "wyślij",
+                "clipboard", "schowek", "skopiuj", "udostępnij",
+                "calculator", "calculate", "kalkulator", "oblicz", "policz", "przelicz",
+                "convert", "celsius", "fahrenheit", "kilometers", "miles",
+                "tool", "tools", "narzędzia", "narzędzie", "mcp", "shortcut", "skrót")) {
+            return true;
+        }
+
+        // Multi-word EN/PL action phrases (avoid triggering on casual words like "time", "open", "search").
+        String[] phrases = {
+                "what time", "current time", "what date", "what day is", "today's date",
+                "która godzina", "jaka godzina", "jaki dziś dzień", "jaka dziś data",
+                "open app", "launch app", "otwórz aplikacj", "uruchom aplikacj",
+                "send a message", "draft a message", "text message", "napisz wiadomość",
+                "copy to clipboard", "share this", "turn on the light", "turn off the light",
+                "włącz latark", "wyłącz latark", "ustaw minutnik", "ustaw budzik",
+                "dodaj do kalendarz", "sprawdź kalendarz", "szukaj w sieci", "search the web",
+                "search my notes", "read my ", "list my files", "create a note", "save a note"
+        };
+        for (String phrase : phrases) {
+            if (q.contains(phrase)) return true;
+        }
+        return false;
+    }
+
+    private static boolean containsAnyWord(String text, String... words) {
+        int len = text.length();
+        for (String word : words) {
+            int idx = text.indexOf(word);
+            while (idx >= 0) {
+                boolean startOk = idx == 0 || !Character.isLetterOrDigit(text.charAt(idx - 1));
+                int end = idx + word.length();
+                boolean endOk = end == len || !Character.isLetterOrDigit(text.charAt(end));
+                if (startOk && endOk) return true;
+                idx = text.indexOf(word, idx + 1);
+            }
+        }
+        return false;
     }
 
     /**
@@ -390,7 +476,8 @@ public final class LfmToolCatalog {
     }
 
     /**
-     * Compact volatile context prepended only to the active user turn (so earlier KV prefix stays hot).
+     * Compact per-turn grounding context used only when tool mode is active.
+     * Omits {@code web_search=off} so small models do not treat offline chat as a refusal cue.
      */
     public static String turnContextLine(ZonedDateTime now, Capabilities caps) {
         ZonedDateTime clock = now == null ? ZonedDateTime.now() : now;
@@ -407,7 +494,9 @@ public final class LfmToolCatalog {
             sb.append(" | workspace=");
             sb.append(c.workspaceLabel.isEmpty() ? "mounted" : sanitizeInline(c.workspaceLabel));
         }
-        sb.append(" | web_search=").append(c.webSearchEnabled ? "on" : "off");
+        if (c.webSearchEnabled) {
+            sb.append(" | web_search=on");
+        }
         sb.append("]");
         return sb.toString();
     }
