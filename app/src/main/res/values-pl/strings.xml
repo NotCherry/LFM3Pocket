@@ -360,4 +360,18 @@ com.whatsapp</string>
     <string name="settings_diag_lan_hint">Otwórz ten adres w przeglądarce w tej samej sieci Wi-Fi (dotknij, aby skopiować):\n%1$s</string>
     <string name="settings_diag_lan_stopped">Zatrzymano podgląd logów Wi-Fi.</string>
     <string name="settings_diag_lan_copied">Skopiowano adres podglądu logów Wi-Fi do schowka.</string>
+    <string name="attachment_no_viewer">Brak aplikacji na urządzeniu mogącej otworzyć ten załącznik.</string>
+    <string name="attachment_unavailable">Plik załącznika nie jest już dostępny w pamięci podręcznej.</string>
+    <string name="photo_active_context_heading">Aktywne zdjęcie:</string>
+    <string name="pdf_mode_dialog_title">Załącz PDF</string>
+    <string name="pdf_mode_dialog_message">Wybierz sposób przetworzenia %1$s:\n\n• Tylko tekst: szybkie wyodrębnianie tekstu (działa bez projektora wizji)\n• Jako obrazy (wizja): renderuje do %2$d stron jako obrazy dla modelu multimodalnego</string>
+    <string name="pdf_mode_text_only">Tylko tekst</string>
+    <string name="pdf_mode_as_images">Jako obrazy (wizja)</string>
+    <string name="pdf_no_text_dialog_title">PDF bez warstwy tekstowej</string>
+    <string name="pdf_no_text_dialog_message">Plik %1$s wygląda na skan lub PDF złożony z obrazów. Czy wyrenderować do %2$d stron jako obrazy dla wizji?</string>
+    <string name="pdf_render_as_images_action">Załącz jako obrazy</string>
+    <string name="pdf_rendering_pages_status">Renderowanie stron PDF: %1$s…</string>
+    <string name="pdf_images_attached_status">Załączono %1$d str. PDF jako obrazy (wizja). Wpisz pytanie i wyślij.</string>
+    <string name="pdf_images_truncated_status">Załączono pierwsze %1$d z %2$d str. PDF jako obrazy (wizja). Wpisz pytanie i wyślij.</string>
+    <string name="status_details_title">Szczegóły statusu</string>
 </resources>

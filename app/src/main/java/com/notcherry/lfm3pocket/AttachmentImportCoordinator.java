@@ -64,10 +64,22 @@ final class AttachmentImportCoordinator {
         }
     }
 
+    private static final class PendingImage {
+        final String path;
+        final String label;
+        final String caption;
+
+        PendingImage(String path, String label, String caption) {
+            this.path = path;
+            this.label = label == null ? "" : label;
+            this.caption = caption == null ? "" : caption;
+        }
+    }
+
     private final Deps deps;
     private final AtomicInteger activeImports = new AtomicInteger();
     private volatile AtomicBoolean importCancellation;
-    private String pendingImagePath = "";
+    private final List<PendingImage> pendingImages = new ArrayList<>();
     private String pendingAudioPath = "";
     private final List<ChatSession.Attachment> pendingDocuments = new ArrayList<>();
 
@@ -125,6 +137,145 @@ final class AttachmentImportCoordinator {
 
     void importDocumentUris(List<Uri> uris) {
         if (uris == null || uris.isEmpty()) return;
+        ArrayList<Uri> pdfUris = new ArrayList<>();
+        ArrayList<Uri> textUris = new ArrayList<>();
+        for (Uri uri : uris) {
+            String name = displayNameForUri(uri);
+            String mime = deps.activity.getContentResolver().getType(uri);
+            if (DocumentAttachmentReader.isPdfMimeOrName(mime, name)) {
+                pdfUris.add(uri);
+            } else {
+                textUris.add(uri);
+            }
+        }
+        if (pdfUris.isEmpty()) {
+            importDocumentsAsText(uris);
+            return;
+        }
+        if (deps.isDestroyed.getAsBoolean()) return;
+        String pdfLabel = pdfUris.size() == 1
+                ? displayNameForUri(pdfUris.get(0))
+                : pdfUris.size() + " PDFs";
+        StillwaterUi.showDialog(new android.app.AlertDialog.Builder(deps.activity)
+                .setTitle(R.string.pdf_mode_dialog_title)
+                .setMessage(deps.activity.getString(
+                        R.string.pdf_mode_dialog_message, pdfLabel, PdfPageRenderer.MAX_VISION_PAGES))
+                .setPositiveButton(R.string.pdf_mode_text_only, (dialog, which) -> importDocumentsAsText(uris))
+                .setNeutralButton(R.string.pdf_mode_as_images, (dialog, which) -> {
+                    if (!textUris.isEmpty()) importDocumentsAsText(textUris);
+                    importPdfUrisAsImages(pdfUris);
+                })
+                .setNegativeButton(android.R.string.cancel, null));
+    }
+
+    void importPdfUrisAsImages(List<Uri> pdfUris) {
+        if (pdfUris == null || pdfUris.isEmpty()) return;
+        AtomicBoolean cancellation = beginImport();
+        ImageSettings prepareSettings = deps.imageSettings.get();
+        String firstName = displayNameForUri(pdfUris.get(0));
+        deps.setChatStatus.accept(deps.activity.getString(R.string.pdf_rendering_pages_status, firstName));
+        deps.worker.execute(() -> {
+            ArrayList<PendingImage> renderedImages = new ArrayList<>();
+            int totalPdfPages = 0;
+            boolean anyTruncated = false;
+            String error = null;
+            boolean cancelled = false;
+            try {
+                int remainingSlots = PdfPageRenderer.MAX_VISION_PAGES;
+                for (Uri uri : pdfUris) {
+                    if (deps.isDestroyed.getAsBoolean() || cancellation.get()) {
+                        cancelled = true;
+                        break;
+                    }
+                    if (remainingSlots <= 0) {
+                        anyTruncated = true;
+                        break;
+                    }
+                    String displayName = displayNameForUri(uri);
+                    long startedAt = System.currentTimeMillis();
+                    File temp = null;
+                    try {
+                        long size = selectedUriSize(uri);
+                        if (size >= 0 && size > DocumentAttachmentReader.MAX_PDF_BYTES) {
+                            error = displayName + ": This PDF is too large to attach.";
+                            break;
+                        }
+                        temp = copyUriToCache(uri, "pdf-render-" + System.currentTimeMillis() + ".pdf",
+                                DocumentAttachmentReader.MAX_PDF_BYTES, cancellation);
+                        if (deps.isDestroyed.getAsBoolean() || cancellation.get()) {
+                            cancelled = true;
+                            break;
+                        }
+                        PdfPageRenderer.Result res = PdfPageRenderer.renderPages(
+                                deps.activity, temp, displayName, prepareSettings, remainingSlots, cancellation);
+                        if (cancellation.get()) {
+                            cancelled = true;
+                            break;
+                        }
+                        long elapsedMs = System.currentTimeMillis() - startedAt;
+                        if (!res.isOk()) {
+                            error = displayName + ": " + res.error;
+                            recordTelemetry("PDF_VISION", elapsedMs, "error " + displayName + ": " + res.error);
+                            break;
+                        }
+                        totalPdfPages += res.totalPages;
+                        if (res.truncated) anyTruncated = true;
+                        for (PdfPageRenderer.RenderedPage page : res.pages) {
+                            renderedImages.add(new PendingImage(page.file.getAbsolutePath(), page.label, page.caption));
+                            remainingSlots--;
+                        }
+                        recordTelemetry("PDF_VISION", elapsedMs,
+                                "ok " + displayName + " pages=" + res.pages.size() + "/" + res.totalPages);
+                    } catch (Throwable e) {
+                        if (cancellation.get()) {
+                            cancelled = true;
+                            break;
+                        }
+                        String msg = e instanceof OutOfMemoryError
+                                ? "This PDF is too large to render on this phone."
+                                : (e.getMessage() == null ? "Could not render this PDF." : e.getMessage());
+                        error = displayName + ": " + msg;
+                        break;
+                    } finally {
+                        if (temp != null && temp.exists()) temp.delete();
+                    }
+                }
+            } finally {
+                final boolean wasCancelled = cancelled || cancellation.get() || deps.isDestroyed.getAsBoolean();
+                final String finalError = error;
+                final int finalTotalPages = totalPdfPages;
+                final boolean finalTruncated = anyTruncated;
+                if (wasCancelled || finalError != null || renderedImages.isEmpty()) {
+                    for (PendingImage img : renderedImages) {
+                        HistoryMediaCleanup.deleteAttachment(deps.activity, img.path);
+                    }
+                    renderedImages.clear();
+                }
+                deps.activity.runOnUiThread(() -> {
+                    endImport(cancellation);
+                    if (deps.isDestroyed.getAsBoolean()) return;
+                    if (wasCancelled) {
+                        deps.setChatStatus.accept("PDF import cancelled.");
+                    } else if (finalError != null) {
+                        deps.setChatStatus.accept(finalError);
+                    } else if (!renderedImages.isEmpty()) {
+                        replacePendingImagesOnUi(renderedImages);
+                        if (finalTruncated && finalTotalPages > renderedImages.size()) {
+                            deps.setChatStatus.accept(deps.activity.getString(
+                                    R.string.pdf_images_truncated_status, renderedImages.size(), finalTotalPages));
+                        } else {
+                            deps.setChatStatus.accept(deps.activity.getString(
+                                    R.string.pdf_images_attached_status, renderedImages.size()));
+                        }
+                    }
+                    deps.updateControls.run();
+                });
+            }
+        });
+    }
+
+    private void importDocumentsAsText(List<Uri> uris) {
+        if (uris == null || uris.isEmpty()) return;
         if (pendingDocuments.size() + uris.size() > DocumentAttachmentReader.MAX_FILES) {
             deps.setChatStatus.accept("You can attach up to " + DocumentAttachmentReader.MAX_FILES + " documents.");
             return;
@@ -145,6 +296,8 @@ final class AttachmentImportCoordinator {
         deps.worker.execute(() -> {
             ArrayList<ChatSession.Attachment> imported = new ArrayList<>();
             String error = null;
+            Uri scannedPdfUri = null;
+            String scannedPdfName = null;
             boolean cancelled = false;
             try {
                 for (int idx = 0; idx < uris.size(); idx++) {
@@ -195,13 +348,17 @@ final class AttachmentImportCoordinator {
                         long elapsedMs = System.currentTimeMillis() - startedAt;
                         if (!result.isOk()) {
                             error = result.displayName + ": " + result.error;
+                            if (isPdf && result.noExtractableText) {
+                                scannedPdfUri = uri;
+                                scannedPdfName = result.displayName;
+                            }
                             recordTelemetry(stageTag, elapsedMs, "error " + result.displayName + ": " + result.error);
                             break;
                         }
                         recordTelemetry(stageTag, elapsedMs, "ok " + result.displayName + sizeSuffix
                                 + " chars=" + result.text.length()
                                 + " ~" + Math.max(1, (result.text.length() + 3) / 4) + "tok");
-                        imported.add(ChatSession.Attachment.document(result.displayName, result.text));
+                        imported.add(ChatSession.Attachment.document(result.displayName, result.text, uri.toString()));
                     } catch (Throwable e) {
                         long elapsedMs = System.currentTimeMillis() - startedAt;
                         if (cancellation.get()) {
@@ -221,6 +378,8 @@ final class AttachmentImportCoordinator {
                 }
             } finally {
                 final String importError = error;
+                final Uri fallbackPdfUri = scannedPdfUri;
+                final String fallbackPdfName = scannedPdfName;
                 final boolean wasCancelled = cancelled || cancellation.get();
                 final ArrayList<ChatSession.Attachment> ok = imported;
                 deps.activity.runOnUiThread(() -> {
@@ -232,6 +391,16 @@ final class AttachmentImportCoordinator {
                         deps.setChatStatus.accept("Document import cancelled.");
                     } else if (importError != null) {
                         deps.setChatStatus.accept(importError);
+                        if (fallbackPdfUri != null) {
+                            StillwaterUi.showDialog(new android.app.AlertDialog.Builder(deps.activity)
+                                    .setTitle(R.string.pdf_no_text_dialog_title)
+                                    .setMessage(deps.activity.getString(
+                                            R.string.pdf_no_text_dialog_message,
+                                            fallbackPdfName, PdfPageRenderer.MAX_VISION_PAGES))
+                                    .setPositiveButton(R.string.pdf_render_as_images_action,
+                                            (d, w) -> importPdfUrisAsImages(java.util.Collections.singletonList(fallbackPdfUri)))
+                                    .setNegativeButton(android.R.string.cancel, null));
+                        }
                     } else if (!ok.isEmpty()) {
                         pendingDocuments.addAll(ok);
                         deps.setChatStatus.accept(deps.activity.getString(
@@ -403,8 +572,10 @@ final class AttachmentImportCoordinator {
 
     List<ChatSession.Attachment> buildPendingAttachments() {
         List<ChatSession.Attachment> attachments = new ArrayList<>();
-        if (!pendingImagePath.isEmpty()) {
-            attachments.add(new ChatSession.Attachment(pendingImagePath, ChatSession.AttachmentKind.PHOTO));
+        for (PendingImage img : pendingImages) {
+            if (img.path != null && !img.path.isEmpty()) {
+                attachments.add(ChatSession.Attachment.photo(img.path, img.label));
+            }
         }
         if (!pendingAudioPath.isEmpty()) {
             attachments.add(new ChatSession.Attachment(pendingAudioPath, ChatSession.AttachmentKind.VOICE_RECORDING));
@@ -414,7 +585,7 @@ final class AttachmentImportCoordinator {
     }
 
     void clearPendingAfterSubmit() {
-        pendingImagePath = "";
+        pendingImages.clear();
         pendingAudioPath = "";
         pendingDocuments.clear();
         ChatPanel panel = deps.chatPanel.get();
@@ -425,7 +596,7 @@ final class AttachmentImportCoordinator {
     }
 
     void clearPendingForRetry() {
-        pendingImagePath = "";
+        pendingImages.clear();
         pendingAudioPath = "";
         clearPendingDocuments();
         ChatPanel panel = deps.chatPanel.get();
@@ -433,9 +604,11 @@ final class AttachmentImportCoordinator {
     }
 
     void clearAndDeletePending(boolean clearPanel) {
-        HistoryMediaCleanup.deleteAttachment(deps.activity, pendingImagePath);
+        for (PendingImage img : pendingImages) {
+            HistoryMediaCleanup.deleteAttachment(deps.activity, img.path);
+        }
         HistoryMediaCleanup.deleteAttachment(deps.activity, pendingAudioPath);
-        pendingImagePath = "";
+        pendingImages.clear();
         pendingAudioPath = "";
         pendingDocuments.clear();
         if (clearPanel) {
@@ -448,15 +621,17 @@ final class AttachmentImportCoordinator {
     }
 
     String pendingMediaPathForTest() {
-        return !pendingAudioPath.isEmpty() ? pendingAudioPath : pendingImagePath;
+        if (!pendingAudioPath.isEmpty()) return pendingAudioPath;
+        return pendingImages.isEmpty() ? "" : pendingImages.get(0).path;
     }
 
     String[] pendingMediaPathsForTest() {
-        if (pendingImagePath.isEmpty()) {
-            return pendingAudioPath.isEmpty() ? new String[0] : new String[] { pendingAudioPath };
+        ArrayList<String> paths = new ArrayList<>(pendingImages.size() + 1);
+        for (PendingImage img : pendingImages) {
+            if (img.path != null && !img.path.isEmpty()) paths.add(img.path);
         }
-        if (pendingAudioPath.isEmpty()) return new String[] { pendingImagePath };
-        return new String[] { pendingImagePath, pendingAudioPath };
+        if (!pendingAudioPath.isEmpty()) paths.add(pendingAudioPath);
+        return paths.toArray(new String[0]);
     }
 
     private long selectedUriSize(Uri uri) {
@@ -526,6 +701,14 @@ final class AttachmentImportCoordinator {
         deps.updateControls.run();
     }
 
+    private void openPendingDocument(int index) {
+        if (index < 0 || index >= pendingDocuments.size()) return;
+        ChatSession.Attachment doc = pendingDocuments.get(index);
+        String err = AttachmentViewer.open(deps.activity,
+                new ChatSnapshot.AttachmentRef("DOC", doc.displayName, "", doc.sourceUri, doc.extractedText));
+        if (err != null && !err.isEmpty()) deps.setChatStatus.accept(err);
+    }
+
     private void syncPendingDocumentsUi() {
         ChatPanel panel = deps.chatPanel.get();
         if (panel == null) return;
@@ -535,7 +718,47 @@ final class AttachmentImportCoordinator {
         }
         ArrayList<String> names = new ArrayList<>(pendingDocuments.size());
         for (ChatSession.Attachment doc : pendingDocuments) names.add(formatDocChipLabel(doc));
-        panel.setDocumentAttachments(names, this::removePendingDocument);
+        panel.setDocumentAttachments(names, this::removePendingDocument, this::openPendingDocument);
+    }
+
+    private void syncPendingImagesUi() {
+        ChatPanel panel = deps.chatPanel.get();
+        if (panel == null) return;
+        if (pendingImages.isEmpty()) {
+            panel.clearImageAttachment();
+            return;
+        }
+        ArrayList<ChatPanel.ImageItem> items = new ArrayList<>(pendingImages.size());
+        for (PendingImage img : pendingImages) {
+            final String p = img.path;
+            final String lbl = img.label.isEmpty() ? "Photo" : img.label;
+            items.add(new ChatPanel.ImageItem(
+                    p,
+                    img.label,
+                    img.caption,
+                    () -> removePendingImage(p),
+                    () -> {
+                        String err = AttachmentViewer.openFile(deps.activity, p, lbl, "PHOTO");
+                        if (err != null && !err.isEmpty()) deps.setChatStatus.accept(err);
+                    }));
+        }
+        panel.setImageAttachments(items);
+    }
+
+    private void replacePendingImagesOnUi(List<PendingImage> next) {
+        for (PendingImage old : pendingImages) {
+            boolean kept = false;
+            for (PendingImage candidate : next) {
+                if (old.path.equals(candidate.path)) {
+                    kept = true;
+                    break;
+                }
+            }
+            if (!kept) HistoryMediaCleanup.deleteAttachment(deps.activity, old.path);
+        }
+        pendingImages.clear();
+        pendingImages.addAll(next);
+        syncPendingImagesUi();
     }
 
     private void recordTelemetry(String stage, long durationMs, String detail) {
@@ -585,12 +808,7 @@ final class AttachmentImportCoordinator {
 
     private void applyPendingMediaOnUi(String path, String kind, String caption) {
         if ("photo".equals(kind)) {
-            if (!pendingImagePath.isEmpty() && !pendingImagePath.equals(path)) {
-                HistoryMediaCleanup.deleteAttachment(deps.activity, pendingImagePath);
-            }
-            pendingImagePath = path;
-            ChatPanel panel = deps.chatPanel.get();
-            if (panel != null) panel.showImageAttachment(path, caption, () -> removePendingImage(path));
+            replacePendingImagesOnUi(java.util.Collections.singletonList(new PendingImage(path, "", caption)));
         } else {
             if (!pendingAudioPath.isEmpty() && !pendingAudioPath.equals(path)) {
                 HistoryMediaCleanup.deleteAttachment(deps.activity, pendingAudioPath);
@@ -604,12 +822,20 @@ final class AttachmentImportCoordinator {
     }
 
     private void removePendingImage(String expectedPath) {
-        if (!expectedPath.equals(pendingImagePath)) return;
-        HistoryMediaCleanup.deleteAttachment(deps.activity, pendingImagePath);
-        pendingImagePath = "";
-        ChatPanel panel = deps.chatPanel.get();
-        if (panel != null) panel.clearImageAttachment();
-        deps.setChatStatus.accept("Photo removed. Add a question and press Send.");
+        int removedIdx = -1;
+        for (int i = 0; i < pendingImages.size(); i++) {
+            if (expectedPath.equals(pendingImages.get(i).path)) {
+                removedIdx = i;
+                break;
+            }
+        }
+        if (removedIdx < 0) return;
+        HistoryMediaCleanup.deleteAttachment(deps.activity, expectedPath);
+        pendingImages.remove(removedIdx);
+        syncPendingImagesUi();
+        deps.setChatStatus.accept(pendingImages.isEmpty()
+                ? "Photo removed. Add a question and press Send."
+                : deps.activity.getString(R.string.pdf_images_attached_status, pendingImages.size()));
         deps.updateControls.run();
     }
 }

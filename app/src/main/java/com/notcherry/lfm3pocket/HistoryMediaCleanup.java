@@ -31,6 +31,20 @@ public final class HistoryMediaCleanup {
         }
         success = deleteVoiceDir(new File(cache, "recordings")) && success;
         success = deleteVoiceDir(new File(cache, "voice-actions")) && success;
+        success = deleteViewDir(new File(cache, "view")) && success;
+        return success;
+    }
+
+    private static boolean deleteViewDir(File dir) {
+        boolean success = true;
+        File[] files = dir.listFiles();
+        if (files != null) for (File file : files) {
+            if (file.isFile()) success = delete(file) && success;
+        }
+        if (dir.isDirectory()) {
+            String[] remaining = dir.list();
+            if (remaining != null && remaining.length == 0) success = delete(dir) && success;
+        }
         return success;
     }
 
@@ -64,6 +78,7 @@ public final class HistoryMediaCleanup {
         if (!file.isFile()) return false;
         String name = file.getName();
         return name.startsWith("photo-") || name.startsWith("camera-")
+                || name.startsWith("pdf-page-")
                 || name.endsWith("-vision.jpg") || name.endsWith("-vision.jpg.partial");
     }
 

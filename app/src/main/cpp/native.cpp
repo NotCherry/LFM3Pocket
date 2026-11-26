@@ -1069,6 +1069,15 @@ Java_com_notcherry_lfm3pocket_NativeBridge_runBenchmarkUtf8(
 
     if (state->cancelled.load()) return make_string(env, "Benchmark cancelled");
 
+#if defined(__x86_64__)
+    const char * arch_note = "note: x86_64 emulator is not arm64 DOTPROD; use a phone for representative tg.";
+#elif defined(HANAMI_ARM_DOTPROD) || defined(__ARM_FEATURE_DOTPROD)
+    const char * arch_note = "arch: arm64-v8a +dotprod (synthetic BOS prompt; real chat/edits show higher ngram accept)";
+#elif defined(__aarch64__)
+    const char * arch_note = "arch: arm64-v8a baseline";
+#else
+    const char * arch_note = "arch: native";
+#endif
     char line[768];
     if (!spec_error.empty()) {
         std::snprintf(line, sizeof(line),
@@ -1077,11 +1086,11 @@ Java_com_notcherry_lfm3pocket_NativeBridge_runBenchmarkUtf8(
                 "tg %d tokens (sequential): %.2f tok/s (%.0f ms)\n"
                 "tg (ngram-mod): unavailable (%s)\n"
                 "context=%d threads=%d n_batch=%d\n"
-                "build: see NativeBridge.nativeBuildInfo()\n"
-                "note: x86_64 emulator is not arm64 DOTPROD; use a phone for representative tg.",
+                "%s",
                 pp_tokens, pp_tps, pp_ms, decoded, tg_tps, tg_ms,
                 spec_error.c_str(),
-                context_tokens, threads, choose_batch_size(context_tokens));
+                context_tokens, threads, choose_batch_size(context_tokens),
+                arch_note);
         return make_string(env, line);
     }
 
@@ -1092,11 +1101,11 @@ Java_com_notcherry_lfm3pocket_NativeBridge_runBenchmarkUtf8(
             "tg %d tokens (ngram-mod): %.2f tok/s (%.0f ms)\n"
             "ngram accept: %.1f%% (%d/%d drafted)\n"
             "context=%d threads=%d n_batch=%d\n"
-            "build: see NativeBridge.nativeBuildInfo()\n"
-            "note: x86_64 emulator is not arm64 DOTPROD; use a phone for representative tg.",
+            "%s",
             pp_tokens, pp_tps, pp_ms, decoded, tg_tps, tg_ms,
             spec_decoded, tg_spec_tps, tg_spec_ms, accept_pct, spec_stats.n_accept, spec_stats.n_drafted,
-            context_tokens, threads, choose_batch_size(context_tokens));
+            context_tokens, threads, choose_batch_size(context_tokens),
+            arch_note);
     return make_string(env, line);
 }
 

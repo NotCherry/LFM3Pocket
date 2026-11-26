@@ -10,6 +10,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -76,7 +77,18 @@ class ChatPanel @JvmOverloads constructor(
     private val retryInterrupted: Consumer<String> = Consumer { },
     private val compact: Runnable = Runnable { },
     private val openSettings: Runnable = Runnable { },
+    private val openAttachment: Consumer<ChatSnapshot.AttachmentRef> = Consumer { },
+    private val clearActiveDocuments: Runnable = Runnable { },
+    private val clearActiveImages: Runnable = Runnable { },
 ) : LinearLayout(context) {
+    class ImageItem(
+        val path: String,
+        val label: String,
+        val caption: String,
+        val onRemove: Runnable,
+        val onOpen: Runnable,
+    )
+
     private data class Controls(
         val send: Boolean = false,
         val stop: Boolean = false,
@@ -92,15 +104,14 @@ class ChatPanel @JvmOverloads constructor(
         val approve: Runnable?,
         val reject: Runnable?,
     )
-    private data class Attachment(val path: String, val caption: String, val onRemove: Runnable)
-    private data class DocumentAttachment(val name: String, val onRemove: Runnable)
+    private data class DocumentAttachment(val name: String, val onRemove: Runnable, val onOpen: Runnable?)
 
     private var snapshot by mutableStateOf(ChatSnapshot(emptyList(), "", false))
     private var liveStatus by mutableStateOf("")
     private var searchModeEnabled by mutableStateOf(false)
     private var modelReadyState by mutableStateOf(false)
     private var toolCard by mutableStateOf<ToolCardState?>(null)
-    private var attachment by mutableStateOf<Attachment?>(null)
+    private var pendingImages by mutableStateOf<List<ImageItem>>(emptyList())
     private var documentAttachments by mutableStateOf<List<DocumentAttachment>>(emptyList())
     private var importingDocumentLabels by mutableStateOf<List<String>>(emptyList())
     private var controls by mutableStateOf(Controls())
@@ -192,18 +203,36 @@ class ChatPanel @JvmOverloads constructor(
     }
 
     fun showImageAttachment(path: String, caption: String, onRemove: Runnable) {
-        attachment = Attachment(path, caption.orEmpty(), onRemove)
+        pendingImages = listOf(
+            ImageItem(path, "", caption.orEmpty(), onRemove) {
+                openAttachment.accept(ChatSnapshot.AttachmentRef("PHOTO", "Photo", path, "", ""))
+            },
+        )
+    }
+
+    fun setImageAttachments(items: List<ImageItem>) {
+        pendingImages = items.toList()
     }
 
     fun clearImageAttachment() {
-        attachment = null
+        pendingImages = emptyList()
     }
 
     fun setDocumentAttachments(names: List<String>, onRemoveAt: Consumer<Int>) {
+        setDocumentAttachments(names, onRemoveAt, null)
+    }
+
+    fun setDocumentAttachments(names: List<String>, onRemoveAt: Consumer<Int>, onOpenAt: Consumer<Int>?) {
         val list = ArrayList<DocumentAttachment>(names.size)
         for (i in names.indices) {
             val index = i
-            list.add(DocumentAttachment(names[i]) { onRemoveAt.accept(index) })
+            list.add(
+                DocumentAttachment(
+                    names[i],
+                    { onRemoveAt.accept(index) },
+                    onOpenAt?.let { handler -> Runnable { handler.accept(index) } },
+                ),
+            )
         }
         documentAttachments = list
     }
@@ -246,19 +275,23 @@ class ChatPanel @JvmOverloads constructor(
             } else {
                 stringResource(R.string.mode_local)
             }
-            var previewBitmap by remember(attachment?.path) { mutableStateOf<Bitmap?>(null) }
-            var previewLoaded by remember(attachment?.path) { mutableStateOf(false) }
-            LaunchedEffect(attachment?.path) {
-                val path = attachment?.path
-                previewLoaded = false
-                previewBitmap = if (path == null) {
-                    null
+            val imagePathsKey = pendingImages.map { it.path }
+            var previewBitmaps by remember(imagePathsKey) { mutableStateOf<Map<String, Bitmap?>>(emptyMap()) }
+            var previewsLoaded by remember(imagePathsKey) { mutableStateOf(false) }
+            LaunchedEffect(imagePathsKey) {
+                previewsLoaded = false
+                previewBitmaps = if (imagePathsKey.isEmpty()) {
+                    emptyMap()
                 } else {
                     withContext(Dispatchers.IO) {
-                        ImageAttachmentFiles.decodePreview(File(path))
+                        val map = LinkedHashMap<String, Bitmap?>(imagePathsKey.size)
+                        for (path in imagePathsKey) {
+                            map[path] = ImageAttachmentFiles.decodePreview(File(path))
+                        }
+                        map
                     }
                 }
-                previewLoaded = true
+                previewsLoaded = true
             }
             Column(
                 Modifier
@@ -374,6 +407,7 @@ class ChatPanel @JvmOverloads constructor(
                     onOpenSettings = { openSettings.run() },
                     onSuggest = { input = it },
                     onRetryInterrupted = { turnId -> retryInterrupted.accept(turnId) },
+                    onOpenAttachment = { ref -> openAttachment.accept(ref) },
                 )
                 if (importingDocumentLabels.isNotEmpty()) {
                     Column(
@@ -438,13 +472,20 @@ class ChatPanel @JvmOverloads constructor(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
-                                    doc.name,
+                                    text = if (doc.onOpen != null) "${doc.name} ↗" else doc.name,
                                     style = type.mono,
                                     color = atlas.ink,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier
                                         .weight(1f)
+                                        .then(
+                                            if (doc.onOpen != null) {
+                                                Modifier.clickable { doc.onOpen.run() }.padding(vertical = 4.dp)
+                                            } else {
+                                                Modifier
+                                            },
+                                        )
                                         .testTag(tag("document_attachment_$index")),
                                 )
                                 TextButton(
@@ -465,88 +506,169 @@ class ChatPanel @JvmOverloads constructor(
                             .padding(horizontal = space.space2, vertical = space.space1)
                             .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
                             .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
-                            .padding(horizontal = space.space3, vertical = 6.dp)
+                            .padding(start = space.space3, end = space.space1, top = 2.dp, bottom = 2.dp)
                             .testTag(tag("active_documents_strip")),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            stringResource(R.string.documents_active_context_heading) + " ",
-                            style = type.label,
-                            color = atlas.accent,
-                        )
-                        Text(
-                            snapshot.activeDocumentNames.joinToString(", "),
-                            style = type.mono,
-                            color = atlas.inkSoft,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
+                        Row(
+                            Modifier
+                                .weight(1f)
+                                .clickable {
+                                    val first = snapshot.activeDocuments.firstOrNull()
+                                    if (first != null) openAttachment.accept(first)
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                stringResource(R.string.documents_active_context_heading) + " ",
+                                style = type.label,
+                                color = atlas.accent,
+                            )
+                            Text(
+                                snapshot.activeDocumentNames.joinToString(", ") +
+                                    if (snapshot.activeDocuments.isNotEmpty()) " ↗" else "",
+                                style = type.mono,
+                                color = atlas.inkSoft,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        TextButton(
+                            onClick = { clearActiveDocuments.run() },
+                            modifier = Modifier.testTag(tag("active_documents_clear")),
+                            contentPadding = PaddingValues(horizontal = space.space2, vertical = 2.dp),
+                            colors = StillwaterControls.dangerTextColors(),
+                        ) { Text(stringResource(R.string.remove_short), style = type.bodySmall) }
                     }
                 }
-                attachment?.let { image ->
+                if (pendingImages.isNotEmpty()) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = space.space2, vertical = space.space1),
+                        verticalArrangement = Arrangement.spacedBy(space.space1),
+                    ) {
+                        pendingImages.forEachIndexed { index, image ->
+                            val bitmap = previewBitmaps[image.path]
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
+                                    .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
+                                    .clickable { image.onOpen.run() }
+                                    .padding(space.space2)
+                                    .then(
+                                        if (index == 0) Modifier.testTag(tag("image_attachment"))
+                                        else Modifier.testTag(tag("image_attachment_$index")),
+                                    ),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                bitmap?.let { bmp ->
+                                    Image(
+                                        bmp.asImageBitmap(),
+                                        contentDescription = stringResource(R.string.attached_image_preview_cd),
+                                        modifier = Modifier
+                                            .size(if (pendingImages.size > 1) 44.dp else 56.dp)
+                                            .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
+                                            .then(
+                                                if (index == 0) Modifier.testTag(tag("image_preview"))
+                                                else Modifier.testTag(tag("image_preview_$index")),
+                                            ),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                } ?: if (!previewsLoaded) {
+                                    Text(
+                                        stringResource(R.string.loading_image_preview),
+                                        style = type.bodySmall,
+                                        color = atlas.inkMuted,
+                                        modifier = Modifier.padding(end = space.space2),
+                                    )
+                                } else {
+                                    Spacer(Modifier.width(0.dp))
+                                }
+                                Spacer(Modifier.width(space.space3))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        text = (if (image.label.isNotBlank()) image.label else stringResource(R.string.image_attached)) + " ↗",
+                                        style = type.label,
+                                        color = atlas.ink,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    if (image.caption.isNotBlank()) {
+                                        Text(
+                                            image.caption,
+                                            style = type.bodySmall,
+                                            color = atlas.inkMuted,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier
+                                                .padding(top = 2.dp)
+                                                .then(
+                                                    if (index == 0) Modifier.testTag(tag("image_size_caption"))
+                                                    else Modifier,
+                                                ),
+                                        )
+                                    }
+                                }
+                                TextButton(
+                                    onClick = { image.onRemove.run() },
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .then(
+                                            if (index == 0) Modifier.testTag(tag("image_remove"))
+                                            else Modifier.testTag(tag("image_remove_$index")),
+                                        ),
+                                    contentPadding = PaddingValues(horizontal = space.space2, vertical = space.space1),
+                                    colors = StillwaterControls.dangerTextColors(),
+                                ) { Text(stringResource(R.string.image_remove), style = type.bodySmall) }
+                            }
+                        }
+                    }
+                } else if (snapshot.activeImages.isNotEmpty()) {
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .padding(horizontal = space.space2, vertical = space.space1)
                             .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
                             .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
-                            .padding(space.space2)
-                            .testTag(tag("image_attachment")),
+                            .padding(start = space.space3, end = space.space1, top = 2.dp, bottom = 2.dp)
+                            .testTag(tag("active_images_strip")),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        previewBitmap?.let { bitmap ->
-                            Image(
-                                bitmap.asImageBitmap(),
-                                contentDescription = stringResource(R.string.attached_image_preview_cd),
-                                modifier = Modifier
-                                    .size(56.dp)
-                                    .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
-                                    .testTag(tag("image_preview")),
-                                contentScale = ContentScale.Crop,
-                            )
-                        } ?: if (!previewLoaded) {
+                        Row(
+                            Modifier
+                                .weight(1f)
+                                .clickable { openAttachment.accept(snapshot.activeImages.first()) }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text(
-                                stringResource(R.string.loading_image_preview),
-                                style = type.bodySmall,
-                                color = atlas.inkMuted,
-                                modifier = Modifier.padding(end = space.space2),
-                            )
-                        } else {
-                            Spacer(Modifier.width(0.dp))
-                        }
-                        Spacer(Modifier.width(space.space3))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                stringResource(R.string.image_attached),
+                                stringResource(R.string.photo_active_context_heading) + " ",
                                 style = type.label,
-                                color = atlas.ink,
+                                color = atlas.accent,
                             )
-                            if (image.caption.isNotBlank()) {
-                                Text(
-                                    image.caption,
-                                    style = type.bodySmall,
-                                    color = atlas.inkMuted,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier
-                                        .padding(top = 2.dp)
-                                        .testTag(tag("image_size_caption")),
-                                )
-                            }
+                            Text(
+                                snapshot.activeImages.joinToString(", ") { it.label } + " ↗",
+                                style = type.mono,
+                                color = atlas.inkSoft,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
                         }
                         TextButton(
-                            onClick = { image.onRemove.run() },
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag(tag("image_remove")),
-                            contentPadding = PaddingValues(horizontal = space.space2, vertical = space.space1),
+                            onClick = { clearActiveImages.run() },
+                            modifier = Modifier.testTag(tag("active_images_clear")),
+                            contentPadding = PaddingValues(horizontal = space.space2, vertical = 2.dp),
                             colors = StillwaterControls.dangerTextColors(),
-                        ) { Text(stringResource(R.string.image_remove), style = type.bodySmall) }
+                        ) { Text(stringResource(R.string.remove_short), style = type.bodySmall) }
                     }
                 }
                 val hasClearableContent = snapshot.turns.isNotEmpty() || input.isNotEmpty() ||
-                    attachment != null || documentAttachments.isNotEmpty()
+                    pendingImages.isNotEmpty() || documentAttachments.isNotEmpty()
                 Column(
                     Modifier
                         .fillMaxWidth()

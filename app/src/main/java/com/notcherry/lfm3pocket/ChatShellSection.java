@@ -20,14 +20,27 @@ final class ChatShellSection {
         final Runnable onNewChat;
         final Consumer<String> onRetryTurn;
         final Runnable requestCompact;
+        final Consumer<ChatSnapshot.AttachmentRef> openAttachment;
+        final Runnable clearActiveDocuments;
+        final Runnable clearActiveImages;
 
         ChatPanelDeps(Consumer<String> send, Runnable stopActiveWork, Runnable onNewChat,
                 Consumer<String> onRetryTurn, Runnable requestCompact) {
+            this(send, stopActiveWork, onNewChat, onRetryTurn, requestCompact, ref -> {}, () -> {}, () -> {});
+        }
+
+        ChatPanelDeps(Consumer<String> send, Runnable stopActiveWork, Runnable onNewChat,
+                Consumer<String> onRetryTurn, Runnable requestCompact,
+                Consumer<ChatSnapshot.AttachmentRef> openAttachment,
+                Runnable clearActiveDocuments, Runnable clearActiveImages) {
             this.send = send;
             this.stopActiveWork = stopActiveWork;
             this.onNewChat = onNewChat;
             this.onRetryTurn = onRetryTurn;
             this.requestCompact = requestCompact;
+            this.openAttachment = openAttachment != null ? openAttachment : ref -> {};
+            this.clearActiveDocuments = clearActiveDocuments != null ? clearActiveDocuments : () -> {};
+            this.clearActiveImages = clearActiveImages != null ? clearActiveImages : () -> {};
         }
     }
 
@@ -176,8 +189,17 @@ final class ChatShellSection {
 
         status = ui.label(ui.getString(R.string.starting), 13, inkMuted);
         status.setId(R.id.chat_status);
-        status.setPadding(0, ui.dp(6), 0, ui.dp(6));
-        StillwaterReadable.prepareWrappingLabel(status);
+        status.setPadding(0, ui.dp(4), 0, ui.dp(4));
+        status.setMaxLines(2);
+        status.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        status.setOnClickListener(v -> {
+            CharSequence full = status.getText();
+            if (full == null || full.length() < 60) return;
+            StillwaterUi.showDialog(new android.app.AlertDialog.Builder(ui.settingsActivity())
+                    .setTitle(R.string.status_details_title)
+                    .setMessage(full)
+                    .setPositiveButton(android.R.string.ok, null));
+        });
         root.addView(status);
     }
 
@@ -186,7 +208,8 @@ final class ChatShellSection {
         chatRoot.setOrientation(LinearLayout.VERTICAL);
         ChatPanelDeps panel = deps.chatPanel;
         chatPanel = new ChatPanel(ui.settingsActivity(), panel.send, panel.stopActiveWork,
-                panel.onNewChat, panel.onRetryTurn, panel.requestCompact, deps.openSettings);
+                panel.onNewChat, panel.onRetryTurn, panel.requestCompact, deps.openSettings,
+                panel.openAttachment, panel.clearActiveDocuments, panel.clearActiveImages);
         chatRoot.addView(chatPanel, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         LinearLayout mediaHost = new LinearLayout(ui.settingsActivity());

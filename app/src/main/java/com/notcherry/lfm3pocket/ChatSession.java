@@ -53,23 +53,35 @@ public final class ChatSession {
         public final String displayName;
         /** Bounded extracted text for DOCUMENT attachments; null/empty for others. */
         public final String extractedText;
+        /** Original SAF content:// URI when available so tapping the attachment can open the source file. */
+        public final String sourceUri;
         public Attachment(String path,AttachmentKind kind) {
-            this(path,kind,"",null);
+            this(path,kind,"",null,"");
         }
         public Attachment(String path,AttachmentKind kind,String displayName,String extractedText) {
+            this(path,kind,displayName,extractedText,"");
+        }
+        public Attachment(String path,AttachmentKind kind,String displayName,String extractedText,String sourceUri) {
             if(kind!=AttachmentKind.DOCUMENT && (path==null || path.isEmpty()))
                 throw new IllegalArgumentException("Attachment path is required");
             this.path=path==null?"":path;
             this.kind=Objects.requireNonNull(kind);
             this.displayName=displayName==null?"":displayName;
             this.extractedText=extractedText==null?"":extractedText;
+            this.sourceUri=sourceUri==null?"":sourceUri;
+        }
+        static Attachment photo(String path,String displayName) {
+            return new Attachment(path,AttachmentKind.PHOTO,displayName==null?"":displayName.trim(),null,"");
         }
         static Attachment document(String displayName,String extractedText) {
+            return document(displayName,extractedText,"");
+        }
+        static Attachment document(String displayName,String extractedText,String sourceUri) {
             if(displayName==null || displayName.trim().isEmpty())
                 throw new IllegalArgumentException("Document name is required");
             if(extractedText==null || extractedText.trim().isEmpty())
                 throw new IllegalArgumentException("Document text is required");
-            return new Attachment("",AttachmentKind.DOCUMENT,displayName.trim(),extractedText);
+            return new Attachment("",AttachmentKind.DOCUMENT,displayName.trim(),extractedText,sourceUri);
         }
     }
     public enum TerminalState { COMPLETED, CANCELLED, FAILED, INTERRUPTED }
@@ -132,22 +144,31 @@ public final class ChatSession {
         volatile String contextPrefix;
         /** Exact raw model text for clean assistant replies so KV prefix reuse matches token-for-token. */
         final String rawPromptText;
+        /** Clickable attachment metadata for this message. */
+        final List<ChatSnapshot.AttachmentRef> attachments;
         Message(String role,String text,List<WebSearch.Source> sources) {
-            this(role,text,null,sources,false,null,null,null);
+            this(role,text,null,sources,false,null,null,null,Collections.emptyList());
         }
         Message(String role,String text,String reasoning,List<WebSearch.Source> sources) {
-            this(role,text,reasoning,sources,false,null,null,null);
+            this(role,text,reasoning,sources,false,null,null,null,Collections.emptyList());
         }
         Message(String role,String text,String reasoning,List<WebSearch.Source> sources,
                 boolean interrupted,String turnId,String mediaRef) {
-            this(role,text,reasoning,sources,interrupted,turnId,mediaRef,null);
+            this(role,text,reasoning,sources,interrupted,turnId,mediaRef,null,Collections.emptyList());
         }
         Message(String role,String text,String reasoning,List<WebSearch.Source> sources,
                 boolean interrupted,String turnId,String mediaRef,String rawPromptText) {
+            this(role,text,reasoning,sources,interrupted,turnId,mediaRef,rawPromptText,Collections.emptyList());
+        }
+        Message(String role,String text,String reasoning,List<WebSearch.Source> sources,
+                boolean interrupted,String turnId,String mediaRef,String rawPromptText,
+                List<ChatSnapshot.AttachmentRef> attachments) {
             this.role=role;this.text=text;this.reasoning=reasoning;
             this.sources=new ArrayList<>(sources);
             this.interrupted=interrupted;this.turnId=turnId;this.mediaRef=mediaRef;
             this.rawPromptText=rawPromptText;
+            this.attachments=attachments==null || attachments.isEmpty()
+                    ? Collections.emptyList() : new ArrayList<>(attachments);
         }
     }
     private static final class Turn {
@@ -157,14 +178,16 @@ public final class ChatSession {
         final List<Attachment> media;
         final List<Attachment> documents;
         final String imagePath;
+        final List<String> imagePaths;
         final AtomicBoolean imageDeleted=new AtomicBoolean();
         volatile boolean cancelled,discarded,workerStarted,workerFinished;
         volatile long lastPartialSaveAt;
-        Turn(long id,long handle,boolean webSearch,String question,List<Attachment> media,List<Attachment> documents,String imagePath) {
+        Turn(long id,long handle,boolean webSearch,String question,List<Attachment> media,List<Attachment> documents,List<String> imagePaths) {
             this.id=id;this.handle=handle;this.webSearch=webSearch;this.question=question;
             this.media=new ArrayList<>(media);
             this.documents=documents==null?Collections.emptyList():new ArrayList<>(documents);
-            this.imagePath=imagePath;
+            this.imagePaths=imagePaths==null?Collections.emptyList():new ArrayList<>(imagePaths);
+            this.imagePath=this.imagePaths.isEmpty()?"":this.imagePaths.get(0);
             this.persistenceId=UUID.randomUUID().toString();
         }
     }
@@ -191,6 +214,9 @@ public final class ChatSession {
     private volatile java.util.function.Supplier<String> resourceBadgeSupplier;
     private final List<Message> messages=new ArrayList<>();
     private final List<Attachment> activeDocuments=new ArrayList<>();
+    private final List<Attachment> activeImages=new ArrayList<>();
+    /** Earlier-turn cached image paths kept readable for tap-to-open until clear()/close(). */
+    private final List<String> retainedMediaPaths=new ArrayList<>();
     private final StringBuilder pending=new StringBuilder(), partial=new StringBuilder();
     private long epoch;
     private Turn active;
@@ -199,7 +225,6 @@ public final class ChatSession {
     private volatile boolean compactCancelled, compactWorkerStarted, compactWorkerFinished;
     private long compactEpoch;
     private String status="";
-    private String activeImagePath="";
     private String rollingSummary="";
     private int summarizedMessageCount;
     private ChatSnapshot latestSnapshot=new ChatSnapshot(Collections.emptyList(),"",false);
@@ -258,21 +283,30 @@ public final class ChatSession {
         if(closed || active!=null || restored==null) return;
         messages.clear();
         activeDocuments.clear();
-        activeImagePath="";
+        activeImages.clear();
+        retainedMediaPaths.clear();
         toolModeEngaged=false;
         String lastInterruptedMedia="";
         for(RestoredMessage row:restored) {
             if(row.role==null || row.role.isEmpty()) continue;
             if(!"user".equals(row.role) && !"assistant".equals(row.role)) continue;
             boolean interrupted="INTERRUPTED".equals(row.turnStatus);
-            messages.add(new Message(row.role,row.text,null,Collections.emptyList(),
-                    interrupted && "assistant".equals(row.role),row.turnId,row.mediaRef));
+            List<ChatSnapshot.AttachmentRef> refs=Collections.emptyList();
             if("user".equals(row.role) && row.mediaRef!=null && !row.mediaRef.isEmpty()) {
-                activeImagePath=row.mediaRef;
+                refs=Collections.singletonList(new ChatSnapshot.AttachmentRef(
+                        "PHOTO","Photo",row.mediaRef,"",""));
+            }
+            messages.add(new Message(row.role,row.text,null,Collections.emptyList(),
+                    interrupted && "assistant".equals(row.role),row.turnId,row.mediaRef,null,refs));
+            if("user".equals(row.role) && row.mediaRef!=null && !row.mediaRef.isEmpty()) {
+                activeImages.clear();
+                activeImages.add(Attachment.photo(row.mediaRef,"Photo"));
                 lastInterruptedMedia=row.mediaRef;
             }
-            if(interrupted && "assistant".equals(row.role) && !lastInterruptedMedia.isEmpty())
-                activeImagePath=lastInterruptedMedia;
+            if(interrupted && "assistant".equals(row.role) && !lastInterruptedMedia.isEmpty()) {
+                activeImages.clear();
+                activeImages.add(Attachment.photo(lastInterruptedMedia,"Photo"));
+            }
         }
         rollingSummary=summary==null?"":summary.trim();
         summarizedMessageCount=Math.max(0,Math.min(summarizedCount,messages.size()));
@@ -282,6 +316,33 @@ public final class ChatSession {
                 : !rollingSummary.isEmpty() ? "Conversation restored · summary applied."
                 : messages.isEmpty()? "":"Conversation restored.";
         emit();
+    }
+
+    /** Detaches carried photo context from future turns while keeping earlier chips viewable. */
+    public synchronized void clearActiveImages() {
+        if(activeImages.isEmpty()) return;
+        retainActiveImagePaths();
+        activeImages.clear();
+        emit();
+    }
+
+    /** Detaches carried document context from future turns while keeping earlier chips viewable. */
+    public synchronized void clearActiveDocuments() {
+        if(activeDocuments.isEmpty()) return;
+        activeDocuments.clear();
+        emit();
+    }
+
+    private void retainActiveImagePaths() {
+        for(Attachment img:activeImages) {
+            if(img!=null && img.path!=null && !img.path.isEmpty() && !retainedMediaPaths.contains(img.path)) {
+                retainedMediaPaths.add(img.path);
+            }
+        }
+    }
+
+    private String firstActiveImagePath() {
+        return activeImages.isEmpty() ? "" : activeImages.get(0).path;
     }
 
     public synchronized boolean retryInterrupted(String turnId,int maxTokens) {
@@ -298,8 +359,7 @@ public final class ChatSession {
         if(!"user".equals(user.role)) return false;
         String question=stripAttachmentMarkers(user.text);
         List<Attachment> attachments=new ArrayList<>(activeDocuments);
-        String media=user.mediaRef!=null && !user.mediaRef.isEmpty()?user.mediaRef
-                :(!activeImagePath.isEmpty()?activeImagePath:"");
+        String media=user.mediaRef!=null && !user.mediaRef.isEmpty()?user.mediaRef:firstActiveImagePath();
         if(!media.isEmpty() && new File(media).isFile())
             attachments.add(new Attachment(media,AttachmentKind.PHOTO));
         int tokens=maxTokens<=0?512:maxTokens;
@@ -316,11 +376,11 @@ public final class ChatSession {
     public synchronized boolean submit(String text,List<Attachment> attachments,boolean useSearch,String endpoint,int maxTokens) {
         if(closed || active!=null || compacting || model.getAsLong()==0) return false;
         List<Attachment> submitted=attachments==null?Collections.emptyList():new ArrayList<>(attachments);
-        String submittedImage="";
+        List<Attachment> submittedImages=new ArrayList<>();
         boolean voiceRecording=false;
         List<Attachment> submittedDocuments=new ArrayList<>();
         for(Attachment attachment:submitted) {
-            if(attachment.kind==AttachmentKind.PHOTO) submittedImage=attachment.path;
+            if(attachment.kind==AttachmentKind.PHOTO) submittedImages.add(attachment);
             if(attachment.kind==AttachmentKind.VOICE_RECORDING) voiceRecording=true;
             if(attachment.kind==AttachmentKind.DOCUMENT) submittedDocuments.add(attachment);
         }
@@ -333,36 +393,70 @@ public final class ChatSession {
                 }
                 if(doc.path!=null && !doc.path.isEmpty()) mediaCleanup.delete(doc.path);
             }
+            // Attaching a document without a new photo detaches stale photo context (#336)
+            // while retaining earlier photo files so prior chat chips remain tap-to-view.
+            if(submittedImages.isEmpty() && !activeImages.isEmpty()) {
+                retainActiveImagePaths();
+                activeImages.clear();
+            }
         }
-        if(text.trim().isEmpty() && submitted.isEmpty() && activeImagePath.isEmpty() && activeDocuments.isEmpty()) return false;
-        if(!submittedImage.isEmpty()) {
-            if(!activeImagePath.isEmpty() && !activeImagePath.equals(submittedImage))
-                mediaCleanup.delete(activeImagePath);
-            activeImagePath=submittedImage;
+        if(text.trim().isEmpty() && submitted.isEmpty() && activeImages.isEmpty() && activeDocuments.isEmpty()) return false;
+        if(!submittedImages.isEmpty()) {
+            // Keep earlier images viewable via turn chips until conversation clear, and detach
+            // unrelated carried documents unless documents were submitted in the same turn.
+            retainActiveImagePaths();
+            activeImages.clear();
+            activeImages.addAll(submittedImages);
+            if(submittedDocuments.isEmpty() && !activeDocuments.isEmpty()) {
+                activeDocuments.clear();
+            }
         }
         String question=text.trim().isEmpty()
                 ?voiceRecording?DEFAULT_VOICE_QUESTION:!activeDocuments.isEmpty()?"Summarize the attached documents.":"Describe this photo."
                 :text.trim();
         List<Attachment> turnMedia=new ArrayList<>();
-        if(!activeImagePath.isEmpty())turnMedia.add(new Attachment(activeImagePath,AttachmentKind.PHOTO));
+        List<String> turnImagePaths=new ArrayList<>(activeImages.size());
+        for(Attachment img:activeImages) {
+            turnMedia.add(img);
+            turnImagePaths.add(img.path);
+        }
         for(Attachment attachment:submitted)
             if(attachment.kind==AttachmentKind.VOICE_RECORDING)turnMedia.add(attachment);
+        List<ChatSnapshot.AttachmentRef> turnRefs=new ArrayList<>();
         StringBuilder visibleQuestion=new StringBuilder(question);
-        if(!submittedImage.isEmpty())visibleQuestion.append("\n[photo attached]");
-        if(voiceRecording)visibleQuestion.append("\n[voice recording attached]");
-        if(submittedImage.isEmpty() && !activeImagePath.isEmpty())visibleQuestion.append("\n[photo context]");
+        if(!submittedImages.isEmpty()) {
+            visibleQuestion.append("\n[photo attached]");
+            for(Attachment img:submittedImages) {
+                String label=img.displayName.isEmpty()?"Photo":img.displayName;
+                turnRefs.add(new ChatSnapshot.AttachmentRef("PHOTO",label,img.path,img.sourceUri,""));
+            }
+        }
+        if(voiceRecording) {
+            visibleQuestion.append("\n[voice recording attached]");
+            turnRefs.add(new ChatSnapshot.AttachmentRef("AUDIO","Voice recording","","",""));
+        }
+        if(submittedImages.isEmpty() && !activeImages.isEmpty()) {
+            visibleQuestion.append("\n[photo context]");
+            for(Attachment img:activeImages) {
+                String label=img.displayName.isEmpty()?"Photo context":img.displayName+" (context)";
+                turnRefs.add(new ChatSnapshot.AttachmentRef("PHOTO",label,img.path,img.sourceUri,""));
+            }
+        }
         if(!activeDocuments.isEmpty()) {
             visibleQuestion.append("\n[documents attached: ");
             for(int i=0;i<activeDocuments.size();i++) {
+                Attachment doc=activeDocuments.get(i);
                 if(i>0) visibleQuestion.append(", ");
-                visibleQuestion.append(activeDocuments.get(i).displayName);
+                visibleQuestion.append(doc.displayName);
+                turnRefs.add(new ChatSnapshot.AttachmentRef("DOC",doc.displayName,"",doc.sourceUri,doc.extractedText));
             }
             visibleQuestion.append("]");
         }
+        String primaryImage=firstActiveImagePath();
         messages.add(new Message("user",visibleQuestion.toString(),null,Collections.emptyList(),
-                false,null,activeImagePath.isEmpty()?null:activeImagePath));
+                false,null,primaryImage.isEmpty()?null:primaryImage,null,turnRefs));
         List<Message> history=new ArrayList<>(messages);
-        Turn turn=new Turn(++epoch,model.getAsLong(),useSearch,question,turnMedia,new ArrayList<>(activeDocuments),activeImagePath);active=turn;
+        Turn turn=new Turn(++epoch,model.getAsLong(),useSearch,question,turnMedia,new ArrayList<>(activeDocuments),turnImagePaths);active=turn;
         pending.setLength(0);partial.setLength(0);scheduled=false;
         final boolean includeVoice=voiceRecording;
         // Persist on the worker before inference (Room forbids main-thread writes).
@@ -400,16 +494,33 @@ public final class ChatSession {
             status="Stopping conversation compaction…";emit();
         }
     }
+    private void deleteAllImageFilesExceptActiveTurn(Turn runningTurn) {
+        java.util.LinkedHashSet<String> toDelete=new java.util.LinkedHashSet<>(retainedMediaPaths);
+        for(Attachment img:activeImages) {
+            if(img!=null && img.path!=null && !img.path.isEmpty()) toDelete.add(img.path);
+        }
+        if(runningTurn!=null) {
+            // runningTurn.imagePaths are deleted exactly once by cleanupDiscardedImage(runningTurn),
+            // either immediately when workerFinished or from generate()'s finally block.
+            toDelete.removeAll(runningTurn.imagePaths);
+        }
+        for(String path:toDelete) {
+            try { mediaCleanup.delete(path); } catch(RuntimeException ignored) { }
+        }
+        activeImages.clear();
+        retainedMediaPaths.clear();
+    }
     public synchronized void clear() {
-        if(active!=null) {
-            active.cancelled=true;active.discarded=true;engine.stop();
-            if(active.workerFinished)cleanupDiscardedImage(active);
+        Turn running=active;
+        if(running!=null) {
+            running.cancelled=true;running.discarded=true;engine.stop();
+            if(running.workerFinished)cleanupDiscardedImage(running);
         } else if(compacting) {
             compactCancelled=true;
             engine.stop();
-        } else if(!activeImagePath.isEmpty())mediaCleanup.delete(activeImagePath);
+        }
+        deleteAllImageFilesExceptActiveTurn(running);
         WebSearch.cancelActive();
-        activeImagePath="";
         for(Attachment doc:activeDocuments) {
             if(doc.path!=null && !doc.path.isEmpty()) mediaCleanup.delete(doc.path);
         }
@@ -420,15 +531,16 @@ public final class ChatSession {
     }
     public synchronized void close() {
         closed=true;++epoch;
-        if(active!=null) {
-            active.cancelled=true;active.discarded=true;engine.stop();
-            if(active.workerFinished)cleanupDiscardedImage(active);
+        Turn running=active;
+        if(running!=null) {
+            running.cancelled=true;running.discarded=true;engine.stop();
+            if(running.workerFinished)cleanupDiscardedImage(running);
         } else if(compacting) {
             compactCancelled=true;
             engine.stop();
-        } else if(!activeImagePath.isEmpty())mediaCleanup.delete(activeImagePath);
+        }
+        deleteAllImageFilesExceptActiveTurn(running);
         WebSearch.cancelActive();
-        activeImagePath="";
         for(Attachment doc:activeDocuments) {
             if(doc.path!=null && !doc.path.isEmpty()) mediaCleanup.delete(doc.path);
         }
@@ -505,8 +617,12 @@ public final class ChatSession {
         }
     }
     private void cleanupDiscardedImage(Turn turn) {
-        if(turn.discarded && !turn.imagePath.isEmpty() && turn.imageDeleted.compareAndSet(false,true))
-            try { mediaCleanup.delete(turn.imagePath); } catch(RuntimeException ignored) { }
+        if(turn.discarded && !turn.imagePaths.isEmpty() && turn.imageDeleted.compareAndSet(false,true)) {
+            for(String path:turn.imagePaths) {
+                if(path!=null && !path.isEmpty())
+                    try { mediaCleanup.delete(path); } catch(RuntimeException ignored) { }
+            }
+        }
     }
     private boolean generateTurn(Turn turn,String question,boolean voiceRecording,boolean useSearch,
                                  String endpoint,int maxTokens,List<Message> history) {
@@ -1069,7 +1185,8 @@ public final class ChatSession {
         List<ChatSnapshot.Turn> turns=new ArrayList<>();
         for(Message message:messages) {
             turns.add(new ChatSnapshot.Turn(message.role,message.text,message.reasoning,
-                    toSnapshotSources(message.sources),false,message.interrupted,message.turnId));
+                    toSnapshotSources(message.sources),false,message.interrupted,message.turnId,
+                    message.attachments));
         }
         if(active!=null) {
             ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(partial.toString());
@@ -1078,16 +1195,23 @@ public final class ChatSession {
                     Collections.emptyList(),true));
         }
         List<String> docNames=new ArrayList<>(activeDocuments.size());
+        List<ChatSnapshot.AttachmentRef> activeDocRefs=new ArrayList<>(activeDocuments.size());
         for(Attachment doc:activeDocuments) {
             int chars=doc.extractedText==null?0:doc.extractedText.length();
             String label=chars>=1000
                     ? String.format(Locale.US,"%s · %.1fk chars",doc.displayName,chars/1000.0)
                     : chars>0 ? doc.displayName+" · "+chars+" chars" : doc.displayName;
             docNames.add(label);
+            activeDocRefs.add(new ChatSnapshot.AttachmentRef("DOC",doc.displayName,"",doc.sourceUri,doc.extractedText));
+        }
+        List<ChatSnapshot.AttachmentRef> activeImgRefs=new ArrayList<>(activeImages.size());
+        for(Attachment img:activeImages) {
+            String label=img.displayName.isEmpty()?"Photo":img.displayName;
+            activeImgRefs.add(new ChatSnapshot.AttachmentRef("PHOTO",label,img.path,img.sourceUri,""));
         }
         ProcessingTelemetry sink=telemetry;
         List<String> traces=sink==null?Collections.emptyList():sink.recentLines(8);
-        return new ChatSnapshot(turns,status,active!=null || compacting,docNames,traces);
+        return new ChatSnapshot(turns,status,active!=null || compacting,docNames,traces,activeDocRefs,activeImgRefs);
     }
     private static List<ChatSnapshot.Source> toSnapshotSources(List<WebSearch.Source> sources) {
         List<ChatSnapshot.Source> out=new ArrayList<>(sources.size());

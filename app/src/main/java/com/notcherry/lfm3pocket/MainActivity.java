@@ -537,7 +537,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 () -> historyTitle, () -> searchEnabled, () -> requestNewChat(false),
                 () -> setSettingsOpen(true), this::showSearchSettings,
                 new ChatShellSection.ChatPanelDeps(this::send, this::stopActiveWork, this::onChatPanelNewChat,
-                        this::onChatPanelRetryTurn, this::requestCompact)));
+                        this::onChatPanelRetryTurn, this::requestCompact,
+                        ref -> {
+                            String err = AttachmentViewer.open(this, ref);
+                            if (err != null && !err.isEmpty()) setChatStatus(err);
+                        },
+                        () -> {
+                            if (session != null) session.clearActiveDocuments();
+                        },
+                        () -> {
+                            if (session != null) session.clearActiveImages();
+                        })));
         chatShellSection.mountChrome(root, ink, inkMuted, accent);
 
         settingsHost = buildSettingsHost(surface, ink, inkMuted, accent);
