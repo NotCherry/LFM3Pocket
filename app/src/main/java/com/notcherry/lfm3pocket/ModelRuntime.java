@@ -612,9 +612,26 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             if (rows.isEmpty()) return;
             java.util.ArrayList<ChatSession.RestoredMessage> restored = new java.util.ArrayList<>();
             for (HistoryRepository.StoredMessage row : rows) {
+                java.util.List<ChatSnapshot.ToolCall> restoredCalls = new java.util.ArrayList<>();
+                for (HistoryRepository.ToolExecution ex : row.getToolOutcomes()) {
+                    String wire = ex.getTool();
+                    String argsJson = ex.getArgumentsJson();
+                    restoredCalls.add(new ChatSnapshot.ToolCall(
+                            ex.getRequestId(),
+                            wire,
+                            ToolCoordinator.titleForWireName(wire),
+                            ToolCoordinator.compactSummaryFromJson(wire, argsJson),
+                            argsJson,
+                            ex.getStatus(),
+                            ToolCoordinator.stripUntrustedPrefix(ex.getResultText()),
+                            false,
+                            false,
+                            ex.getSucceeded(),
+                            0L));
+                }
                 restored.add(new ChatSession.RestoredMessage(
                         row.getRole(), row.getText(), row.getTurnId(), row.getTurnStatus(),
-                        row.getMediaRef(), row.getReasoning()));
+                        row.getMediaRef(), row.getReasoning(), restoredCalls));
             }
             HistoryRepository.ConversationSummary summaryState = null;
             try {
@@ -779,8 +796,13 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             return !(fgsActive && availRamMb >= 512L);
         }
         // TRIM_MEMORY_RUNNING_CRITICAL while keepLoaded is on: shed KV first; escalate only if
-        // pressure repeats within 60 seconds after KV release.
-        return lastKvReleaseMs > 0L && (nowMs - lastKvReleaseMs) <= 60_000L;
+        // pressure repeats after a short debounce window (OEMs like ColorOS/Realme often fire
+        // duplicate trim=15 bursts within <1s even with >1 GB free RAM).
+        long sinceKvRelease = nowMs - lastKvReleaseMs;
+        if (lastKvReleaseMs > 0L && sinceKvRelease >= 0L && sinceKvRelease < 3_000L && availRamMb >= 512L) {
+            return false;
+        }
+        return lastKvReleaseMs > 0L && sinceKvRelease <= 60_000L;
     }
 
     public void onTrimMemory(int level) {
@@ -854,6 +876,27 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         else if (ModelRuntimeService.ACTION_TALK.equals(action)) voiceActions.beginShadeTalk();
     }
 
+    /** Updates the live session's expandable tool call card after user approval/rejection. */
+    public void recordToolOutcomeInSession(ToolCoordinator.Proposal proposal, ToolRegistry.Request request,
+                                           ToolCoordinator.Outcome outcome) {
+        if (session == null || request == null || outcome == null || outcome.result == null) return;
+        String id = proposal == null ? java.util.UUID.randomUUID().toString() : proposal.id;
+        String wire = ToolCoordinator.wireName(request);
+        String argsJson = McpClient.toCompactJson(request.arguments);
+        session.recordCompletedToolCall(new ChatSnapshot.ToolCall(
+                id,
+                wire,
+                ToolCoordinator.title(request),
+                ToolCoordinator.compactSummary(request),
+                argsJson,
+                outcome.result.status,
+                ToolCoordinator.stripUntrustedPrefix(outcome.result.message),
+                false,
+                false,
+                outcome.result.succeeded,
+                0L));
+    }
+
     /** RemoteInput Ask inserts a user message. It never authorizes a tool. */
     public void askFromNotification(String text) {
         if (text == null || text.isBlank()) return;
@@ -864,8 +907,13 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         }
         if (isGenerating()) return;
         ensureSession();
-        noteSubmission(text.trim(), 512);
-        if (!session.submit(text.trim(), java.util.Collections.emptyList(), false, "", 512)) {
+        int maxTokens = pendingMax > 0 ? pendingMax : InferenceSettings.DEFAULT.maxTokens;
+        boolean searchEnabled = SearchEndpointPolicy.enabled(
+                preferences.raw().getBoolean("search_enabled", false),
+                preferences.raw().getString("search_endpoint", ""));
+        String endpoint = searchEnabled ? preferences.raw().getString("search_endpoint", "") : "";
+        noteSubmission(text.trim(), maxTokens);
+        if (!session.submit(text.trim(), java.util.Collections.emptyList(), searchEnabled, endpoint, maxTokens)) {
             // Still answering or handle raced to zero.
         }
     }
@@ -1356,10 +1404,26 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         conversationId = id;
         if (history == null) history = new HistoryRepository(HistoryDatabase.get(app));
         String mediaRef = turn.mediaRef == null || turn.mediaRef.isBlank() ? null : turn.mediaRef;
+        java.util.List<HistoryRepository.ToolExecution> executions = new java.util.ArrayList<>();
+        if (turn.toolCalls != null) {
+            for (ChatSnapshot.ToolCall call : turn.toolCalls) {
+                if (call == null || call.running || call.pending) continue;
+                String reqId = call.id == null || call.id.isBlank()
+                        ? java.util.UUID.randomUUID().toString() : call.id;
+                executions.add(new HistoryRepository.ToolExecution(
+                        reqId,
+                        call.toolName == null || call.toolName.isBlank() ? "tool" : call.toolName,
+                        call.argumentsJson == null ? "{}" : call.argumentsJson,
+                        call.succeeded,
+                        call.status == null ? "" : call.status,
+                        call.resultText == null ? "" : call.resultText,
+                        turn.completedAt));
+            }
+        }
         history.completeTurn(new HistoryRepository.Turn(turn.id, id, historyTitle, turn.userText,
                 turn.assistantText == null ? "" : turn.assistantText, turn.speechTranscript,
                 HistoryRepository.Status.valueOf(turn.status.name()), turn.completedAt, null,
-                turn.speechTranscriptStatus, mediaRef, turn.reasoning));
+                turn.speechTranscriptStatus, mediaRef, turn.reasoning, executions));
     }
 
     private void onChat(String transcript, String status, boolean running) {

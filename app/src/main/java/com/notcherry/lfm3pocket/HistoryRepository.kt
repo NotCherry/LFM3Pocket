@@ -51,6 +51,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
         val speechTranscriptStatus: String? = null,
         val mediaRef: String? = null,
         val reasoning: String? = null,
+        val toolExecutions: List<ToolExecution> = emptyList(),
     ) {
         init {
             require(id.isNotBlank() && conversationId.isNotBlank() && title.isNotBlank())
@@ -72,6 +73,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
         val speechTranscript: String?,
         val speechTranscriptStatus: String?,
         val reasoning: String? = null,
+        val toolOutcomes: List<ToolExecution> = emptyList(),
     )
 
     data class ConversationSummary(
@@ -122,6 +124,9 @@ class HistoryRepository(private val database: HistoryDatabase) {
     fun completeTurn(turn: Turn): Boolean = database.runInTransaction(Callable {
         val dao = database.history()
         val storedReasoning = turn.reasoning?.takeIf { it.isNotBlank() }
+        val allExecutions = ArrayList<ToolExecution>()
+        turn.toolExecution?.let { allExecutions.add(it) }
+        allExecutions.addAll(turn.toolExecutions)
         val existing = dao.messageForTurn(turn.id)
         if (existing != null) {
             if (existing.turnStatus != Status.GENERATING.storedValue
@@ -134,7 +139,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
             if (user != null && user.role == "user") {
                 dao.updateSpeech(user.id, turn.speechTranscript, turn.speechTranscriptStatus)
             }
-            turn.toolExecution?.let { execution ->
+            for (execution in allExecutions) {
                 if (dao.toolOutcome(execution.requestId) == null) {
                     dao.insertToolOutcome(HistoryToolOutcome(
                         UUID.randomUUID().toString(), existing.id, execution.requestId, execution.tool,
@@ -160,12 +165,14 @@ class HistoryRepository(private val database: HistoryDatabase) {
             assistantId, turn.conversationId, firstSequence + 1L, "assistant", turn.assistantText,
             null, turn.completedAt, turn.id, turn.status.storedValue, null, null, storedReasoning,
         ))
-        turn.toolExecution?.let { execution ->
-            dao.insertToolOutcome(HistoryToolOutcome(
-                UUID.randomUUID().toString(), assistantId, execution.requestId, execution.tool,
-                execution.argumentsJson, execution.succeeded, execution.status, execution.resultText,
-                execution.completedAt,
-            ))
+        for (execution in allExecutions) {
+            if (dao.toolOutcome(execution.requestId) == null) {
+                dao.insertToolOutcome(HistoryToolOutcome(
+                    UUID.randomUUID().toString(), assistantId, execution.requestId, execution.tool,
+                    execution.argumentsJson, execution.succeeded, execution.status, execution.resultText,
+                    execution.completedAt,
+                ))
+            }
         }
         true
     })
@@ -182,13 +189,22 @@ class HistoryRepository(private val database: HistoryDatabase) {
         changed
     })
 
-    fun messages(conversationId: String): List<StoredMessage> =
-        database.history().messages(conversationId).map {
+    fun messages(conversationId: String): List<StoredMessage> {
+        val dao = database.history()
+        val outcomesByMsg = dao.toolOutcomes(conversationId).groupBy { it.messageId }
+        return dao.messages(conversationId).map { msg ->
+            val outcomes = outcomesByMsg[msg.id].orEmpty().map {
+                ToolExecution(
+                    it.requestId, it.tool, it.argumentsJson, it.succeeded,
+                    it.status, it.resultText, it.completedAt,
+                )
+            }
             StoredMessage(
-                it.role, it.text, it.turnId, it.turnStatus, it.mediaRef,
-                it.speechTranscript, it.speechTranscriptStatus, it.reasoning,
+                msg.role, msg.text, msg.turnId, msg.turnStatus, msg.mediaRef,
+                msg.speechTranscript, msg.speechTranscriptStatus, msg.reasoning, outcomes,
             )
         }
+    }
 
     fun conversationSummary(conversationId: String): ConversationSummary? =
         database.history().conversation(conversationId)?.let {

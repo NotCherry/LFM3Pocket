@@ -393,4 +393,9 @@ com.whatsapp</string>
     <string name="pdf_images_attached_status">Attached %1$d PDF page(s) as images (vision). Add a question and press Send.</string>
     <string name="pdf_images_truncated_status">Attached first %1$d of %2$d PDF pages as images (vision). Add a question and press Send.</string>
     <string name="status_details_title">Status details</string>
+    <string name="tool_calls_count_header">%1$d tool calls</string>
+    <string name="tool_call_arguments">Arguments</string>
+    <string name="tool_call_output">Output</string>
+    <string name="tool_call_running">Running…</string>
+    <string name="tool_call_pending">Awaiting approval</string>
 </resources>

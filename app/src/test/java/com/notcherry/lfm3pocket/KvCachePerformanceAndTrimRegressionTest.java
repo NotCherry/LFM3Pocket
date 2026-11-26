@@ -248,7 +248,12 @@ public final class KvCachePerformanceAndTrimRegressionTest {
                 ModelRuntime.shouldEscalateTrimToUnload(
                         ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,
                         true, true, false, 1024L, 100_000L, 0L));
-        // Second RUNNING_CRITICAL within 60s escalates to unload.
+        // OEM duplicate RUNNING_CRITICAL burst (<3s apart) with ample RAM does not immediately thrash-unload.
+        assertFalse("Duplicate RUNNING_CRITICAL burst within 3s with ample RAM should be debounced",
+                ModelRuntime.shouldEscalateTrimToUnload(
+                        ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,
+                        true, true, false, 1182L, 100_950L, 100_000L));
+        // Second RUNNING_CRITICAL after debounce window (within 60s) escalates to unload.
         assertTrue("Repeated RUNNING_CRITICAL within 60s should escalate to unload",
                 ModelRuntime.shouldEscalateTrimToUnload(
                         ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,

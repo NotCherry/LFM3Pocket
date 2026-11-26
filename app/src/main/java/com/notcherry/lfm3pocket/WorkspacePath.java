@@ -85,6 +85,25 @@ public final class WorkspacePath {
         return out.toString();
     }
 
+    /**
+     * If a normalized relative path starts with the mounted workspace folder's own display name
+     * (e.g. {@code "Documents"} or {@code "Documents/notes.md"} when {@code rootLabel} is
+     * {@code "Documents"}), returns the stripped relative path ({@code ""} or {@code "notes.md"}).
+     * Returns {@code null} when {@code normalizedPath} does not start with {@code rootLabel}.
+     */
+    public static String stripLeadingRootLabel(String normalizedPath, String rootLabel) {
+        if (normalizedPath == null || normalizedPath.isEmpty() || rootLabel == null) return null;
+        String label = rootLabel.trim();
+        if (label.isEmpty() || label.contains("/") || label.contains("\\")) return null;
+        if (normalizedPath.equalsIgnoreCase(label)) return "";
+        if (normalizedPath.length() > label.length()
+                && normalizedPath.regionMatches(true, 0, label, 0, label.length())
+                && normalizedPath.charAt(label.length()) == '/') {
+            return normalizedPath.substring(label.length() + 1);
+        }
+        return null;
+    }
+
     /** Converts a human note title into a safe {@code .md} filename. */
     public static String noteFilename(String title) {
         if (title == null || title.trim().isEmpty()) {

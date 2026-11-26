@@ -7,9 +7,11 @@
 }
 -keep interface com.notcherry.lfm3pocket.NativeBridge$TokenSink {
     void onToken(java.lang.String);
+    void onProgress(java.lang.String, int, int);
 }
 -keep class * implements com.notcherry.lfm3pocket.NativeBridge$TokenSink {
     void onToken(java.lang.String);
+    void onProgress(java.lang.String, int, int);
 }
 -keep interface com.notcherry.lfm3pocket.NativeBridge$AudioSink {
     void onAudioFormat(int, int, int);
