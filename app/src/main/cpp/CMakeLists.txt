@@ -75,7 +75,7 @@ add_library(lfm3pocket SHARED
 )
 target_compile_options(lfm3pocket PRIVATE "$<$<CONFIG:Debug>:-O3>" "$<$<CONFIG:Release>:-O3>")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_link_options(lfm3pocket PRIVATE -Wl,--gc-sections)
+    target_link_options(lfm3pocket PRIVATE -Wl,--gc-sections -Wl,-z,max-page-size=16384)
 endif()
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     target_compile_options(lfm3pocket PRIVATE -march=armv8.2-a+dotprod)

@@ -26,6 +26,9 @@ public final class AndroidContactsGateway implements ContactsGateway {
         if (query == null || query.trim().isEmpty() || limit <= 0) {
             return java.util.Collections.emptyList();
         }
+        if (!AndroidPermissionGate.hasContactsPermission(context)) {
+            return java.util.Collections.emptyList();
+        }
         ContentResolver resolver = null;
         try { resolver = context.getContentResolver(); } catch (RuntimeException ignored) {}
         if (resolver == null) {

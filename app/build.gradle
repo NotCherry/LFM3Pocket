@@ -78,6 +78,7 @@ android {
                     // (armv8.2-a+dotprod — PocketPal's preferred CPU ladder step).
                     def cmakeArgs = [
                               '-DANDROID_STL=c++_shared',
+                              '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON',
                               '-DGGML_NATIVE=OFF',
                               '-DGGML_OPENMP=OFF',
                               '-DGGML_LLAMAFILE=OFF',
@@ -157,6 +158,8 @@ android {
                 storePassword hanamiStorePassword
                 keyAlias hanamiKeyAlias
                 keyPassword hanamiKeyPassword
+                enableV2Signing true
+                enableV3Signing true
             }
         }
     }
@@ -170,7 +173,8 @@ android {
     }
     packaging {
         jniLibs {
-            useLegacyPackaging true
+            // Uncompressed 16 KB-aligned native libraries (extractNativeLibs=false) for Android 15-17 (ADR 0026).
+            useLegacyPackaging false
         }
         resources {
             excludes += [
@@ -242,7 +246,8 @@ dependencies {
     androidTestImplementation platform('androidx.compose:compose-bom:2025.04.01')
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
-    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'
+    // 1.23.2+ ships 16 KB-aligned libonnxruntime4j_jni.so for Android 15-17 (ADR 0026).
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.23.2'
     implementation 'androidx.work:work-runtime:2.9.1'
 }
 

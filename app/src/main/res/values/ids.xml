@@ -63,6 +63,7 @@
     <item name="settings_crash_log_export" type="id"/>
     <item name="settings_crash_log_clear" type="id"/>
     <item name="settings_crash_log_text" type="id"/>
+    <item name="settings_diag_copy_log" type="id"/>
     <item name="settings_diag_github_issue" type="id"/>
     <item name="settings_diag_paste_issue" type="id"/>
     <item name="settings_diag_lan_toggle" type="id"/>

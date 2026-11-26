@@ -131,6 +131,9 @@ public final class CrashLog {
                     .append(" timestamp=").append(info.timestamp)
                     .append(" description=").append(nullToEmpty(info.description))
                     .append('\n');
+            if (AndroidPermissionGate.isAndroid17MemoryLimiterExit(info.description)) {
+                block.append("note=Android 17 MemoryLimiter terminated the app; try a smaller quantization or lower context length.\n");
+            }
             if (info.trace != null && !info.trace.isBlank()) {
                 block.append("trace:\n").append(info.trace).append('\n');
             }

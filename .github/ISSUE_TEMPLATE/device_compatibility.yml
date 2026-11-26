@@ -1,0 +1,45 @@
+name: Device / Install compatibility report
+description: Report an APK install issue, OEM/HyperOS quirk, permission gate issue, or ARM64 device result.
+labels: ["android", "needs-device-test"]
+body:
+  - type: textarea
+    id: device_info
+    attributes:
+      label: Device, OS & APK info
+      description: Manufacturer, model, Android version/SDK, ABI, page size (`adb shell getconf PAGESIZE`), and Hanami version.
+      placeholder: |
+        - App version:
+        - Device: Xiaomi ... (Android 15 / 17)
+        - ABIs: arm64-v8a
+        - Page size: 16 KB / 4 KB
+    validations:
+      required: true
+
+  - type: input
+    id: oem_skin
+    attributes:
+      label: OEM OS / Skin
+      placeholder: e.g., Xiaomi HyperOS 3, OneUI 7, Pixel AOSP, LineageOS
+    validations:
+      required: false
+
+  - type: dropdown
+    id: install_channel
+    attributes:
+      label: Install source
+      options:
+        - GitHub Release APK (arm64-v8a)
+        - Obtainium
+        - F-Droid / IzzyOnDroid
+        - ADB (`adb install`)
+        - Local build
+    validations:
+      required: false
+
+  - type: textarea
+    id: symptom
+    attributes:
+      label: Install or runtime error details
+      description: Include the exact message or `adb install` output (e.g., `Failure [INSTALL_FAILED_...]`).
+    validations:
+      required: true

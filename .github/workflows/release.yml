@@ -67,6 +67,7 @@ jobs:
           python3 .github/scripts/prune-old-releases.py --self-test
           python3 .github/scripts/assert-dizione-jni-in-apk.py --self-test
           python3 .github/scripts/assert-cactus-runtime-in-apk.py --self-test
+          python3 .github/scripts/assert-apk-android-compat.py --self-test
 
       - name: Resolve release metadata
         id: meta
@@ -301,7 +302,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             app/src/main/rust/hanami_dizione/target
-          key: cargo-jni-arm64-${{ runner.os }}-${{ hashFiles('app/src/main/rust/hanami_dizione/Cargo.lock', 'app/src/main/rust/hanami_dizione/Cargo.toml', 'vendor/VOCA_COMMIT') }}
+          key: cargo-jni-arm64-${{ runner.os }}-${{ hashFiles('app/src/main/rust/hanami_dizione/Cargo.lock', 'app/src/main/rust/hanami_dizione/Cargo.toml', 'vendor/VOCA_COMMIT', 'scripts/build-dizione-jni.sh') }}
           restore-keys: |
             cargo-jni-arm64-${{ runner.os }}-
 
@@ -375,6 +376,11 @@ jobs:
           if [ "$MODE" = 'versioned' ] || [ "$MODE" = 'latest' ]; then
             python3 .github/scripts/assert-dizione-jni-in-apk.py "release-out/$ASSET" --abis arm64-v8a
             python3 .github/scripts/assert-cactus-runtime-in-apk.py "release-out/$ASSET"
+            compat_args=(--require-aapt2)
+            if [ "$MODE" = 'versioned' ] && [ "$SIGNING" = 'signed' ]; then
+              compat_args+=(--require-v2-v3)
+            fi
+            python3 .github/scripts/assert-apk-android-compat.py "${compat_args[@]}" "release-out/$ASSET"
           fi
           sha256sum "release-out/$ASSET" | tee "release-out/$ASSET.sha256"
           digest="$(cut -d' ' -f1 "release-out/$ASSET.sha256")"

@@ -92,13 +92,21 @@ if [[ "$WANT_ARM64" -eq 1 ]]; then
   ABIS+=(arm64-v8a)
 fi
 HOST_PREBUILT="$(find "$NDK/toolchains/llvm/prebuilt" -maxdepth 1 -mindepth 1 -type d | head -1)"
-clang21() {
+clang_for_abi() {
+  local prefix
   case "$1" in
-    arm64-v8a) echo "$HOST_PREBUILT/bin/aarch64-linux-android21-clang" ;;
-    x86_64) echo "$HOST_PREBUILT/bin/x86_64-linux-android21-clang" ;;
+    arm64-v8a) prefix="aarch64-linux-android" ;;
+    x86_64) prefix="x86_64-linux-android" ;;
   esac
+  if [[ -x "$HOST_PREBUILT/bin/${prefix}26-clang" ]]; then
+    echo "$HOST_PREBUILT/bin/${prefix}26-clang"
+  else
+    echo "$HOST_PREBUILT/bin/${prefix}21-clang"
+  fi
 }
 ar_tool() { echo "$HOST_PREBUILT/bin/llvm-ar"; }
+
+PAGE_SIZE_RUSTFLAG="-C link-arg=-Wl,-z,max-page-size=16384"
 
 built_ok=0
 for i in "${!TARGETS[@]}"; do
@@ -107,7 +115,7 @@ for i in "${!TARGETS[@]}"; do
   rustup target add "$target" >/dev/null 2>&1 || true
   dest="$OUT/$abi"
   mkdir -p "$dest"
-  linker="$(clang21 "$abi")"
+  linker="$(clang_for_abi "$abi")"
   if [[ ! -x "$linker" ]]; then
     rm -f "$dest/libhanami_dizione.so"
     if hanami_require_dizione; then
@@ -121,16 +129,18 @@ for i in "${!TARGETS[@]}"; do
     aarch64-linux-android)
       export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$linker"
       export CARGO_TARGET_AARCH64_LINUX_ANDROID_AR="$(ar_tool)"
+      export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="${CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS:+$CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS }${PAGE_SIZE_RUSTFLAG}"
       ;;
     x86_64-linux-android)
       export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$linker"
       export CARGO_TARGET_X86_64_LINUX_ANDROID_AR="$(ar_tool)"
+      export CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS="${CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS:+$CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS }${PAGE_SIZE_RUSTFLAG}"
       ;;
   esac
   build_failed=0
   if command -v cargo-ndk >/dev/null 2>&1; then
     rm -f "$dest/libhanami_dizione.so"
-    if ! (cd "$CRATE" && cargo ndk -t "$abi" -o "$dest" build --release); then
+    if ! (cd "$CRATE" && cargo ndk -p 26 -t "$abi" -o "$dest" build --release); then
       build_failed=1
     fi
   elif ! (cd "$CRATE" && cargo build --release --target "$target"); then
