@@ -57,6 +57,10 @@ Older files (for example [0002](0002-interface-size-density.md) and [0006](0006-
 | [0022](0022-background-model-downloads.md) | Background model downloads (UIDT / WorkManager) | Accepted |
 | [0023](0023-layered-test-timeouts.md) | Layered test timeouts | Accepted |
 | [0024](0024-settings-section-controllers.md) | Settings UI as section controllers behind a settings host | Accepted |
+| [0025](0025-taint-aware-tool-confirmation.md) | Taint-aware tool confirmation | Accepted |
+| [0026](0026-android-12-to-17-compatibility-and-permission-gates.md) | Android 12–17 compatibility, 16 KB page-size packaging, and versioned permission gates | Accepted |
+| [0027](0027-kotlin-first-adoption-and-incremental-migration.md) | Kotlin-first adoption for new modules and incremental Java migration | Accepted |
+| [0028](0028-separate-diagnostics-export-from-github-issues.md) | Separate diagnostics export from lightweight multi-purpose GitHub issue flows | Accepted |
 
 ## Numbering gaps
 

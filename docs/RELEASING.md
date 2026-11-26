@@ -136,7 +136,7 @@ These are the reasons a GitHub APK and an F-Droid APK will not be byte-for-byte 
 - NDK `27.2.12479018` (r27c) and CMake `3.22.1` are pinned. A different NDK produces different codegen.
 - `GGML_NATIVE=OFF` is required. Leaving it on enables `-march=native` and the APK only runs on the builder's CPU.
 - Release `.so` files still embed a GNU build-id and the builder's absolute paths in debug info unless `-Wl,--build-id=none` and `-ffile-prefix-map` are added. This project does not add those flags yet, so native objects are not reproducible across machines.
-- `useLegacyPackaging true` stores JNI uncompressed with ZIP timestamps. AGP's ZIP alignment and `SOURCE_DATE_EPOCH` still have to match.
+- `useLegacyPackaging false` stores JNI libraries uncompressed and 16 KB ZIP-aligned (`extractNativeLibs="false"`), with 16 KB ELF `PT_LOAD` alignment (`-Wl,-z,max-page-size=16384`, `onnxruntime-android:1.23.2`) and dual v2+v3 signing enforced by `.github/scripts/assert-apk-android-compat.py` ([ADR 0026](adr/0026-android-12-to-17-compatibility-and-permission-gates.md)). AGP's ZIP alignment and `SOURCE_DATE_EPOCH` still have to match for bit-identical builds. For Xiaomi HyperOS and Android 15–17 sideloading troubleshooting, see [`ANDROID_COMPATIBILITY.md`](ANDROID_COMPATIBILITY.md).
 - F-Droid signs with its key. Signature blocks alone make the APK bytes differ from the GitHub artifact. Compare unsigned APKs if you chase reproducibility.
 
 No custom launcher icon is checked in. The system default icon is used until one is added.
