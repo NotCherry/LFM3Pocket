@@ -50,7 +50,8 @@ public final class NativeInferenceEngine implements InferenceEngine {
         try {
             return NativeBridge.generateWithMediaSettingsAndGrammar(handle, prompt, mediaPaths,
                     new InferenceSettings(current.contextTokens, current.threads,
-                            Math.min(maxTokens, current.maxTokens), current.promptLookup),
+                            Math.min(maxTokens, current.maxTokens), current.promptLookup,
+                            current.reasoningLevel),
                     grammar, grammarTrigger, new NativeBridge.TokenSink() {
                         @Override public void onToken(String piece) {
                             sink.onToken(piece);

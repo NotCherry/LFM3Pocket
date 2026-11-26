@@ -126,6 +126,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private boolean isBusy() {
         return generating || speaking || modelBusy
+                || (runtime != null && (runtime.isLoading() || runtime.isUnloading()))
                 || (voiceCoordinator != null && (voiceCoordinator.recordingActive()
                         || voiceCoordinator.playbackActive() || voiceCoordinator.isTranscribing()))
                 || (attachmentCoordinator != null && attachmentCoordinator.isImporting())
@@ -741,7 +742,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
 
     private void updateControls() {
         boolean busyNow = isBusy();
-        boolean modelReady = modelHandle() != 0L && (runtime == null || !runtime.isUnloading());
+        boolean modelLoading = (runtime != null && runtime.isLoading())
+                || (modelImportCoordinator != null && modelImportCoordinator.isLoadingModel());
+        boolean modelUnloading = (runtime != null && runtime.isUnloading())
+                || (modelImportCoordinator != null && modelImportCoordinator.isUnloadingModel());
+        boolean modelReady = modelHandle() != 0L && !modelLoading && !modelUnloading;
+        String model = pocketPreferences().getString("model", "");
+        String modelLabel = model.isEmpty() ? "" : pocketPreferences().getString("model_name", new File(model).getName());
+
         if (searchSettingsSection != null) searchSettingsSection.paintWebSearchControl(busyNow);
         if (chatShellSection != null) chatShellSection.paintModePill(searchEnabled);
         if (modelImportSection != null) modelImportSection.paintImportButtons(busyNow);
@@ -757,22 +765,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
         boolean importingAttachment = attachmentCoordinator != null && attachmentCoordinator.isImporting();
         boolean canCompact = !busyNow && !speaking && !recording && !playback
                 && !importing && !importingAttachment && modelReady && settingsLoaded;
-        chatPanel.setModelReady(modelReady);
+        chatPanel.setModelState(modelReady, modelLoading, modelLabel);
         chatPanel.updateControls(!busyNow && modelReady && settingsLoaded,
                 generating || speaking || recording || playback || transcribing || importing || importingAttachment,
                 !busyNow || generating || transcribing || importingAttachment,
                 canCompact);
 
         if (modelImportSection != null) {
-            String model = pocketPreferences().getString("model", "");
             String projector = pocketPreferences().getString("mmproj", "");
             String description = currentChatStatus().toString();
             modelImportSection.paintModelManager(
                     settingsLoaded ? inferenceSettings.summary() : "Loading inference settings...",
-                    model.isEmpty() ? "" : pocketPreferences().getString("model_name", new File(model).getName()),
+                    modelLabel,
                     projector.isEmpty() ? "" : pocketPreferences().getString("projector_name", new File(projector).getName()),
                     busyNow, modelReady,
-                    description.startsWith("Model error") || description.startsWith("Import failed"));
+                    description.startsWith("Model error") || description.startsWith("Import failed"),
+                    modelLoading, modelUnloading);
         }
     }
 

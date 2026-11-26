@@ -91,6 +91,13 @@
     <string name="response_tokens_hint">1–2048, below context</string>
     <string name="prompt_lookup_label">Prompt lookup decode (ngram-mod)</string>
     <string name="prompt_lookup_hint">Faster chat when the model repeats phrases from your prompt or earlier turns. No extra model download. The target model still verifies every token.</string>
+    <string name="reasoning_label">Reasoning</string>
+    <string name="reasoning_hint">Controls &lt;think&gt; reasoning for thinking models like LFM3-1.7B and LFM3-VL (LFM3-Omni is non-reasoning). Auto lets the model decide; Off skips thinking; Low, Medium, and High enable thinking with increasing token budgets (192 / 512 / 1536, leaving room for the answer). Raise Response tokens to 1024–2048 for deeper reasoning.</string>
+    <string name="reasoning_auto">Auto</string>
+    <string name="reasoning_off">Off</string>
+    <string name="reasoning_low">Low</string>
+    <string name="reasoning_medium">Medium</string>
+    <string name="reasoning_high">High</string>
     <string name="use_web_search">Use web search for new questions</string>
     <string name="keep_model_loaded">Keep the model loaded when I leave</string>
     <string name="unload_after_idle">Unload after idle</string>
@@ -259,11 +266,19 @@ com.whatsapp</string>
     <string name="loading_image_preview">Loading image preview…</string>
     <string name="chat_role_you">YOU</string>
     <string name="chat_reasoning">Reasoning</string>
+    <string name="chat_reasoning_streaming">Reasoning…</string>
     <string name="chat_empty_title">No conversation yet.</string>
     <string name="chat_empty_subtitle">Text, photos, documents, and voice stay on this phone until you opt into search.</string>
     <string name="chat_empty_no_model_title">Load an LFM3 model to begin</string>
     <string name="chat_empty_no_model_body">Import or open a quantized LFM3 GGUF model from Settings. Once loaded, replies stream offline.</string>
     <string name="chat_empty_open_settings">Set up model in Settings</string>
+    <string name="chat_empty_loading_model_title">Auto-loading model…</string>
+    <string name="chat_empty_loading_model_body">Your previously selected model is loading into memory automatically. Chat will unlock as soon as it is ready.</string>
+    <string name="model_auto_loading_status">Auto-loading selected model into memory…</string>
+    <string name="model_unloading_status">Unloading model from memory…</string>
+    <string name="unloading_model">Unloading…</string>
+    <string name="unload_model_loading">Unload (loading…)</string>
+    <string name="loading_short">Loading…</string>
     <string name="chat_suggest_photo_prompt">What colors and shapes are in the image?</string>
     <string name="chat_suggest_photo_hint">Photo · on device</string>
     <string name="chat_suggest_text_prompt">Write one concise paragraph about local on-device privacy.</string>
@@ -399,4 +414,9 @@ com.whatsapp</string>
     <string name="pdf_images_attached_status">Attached %1$d PDF page(s) as images (vision). Add a question and press Send.</string>
     <string name="pdf_images_truncated_status">Attached first %1$d of %2$d PDF pages as images (vision). Add a question and press Send.</string>
     <string name="status_details_title">Status details</string>
+    <string name="tool_calls_count_header">%1$d tool calls</string>
+    <string name="tool_call_arguments">Arguments</string>
+    <string name="tool_call_output">Output</string>
+    <string name="tool_call_running">Running…</string>
+    <string name="tool_call_pending">Awaiting approval</string>
 </resources>

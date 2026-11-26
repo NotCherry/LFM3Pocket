@@ -221,17 +221,21 @@ fun SettingsScreen(
                 colors = fieldColors,
                 modifier = Modifier.fillMaxWidth().testTag(tag("search_endpoint")),
             )
-            androidx.compose.material3.Checkbox(
-                checked = searchEnabled,
-                onCheckedChange = onSearchEnabledChange,
-                modifier = Modifier.testTag(tag("search_enabled")),
-            )
-            Text(
-                if (searchEnabled) stringResource(R.string.web_search_on) else stringResource(R.string.web_search_off),
-                style = type.label,
-                color = atlas.inkMuted,
-                modifier = Modifier.testTag(tag("web_search")),
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.Checkbox(
+                    checked = searchEnabled,
+                    onCheckedChange = onSearchEnabledChange,
+                    modifier = Modifier.testTag(tag("search_enabled")),
+                )
+                Text(
+                    stringResource(R.string.use_web_search),
+                    style = type.body,
+                    color = atlas.ink,
+                )
+            }
         }
         // Sticky Save row — Stage 1 Automator must find settings_save / search_save on-screen.
         Column(

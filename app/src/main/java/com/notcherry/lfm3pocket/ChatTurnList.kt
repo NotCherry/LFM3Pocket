@@ -5,6 +5,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,14 +20,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
@@ -89,7 +93,7 @@ internal fun parseUserTurnAttachments(raw: String): ParsedUserTurn {
 }
 
 /**
- * Atlas chat transcript visuals: open text blocks, Reasoning rail, markdown, sources.
+ * Atlas chat transcript visuals: open text blocks, Reasoning rail, expandable tool calls, markdown, sources.
  * Flat Automator text lives on ChatPanel's real [R.id.chat_transcript] TextView (U08/U15).
  */
 @Composable
@@ -101,6 +105,8 @@ fun ChatTurnList(
     assistantMessageTag: String? = null,
     autoScroll: Boolean = true,
     modelReady: Boolean = true,
+    modelLoading: Boolean = false,
+    selectedModelName: String = "",
     onOpenSettings: () -> Unit = {},
     onSuggest: (String) -> Unit = {},
     onRetryInterrupted: (String) -> Unit = {},
@@ -108,7 +114,13 @@ fun ChatTurnList(
 ) {
     val scroll = rememberScrollState()
     val space = MaterialTheme.atlasSpacing
-    LaunchedEffect(turns.size, turns.lastOrNull()?.text, turns.lastOrNull()?.streaming) {
+    LaunchedEffect(
+        turns.size,
+        turns.lastOrNull()?.text,
+        turns.lastOrNull()?.reasoning,
+        turns.lastOrNull()?.streaming,
+        turns.lastOrNull()?.toolCalls?.size,
+    ) {
         if (autoScroll && turns.isNotEmpty()) scroll.scrollTo(scroll.maxValue)
     }
     Column(
@@ -120,6 +132,8 @@ fun ChatTurnList(
             EmptyConversation(
                 packageName = packageName,
                 modelReady = modelReady,
+                modelLoading = modelLoading,
+                selectedModelName = selectedModelName,
                 onOpenSettings = onOpenSettings,
                 onSuggest = onSuggest,
             )
@@ -156,6 +170,7 @@ fun ChatTurn(
     modifier: Modifier = Modifier,
     userMessageTag: String? = null,
     assistantMessageTag: String? = null,
+    toolResultTag: String? = null,
     onRetryInterrupted: (String) -> Unit = {},
     onOpenAttachment: (ChatSnapshot.AttachmentRef) -> Unit = {},
 ) {
@@ -244,11 +259,22 @@ fun ChatTurn(
                 }
             }
         } else {
-            // Always place collapsible reasoning above the answer across all viewports so
-            // assistant text and code blocks get 100% reading width (no awkward side panel).
+            // Always place collapsible reasoning and expandable tool calls above the answer
+            // across all viewports so assistant text and code blocks get 100% reading width.
             if (!turn.reasoning.isNullOrBlank()) {
                 ReasoningRail(
                     reasoning = turn.reasoning!!,
+                    streaming = turn.streaming && turn.text.isBlank(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = space.space3),
+                )
+            }
+            if (turn.toolCalls.isNotEmpty()) {
+                ToolCallTimeline(
+                    toolCalls = turn.toolCalls,
+                    packageName = packageName,
+                    resultTag = toolResultTag,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = space.space3),
@@ -318,8 +344,259 @@ private fun AssistantAnswerColumn(
     }
 }
 
+/**
+ * Antigravity-style collapsible tool call timeline shown above assistant replies in live chat
+ * and in saved History. Each step starts collapsed as a crisp one-line summary and smoothly
+ * expands on tap to reveal tool wire name, status, arguments, and output.
+ */
 @Composable
-fun ReasoningRail(reasoning: String, modifier: Modifier = Modifier) {
+fun ToolCallTimeline(
+    toolCalls: List<ChatSnapshot.ToolCall>,
+    packageName: String,
+    modifier: Modifier = Modifier,
+    resultTag: String? = null,
+) {
+    if (toolCalls.isEmpty()) return
+    val atlas = MaterialTheme.atlasColors
+    val type = MaterialTheme.atlasTypography
+    val space = MaterialTheme.atlasSpacing
+    Column(
+        modifier
+            .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
+            .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
+            .testTag("$packageName:id/tool_call_timeline"),
+    ) {
+        if (toolCalls.size > 1) {
+            Text(
+                text = stringResource(R.string.tool_calls_count_header, toolCalls.size),
+                style = type.label,
+                color = atlas.inkMuted,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = space.space3, vertical = space.space2),
+            )
+            HorizontalDivider(color = atlas.border.copy(alpha = 0.7f), thickness = 1.dp)
+        }
+        toolCalls.forEachIndexed { index, call ->
+            ToolCallStepRow(
+                call = call,
+                packageName = packageName,
+                resultTag = resultTag,
+            )
+            if (index < toolCalls.lastIndex) {
+                HorizontalDivider(
+                    color = atlas.border.copy(alpha = 0.55f),
+                    thickness = 1.dp,
+                    modifier = Modifier.padding(horizontal = space.space3),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolCallStepRow(
+    call: ChatSnapshot.ToolCall,
+    packageName: String,
+    resultTag: String?,
+) {
+    val atlas = MaterialTheme.atlasColors
+    val type = MaterialTheme.atlasTypography
+    val space = MaterialTheme.atlasSpacing
+    var expanded by remember(call.id, call.toolName) { mutableStateOf(false) }
+    val cleanResult = remember(call.resultText) {
+        ToolCoordinator.stripUntrustedPrefix(call.resultText)
+    }
+    val displayTitle = call.title.ifBlank { ToolCoordinator.titleForWireName(call.toolName) }
+    val statusColor = when {
+        call.running -> atlas.accent
+        call.pending -> atlas.warn
+        call.succeeded -> atlas.ok
+        else -> atlas.danger
+    }
+    val durationLabel = remember(call.durationMs, call.running) {
+        when {
+            call.running || call.durationMs <= 0L -> ""
+            call.durationMs < 1000L -> "${call.durationMs}ms"
+            else -> String.format(java.util.Locale.US, "%.1fs", call.durationMs / 1000.0)
+        }
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickable { expanded = !expanded }
+            .heightIn(min = 44.dp)
+            .padding(horizontal = space.space3, vertical = space.space2)
+            .testTag("$packageName:id/tool_call_row"),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (call.running) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(13.dp),
+                    color = atlas.accent,
+                    trackColor = atlas.border,
+                    strokeWidth = 1.7.dp,
+                )
+            } else {
+                Text(
+                    text = when {
+                        call.pending -> "⋯"
+                        call.succeeded -> "✓"
+                        else -> "✕"
+                    },
+                    style = type.mono,
+                    color = statusColor,
+                )
+            }
+            Spacer(Modifier.width(space.space2))
+            Text(
+                text = displayTitle,
+                style = type.bodySmall,
+                color = atlas.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val inlineDetail = when {
+                call.summary.isNotBlank() -> call.summary
+                call.running -> stringResource(R.string.tool_call_running)
+                call.pending -> stringResource(R.string.tool_call_pending)
+                else -> ""
+            }
+            if (inlineDetail.isNotBlank()) {
+                Text(
+                    text = " · $inlineDetail",
+                    style = type.mono,
+                    color = atlas.inkMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(if (resultTag != null) Modifier.testTag("$packageName:id/$resultTag") else Modifier)
+                        .semantics {
+                            if (cleanResult.isNotBlank()) contentDescription = cleanResult
+                        },
+                )
+            } else {
+                Spacer(
+                    Modifier
+                        .weight(1f)
+                        .then(if (resultTag != null) Modifier.testTag("$packageName:id/$resultTag") else Modifier)
+                        .semantics {
+                            if (cleanResult.isNotBlank()) contentDescription = cleanResult
+                        },
+                )
+            }
+            if (durationLabel.isNotBlank()) {
+                Spacer(Modifier.width(space.space2))
+                Text(
+                    text = durationLabel,
+                    style = type.mono,
+                    color = atlas.inkMuted,
+                )
+            }
+            Spacer(Modifier.width(space.space2))
+            Text(
+                text = if (expanded) "▾" else "▸",
+                style = type.bodySmall,
+                color = atlas.accent,
+            )
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = space.space2),
+                verticalArrangement = Arrangement.spacedBy(space.space2),
+            ) {
+                HorizontalDivider(color = atlas.border, thickness = 1.dp)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = call.toolName.ifBlank { displayTitle },
+                        style = type.mono,
+                        color = atlas.inkSoft,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (call.status.isNotBlank()) {
+                        Spacer(Modifier.width(space.space2))
+                        Text(
+                            text = call.status,
+                            style = type.mono,
+                            color = statusColor,
+                        )
+                    }
+                }
+                if (call.argumentsJson.isNotBlank() && call.argumentsJson != "{}") {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = stringResource(R.string.tool_call_arguments),
+                            style = type.label,
+                            color = atlas.inkMuted,
+                        )
+                        SelectionContainer {
+                            Text(
+                                text = call.argumentsJson,
+                                style = type.mono,
+                                color = atlas.inkSoft,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(atlas.surface, MaterialTheme.shapes.small)
+                                    .border(1.dp, atlas.border, MaterialTheme.shapes.small)
+                                    .padding(horizontal = space.space2, vertical = space.space2),
+                            )
+                        }
+                    }
+                }
+                if (cleanResult.isNotBlank()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = stringResource(R.string.tool_call_output),
+                            style = type.label,
+                            color = atlas.inkMuted,
+                        )
+                        SelectionContainer {
+                            Text(
+                                text = cleanResult,
+                                style = type.mono,
+                                color = atlas.ink,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(atlas.surface, MaterialTheme.shapes.small)
+                                    .border(1.dp, atlas.border, MaterialTheme.shapes.small)
+                                    .padding(horizontal = space.space2, vertical = space.space2),
+                            )
+                        }
+                    }
+                } else if (call.running) {
+                    Text(
+                        text = stringResource(R.string.tool_call_running),
+                        style = type.bodySmall,
+                        color = atlas.inkMuted,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ReasoningRail(
+    reasoning: String,
+    modifier: Modifier = Modifier,
+    streaming: Boolean = false,
+) {
     val atlas = MaterialTheme.atlasColors
     val type = MaterialTheme.atlasTypography
     val space = MaterialTheme.atlasSpacing
@@ -345,9 +622,11 @@ fun ReasoningRail(reasoning: String, modifier: Modifier = Modifier) {
                     color = atlas.accent,
                 )
                 Text(
-                    text = stringResource(R.string.chat_reasoning),
+                    text = stringResource(
+                        if (streaming) R.string.chat_reasoning_streaming else R.string.chat_reasoning,
+                    ),
                     style = type.bodySmall,
-                    color = atlas.ink,
+                    color = if (streaming) atlas.accent else atlas.ink,
                 )
             }
             if (!expanded && preview.isNotBlank()) {
@@ -388,6 +667,8 @@ fun ReasoningRail(reasoning: String, modifier: Modifier = Modifier) {
 private fun EmptyConversation(
     packageName: String,
     modelReady: Boolean,
+    modelLoading: Boolean,
+    selectedModelName: String,
     onOpenSettings: () -> Unit,
     onSuggest: (String) -> Unit,
 ) {
@@ -395,7 +676,71 @@ private fun EmptyConversation(
     val type = MaterialTheme.atlasTypography
     val space = MaterialTheme.atlasSpacing
     Column(Modifier.padding(horizontal = space.space2, vertical = space.space4)) {
-        if (!modelReady) {
+        if (!modelReady && modelLoading) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
+                    .border(1.dp, atlas.accent, MaterialTheme.shapes.medium)
+                    .padding(space.space4)
+                    .testTag("$packageName:id/chat_empty_loading_model"),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(space.space2),
+                ) {
+                    CircularProgressIndicator(
+                        Modifier.size(18.dp),
+                        color = atlas.accent,
+                        trackColor = atlas.border,
+                        strokeWidth = 2.dp,
+                    )
+                    Text(
+                        text = stringResource(R.string.chat_empty_loading_model_title),
+                        style = type.title,
+                        color = atlas.ink,
+                    )
+                }
+                if (selectedModelName.isNotBlank()) {
+                    Spacer(Modifier.height(space.space1))
+                    Text(
+                        text = selectedModelName,
+                        style = type.mono,
+                        color = atlas.accent,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.height(space.space1))
+                Text(
+                    text = stringResource(R.string.chat_empty_loading_model_body),
+                    style = type.bodySmall,
+                    color = atlas.inkSoft,
+                )
+                Spacer(Modifier.height(space.space3))
+                OutlinedButton(
+                    onClick = {},
+                    enabled = false,
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .heightIn(min = 42.dp)
+                        .testTag("$packageName:id/chat_empty_loading_button"),
+                    shape = MaterialTheme.shapes.medium,
+                    border = BorderStroke(1.dp, atlas.accent.copy(alpha = 0.6f)),
+                    colors = StillwaterControls.outlinedColors(),
+                ) {
+                    CircularProgressIndicator(
+                        Modifier.size(14.dp),
+                        color = atlas.accent,
+                        trackColor = atlas.border,
+                        strokeWidth = 1.8.dp,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.loading_model))
+                }
+            }
+            Spacer(Modifier.height(space.space5))
+        } else if (!modelReady) {
             Column(
                 Modifier
                     .fillMaxWidth()

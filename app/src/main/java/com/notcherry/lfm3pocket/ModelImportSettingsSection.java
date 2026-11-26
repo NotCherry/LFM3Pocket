@@ -90,8 +90,15 @@ final class ModelImportSettingsSection {
 
     void paintModelManager(String inferenceSummary, String modelLabel, String projectorLabel, boolean busy,
             boolean modelLoaded, boolean selectionFailed) {
+        paintModelManager(inferenceSummary, modelLabel, projectorLabel, busy, modelLoaded, selectionFailed,
+                false, false);
+    }
+
+    void paintModelManager(String inferenceSummary, String modelLabel, String projectorLabel, boolean busy,
+            boolean modelLoaded, boolean selectionFailed, boolean modelLoading, boolean modelUnloading) {
         if (modelManager == null) return;
         modelManager.showSettings(inferenceSummary);
-        modelManager.updateSelection(modelLabel, projectorLabel, busy, modelLoaded, selectionFailed);
+        modelManager.updateSelection(modelLabel, projectorLabel, busy, modelLoaded, selectionFailed,
+                modelLoading, modelUnloading);
     }
 }

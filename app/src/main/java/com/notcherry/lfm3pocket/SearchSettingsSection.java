@@ -63,7 +63,6 @@ final class SearchSettingsSection {
     private EditText searchEndpointField;
     private EditText searchApiKeyField;
     private CheckBox searchEnabledBox;
-    private Button searchButton;
     private Button testButton;
     private TextView testStatus;
     private boolean bindingFields;
@@ -138,18 +137,11 @@ final class SearchSettingsSection {
         checkParams.topMargin = host.dp(10);
         card.addView(searchEnabledBox, checkParams);
 
-        searchButton = host.button(host.getString(R.string.web_search_off));
-        searchButton.setId(R.id.web_search);
-        StillwaterUi.outlined(searchButton);
-        searchButton.setOnClickListener(v -> toggleOrFocusEndpoint());
-
         testButton = host.button(host.getString(R.string.search_test_button));
         testButton.setId(R.id.search_test);
         StillwaterUi.outlined(testButton);
         testButton.setOnClickListener(v -> runEndpointTest());
-
-        StillwaterReadable.addFlexibleButtonRow(card, host.settingsActivity(), 48,
-                searchButton, testButton);
+        StillwaterReadable.addFlexibleFullWidth(card, testButton, 48);
 
         testStatus = host.label("", 13, inkMuted);
         testStatus.setId(R.id.search_test_status);
@@ -189,6 +181,13 @@ final class SearchSettingsSection {
         bindingFields = false;
     }
 
+    private void syncEnabledCheckbox(boolean enabled) {
+        if (searchEnabledBox == null) return;
+        bindingFields = true;
+        searchEnabledBox.setChecked(enabled);
+        bindingFields = false;
+    }
+
     void focusEndpointField() {
         if (selectedProvider == SearchProvider.SEARXNG && searchEndpointField != null) {
             searchEndpointField.requestFocus();
@@ -202,6 +201,7 @@ final class SearchSettingsSection {
         String rawEndpoint = readEndpoint();
         String rawApiKey = readApiKey();
         if (selectedProvider == SearchProvider.SEARXNG && !SearchEndpointPolicy.accepts(rawEndpoint)) {
+            syncEnabledCheckbox(currentConfig().enabled);
             deps.chatStatus.accept(SearchEndpointPolicy.SEARXNG_ENDPOINT_ERROR);
             return;
         }
@@ -214,6 +214,7 @@ final class SearchSettingsSection {
         String validationError = SearchEndpointPolicy.validationError(selectedProvider, normalizedEndpoint, rawApiKey);
         boolean enabled = requested && validationError == null;
         if (requested && !enabled) {
+            syncEnabledCheckbox(false);
             deps.chatStatus.accept(validationError);
         }
         draftApiKeys.put(selectedProvider, rawApiKey);
@@ -325,7 +326,9 @@ final class SearchSettingsSection {
                 ? WebSearch.normalizeEndpoint(rawEndpoint) : rawEndpoint;
         String validationError = SearchEndpointPolicy.validationError(selectedProvider, normalizedEndpoint, rawApiKey);
         if (validationError != null) {
+            syncEnabledCheckbox(false);
             deps.chatStatus.accept(validationError);
+            deps.updateControls.run();
             return;
         }
         if (selectedProvider == SearchProvider.SEARXNG && !normalizedEndpoint.equals(rawEndpoint)) {
@@ -335,24 +338,6 @@ final class SearchSettingsSection {
         deps.persist.accept(new SearchConfig(selectedProvider, normalizedEndpoint, rawApiKey, true));
         deps.setChatIdleMode.accept(true);
         deps.updateControls.run();
-    }
-
-    private void toggleOrFocusEndpoint() {
-        if (searchEndpointField == null) {
-            deps.openSearchSettings.run();
-            return;
-        }
-        String rawEndpoint = readEndpoint();
-        String rawApiKey = readApiKey();
-        if (!SearchEndpointPolicy.configured(selectedProvider, rawEndpoint, rawApiKey)) {
-            deps.openSearchSettings.run();
-            return;
-        }
-        boolean next = !currentConfig().enabled;
-        bindingFields = true;
-        searchEnabledBox.setChecked(next);
-        bindingFields = false;
-        applyCheckboxToggle(next);
     }
 
     private void runEndpointTest() {
@@ -419,11 +404,8 @@ final class SearchSettingsSection {
     }
 
     void paintWebSearchControl(boolean busy) {
-        if (searchButton != null) {
-            searchButton.setText(currentConfig().enabled
-                    ? host.getString(R.string.web_search_on)
-                    : host.getString(R.string.web_search_off));
-            searchButton.setEnabled(!busy);
+        if (searchEnabledBox != null) {
+            searchEnabledBox.setEnabled(!busy);
         }
         if (testButton != null) {
             testButton.setEnabled(!busy && !testing);

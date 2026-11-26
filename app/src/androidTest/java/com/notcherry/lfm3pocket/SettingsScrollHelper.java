@@ -1,15 +1,19 @@
 package com.notcherry.lfm3pocket;
 
+import static org.junit.Assert.assertNotNull;
+
 import android.graphics.Rect;
 import android.os.SystemClock;
 import android.view.View;
 import android.widget.ScrollView;
 
 import androidx.test.core.app.ActivityScenario;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.BySelector;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject2;
+import androidx.test.uiautomator.Until;
 
 /**
  * Deterministic, fast ScrollView helper for Settings UI E2E tests.
@@ -21,6 +25,21 @@ import androidx.test.uiautomator.UiObject2;
  */
 final class SettingsScrollHelper {
     private SettingsScrollHelper() {}
+
+    /** Opens Settings from chat via the overflow (⋮) menu if not already open. */
+    static void openSettings(UiDevice device, String pkg, long timeoutMs) {
+        if (device.findObject(By.res(pkg, "model_configuration_scroll")) != null) return;
+        UiObject2 overflow = device.wait(Until.findObject(By.res(pkg, "chat_overflow").enabled(true)), timeoutMs);
+        assertNotNull("Expected chat_overflow control", overflow);
+        overflow.click();
+        String settingsTitle = InstrumentationRegistry.getInstrumentation()
+                .getTargetContext().getString(R.string.settings_title);
+        UiObject2 settingsItem = device.wait(Until.findObject(By.text(settingsTitle)), timeoutMs);
+        assertNotNull("Expected Settings item in chat overflow menu", settingsItem);
+        settingsItem.click();
+        assertNotNull("Settings did not open",
+                device.wait(Until.findObject(By.res(pkg, "model_configuration_scroll")), timeoutMs));
+    }
 
     static void scrollToViewId(ActivityScenario<MainActivity> scenario, UiDevice device, int viewId) {
         scenario.onActivity(activity -> {

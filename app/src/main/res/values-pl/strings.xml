@@ -90,6 +90,13 @@
     <string name="response_tokens_hint">1–2048, poniżej kontekstu</string>
     <string name="prompt_lookup_label">Szukanie w prompcie (ngram-mod)</string>
     <string name="prompt_lookup_hint">Szybszy czat, gdy model powtarza frazy z promptu lub wcześniejszych wiadomości. Bez drugiego modelu. Każdy token nadal weryfikuje model docelowy.</string>
+    <string name="reasoning_label">Rozumowanie</string>
+    <string name="reasoning_hint">Steruje blokiem &lt;think&gt; w modelach z rozumowaniem, takich jak LFM3-1.7B i LFM3-VL (LFM3-Omni nie używa rozumowania). Auto pozostawia decyzję modelowi; Wył. pomija rozumowanie; Niski, Średni i Wysoki włączają rozumowanie z rosnącym limitem tokenów (192 / 512 / 1536, z rezerwą na odpowiedź). Zwiększ Tokeny odpowiedzi do 1024–2048 dla głębszego rozumowania.</string>
+    <string name="reasoning_auto">Auto</string>
+    <string name="reasoning_off">Wył.</string>
+    <string name="reasoning_low">Niski</string>
+    <string name="reasoning_medium">Średni</string>
+    <string name="reasoning_high">Wysoki</string>
     <string name="use_web_search">Używaj wyszukiwania w sieci dla nowych pytań</string>
     <string name="keep_model_loaded">Utrzymuj model załadowany po wyjściu</string>
     <string name="unload_after_idle">Rozładuj po bezczynności</string>
@@ -259,11 +266,19 @@ com.whatsapp</string>
     <string name="loading_image_preview">Ładowanie podglądu obrazu…</string>
     <string name="chat_role_you">TY</string>
     <string name="chat_reasoning">Rozumowanie</string>
+    <string name="chat_reasoning_streaming">Rozumowanie…</string>
     <string name="chat_empty_title">Brak rozmowy.</string>
     <string name="chat_empty_subtitle">Tekst, zdjęcia, dokumenty i głos zostają na tym telefonie, dopóki nie włączysz wyszukiwania.</string>
     <string name="chat_empty_no_model_title">Załaduj model LFM3, aby zacząć</string>
     <string name="chat_empty_no_model_body">Zaimportuj lub otwórz skwantyzowany model LFM3 GGUF w Ustawieniach. Po załadowaniu odpowiedzi działają w pełni offline.</string>
     <string name="chat_empty_open_settings">Skonfiguruj model w Ustawieniach</string>
+    <string name="chat_empty_loading_model_title">Automatyczne ładowanie modelu…</string>
+    <string name="chat_empty_loading_model_body">Poprzednio wybrany model ładuje się automatycznie do pamięci. Czat odblokuje się, gdy tylko będzie gotowy.</string>
+    <string name="model_auto_loading_status">Automatyczne ładowanie wybranego modelu do pamięci…</string>
+    <string name="model_unloading_status">Rozładowywanie modelu z pamięci…</string>
+    <string name="unloading_model">Rozładowywanie…</string>
+    <string name="unload_model_loading">Rozładuj (ładowanie…)</string>
+    <string name="loading_short">Ładowanie…</string>
     <string name="chat_suggest_photo_prompt">Jakie kolory i kształty widać na zdjęciu?</string>
     <string name="chat_suggest_photo_hint">Zdjęcie · na urządzeniu</string>
     <string name="chat_suggest_text_prompt">Napisz po polsku jedno zwięzłe zdanie o lokalnym przetwarzaniu na telefonie.</string>
@@ -399,4 +414,9 @@ com.whatsapp</string>
     <string name="pdf_images_attached_status">Załączono %1$d str. PDF jako obrazy (wizja). Wpisz pytanie i wyślij.</string>
     <string name="pdf_images_truncated_status">Załączono pierwsze %1$d z %2$d str. PDF jako obrazy (wizja). Wpisz pytanie i wyślij.</string>
     <string name="status_details_title">Szczegóły statusu</string>
+    <string name="tool_calls_count_header">Wywołania narzędzi: %1$d</string>
+    <string name="tool_call_arguments">Argumenty</string>
+    <string name="tool_call_output">Wynik</string>
+    <string name="tool_call_running">Wykonywanie…</string>
+    <string name="tool_call_pending">Oczekuje na zatwierdzenie</string>
 </resources>

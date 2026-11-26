@@ -66,16 +66,7 @@ public final class BackgroundNotificationE2eTest {
                     describe(idle).contains("Model loaded"));
             if (captureShots) shootShade("notification_idle.png");
 
-            UiObject2 settings = device.wait(Until.findObject(By.res(pkg, "settings_open").enabled(true)), UI_WAIT);
-            if (settings == null) {
-                UiObject2 back = device.findObject(By.res(pkg, "settings_back"));
-                if (back != null) {
-                    back.click();
-                    settings = device.wait(Until.findObject(By.res(pkg, "settings_open").enabled(true)), UI_WAIT);
-                }
-            }
-            assertNotNull("Settings control unavailable from chat; " + runtimeState(), settings);
-            settings.click();
+            SettingsScrollHelper.openSettings(device, pkg, UI_WAIT);
             assertNotNull("Settings did not open", device.wait(Until.hasObject(By.res(pkg, "settings_back")), UI_WAIT));
             SettingsScrollHelper.scrollToViewId(scenario, device, R.id.settings_keep_loaded);
             UiObject2 keep = device.wait(Until.findObject(By.res(pkg, "settings_keep_loaded")), UI_WAIT);

@@ -72,10 +72,7 @@ public final class DiagnosticsStressE2eTest {
     }
 
     private void openSettings() {
-        if (device.findObject(By.res(pkg, "model_configuration_scroll")) != null) return;
-        UiObject2 open = device.wait(Until.findObject(By.res(pkg, "settings_open").enabled(true)), 2000);
-        if (open != null) open.click();
-        assertNotNull(device.wait(Until.findObject(By.res(pkg, "model_configuration_scroll")), UI_TIMEOUT_MS));
+        SettingsScrollHelper.openSettings(device, pkg, UI_TIMEOUT_MS);
     }
 
     private void backToChat() {
