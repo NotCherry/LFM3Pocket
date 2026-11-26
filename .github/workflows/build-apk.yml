@@ -1,11 +1,6 @@
 name: Android Stage 1 CI
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
   workflow_dispatch:
     inputs:
       e2e_tier:
@@ -438,7 +433,7 @@ jobs:
           gradle :app:minifyPhoneReleaseWithR8 -Phanami.skipNative=true --no-daemon --stacktrace
           ls -lh app/build/intermediates/dex/phoneRelease/minifyPhoneReleaseWithR8/ || true
       - name: Upload compiled ARM64 APK
-        if: success() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        if: success() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         uses: actions/upload-artifact@v4
         with:
           name: LFM3Pocket-arm64-debug
@@ -446,7 +441,7 @@ jobs:
           if-no-files-found: error
           retention-days: 3
       - name: Upload isolated physical-device test APKs
-        if: success() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        if: success() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         uses: actions/upload-artifact@v4
         with:
           name: LFM3Pocket-arm64-device-check
