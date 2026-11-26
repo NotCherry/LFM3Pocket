@@ -150,10 +150,6 @@ public final class ChatSession {
             this(role,text,turnId,turnStatus,mediaRef,reasoning,Collections.emptyList());
         }
         public RestoredMessage(String role,String text,String turnId,String turnStatus,String mediaRef,
-                               List<ChatSnapshot.ToolCall> toolCalls) {
-            this(role,text,turnId,turnStatus,mediaRef,null,toolCalls);
-        }
-        public RestoredMessage(String role,String text,String turnId,String turnStatus,String mediaRef,
                                String reasoning,List<ChatSnapshot.ToolCall> toolCalls) {
             this.role=role==null?"":role;
             this.text=text==null?"":text;
