@@ -12,11 +12,14 @@ public final class BuiltinToolsExecutor implements AndroidActionExecutor {
         java.util.List<WebSearch.Source> search(String endpoint, String query, String timeRange) throws Exception;
     }
 
+    interface SearchConfigRunner {
+        java.util.List<WebSearch.Source> search(SearchConfig config, String query, String timeRange) throws Exception;
+    }
+
     private final BooleanSupplier networkToolsEnabled;
     private final OpenMeteoWeather.Transport weatherTransport;
-    private final BooleanSupplier webSearchEnabled;
-    private final java.util.function.Supplier<String> webSearchEndpoint;
-    private final WebSearchRunner webSearchRunner;
+    private final java.util.function.Supplier<SearchConfig> searchConfigSupplier;
+    private final SearchConfigRunner searchConfigRunner;
 
     public BuiltinToolsExecutor(BooleanSupplier networkToolsEnabled,
                                 OpenMeteoWeather.Transport weatherTransport) {
@@ -28,14 +31,28 @@ public final class BuiltinToolsExecutor implements AndroidActionExecutor {
                                 BooleanSupplier webSearchEnabled,
                                 java.util.function.Supplier<String> webSearchEndpoint,
                                 WebSearchRunner webSearchRunner) {
+        this(networkToolsEnabled, weatherTransport,
+                () -> SearchConfig.forSearxng(
+                        webSearchEndpoint == null ? "" : webSearchEndpoint.get(),
+                        webSearchEnabled != null && webSearchEnabled.getAsBoolean()),
+                (cfg, query, timeRange) -> {
+                    WebSearchRunner runner = webSearchRunner == null ? WebSearch::search : webSearchRunner;
+                    return runner.search(cfg.endpoint, query, timeRange);
+                });
+    }
+
+    BuiltinToolsExecutor(BooleanSupplier networkToolsEnabled,
+                         OpenMeteoWeather.Transport weatherTransport,
+                         java.util.function.Supplier<SearchConfig> searchConfigSupplier,
+                         SearchConfigRunner searchConfigRunner) {
         if (networkToolsEnabled == null || weatherTransport == null) {
             throw new IllegalArgumentException("Missing builtin tool dependencies");
         }
         this.networkToolsEnabled = networkToolsEnabled;
         this.weatherTransport = weatherTransport;
-        this.webSearchEnabled = webSearchEnabled == null ? () -> false : webSearchEnabled;
-        this.webSearchEndpoint = webSearchEndpoint == null ? () -> "" : webSearchEndpoint;
-        this.webSearchRunner = webSearchRunner == null ? WebSearch::search : webSearchRunner;
+        this.searchConfigSupplier = searchConfigSupplier == null
+                ? () -> new SearchConfig(SearchProvider.SEARXNG, "", "", false) : searchConfigSupplier;
+        this.searchConfigRunner = searchConfigRunner == null ? WebSearch::search : searchConfigRunner;
     }
 
     @Override public ActionResult execute(String approvedToolName, Map<String, String> arguments) {
@@ -117,10 +134,10 @@ public final class BuiltinToolsExecutor implements AndroidActionExecutor {
     }
 
     private ActionResult webSearch(Map<String, String> arguments) {
-        String endpoint = webSearchEndpoint.get();
-        if (!webSearchEnabled.getAsBoolean() || !SearchEndpointPolicy.enabled(true, endpoint)) {
+        SearchConfig config = searchConfigSupplier.get();
+        if (config == null || !config.isReady()) {
             return new ActionResult(false, "WEB_SEARCH_DISABLED",
-                    "Web search is off. Configure an HTTPS SearXNG endpoint and enable Web search in Settings.");
+                    "Web search is off. Configure a search provider and enable Web search in Settings.");
         }
         if (arguments == null || !arguments.containsKey("query")) {
             return new ActionResult(false, "INVALID_ARGUMENTS", "Expected query.");
@@ -131,8 +148,8 @@ public final class BuiltinToolsExecutor implements AndroidActionExecutor {
             return new ActionResult(false, "INVALID_ARGUMENTS", "query is required.");
         }
         try {
-            java.util.List<WebSearch.Source> sources = webSearchRunner.search(
-                    endpoint, query.trim(), timeRange == null ? "" : timeRange.trim());
+            java.util.List<WebSearch.Source> sources = searchConfigRunner.search(
+                    config, query.trim(), timeRange == null ? "" : timeRange.trim());
             if (sources == null || sources.isEmpty()) {
                 return new ActionResult(true, "WEB_SEARCH_EMPTY",
                         "UNTRUSTED_WEB_SEARCH No search results found for: " + query.trim());

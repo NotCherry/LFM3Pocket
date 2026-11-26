@@ -215,12 +215,26 @@ com.whatsapp</string>
     <string name="calendar_no_calendars">Na tym urządzeniu nie znaleziono kalendarzy.</string>
     <string name="calendar_no_writable_calendars">Na tym urządzeniu nie znaleziono kalendarzy z uprawnieniami zapisu.</string>
     <string name="calendar_pick_title">Wybierz kalendarz</string>
+    <string name="search_heading">WYSZUKIWANIE W SIECI</string>
+    <string name="search_provider_searxng">SearXNG</string>
+    <string name="search_provider_wikipedia">Wikipedia</string>
+    <string name="search_provider_brave">Brave Search</string>
+    <string name="search_provider_tavily">Tavily</string>
+    <string name="search_help_searxng">Własna instancja SearXNG z włączonym JSON (HTTPS lub http://127.0.0.1). Publiczne instancje zwykle blokują zapytania JSON kodem HTTP 429/403.</string>
+    <string name="search_help_wikipedia">Oficjalne API Wikipedii — darmowe, bez klucza API. Używa języka urządzenia z zapasowym angielskim.</string>
+    <string name="search_help_brave">Brave Search API (HTTPS). Wymaga klucza API z api-dashboard.search.brave.com.</string>
+    <string name="search_help_tavily">Tavily Search API (HTTPS), stworzone dla asystentów AI. Wymaga klucza API z app.tavily.com.</string>
+    <string name="search_token_hint_searxng">Opcjonalny token Bearer (dla prywatnych instancji)</string>
+    <string name="search_key_hint_brave">Klucz API Brave (X-Subscription-Token)</string>
+    <string name="search_key_hint_tavily">Klucz API Tavily (tvly-…)</string>
     <string name="search_test_button">Testuj wyszukiwanie</string>
     <string name="search_testing">Testowanie punktu końcowego SearXNG…</string>
+    <string name="search_testing_provider">Testowanie: %1$s…</string>
+    <string name="search_saved">Zapisano wyszukiwanie (%1$s).</string>
     <string name="search_test_ok">Wyszukiwanie działa · %1$d wyników (%2$d ms)</string>
     <string name="search_test_empty">Połączono (%1$d ms), ale wyszukiwanie zwróciło 0 wyników.</string>
     <string name="search_test_failed">Test wyszukiwania nie powiódł się: %1$s</string>
-    <string name="search_help">Skonfiguruj instancję HTTPS SearXNG z włączonym formatem JSON. Po włączeniu Hanami może wywoływać web_search, gdy to potrzebne.</string>
+    <string name="search_help">Wybierz dostawcę wyszukiwania (własny SearXNG, darmowa Wikipedia bez klucza, Brave Search lub Tavily). Po włączeniu Hanami może wywoływać web_search, gdy to potrzebne.</string>
 
     <!-- Home & About -->
     <string name="home_on_device">NA URZĄDZENIU</string>

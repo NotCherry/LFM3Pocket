@@ -18,7 +18,12 @@ public final class ChatSession {
     public interface Listener { void changed(String transcript, String status, boolean generating); }
     /** Optional structured snapshot consumer (U05). SAM-safe: separate from {@link Listener}. */
     public interface SnapshotListener { void onSnapshot(ChatSnapshot snapshot); }
-    public interface Search { List<WebSearch.Source> search(String endpoint, String question) throws Exception; }
+    public interface Search {
+        List<WebSearch.Source> search(String endpoint, String question) throws Exception;
+        default List<WebSearch.Source> search(String endpoint, String question, String timeRange) throws Exception {
+            return search(endpoint, question);
+        }
+    }
     /**
      * Optional on-device agent harness bridge. When installed, ChatSession exposes LFM3 native
      * {@code <tools>} schemas, auto-executes permitted read-only tools in a bounded multi-turn
@@ -936,7 +941,7 @@ public final class ChatSession {
                                 try {
                                     List<WebSearch.Source> found=(ws.timeRange==null || ws.timeRange.isEmpty())
                                             ? search.search(endpoint,ws.query)
-                                            : WebSearch.search(endpoint,ws.query,ws.timeRange);
+                                            : search.search(endpoint,ws.query,ws.timeRange);
                                     if(found!=null && !found.isEmpty()) {
                                         addUniqueSources(sources,found);
                                         toolOutput=formatSearchToolResponse(found);

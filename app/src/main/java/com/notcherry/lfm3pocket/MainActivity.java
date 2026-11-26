@@ -114,6 +114,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private boolean imageSettingsLoaded;
     private boolean settingsOpen;
     private Button photoButton, cameraButton, documentButton, recordButton, speakButton;
+    private SearchConfig searchConfig = new SearchConfig(SearchProvider.SEARXNG, "", "", false);
     private boolean searchEnabled = false;
     private String searchEndpoint = "";
     private String mmprojPath = "";
@@ -319,8 +320,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
     private void restoreModelAndStartupFlow(Intent intent) {
         String previous = pocketPreferences().getString("model", "");
         mmprojPath = pocketPreferences().getString("mmproj", "");
-        searchEndpoint = pocketPreferences().getString("search_endpoint", "");
-        searchEnabled = pocketPreferences().getBoolean("search_enabled", false);
+        searchConfig = SearchConfig.fromPreferences(pocketPreferences());
+        searchEndpoint = searchConfig.endpoint;
+        searchEnabled = searchConfig.isReady();
         chatPanel.setIdleMode(searchEnabled);
         syncInlineSettingsFields();
         syncBackgroundControls();
@@ -643,13 +645,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity impl
                 }, this::setChatStatus);
         inferenceSettingsSection.mount(configuration, ink, inkMuted);
         searchSettingsSection = new SearchSettingsSection(this, new SearchSettingsSection.Deps(
-                () -> searchEndpoint, () -> searchEnabled,
-                (endpoint, enabled) -> {
-                    searchEndpoint = endpoint;
-                    searchEnabled = enabled;
-                    pocketPreferences().edit()
-                            .putString("search_endpoint", searchEndpoint)
-                            .putBoolean("search_enabled", searchEnabled).apply();
+                () -> searchConfig,
+                provider -> SearchConfig.readApiKey(pocketPreferences(), provider),
+                nextConfig -> {
+                    searchConfig = nextConfig;
+                    searchEndpoint = nextConfig.endpoint;
+                    searchEnabled = nextConfig.enabled;
+                    SearchConfig.saveToPreferences(pocketPreferences(), nextConfig);
                 },
                 enabled -> chatPanel.setIdleMode(enabled), this::updateControls, this::isBusy,
                 this::showSearchSettings, this::setChatStatus, ioWorker, this::runOnUiThread));
