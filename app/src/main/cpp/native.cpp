@@ -21,14 +21,21 @@ namespace {
 std::once_flag backend_once;
 
 struct ModelHandle {
+    struct PartialCheckpoint {
+        size_t pos = 0; // evaluated token count [0..pos-1]
+        std::vector<uint8_t> data; // LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY snapshot
+    };
+
     llama_model * model = nullptr;
     mtmd_context * multimodal = nullptr;
     // Persistent text session (PocketPal / ChatterUI keep a live context for KV reuse).
     llama_context * ctx = nullptr;
     llama_batch_ext * batch = nullptr;
     std::vector<llama_token> cached_tokens;
+    std::vector<PartialCheckpoint> checkpoints;
     int ctx_tokens = 0;
     int threads = 0;
+    int n_rs_seq = 0;
     bool media_dirty = false;
     std::atomic<bool> cancelled{false};
     std::mutex decode_mutex;
@@ -43,8 +50,10 @@ struct ModelHandle {
             ctx = nullptr;
         }
         cached_tokens.clear();
+        checkpoints.clear();
         ctx_tokens = 0;
         threads = 0;
+        n_rs_seq = 0;
         media_dirty = false;
     }
 
@@ -86,7 +95,8 @@ int32_t choose_batch_size(int context_tokens) {
     return std::max(64, context_tokens / 2);
 }
 
-llama_context_params make_ctx_params(ModelHandle * state, int context_tokens, int threads) {
+llama_context_params make_ctx_params(ModelHandle * state, int context_tokens, int threads,
+                                     int n_rs_seq = 0) {
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.abort_callback = [](void * data) {
         return static_cast<std::atomic<bool> *>(data)->load();
@@ -95,7 +105,10 @@ llama_context_params make_ctx_params(ModelHandle * state, int context_tokens, in
     ctx_params.n_ctx = context_tokens;
     const int32_t batch = choose_batch_size(context_tokens);
     ctx_params.n_batch = batch;
-    ctx_params.n_ubatch = batch;
+    // Keep physical ubatch <= 512 so peak compute scratch RAM stays mobile-friendly
+    // on 8192-context sessions while preserving large logical batches.
+    ctx_params.n_ubatch = std::min<int32_t>(batch, 512);
+    ctx_params.n_rs_seq = static_cast<uint32_t>(std::max(0, n_rs_seq));
     // flash_attn_type stays at llama.cpp default (AUTO); do not set it redundantly.
     const unsigned cpu = std::thread::hardware_concurrency();
     ctx_params.n_threads = static_cast<int32_t>(
@@ -104,13 +117,15 @@ llama_context_params make_ctx_params(ModelHandle * state, int context_tokens, in
     return ctx_params;
 }
 
-bool ensure_text_session(ModelHandle * state, int context_tokens, int threads, std::string & error) {
+bool ensure_text_session(ModelHandle * state, int context_tokens, int threads, int n_rs_seq,
+                         std::string & error) {
     if (state->ctx && !state->media_dirty
-            && state->ctx_tokens == context_tokens && state->threads == threads) {
+            && state->ctx_tokens == context_tokens && state->threads == threads
+            && state->n_rs_seq == n_rs_seq) {
         return true;
     }
     state->release_session();
-    llama_context_params ctx_params = make_ctx_params(state, context_tokens, threads);
+    llama_context_params ctx_params = make_ctx_params(state, context_tokens, threads, n_rs_seq);
     state->ctx = llama_init_from_model(state->model, ctx_params);
     if (!state->ctx) {
         error = "Unable to allocate context; insufficient RAM?";
@@ -124,6 +139,7 @@ bool ensure_text_session(ModelHandle * state, int context_tokens, int threads, s
     }
     state->ctx_tokens = context_tokens;
     state->threads = threads;
+    state->n_rs_seq = n_rs_seq;
     state->media_dirty = false;
     return true;
 }
@@ -179,24 +195,138 @@ bool eval_tokens(ModelHandle * state, const llama_token * tokens, int count, int
     return true;
 }
 
-// Drop positions [shared, ∞). LFM2/LFM3 are hybrid — partial seq_rm may fail.
-// On failure, clear all memory and return false so the caller re-prefills from 0.
-bool trim_cached_prefix(ModelHandle * state, size_t shared) {
+constexpr size_t kMaxPartialCheckpointBytes = 4 * 1024 * 1024; // 4 MB cap per checkpoint
+constexpr size_t kMaxPartialCheckpoints = 4;
+
+// Save a lightweight recurrent/SWA partial state snapshot at pos (tokens [0..pos-1] evaluated).
+// Full-attention KV layers write 0 bytes for PARTIAL_ONLY, so on LFM2/LFM3 this is ~250 KB
+// and takes <1 ms while enabling instant rewind without re-prefilling the system prompt.
+void save_partial_checkpoint(ModelHandle * state, size_t pos) {
+    if (!state || !state->ctx || !state->model || pos == 0) return;
+    if (!llama_model_is_hybrid(state->model) && !llama_model_is_recurrent(state->model)) return;
+    const size_t sz = llama_state_seq_get_size_ext(
+            state->ctx, 0, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
+    if (sz <= 16 || sz > kMaxPartialCheckpointBytes) return;
+
+    state->checkpoints.erase(
+            std::remove_if(state->checkpoints.begin(), state->checkpoints.end(),
+                           [pos](const ModelHandle::PartialCheckpoint & c) { return c.pos >= pos; }),
+            state->checkpoints.end());
+
+    // Keep checkpoint[0] (system prompt boundary) and evict oldest intermediate checkpoint if full.
+    while (state->checkpoints.size() >= kMaxPartialCheckpoints) {
+        if (state->checkpoints.size() > 1) {
+            state->checkpoints.erase(state->checkpoints.begin() + 1);
+        } else {
+            state->checkpoints.erase(state->checkpoints.begin());
+        }
+    }
+
+    std::vector<uint8_t> buf(sz);
+    const size_t written = llama_state_seq_get_data_ext(
+            state->ctx, buf.data(), buf.size(), 0, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
+    if (written == 0) return;
+    buf.resize(written);
+    state->checkpoints.push_back({ pos, std::move(buf) });
+}
+
+// Find the token boundary right after the static ChatML system prompt ("<|im_end|>\n")
+// so we can snapshot the recurrent state once on turn 1 and reuse it across future turns.
+size_t find_system_prompt_boundary(const llama_vocab * vocab, const std::string & input,
+                                   const std::vector<llama_token> & full_tokens) {
+    if (input.find("<|im_start|>system") == std::string::npos) return 0;
+    const std::string marker = "<|im_end|>\n";
+    const size_t end_pos = input.find(marker);
+    if (end_pos == std::string::npos) return 0;
+    const size_t prefix_bytes = end_pos + marker.size();
+    if (prefix_bytes >= input.size()) return 0;
+
+    int n = llama_tokenize(vocab, input.data(), static_cast<int32_t>(prefix_bytes),
+                           nullptr, 0, false, true);
+    if (n < 0) n = -n;
+    if (n < 32 || static_cast<size_t>(n) >= full_tokens.size()) return 0;
+    std::vector<llama_token> sys_tokens(static_cast<size_t>(n));
+    int converted = llama_tokenize(vocab, input.data(), static_cast<int32_t>(prefix_bytes),
+                                   sys_tokens.data(), n, false, true);
+    if (converted < 32 || static_cast<size_t>(converted) >= full_tokens.size()) return 0;
+    for (int i = 0; i < converted; ++i) {
+        if (sys_tokens[static_cast<size_t>(i)] != full_tokens[static_cast<size_t>(i)]) {
+            return 0;
+        }
+    }
+    return static_cast<size_t>(converted);
+}
+
+// Extract a plain literal trigger from simple patterns like "(<tool_call>)" so normal prose
+// turns avoid O(N^2) per-token std::regex_search and upfront GBNF compilation.
+std::string extract_literal_trigger(const std::string & pattern) {
+    if (pattern.empty()) return {};
+    std::string inner = pattern;
+    if (inner.size() >= 2 && inner.front() == '(' && inner.back() == ')') {
+        inner = inner.substr(1, inner.size() - 2);
+    }
+    if (inner.empty()) return {};
+    for (char c : inner) {
+        switch (c) {
+            case '\\': case '.': case '*': case '+': case '?':
+            case '[': case ']': case '(': case ')': case '{': case '}':
+            case '|': case '^': case '$':
+                return {};
+            default:
+                break;
+        }
+    }
+    return inner;
+}
+
+// Drop positions [shared, ∞). Returns the retained prefix length (<= shared).
+// LFM2/LFM3 are hybrid — partial seq_rm fails once distance exceeds n_rs_seq; in that case
+// restore the deepest partial-state checkpoint <= shared instead of clearing all memory.
+size_t trim_cached_prefix(ModelHandle * state, size_t shared) {
     llama_memory_t mem = llama_get_memory(state->ctx);
     if (!mem) {
         state->cached_tokens.clear();
-        return false;
+        state->checkpoints.clear();
+        return 0;
     }
     if (shared >= state->cached_tokens.size()) {
-        return true;
+        return state->cached_tokens.size();
     }
     if (llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(shared), -1)) {
         state->cached_tokens.resize(shared);
-        return true;
+        state->checkpoints.erase(
+                std::remove_if(state->checkpoints.begin(), state->checkpoints.end(),
+                               [shared](const ModelHandle::PartialCheckpoint & c) {
+                                   return c.pos > shared;
+                               }),
+                state->checkpoints.end());
+        return shared;
+    }
+    // Hybrid/recurrent rollback fallback: restore the deepest partial checkpoint <= shared.
+    int best_idx = -1;
+    for (int i = static_cast<int>(state->checkpoints.size()) - 1; i >= 0; --i) {
+        if (state->checkpoints[static_cast<size_t>(i)].pos > 0
+                && state->checkpoints[static_cast<size_t>(i)].pos <= shared) {
+            best_idx = i;
+            break;
+        }
+    }
+    if (best_idx >= 0) {
+        const auto & ckpt = state->checkpoints[static_cast<size_t>(best_idx)];
+        const size_t ckpt_pos = ckpt.pos;
+        const size_t restored = llama_state_seq_set_data_ext(
+                state->ctx, ckpt.data.data(), ckpt.data.size(), 0,
+                LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
+        if (restored > 0 && llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(ckpt_pos), -1)) {
+            state->cached_tokens.resize(ckpt_pos);
+            state->checkpoints.resize(static_cast<size_t>(best_idx) + 1);
+            return ckpt_pos;
+        }
     }
     llama_memory_clear(mem, true);
     state->cached_tokens.clear();
-    return false;
+    state->checkpoints.clear();
+    return 0;
 }
 
 // Convert complete UTF-8 codepoints into JNI UTF-16; carry incomplete bytes
@@ -541,10 +671,48 @@ static jstring run_generate_utf8(
         // Do not reuse media KV for later text turns.
         state->cached_tokens.clear();
         prompt_ready = error.empty() && state->ctx != nullptr;
-    } else if (error.empty()) {
-        if (!ensure_text_session(state.get(), context_tokens, threads, error)) {
+    }
+
+    const bool has_lazy_grammar = !grammar_str.empty() && !grammar_trigger.empty();
+    const int wanted_rs_seq = (prompt_lookup && !has_lazy_grammar) ? hanami::kNgramMaxDraft : 0;
+
+    if (error.empty() && !has_media) {
+        if (!ensure_text_session(state.get(), context_tokens, threads, wanted_rs_seq, error)) {
             // error set
         } else {
+            const bool track_checkpoints =
+                    llama_model_is_hybrid(model) || llama_model_is_recurrent(model);
+            auto eval_with_checkpoints = [&](size_t start_pos) -> bool {
+                if (start_pos == 0 && track_checkpoints && state->checkpoints.empty()) {
+                    const size_t sys_end = find_system_prompt_boundary(vocab, input, tokens);
+                    if (sys_end > 0 && sys_end < static_cast<size_t>(converted)) {
+                        if (!eval_tokens(state.get(), tokens.data(), static_cast<int>(sys_end),
+                                         0, mrope, error, env, sink, progress_cb, converted)) {
+                            return false;
+                        }
+                        save_partial_checkpoint(state.get(), sys_end);
+                        if (!eval_tokens(state.get(), tokens.data() + sys_end,
+                                         converted - static_cast<int>(sys_end),
+                                         static_cast<int>(sys_end), mrope, error,
+                                         env, sink, progress_cb, converted)) {
+                            return false;
+                        }
+                        save_partial_checkpoint(state.get(), static_cast<size_t>(converted));
+                        return true;
+                    }
+                }
+                if (!eval_tokens(state.get(), tokens.data() + start_pos,
+                                 converted - static_cast<int>(start_pos),
+                                 static_cast<int>(start_pos), mrope, error,
+                                 env, sink, progress_cb, converted)) {
+                    return false;
+                }
+                if (track_checkpoints) {
+                    save_partial_checkpoint(state.get(), static_cast<size_t>(converted));
+                }
+                return true;
+            };
+
             size_t shared = common_prefix_len(state->cached_tokens, tokens);
             // Need at least one token re-eval to refresh logits when the prompt is
             // a strict prefix of the previous session (llama.rn slot reuse pattern).
@@ -552,27 +720,24 @@ static jstring run_generate_utf8(
                 shared -= 1;
             }
             if (shared < state->cached_tokens.size()) {
-                // Hybrid LFM memory may reject partial seq_rm — then full re-prefill.
-                if (!trim_cached_prefix(state.get(), shared)) {
-                    shared = 0;
-                }
+                // Hybrid LFM memory may reject partial seq_rm — trim_cached_prefix restores
+                // the deepest partial-state checkpoint <= shared before falling back to 0.
+                shared = trim_cached_prefix(state.get(), shared);
             } else {
                 const size_t kv = hanami::kv_token_count(state->ctx, 0);
                 if (kv > shared) {
+                    shared = trim_cached_prefix(state.get(), shared);
+                } else if (kv < shared) {
                     llama_memory_t mem = llama_get_memory(state->ctx);
-                    if (!mem || !llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(shared), -1)) {
-                        shared = 0;
-                        if (mem) llama_memory_clear(mem, true);
-                        state->cached_tokens.clear();
-                    } else if (state->cached_tokens.size() > shared) {
-                        state->cached_tokens.resize(shared);
-                    }
+                    if (mem) llama_memory_clear(mem, true);
+                    state->cached_tokens.clear();
+                    state->checkpoints.clear();
+                    shared = 0;
                 }
             }
             position = static_cast<int>(shared);
             if (position < converted) {
-                if (!eval_tokens(state.get(), tokens.data() + position, converted - position,
-                                 position, mrope, error, env, sink, progress_cb, converted)) {
+                if (!eval_with_checkpoints(shared)) {
                     // Cancel or decode error: drop partial session so the next turn
                     // cannot reuse a half-evaluated prompt (blocking review #1).
                     state->release_session();
@@ -580,9 +745,8 @@ static jstring run_generate_utf8(
                     // clear or compact), retry cleanly from position 0 on a fresh context.
                     if (shared > 0 && !state->cancelled.load()) {
                         error.clear();
-                        if (ensure_text_session(state.get(), context_tokens, threads, error)) {
-                            if (!eval_tokens(state.get(), tokens.data(), converted, 0, mrope, error,
-                                             env, sink, progress_cb, converted)) {
+                        if (ensure_text_session(state.get(), context_tokens, threads, wanted_rs_seq, error)) {
+                            if (!eval_with_checkpoints(0)) {
                                 state->release_session();
                             } else {
                                 position = converted;
@@ -600,7 +764,6 @@ static jstring run_generate_utf8(
         }
     }
 
-    const bool has_lazy_grammar = !grammar_str.empty() && !grammar_trigger.empty();
     std::vector<llama_token> generated;
     bool use_ngram = prompt_lookup && !has_lazy_grammar && prompt_ready && state->ctx && !has_media && error.empty();
     if (use_ngram) {
@@ -610,6 +773,7 @@ static jstring run_generate_utf8(
             llama_memory_t mem = llama_get_memory(state->ctx);
             if (mem) llama_memory_clear(mem, true);
             state->cached_tokens.clear();
+            state->checkpoints.clear();
             if (!eval_tokens(state.get(), tokens.data(), converted, 0, mrope, error,
                              env, sink, progress_cb, converted)) {
                 state->release_session();
@@ -638,7 +802,8 @@ static jstring run_generate_utf8(
             if (state->cancelled.load()) {
                 error.clear();
             } else if (error == "Cannot trim KV tail before prompt lookup" ||
-                       error == "Cannot trim last prompt token for prompt lookup (hybrid memory)") {
+                       error == "Cannot trim last prompt token for prompt lookup (hybrid memory)" ||
+                       error == "Cannot trim KV tail during prompt lookup (hybrid memory)") {
                 // Hybrid memory cannot support ngram-mod tail trimming; fall back to sequential decode.
                 error.clear();
                 ngram_fallback_sequential = true;
@@ -650,7 +815,12 @@ static jstring run_generate_utf8(
     }
     if ((!use_ngram || ngram_fallback_sequential) && error.empty() && prompt_ready && state->ctx &&
         !state->cancelled.load()) {
-        bool grammar_active = has_lazy_grammar;
+        const std::string literal_trigger = has_lazy_grammar
+                ? extract_literal_trigger(grammar_trigger) : std::string();
+        const bool deferred_literal_grammar = has_lazy_grammar && !literal_trigger.empty();
+        bool grammar_active = has_lazy_grammar && !deferred_literal_grammar;
+        bool grammar_triggered = false;
+        std::string trigger_tail;
         llama_sampler * sampler = grammar_active
                 ? hanami::make_chat_sampler_with_lazy_grammar(
                         vocab, grammar_str.c_str(), "root", grammar_trigger.c_str())
@@ -691,6 +861,32 @@ static jstring run_generate_utf8(
             char piece[512];
             const int n = llama_token_to_piece(vocab, next, piece, sizeof(piece), 0, true);
             if (n < 0) { error = "Token decoding failed"; break; }
+            if (deferred_literal_grammar && !grammar_triggered && n > 0) {
+                trigger_tail.append(piece, static_cast<size_t>(n));
+                if (trigger_tail.find(literal_trigger) != std::string::npos) {
+                    grammar_triggered = true;
+                    llama_sampler * constrained = hanami::make_chat_sampler_with_lazy_grammar(
+                            vocab, grammar_str.c_str(), "root", grammar_trigger.c_str());
+                    if (constrained) {
+                        try {
+                            const size_t replay_start =
+                                    generated.size() > 63 ? generated.size() - 63 : 0;
+                            for (size_t k = replay_start; k < generated.size(); ++k) {
+                                llama_sampler_accept(constrained, generated[k]);
+                            }
+                            llama_sampler_accept(constrained, next);
+                            llama_sampler_free(sampler);
+                            sampler = constrained;
+                            grammar_active = true;
+                        } catch (...) {
+                            llama_sampler_free(constrained);
+                        }
+                    }
+                    trigger_tail.clear();
+                } else if (trigger_tail.size() > literal_trigger.size() * 2) {
+                    trigger_tail.erase(0, trigger_tail.size() - literal_trigger.size());
+                }
+            }
             pending.append(piece, static_cast<size_t>(n));
             deliver(env, sink, callback, decode_utf8_prefix(pending));
             if (env->ExceptionCheck()) {
@@ -767,7 +963,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_runBenchmarkUtf8(
     // Free the chat session first so peak RAM is one context, not two.
     state->release_session();
 
-    llama_context_params ctx_params = make_ctx_params(state.get(), context_tokens, threads);
+    llama_context_params ctx_params = make_ctx_params(state.get(), context_tokens, threads, 0);
     llama_context * ctx = llama_init_from_model(state->model, ctx_params);
     if (!ctx) return make_string(env, "Unable to allocate benchmark context; insufficient RAM?");
     llama_batch_ext * batch = llama_batch_ext_init(ctx);
@@ -809,7 +1005,7 @@ Java_com_notcherry_lfm3pocket_NativeBridge_runBenchmarkUtf8(
     std::vector<llama_token> generated;
     std::string error;
     const auto tg_start = clock::now();
-  if (!hanami::generate_sequential(ctx, batch, vocab, false, pp_tokens, tg_tokens, context_tokens,
+    if (!hanami::generate_sequential(ctx, batch, vocab, false, pp_tokens, tg_tokens, context_tokens,
                                      &state->cancelled, generated, error)) {
         if (state->cancelled.load()) {
             llama_batch_ext_free(batch);
@@ -822,20 +1018,27 @@ Java_com_notcherry_lfm3pocket_NativeBridge_runBenchmarkUtf8(
     const double tg_ms = std::chrono::duration<double, std::milli>(tg_end - tg_start).count();
     const double tg_tps = (tg_ms > 0.0 && decoded > 0) ? (decoded * 1000.0 / tg_ms) : 0.0;
 
-    // ngram-mod on a fresh context (KV matches pp prefix only).
+    // Free batch before context, then run ngram-mod on a fresh context with recurrent rollback enabled.
+    llama_batch_ext_free(batch);
     llama_free(ctx);
-    ctx = llama_init_from_model(state->model, ctx_params);
+
+    if (!error.empty()) return make_string(env, error);
+    if (state->cancelled.load()) return make_string(env, "Benchmark cancelled");
+
+    llama_context_params spec_ctx_params =
+            make_ctx_params(state.get(), context_tokens, threads, hanami::kNgramMaxDraft);
+    ctx = llama_init_from_model(state->model, spec_ctx_params);
     if (!ctx) {
-        llama_batch_ext_free(batch);
         return make_string(env, "Unable to re-allocate benchmark context");
     }
-    llama_batch_ext_free(batch);
     batch = llama_batch_ext_init(ctx);
     if (!batch) {
         llama_free(ctx);
         return make_string(env, "Cannot allocate benchmark batch");
     }
-    if (!eval_chunked(tokens.data(), pp_tokens, 0)) {
+    // Prefill pp_tokens - 1 so KV already matches the prompt-minus-last-token precondition
+    // of generate_ngram_mod without requiring an extra tail trim before the first draft step.
+    if (!eval_chunked(tokens.data(), pp_tokens - 1, 0)) {
         llama_batch_ext_free(batch);
         llama_free(ctx);
         return make_string(env, state->cancelled.load() ? "Benchmark cancelled" : "Prompt processing failed");
@@ -843,10 +1046,11 @@ Java_com_notcherry_lfm3pocket_NativeBridge_runBenchmarkUtf8(
 
     std::vector<llama_token> spec_generated;
     hanami::SpecDecodeStats spec_stats;
+    std::string spec_error;
     const auto tg_spec_start = clock::now();
     if (!hanami::generate_ngram_mod(ctx, vocab, false, tokens, tg_tokens, context_tokens,
                                     &state->cancelled, nullptr, spec_generated, nullptr, &spec_stats,
-                                    error)) {
+                                    spec_error)) {
         if (state->cancelled.load()) {
             llama_batch_ext_free(batch);
             llama_free(ctx);
@@ -863,10 +1067,24 @@ Java_com_notcherry_lfm3pocket_NativeBridge_runBenchmarkUtf8(
     llama_batch_ext_free(batch);
     llama_free(ctx);
 
-    if (!error.empty()) return make_string(env, error);
     if (state->cancelled.load()) return make_string(env, "Benchmark cancelled");
 
     char line[768];
+    if (!spec_error.empty()) {
+        std::snprintf(line, sizeof(line),
+                "Hanami llama-bench\n"
+                "pp %d tokens: %.2f tok/s (%.0f ms)\n"
+                "tg %d tokens (sequential): %.2f tok/s (%.0f ms)\n"
+                "tg (ngram-mod): unavailable (%s)\n"
+                "context=%d threads=%d n_batch=%d\n"
+                "build: see NativeBridge.nativeBuildInfo()\n"
+                "note: x86_64 emulator is not arm64 DOTPROD; use a phone for representative tg.",
+                pp_tokens, pp_tps, pp_ms, decoded, tg_tps, tg_ms,
+                spec_error.c_str(),
+                context_tokens, threads, choose_batch_size(context_tokens));
+        return make_string(env, line);
+    }
+
     std::snprintf(line, sizeof(line),
             "Hanami llama-bench\n"
             "pp %d tokens: %.2f tok/s (%.0f ms)\n"

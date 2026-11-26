@@ -86,10 +86,18 @@ public final class DeviceResourceMonitor {
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.startsWith("VmRSS:")) {
-                    String digits = line.replaceAll("[^0-9]", "");
-                    if (!digits.isEmpty()) {
-                        return Long.parseLong(digits) / 1024L;
+                    long kb = 0L;
+                    boolean foundDigit = false;
+                    for (int i = 6; i < line.length(); i++) {
+                        char c = line.charAt(i);
+                        if (c >= '0' && c <= '9') {
+                            kb = kb * 10L + (c - '0');
+                            foundDigit = true;
+                        } else if (foundDigit) {
+                            break;
+                        }
                     }
+                    if (foundDigit) return kb / 1024L;
                 }
             }
         } catch (Throwable ignored) {}
