@@ -59,6 +59,8 @@ final class ModelImportCoordinator {
 
     private final Deps deps;
     private final AtomicInteger activeOperations = new AtomicInteger();
+    private final AtomicInteger activeLoads = new AtomicInteger();
+    private final AtomicInteger activeUnloads = new AtomicInteger();
     private volatile AtomicBoolean importCancellation;
 
     ModelImportCoordinator(Deps deps) {
@@ -73,6 +75,14 @@ final class ModelImportCoordinator {
         return importCancellation != null;
     }
 
+    boolean isLoadingModel() {
+        return activeLoads.get() > 0;
+    }
+
+    boolean isUnloadingModel() {
+        return activeUnloads.get() > 0;
+    }
+
     boolean isBusy() {
         return activeOperations.get() > 0 || importCancellation != null;
     }
@@ -85,6 +95,26 @@ final class ModelImportCoordinator {
     private void endOp() {
         if (activeOperations.decrementAndGet() < 0) activeOperations.set(0);
         deps.setBusy.accept(false);
+    }
+
+    private void beginLoad() {
+        activeLoads.incrementAndGet();
+        beginOp();
+    }
+
+    private void endLoad() {
+        if (activeLoads.decrementAndGet() < 0) activeLoads.set(0);
+        endOp();
+    }
+
+    private void beginUnload() {
+        activeUnloads.incrementAndGet();
+        beginOp();
+    }
+
+    private void endUnload() {
+        if (activeUnloads.decrementAndGet() < 0) activeUnloads.set(0);
+        endOp();
     }
 
     boolean cancelImportIfActive() {
@@ -109,11 +139,11 @@ final class ModelImportCoordinator {
 
     void unloadSelectedModel() {
         if (deps.isBusy.getAsBoolean() || deps.runtime.handle() == 0L) return;
-        beginOp();
+        beginUnload();
         deps.setChatStatus.accept("Unloading model...");
         deps.updateControls.run();
         deps.runtime.unload("user", () -> {
-            endOp();
+            endUnload();
             if (deps.isDestroyed.getAsBoolean()) return;
             deps.setChatStatus.accept("Model unloaded. Selected files remain available for reload.");
             deps.updateControls.run();
@@ -121,7 +151,7 @@ final class ModelImportCoordinator {
     }
 
     void importPickedGguf(Uri uri, boolean isProjector) {
-        beginOp();
+        beginLoad();
         deps.updateControls.run();
         deps.setChatStatus.accept(isProjector
                 ? "Importing projector into private storage..."
@@ -182,7 +212,7 @@ final class ModelImportCoordinator {
                 if (imported != null) imported.delete();
                 importCancellation = null;
                 deps.activity.runOnUiThread(() -> {
-                    endOp();
+                    endLoad();
                     if (!deps.isDestroyed.getAsBoolean()) {
                         deps.updateControls.run();
                         deps.onModelOperationFinished.run();
@@ -193,7 +223,7 @@ final class ModelImportCoordinator {
     }
 
     void openExternalDocument(Uri uri, boolean projector) {
-        beginOp();
+        beginLoad();
         deps.updateControls.run();
         deps.setChatStatus.accept(deps.activity.getString(R.string.opening_external_model));
         deps.worker.execute(() -> {
@@ -260,7 +290,7 @@ final class ModelImportCoordinator {
                 });
             } finally {
                 deps.activity.runOnUiThread(() -> {
-                    endOp();
+                    endLoad();
                     if (!deps.isDestroyed.getAsBoolean()) {
                         deps.updateControls.run();
                         deps.onModelOperationFinished.run();
@@ -332,7 +362,7 @@ final class ModelImportCoordinator {
         if (isContentUri(model) || isContentUri(projector)) {
             final String targetModel = model;
             final String targetProjector = projector == null ? "" : projector;
-            beginOp();
+            beginLoad();
             deps.updateControls.run();
             deps.setChatStatus.accept(deps.activity.getString(R.string.opening_external_model));
             deps.worker.execute(() -> {
@@ -370,7 +400,7 @@ final class ModelImportCoordinator {
                     });
                 } finally {
                     deps.activity.runOnUiThread(() -> {
-                        endOp();
+                        endLoad();
                         if (!deps.isDestroyed.getAsBoolean()) {
                             deps.updateControls.run();
                             deps.onModelOperationFinished.run();
@@ -384,11 +414,11 @@ final class ModelImportCoordinator {
     }
 
     private void loadModelInBackground(String path, String projector) {
-        beginOp();
+        beginLoad();
         deps.updateControls.run();
         deps.setChatStatus.accept(deps.activity.getString(R.string.loading_model));
         deps.runtime.load(path, projector, statusText -> {
-            endOp();
+            endLoad();
             if (deps.isDestroyed.getAsBoolean()) return;
             deps.setChatStatus.accept(statusText);
             deps.updateControls.run();

@@ -78,6 +78,8 @@ internal fun ChatLiveStatus(
                 || status.startsWith("Stopping") || status.startsWith("Extracting")
                 || status.startsWith("Running ") || status.startsWith("Prefilling")
                 || status.startsWith("Transcribing") || status.startsWith("Compacting")
+                || status.startsWith("Loading") || status.startsWith("Ładowanie")
+                || status.startsWith("Unloading") || status.startsWith("Rozładowywanie")
         Row(Modifier.fillMaxWidth().padding(top = 3.dp)
                 .semantics {
                     liveRegion = LiveRegionMode.Polite

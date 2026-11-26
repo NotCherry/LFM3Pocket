@@ -9,10 +9,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -22,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.res.stringResource
@@ -46,13 +51,24 @@ class ModelManagerPanel @JvmOverloads constructor(
         val busy: Boolean = false,
         val loaded: Boolean = false,
         val failed: Boolean = false,
+        val loading: Boolean = false,
+        val unloading: Boolean = false,
     )
     private var settingsSummary by mutableStateOf("Loading inference settings...")
     fun showSettings(summary: String) { settingsSummary = summary }
     private var selection by mutableStateOf(Selection())
 
-    fun updateSelection(model: String, projector: String, busy: Boolean, loaded: Boolean, failed: Boolean) {
-        selection = Selection(model, projector, busy, loaded, failed)
+    @JvmOverloads
+    fun updateSelection(
+        model: String,
+        projector: String,
+        busy: Boolean,
+        loaded: Boolean,
+        failed: Boolean,
+        loading: Boolean = false,
+        unloading: Boolean = false,
+    ) {
+        selection = Selection(model, projector, busy, loaded, failed, loading, unloading)
     }
 
     @OptIn(ExperimentalLayoutApi::class)
@@ -65,13 +81,17 @@ class ModelManagerPanel @JvmOverloads constructor(
             val space = MaterialTheme.atlasSpacing
             val modelName = state.model.ifEmpty { stringResource(R.string.model_none_selected) }
             val projectorName = state.projector.ifEmpty { stringResource(R.string.projector_none) }
-            val canReload = !state.busy && state.model.isNotEmpty()
-            val canUnload = !state.busy && state.loaded
+            val canReload = !state.busy && !state.loading && !state.unloading && state.model.isNotEmpty()
+            val canUnload = !state.busy && !state.loading && !state.unloading && state.loaded
             Column(
                 Modifier
                     .fillMaxWidth()
                     .background(atlas.surface, MaterialTheme.shapes.medium)
-                    .border(1.dp, atlas.border, MaterialTheme.shapes.medium)
+                    .border(
+                        1.dp,
+                        if (state.loading) atlas.accent else atlas.border,
+                        MaterialTheme.shapes.medium,
+                    )
                     .padding(space.space4),
             ) {
                 // Wrap long GGUF names instead of ellipsizing chrome labels.
@@ -92,6 +112,28 @@ class ModelManagerPanel @JvmOverloads constructor(
                     style = type.mono,
                     color = atlas.inkMuted,
                 )
+                if (state.loading || state.unloading) {
+                    Spacer(Modifier.height(space.space3))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(space.space2),
+                    ) {
+                        CircularProgressIndicator(
+                            Modifier.size(16.dp),
+                            color = if (state.loading) atlas.accent else atlas.inkMuted,
+                            trackColor = atlas.border,
+                            strokeWidth = 2.dp,
+                        )
+                        Text(
+                            text = stringResource(
+                                if (state.loading) R.string.model_auto_loading_status
+                                else R.string.model_unloading_status,
+                            ),
+                            style = type.bodySmall,
+                            color = if (state.loading) atlas.accent else atlas.inkMuted,
+                        )
+                    }
+                }
                 Spacer(Modifier.height(space.space3))
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(space.space2),
@@ -102,12 +144,29 @@ class ModelManagerPanel @JvmOverloads constructor(
                         enabled = canReload,
                         modifier = Modifier.minimumInteractiveComponentSize(),
                         shape = MaterialTheme.shapes.medium,
-                        border = BorderStroke(1.dp, if (canReload) atlas.borderStrong else atlas.border),
+                        border = BorderStroke(
+                            1.dp,
+                            when {
+                                state.loading -> atlas.accent
+                                canReload -> atlas.borderStrong
+                                else -> atlas.border
+                            },
+                        ),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         colors = StillwaterControls.outlinedColors(),
                     ) {
+                        if (state.loading) {
+                            CircularProgressIndicator(
+                                Modifier.size(14.dp),
+                                color = atlas.accent,
+                                trackColor = atlas.border,
+                                strokeWidth = 1.8.dp,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
                         Text(
                             when {
+                                state.loading -> stringResource(R.string.loading_model)
                                 state.failed -> stringResource(R.string.retry_load)
                                 state.loaded -> stringResource(R.string.reload_model)
                                 else -> stringResource(R.string.load_model)
@@ -123,7 +182,22 @@ class ModelManagerPanel @JvmOverloads constructor(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         colors = StillwaterControls.outlinedColors(),
                     ) {
-                        Text(stringResource(R.string.unload_model))
+                        if (state.unloading) {
+                            CircularProgressIndicator(
+                                Modifier.size(14.dp),
+                                color = atlas.inkMuted,
+                                trackColor = atlas.border,
+                                strokeWidth = 1.8.dp,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(
+                            when {
+                                state.unloading -> stringResource(R.string.unloading_model)
+                                state.loading -> stringResource(R.string.unload_model_loading)
+                                else -> stringResource(R.string.unload_model)
+                            },
+                        )
                     }
                     if (showSettingsAction) {
                         TextButton(

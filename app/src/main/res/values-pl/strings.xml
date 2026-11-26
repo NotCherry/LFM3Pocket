@@ -258,6 +258,13 @@ com.whatsapp</string>
     <string name="chat_empty_no_model_title">Załaduj model LFM3, aby zacząć</string>
     <string name="chat_empty_no_model_body">Zaimportuj lub otwórz skwantyzowany model LFM3 GGUF w Ustawieniach. Po załadowaniu odpowiedzi działają w pełni offline.</string>
     <string name="chat_empty_open_settings">Skonfiguruj model w Ustawieniach</string>
+    <string name="chat_empty_loading_model_title">Automatyczne ładowanie modelu…</string>
+    <string name="chat_empty_loading_model_body">Poprzednio wybrany model ładuje się automatycznie do pamięci. Czat odblokuje się, gdy tylko będzie gotowy.</string>
+    <string name="model_auto_loading_status">Automatyczne ładowanie wybranego modelu do pamięci…</string>
+    <string name="model_unloading_status">Rozładowywanie modelu z pamięci…</string>
+    <string name="unloading_model">Rozładowywanie…</string>
+    <string name="unload_model_loading">Rozładuj (ładowanie…)</string>
+    <string name="loading_short">Ładowanie…</string>
     <string name="chat_suggest_photo_prompt">Jakie kolory i kształty widać na zdjęciu?</string>
     <string name="chat_suggest_photo_hint">Zdjęcie · na urządzeniu</string>
     <string name="chat_suggest_text_prompt">Napisz po polsku jedno zwięzłe zdanie o lokalnym przetwarzaniu na telefonie.</string>

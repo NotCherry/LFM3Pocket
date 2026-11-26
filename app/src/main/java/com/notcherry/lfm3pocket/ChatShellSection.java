@@ -69,7 +69,6 @@ final class ChatShellSection {
     private View topDividerView;
     private TextView brandTitle;
     private TextView modePill;
-    private Button settingsOpenButton;
     private TextView status;
     private View chatShell;
     private ChatPanel chatPanel;
@@ -124,28 +123,6 @@ final class ChatShellSection {
         LinearLayout.LayoutParams newChatParams = new LinearLayout.LayoutParams(-2, -2);
         newChatParams.rightMargin = ui.dp(6);
         topBar.addView(newChat, newChatParams);
-
-        settingsOpenButton = ui.button("");
-        settingsOpenButton.setId(R.id.settings_open);
-        settingsOpenButton.setContentDescription(ui.getString(R.string.settings_title));
-        // Zero text height + centered foreground/compound icon so gear is pixel-aligned with New chat & ⋮.
-        settingsOpenButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 0f);
-        settingsOpenButton.setIncludeFontPadding(false);
-        settingsOpenButton.setCompoundDrawablesWithIntrinsicBounds(0, R.drawable.ic_still_gear, 0, 0);
-        settingsOpenButton.setCompoundDrawablePadding(0);
-        settingsOpenButton.setGravity(Gravity.CENTER);
-        int iconPad = Math.max(0, (minTouch - ui.dp(22)) / 2);
-        settingsOpenButton.setPadding(iconPad, iconPad, iconPad, iconPad);
-        StillwaterUi.outlined(settingsOpenButton);
-        StillwaterUi.tintStatefulIcon(settingsOpenButton);
-        settingsOpenButton.setOnClickListener(v -> deps.openSettings.run());
-        settingsOpenButton.setMinWidth(minTouch);
-        settingsOpenButton.setMinimumWidth(minTouch);
-        settingsOpenButton.setMinHeight(minTouch);
-        settingsOpenButton.setMinimumHeight(minTouch);
-        LinearLayout.LayoutParams gearParams = new LinearLayout.LayoutParams(minTouch, minTouch);
-        gearParams.rightMargin = ui.dp(6);
-        topBar.addView(settingsOpenButton, gearParams);
 
         Button overflow = ui.button("⋮");
         overflow.setId(R.id.chat_overflow);
@@ -292,9 +269,6 @@ final class ChatShellSection {
     }
 
     void hideChatUiWhenSettingsOpen(boolean settingsOpen) {
-        if (settingsOpenButton != null) {
-            settingsOpenButton.setVisibility(settingsOpen ? View.GONE : View.VISIBLE);
-        }
         if (topBarView != null) topBarView.setVisibility(settingsOpen ? View.GONE : View.VISIBLE);
         if (topDividerView != null) topDividerView.setVisibility(settingsOpen ? View.GONE : View.VISIBLE);
         if (chatShell != null) chatShell.setVisibility(settingsOpen ? View.GONE : View.VISIBLE);

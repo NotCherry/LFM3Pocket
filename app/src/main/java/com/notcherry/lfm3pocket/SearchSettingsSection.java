@@ -52,7 +52,6 @@ final class SearchSettingsSection {
     private final Deps deps;
     private EditText searchEndpointField;
     private CheckBox searchEnabledBox;
-    private Button searchButton;
     private Button testButton;
     private TextView testStatus;
     private boolean bindingFields;
@@ -94,18 +93,11 @@ final class SearchSettingsSection {
         checkParams.topMargin = host.dp(10);
         card.addView(searchEnabledBox, checkParams);
 
-        searchButton = host.button(host.getString(R.string.web_search_off));
-        searchButton.setId(R.id.web_search);
-        StillwaterUi.outlined(searchButton);
-        searchButton.setOnClickListener(v -> toggleOrFocusEndpoint());
-
         testButton = host.button(host.getString(R.string.search_test_button));
         testButton.setId(R.id.search_test);
         StillwaterUi.outlined(testButton);
         testButton.setOnClickListener(v -> runEndpointTest());
-
-        StillwaterReadable.addFlexibleButtonRow(card, host.settingsActivity(), 48,
-                searchButton, testButton);
+        StillwaterReadable.addFlexibleFullWidth(card, testButton, 48);
 
         testStatus = host.label("", 13, inkMuted);
         testStatus.setId(R.id.search_test_status);
@@ -132,6 +124,13 @@ final class SearchSettingsSection {
         bindingFields = false;
     }
 
+    private void syncEnabledCheckbox(boolean enabled) {
+        if (searchEnabledBox == null) return;
+        bindingFields = true;
+        searchEnabledBox.setChecked(enabled);
+        bindingFields = false;
+    }
+
     void focusEndpointField() {
         if (searchEndpointField != null) searchEndpointField.requestFocus();
     }
@@ -140,6 +139,7 @@ final class SearchSettingsSection {
         if (searchEndpointField == null) return;
         String raw = searchEndpointField.getText().toString().trim();
         if (!SearchEndpointPolicy.accepts(raw)) {
+            syncEnabledCheckbox(deps.enabled.getAsBoolean());
             deps.chatStatus.accept("Use an HTTPS SearXNG search endpoint.");
             return;
         }
@@ -149,6 +149,7 @@ final class SearchSettingsSection {
         }
         boolean enabled = SearchEndpointPolicy.enabled(searchEnabledBox.isChecked(), normalized);
         if (searchEnabledBox.isChecked() && !enabled) {
+            syncEnabledCheckbox(false);
             deps.chatStatus.accept("Use an HTTPS SearXNG search endpoint.");
         }
         deps.persist.save(normalized, enabled);
@@ -181,23 +182,6 @@ final class SearchSettingsSection {
         deps.persist.save(normalized, true);
         deps.setChatIdleMode.accept(true);
         deps.updateControls.run();
-    }
-
-    private void toggleOrFocusEndpoint() {
-        if (searchEndpointField == null) {
-            deps.openSearchSettings.run();
-            return;
-        }
-        String raw = searchEndpointField.getText().toString().trim();
-        if (!SearchEndpointPolicy.enabled(true, raw)) {
-            deps.openSearchSettings.run();
-            return;
-        }
-        boolean next = !deps.enabled.getAsBoolean();
-        bindingFields = true;
-        searchEnabledBox.setChecked(next);
-        bindingFields = false;
-        applyCheckboxToggle(next);
     }
 
     private void runEndpointTest() {
@@ -259,11 +243,8 @@ final class SearchSettingsSection {
     }
 
     void paintWebSearchControl(boolean busy) {
-        if (searchButton != null) {
-            searchButton.setText(deps.enabled.getAsBoolean()
-                    ? host.getString(R.string.web_search_on)
-                    : host.getString(R.string.web_search_off));
-            searchButton.setEnabled(!busy);
+        if (searchEnabledBox != null) {
+            searchEnabledBox.setEnabled(!busy);
         }
         if (testButton != null) {
             testButton.setEnabled(!busy && !testing);

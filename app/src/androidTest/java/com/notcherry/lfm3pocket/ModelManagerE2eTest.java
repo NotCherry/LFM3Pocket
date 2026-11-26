@@ -45,10 +45,7 @@ public final class ModelManagerE2eTest {
         }
     }
     private void openSettings(UiDevice device,String pkg) {
-        if(device.findObject(By.res(pkg,"model_configuration_scroll"))!=null) return;
-        UiObject2 open=device.wait(Until.findObject(By.res(pkg,"settings_open").enabled(true)),2000);
-        if(open!=null) open.click();
-        assertNotNull(device.wait(Until.findObject(By.res(pkg,"model_configuration_scroll")),WAIT));
+        SettingsScrollHelper.openSettings(device,pkg,WAIT);
     }
     private void backToChat(UiDevice device,String pkg) {
         UiObject2 back=device.wait(Until.findObject(By.res(pkg,"settings_back").enabled(true)),WAIT);

@@ -110,6 +110,8 @@ class ChatPanel @JvmOverloads constructor(
     private var liveStatus by mutableStateOf("")
     private var searchModeEnabled by mutableStateOf(false)
     private var modelReadyState by mutableStateOf(false)
+    private var modelLoadingState by mutableStateOf(false)
+    private var selectedModelName by mutableStateOf("")
     private var toolCard by mutableStateOf<ToolCardState?>(null)
     private var pendingImages by mutableStateOf<List<ImageItem>>(emptyList())
     private var documentAttachments by mutableStateOf<List<DocumentAttachment>>(emptyList())
@@ -165,6 +167,14 @@ class ChatPanel @JvmOverloads constructor(
 
     fun setModelReady(ready: Boolean) {
         modelReadyState = ready
+        if (ready) modelLoadingState = false
+    }
+
+    @JvmOverloads
+    fun setModelState(ready: Boolean, loading: Boolean, selectedModel: String = "") {
+        modelReadyState = ready
+        modelLoadingState = loading && !ready
+        selectedModelName = selectedModel
     }
 
     fun clearToolCard() {
@@ -193,8 +203,9 @@ class ChatPanel @JvmOverloads constructor(
 
     fun updateControls(canSend: Boolean, canStop: Boolean, canClear: Boolean, canCompact: Boolean) {
         controls = Controls(canSend, canStop, canClear, canCompact)
-        if (canSend || canStop) {
+        if (canSend) {
             modelReadyState = true
+            modelLoadingState = false
         }
     }
 
@@ -404,11 +415,51 @@ class ChatPanel @JvmOverloads constructor(
                         .weight(1f)
                         .fillMaxWidth(),
                     modelReady = modelReadyState,
+                    modelLoading = modelLoadingState,
+                    selectedModelName = selectedModelName,
                     onOpenSettings = { openSettings.run() },
                     onSuggest = { input = it },
                     onRetryInterrupted = { turnId -> retryInterrupted.accept(turnId) },
                     onOpenAttachment = { ref -> openAttachment.accept(ref) },
                 )
+                if (modelLoadingState && !modelReadyState && snapshot.turns.isNotEmpty()) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = space.space2, vertical = space.space1)
+                            .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
+                            .border(1.dp, atlas.accent, MaterialTheme.shapes.medium)
+                            .padding(horizontal = space.space3, vertical = space.space2)
+                            .testTag(tag("chat_model_loading_banner")),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(space.space2),
+                        ) {
+                            CircularProgressIndicator(
+                                Modifier.size(14.dp),
+                                color = atlas.accent,
+                                trackColor = atlas.border,
+                                strokeWidth = 1.8.dp,
+                            )
+                            Text(
+                                stringResource(R.string.chat_empty_loading_model_title),
+                                style = type.label,
+                                color = atlas.accent,
+                            )
+                        }
+                        if (selectedModelName.isNotBlank()) {
+                            Text(
+                                selectedModelName,
+                                style = type.mono,
+                                color = atlas.ink,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 3.dp),
+                            )
+                        }
+                    }
+                }
                 if (importingDocumentLabels.isNotEmpty()) {
                     Column(
                         Modifier
@@ -784,7 +835,20 @@ class ChatPanel @JvmOverloads constructor(
                                     .testTag(tag("chat_send")),
                                 shape = MaterialTheme.shapes.medium,
                                 colors = StillwaterControls.buttonColors(),
-                            ) { Text(stringResource(R.string.send)) }
+                            ) {
+                                if (modelLoadingState && !controls.send) {
+                                    CircularProgressIndicator(
+                                        Modifier.size(14.dp),
+                                        color = atlas.accent,
+                                        trackColor = atlas.border,
+                                        strokeWidth = 1.8.dp,
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(stringResource(R.string.loading_short))
+                                } else {
+                                    Text(stringResource(R.string.send))
+                                }
+                            }
                         }
                     }
                 }

@@ -5,6 +5,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +30,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
@@ -103,6 +105,8 @@ fun ChatTurnList(
     assistantMessageTag: String? = null,
     autoScroll: Boolean = true,
     modelReady: Boolean = true,
+    modelLoading: Boolean = false,
+    selectedModelName: String = "",
     onOpenSettings: () -> Unit = {},
     onSuggest: (String) -> Unit = {},
     onRetryInterrupted: (String) -> Unit = {},
@@ -128,6 +132,8 @@ fun ChatTurnList(
             EmptyConversation(
                 packageName = packageName,
                 modelReady = modelReady,
+                modelLoading = modelLoading,
+                selectedModelName = selectedModelName,
                 onOpenSettings = onOpenSettings,
                 onSuggest = onSuggest,
             )
@@ -661,6 +667,8 @@ fun ReasoningRail(
 private fun EmptyConversation(
     packageName: String,
     modelReady: Boolean,
+    modelLoading: Boolean,
+    selectedModelName: String,
     onOpenSettings: () -> Unit,
     onSuggest: (String) -> Unit,
 ) {
@@ -668,7 +676,71 @@ private fun EmptyConversation(
     val type = MaterialTheme.atlasTypography
     val space = MaterialTheme.atlasSpacing
     Column(Modifier.padding(horizontal = space.space2, vertical = space.space4)) {
-        if (!modelReady) {
+        if (!modelReady && modelLoading) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(atlas.surfaceRaised, MaterialTheme.shapes.medium)
+                    .border(1.dp, atlas.accent, MaterialTheme.shapes.medium)
+                    .padding(space.space4)
+                    .testTag("$packageName:id/chat_empty_loading_model"),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(space.space2),
+                ) {
+                    CircularProgressIndicator(
+                        Modifier.size(18.dp),
+                        color = atlas.accent,
+                        trackColor = atlas.border,
+                        strokeWidth = 2.dp,
+                    )
+                    Text(
+                        text = stringResource(R.string.chat_empty_loading_model_title),
+                        style = type.title,
+                        color = atlas.ink,
+                    )
+                }
+                if (selectedModelName.isNotBlank()) {
+                    Spacer(Modifier.height(space.space1))
+                    Text(
+                        text = selectedModelName,
+                        style = type.mono,
+                        color = atlas.accent,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.height(space.space1))
+                Text(
+                    text = stringResource(R.string.chat_empty_loading_model_body),
+                    style = type.bodySmall,
+                    color = atlas.inkSoft,
+                )
+                Spacer(Modifier.height(space.space3))
+                OutlinedButton(
+                    onClick = {},
+                    enabled = false,
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .heightIn(min = 42.dp)
+                        .testTag("$packageName:id/chat_empty_loading_button"),
+                    shape = MaterialTheme.shapes.medium,
+                    border = BorderStroke(1.dp, atlas.accent.copy(alpha = 0.6f)),
+                    colors = StillwaterControls.outlinedColors(),
+                ) {
+                    CircularProgressIndicator(
+                        Modifier.size(14.dp),
+                        color = atlas.accent,
+                        trackColor = atlas.border,
+                        strokeWidth = 1.8.dp,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.loading_model))
+                }
+            }
+            Spacer(Modifier.height(space.space5))
+        } else if (!modelReady) {
             Column(
                 Modifier
                     .fillMaxWidth()
