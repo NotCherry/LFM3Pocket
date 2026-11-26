@@ -533,6 +533,7 @@ static std::string jstring_utf8_or_empty(JNIEnv * env, jstring value) {
 static jstring run_generate_utf8(
         JNIEnv * env, jlong handle, jbyteArray prompt, jobjectArray media_paths,
         jint max_tokens, jint context_tokens, jint threads, jboolean prompt_lookup,
+        jint reasoning_budget, jboolean thinking_prefilled,
         const std::string & grammar_str, const std::string & grammar_trigger, jobject sink) {
     if (!handle) return make_string(env, "Model has not been loaded");
     if (!prompt || !sink) return make_string(env, "Missing prompt or callback");
@@ -765,7 +766,9 @@ static jstring run_generate_utf8(
     }
 
     std::vector<llama_token> generated;
-    bool use_ngram = prompt_lookup && !has_lazy_grammar && prompt_ready && state->ctx && !has_media && error.empty();
+    const bool enforce_reasoning_budget = reasoning_budget > 0;
+    bool use_ngram = prompt_lookup && !has_lazy_grammar && !enforce_reasoning_budget
+            && prompt_ready && state->ctx && !has_media && error.empty();
     if (use_ngram) {
         const size_t target = static_cast<size_t>(converted);
         const size_t kv = hanami::kv_token_count(state->ctx, 0);
@@ -821,13 +824,17 @@ static jstring run_generate_utf8(
         bool grammar_active = has_lazy_grammar && !deferred_literal_grammar;
         bool grammar_triggered = false;
         std::string trigger_tail;
+        bool in_think = enforce_reasoning_budget && (thinking_prefilled == JNI_TRUE);
+        int think_tokens = 0;
+        std::string think_tail;
         llama_sampler * sampler = grammar_active
                 ? hanami::make_chat_sampler_with_lazy_grammar(
                         vocab, grammar_str.c_str(), "root", grammar_trigger.c_str())
                 : hanami::make_chat_sampler(vocab);
 
-        for (int i = 0; sampler && !state->cancelled.load() &&
-                        i < max_tokens && position + i < context_tokens; ++i) {
+        while (sampler && !state->cancelled.load() &&
+               static_cast<int>(generated.size()) < max_tokens &&
+               position + static_cast<int>(generated.size()) < context_tokens) {
             llama_token next = LLAMA_TOKEN_NULL;
             try {
                 next = llama_sampler_sample(sampler, state->ctx, -1);
@@ -904,6 +911,62 @@ static jstring run_generate_utf8(
                 break;
             }
             generated.push_back(next);
+            if (enforce_reasoning_budget && n > 0) {
+                think_tail.append(piece, static_cast<size_t>(n));
+                if (think_tail.size() > 32) {
+                    think_tail.erase(0, think_tail.size() - 32);
+                }
+                if (!in_think) {
+                    if (think_tail.find("<think>") != std::string::npos) {
+                        in_think = true;
+                        think_tail.clear();
+                    }
+                } else if (think_tail.find("</think>") != std::string::npos) {
+                    in_think = false;
+                    think_tail.clear();
+                } else if (++think_tokens >= reasoning_budget) {
+                    static constexpr const char kCloseThink[] = "</think>\n";
+                    int close_count = llama_tokenize(
+                            vocab, kCloseThink, static_cast<int32_t>(sizeof(kCloseThink) - 1),
+                            nullptr, 0, false, true);
+                    if (close_count < 0) close_count = -close_count;
+                    if (close_count > 0 &&
+                        position + static_cast<int>(generated.size()) + close_count < context_tokens &&
+                        static_cast<int>(generated.size()) + close_count < max_tokens) {
+                        std::vector<llama_token> close_tokens(static_cast<size_t>(close_count));
+                        int converted_close = llama_tokenize(
+                                vocab, kCloseThink, static_cast<int32_t>(sizeof(kCloseThink) - 1),
+                                close_tokens.data(), close_count, false, true);
+                        if (converted_close > 0) {
+                            close_tokens.resize(static_cast<size_t>(converted_close));
+                            bool closed_ok = true;
+                            for (llama_token ct : close_tokens) {
+                                try {
+                                    llama_sampler_accept(sampler, ct);
+                                } catch (...) {}
+                                setup_batch(state->batch, &ct, 1,
+                                            position + static_cast<int>(generated.size()), mrope);
+                                if (llama_process(state->ctx, LLAMA_PROCESS_TYPE_DECODE, state->batch) != 0) {
+                                    error = "Model failed while closing reasoning block";
+                                    closed_ok = false;
+                                    break;
+                                }
+                                generated.push_back(ct);
+                            }
+                            if (!closed_ok) break;
+                            pending.append(kCloseThink, sizeof(kCloseThink) - 1);
+                            deliver(env, sink, callback, decode_utf8_prefix(pending));
+                            if (env->ExceptionCheck()) {
+                                env->ExceptionClear();
+                                error = "Java callback failed";
+                                break;
+                            }
+                        }
+                    }
+                    in_think = false;
+                    think_tail.clear();
+                }
+            }
             if (static_cast<int>(generated.size()) >= max_tokens) break;
             if (hanami::has_verbatim_token_loop(generated)) break;
         }
@@ -930,20 +993,22 @@ static jstring run_generate_utf8(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_generateUtf8(
         JNIEnv * env, jclass, jlong handle, jbyteArray prompt, jobjectArray media_paths,
-        jint max_tokens, jint context_tokens, jint threads, jboolean prompt_lookup, jobject sink) {
+        jint max_tokens, jint context_tokens, jint threads, jboolean prompt_lookup,
+        jint reasoning_budget, jboolean thinking_prefilled, jobject sink) {
     return run_generate_utf8(env, handle, prompt, media_paths, max_tokens, context_tokens,
-            threads, prompt_lookup, {}, {}, sink);
+            threads, prompt_lookup, reasoning_budget, thinking_prefilled, {}, {}, sink);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_notcherry_lfm3pocket_NativeBridge_generateWithGrammarUtf8(
         JNIEnv * env, jclass, jlong handle, jbyteArray prompt, jobjectArray media_paths,
         jint max_tokens, jint context_tokens, jint threads, jboolean prompt_lookup,
+        jint reasoning_budget, jboolean thinking_prefilled,
         jstring grammar, jstring grammar_trigger, jobject sink) {
     std::string grammar_str = jstring_utf8_or_empty(env, grammar);
     std::string trigger_str = jstring_utf8_or_empty(env, grammar_trigger);
     return run_generate_utf8(env, handle, prompt, media_paths, max_tokens, context_tokens,
-            threads, prompt_lookup, grammar_str, trigger_str, sink);
+            threads, prompt_lookup, reasoning_budget, thinking_prefilled, grammar_str, trigger_str, sink);
 }
 
 extern "C" JNIEXPORT jstring JNICALL

@@ -108,7 +108,12 @@ fun ChatTurnList(
 ) {
     val scroll = rememberScrollState()
     val space = MaterialTheme.atlasSpacing
-    LaunchedEffect(turns.size, turns.lastOrNull()?.text, turns.lastOrNull()?.streaming) {
+    LaunchedEffect(
+        turns.size,
+        turns.lastOrNull()?.text,
+        turns.lastOrNull()?.reasoning,
+        turns.lastOrNull()?.streaming,
+    ) {
         if (autoScroll && turns.isNotEmpty()) scroll.scrollTo(scroll.maxValue)
     }
     Column(
@@ -249,6 +254,7 @@ fun ChatTurn(
             if (!turn.reasoning.isNullOrBlank()) {
                 ReasoningRail(
                     reasoning = turn.reasoning!!,
+                    streaming = turn.streaming && turn.text.isBlank(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = space.space3),
@@ -319,7 +325,11 @@ private fun AssistantAnswerColumn(
 }
 
 @Composable
-fun ReasoningRail(reasoning: String, modifier: Modifier = Modifier) {
+fun ReasoningRail(
+    reasoning: String,
+    modifier: Modifier = Modifier,
+    streaming: Boolean = false,
+) {
     val atlas = MaterialTheme.atlasColors
     val type = MaterialTheme.atlasTypography
     val space = MaterialTheme.atlasSpacing
@@ -345,9 +355,11 @@ fun ReasoningRail(reasoning: String, modifier: Modifier = Modifier) {
                     color = atlas.accent,
                 )
                 Text(
-                    text = stringResource(R.string.chat_reasoning),
+                    text = stringResource(
+                        if (streaming) R.string.chat_reasoning_streaming else R.string.chat_reasoning,
+                    ),
                     style = type.bodySmall,
-                    color = atlas.ink,
+                    color = if (streaming) atlas.accent else atlas.ink,
                 )
             }
             if (!expanded && preview.isNotBlank()) {

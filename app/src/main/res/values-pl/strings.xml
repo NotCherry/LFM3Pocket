@@ -90,6 +90,13 @@
     <string name="response_tokens_hint">1–2048, poniżej kontekstu</string>
     <string name="prompt_lookup_label">Szukanie w prompcie (ngram-mod)</string>
     <string name="prompt_lookup_hint">Szybszy czat, gdy model powtarza frazy z promptu lub wcześniejszych wiadomości. Bez drugiego modelu. Każdy token nadal weryfikuje model docelowy.</string>
+    <string name="reasoning_label">Rozumowanie</string>
+    <string name="reasoning_hint">Steruje blokiem &lt;think&gt; w modelach z rozumowaniem, takich jak LFM3-1.7B i LFM3-VL (LFM3-Omni nie używa rozumowania). Auto pozostawia decyzję modelowi; Wył. pomija rozumowanie; Niski, Średni i Wysoki włączają rozumowanie z rosnącym limitem tokenów (192 / 512 / 1536, z rezerwą na odpowiedź). Zwiększ Tokeny odpowiedzi do 1024–2048 dla głębszego rozumowania.</string>
+    <string name="reasoning_auto">Auto</string>
+    <string name="reasoning_off">Wył.</string>
+    <string name="reasoning_low">Niski</string>
+    <string name="reasoning_medium">Średni</string>
+    <string name="reasoning_high">Wysoki</string>
     <string name="use_web_search">Używaj wyszukiwania w sieci dla nowych pytań</string>
     <string name="keep_model_loaded">Utrzymuj model załadowany po wyjściu</string>
     <string name="unload_after_idle">Rozładuj po bezczynności</string>
@@ -245,6 +252,7 @@ com.whatsapp</string>
     <string name="loading_image_preview">Ładowanie podglądu obrazu…</string>
     <string name="chat_role_you">TY</string>
     <string name="chat_reasoning">Rozumowanie</string>
+    <string name="chat_reasoning_streaming">Rozumowanie…</string>
     <string name="chat_empty_title">Brak rozmowy.</string>
     <string name="chat_empty_subtitle">Tekst, zdjęcia, dokumenty i głos zostają na tym telefonie, dopóki nie włączysz wyszukiwania.</string>
     <string name="chat_empty_no_model_title">Załaduj model LFM3, aby zacząć</string>

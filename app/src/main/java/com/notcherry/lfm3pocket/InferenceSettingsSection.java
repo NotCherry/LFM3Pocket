@@ -40,6 +40,12 @@ final class InferenceSettingsSection {
     private EditText settingsThreadsField;
     private EditText settingsTokensField;
     private CheckBox promptLookupBox;
+    private ReasoningLevel selectedReasoningLevel = ReasoningLevel.AUTO;
+    private Button reasoningAutoButton;
+    private Button reasoningOffButton;
+    private Button reasoningLowButton;
+    private Button reasoningMediumButton;
+    private Button reasoningHighButton;
     private TextView settingsInlineError;
     private TextView settingsBenchResult;
 
@@ -66,6 +72,7 @@ final class InferenceSettingsSection {
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
         InferenceSettings initial = currentSettings.get();
+        selectedReasoningLevel = initial.reasoningLevel;
         LinearLayout inferenceCard = StillwaterUi.settingsCard(configuration,
                 host.getString(R.string.inference_heading));
         settingsContextField = host.addSettingInput(inferenceCard, host.getString(R.string.context_label),
@@ -87,6 +94,29 @@ final class InferenceSettingsSection {
         promptLookupBox.setChecked(initial.promptLookup);
         inferenceCard.addView(promptLookupBox, new LinearLayout.LayoutParams(-1, -2));
         StillwaterUi.settingsHelp(inferenceCard, host.getString(R.string.prompt_lookup_hint));
+
+        StillwaterUi.settingsDivider(inferenceCard);
+
+        TextView reasoningTitle = host.label(host.getString(R.string.reasoning_label), 16, ink);
+        reasoningTitle.setTypeface(StillwaterUi.sansMedium(host.settingsActivity()));
+        inferenceCard.addView(reasoningTitle);
+        StillwaterUi.settingsHelp(inferenceCard, host.getString(R.string.reasoning_hint));
+
+        reasoningAutoButton = reasoningChoice(ReasoningLevel.AUTO, R.string.reasoning_auto, R.id.settings_reasoning_auto);
+        reasoningOffButton = reasoningChoice(ReasoningLevel.OFF, R.string.reasoning_off, R.id.settings_reasoning_off);
+        reasoningLowButton = reasoningChoice(ReasoningLevel.LOW, R.string.reasoning_low, R.id.settings_reasoning_low);
+        LinearLayout reasoningRow1 = StillwaterReadable.addFlexibleButtonRow(
+                inferenceCard, host.settingsActivity(), 48,
+                reasoningAutoButton, reasoningOffButton, reasoningLowButton);
+        reasoningRow1.setId(R.id.settings_reasoning_level);
+
+        reasoningMediumButton = reasoningChoice(ReasoningLevel.MEDIUM, R.string.reasoning_medium, R.id.settings_reasoning_medium);
+        reasoningHighButton = reasoningChoice(ReasoningLevel.HIGH, R.string.reasoning_high, R.id.settings_reasoning_high);
+        StillwaterReadable.addFlexibleButtonRow(
+                inferenceCard, host.settingsActivity(), 48,
+                reasoningMediumButton, reasoningHighButton);
+        highlightReasoning(selectedReasoningLevel);
+
         settingsInlineError = host.label("", 14, StillwaterUi.DANGER);
         StillwaterReadable.prepareWrappingLabel(settingsInlineError);
         inferenceCard.addView(settingsInlineError);
@@ -135,6 +165,8 @@ final class InferenceSettingsSection {
         settingsThreadsField.setText(Integer.toString(settings.threads));
         settingsTokensField.setText(Integer.toString(settings.maxTokens));
         if (promptLookupBox != null) promptLookupBox.setChecked(settings.promptLookup);
+        selectedReasoningLevel = settings.reasoningLevel;
+        highlightReasoning(selectedReasoningLevel);
     }
 
     void focusContextField() {
@@ -170,12 +202,54 @@ final class InferenceSettingsSection {
         }
     }
 
+    private Button reasoningChoice(ReasoningLevel level, int labelRes, int viewId) {
+        Button choice = host.button(host.getString(labelRes));
+        choice.setId(viewId);
+        StillwaterUi.outlined(choice);
+        choice.setOnClickListener(v -> {
+            if (activityBusy.getAsBoolean() || !settingsLoaded.getAsBoolean()) return;
+            selectedReasoningLevel = level;
+            highlightReasoning(level);
+            InferenceSettings current = currentSettings.get();
+            InferenceSettings next;
+            try {
+                next = readFieldsFromUi();
+            } catch (RuntimeException ignored) {
+                next = new InferenceSettings(current.contextTokens, current.threads,
+                        current.maxTokens, current.promptLookup, level);
+            }
+            final InferenceSettings toSave = next;
+            store.save(toSave, () -> {
+                if (host.isHostFinishing()) return;
+                onSettingsSaved.accept(toSave);
+                configureEngine.accept(toSave);
+                updateControls.run();
+                chatStatus.accept(toSave.summary());
+            }, failure -> {
+                if (host.isHostFinishing()) return;
+                if (settingsInlineError != null)
+                    settingsInlineError.setText("Settings were not saved: " + failure);
+            });
+        });
+        return choice;
+    }
+
+    private void highlightReasoning(ReasoningLevel selected) {
+        if (reasoningAutoButton == null) return;
+        StillwaterUi.segmented(reasoningAutoButton, selected == ReasoningLevel.AUTO);
+        StillwaterUi.segmented(reasoningOffButton, selected == ReasoningLevel.OFF);
+        StillwaterUi.segmented(reasoningLowButton, selected == ReasoningLevel.LOW);
+        StillwaterUi.segmented(reasoningMediumButton, selected == ReasoningLevel.MEDIUM);
+        StillwaterUi.segmented(reasoningHighButton, selected == ReasoningLevel.HIGH);
+    }
+
     private InferenceSettings readFieldsFromUi() {
         return new InferenceSettings(
                 Integer.parseInt(settingsContextField.getText().toString()),
                 Integer.parseInt(settingsThreadsField.getText().toString()),
                 Integer.parseInt(settingsTokensField.getText().toString()),
-                promptLookupBox == null || promptLookupBox.isChecked());
+                promptLookupBox == null || promptLookupBox.isChecked(),
+                selectedReasoningLevel);
     }
 
     private void runInlineBenchmark() {

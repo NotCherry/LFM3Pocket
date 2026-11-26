@@ -77,6 +77,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private PowerManager.WakeLock wakeLock;
     private RuntimePolicy.Effects last;
     private volatile long handle;
+    private volatile InferenceSettings activeSettings = InferenceSettings.DEFAULT;
     private volatile String loadedPath = "";
     private volatile String conversationId = "";
     private volatile String historyTitle;
@@ -612,7 +613,8 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             java.util.ArrayList<ChatSession.RestoredMessage> restored = new java.util.ArrayList<>();
             for (HistoryRepository.StoredMessage row : rows) {
                 restored.add(new ChatSession.RestoredMessage(
-                        row.getRole(), row.getText(), row.getTurnId(), row.getTurnStatus(), row.getMediaRef()));
+                        row.getRole(), row.getText(), row.getTurnId(), row.getTurnStatus(),
+                        row.getMediaRef(), row.getReasoning()));
             }
             HistoryRepository.ConversationSummary summaryState = null;
             try {
@@ -1152,7 +1154,11 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
             private final java.util.concurrent.atomic.AtomicReference<Runnable> pendingPartialSave =
                     new java.util.concurrent.atomic.AtomicReference<>();
             @Override public void updatePartial(String turnId, String assistantText, long atMs) {
+                updatePartial(turnId, assistantText, null, atMs);
+            }
+            @Override public void updatePartial(String turnId, String assistantText, String reasoning, long atMs) {
                 final String text = assistantText == null ? "" : assistantText;
+                final String reason = reasoning == null || reasoning.isEmpty() ? null : reasoning;
                 final Runnable task = () -> {
                     try {
                         HistoryRepository repo = history;
@@ -1160,7 +1166,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                             repo = new HistoryRepository(HistoryDatabase.get(app));
                             history = repo;
                         }
-                        repo.updateTurnPartial(turnId, text, atMs);
+                        repo.updateTurnPartial(turnId, text, reason, atMs);
                     } catch (Exception ignored) {
                         // Best-effort partial write; terminal save persists final state.
                     }
@@ -1196,6 +1202,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 });
         session.setToolHost(createChatToolHost());
         session.setTelemetry(app.processingTelemetry(), () -> DeviceResourceMonitor.sample(app).compactBadge());
+        session.setReasoningSupplier(() -> activeSettings.reasoningLevel);
     }
 
     private ChatSession.ToolHost createChatToolHost() {
@@ -1352,7 +1359,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
         history.completeTurn(new HistoryRepository.Turn(turn.id, id, historyTitle, turn.userText,
                 turn.assistantText == null ? "" : turn.assistantText, turn.speechTranscript,
                 HistoryRepository.Status.valueOf(turn.status.name()), turn.completedAt, null,
-                turn.speechTranscriptStatus, mediaRef));
+                turn.speechTranscriptStatus, mediaRef, turn.reasoning));
     }
 
     private void onChat(String transcript, String status, boolean running) {
@@ -1504,7 +1511,10 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private final class CountingEngine implements InferenceEngine {
         private final InferenceEngine delegate;
         CountingEngine(InferenceEngine delegate) { this.delegate = delegate; }
-        @Override public void configure(InferenceSettings settings) { delegate.configure(settings); }
+        @Override public void configure(InferenceSettings settings) {
+            activeSettings = settings == null ? InferenceSettings.DEFAULT : settings;
+            delegate.configure(activeSettings);
+        }
         @Override public long loadModel(String modelPath, String projectorPath) {
             return delegate.loadModel(modelPath, projectorPath);
         }

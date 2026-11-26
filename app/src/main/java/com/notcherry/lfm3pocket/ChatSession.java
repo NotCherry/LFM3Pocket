@@ -42,6 +42,9 @@ public final class ChatSession {
     public interface Persistence {
         default void begin(StartedTurn turn) throws Exception {}
         default void updatePartial(String turnId, String assistantText, long atMs) throws Exception {}
+        default void updatePartial(String turnId, String assistantText, String reasoning, long atMs) throws Exception {
+            updatePartial(turnId, assistantText, atMs);
+        }
         default void saveCompactSummary(String summary, int summarizedMessageCount, long atMs) throws Exception {}
         void save(CompletedTurn turn) throws Exception;
     }
@@ -93,7 +96,7 @@ public final class ChatSession {
         }
     }
     public static final class CompletedTurn {
-        public final String id,userText,assistantText;
+        public final String id,userText,assistantText,reasoning;
         public final String speechTranscript,speechTranscriptStatus,mediaRef;
         public final TerminalState status;
         public final long completedAt;
@@ -103,19 +106,24 @@ public final class ChatSession {
         public final boolean toolHandledInLoop;
         CompletedTurn(String id,String userText,String assistantText,String speechTranscript,String speechTranscriptStatus,
                       TerminalState status,long completedAt) {
-            this(id,userText,assistantText,speechTranscript,speechTranscriptStatus,status,completedAt,"",false,false);
+            this(id,userText,assistantText,null,speechTranscript,speechTranscriptStatus,status,completedAt,"",false,false);
         }
         CompletedTurn(String id,String userText,String assistantText,String speechTranscript,String speechTranscriptStatus,
                       TerminalState status,long completedAt,String mediaRef) {
-            this(id,userText,assistantText,speechTranscript,speechTranscriptStatus,status,completedAt,mediaRef,false,false);
+            this(id,userText,assistantText,null,speechTranscript,speechTranscriptStatus,status,completedAt,mediaRef,false,false);
         }
         CompletedTurn(String id,String userText,String assistantText,String speechTranscript,String speechTranscriptStatus,
                       TerminalState status,long completedAt,String mediaRef,boolean untrustedDocumentContext) {
-            this(id,userText,assistantText,speechTranscript,speechTranscriptStatus,status,completedAt,mediaRef,untrustedDocumentContext,false);
+            this(id,userText,assistantText,null,speechTranscript,speechTranscriptStatus,status,completedAt,mediaRef,untrustedDocumentContext,false);
         }
         CompletedTurn(String id,String userText,String assistantText,String speechTranscript,String speechTranscriptStatus,
                       TerminalState status,long completedAt,String mediaRef,boolean untrustedDocumentContext,boolean toolHandledInLoop) {
+            this(id,userText,assistantText,null,speechTranscript,speechTranscriptStatus,status,completedAt,mediaRef,untrustedDocumentContext,toolHandledInLoop);
+        }
+        CompletedTurn(String id,String userText,String assistantText,String reasoning,String speechTranscript,String speechTranscriptStatus,
+                      TerminalState status,long completedAt,String mediaRef,boolean untrustedDocumentContext,boolean toolHandledInLoop) {
             this.id=id;this.userText=userText;this.assistantText=assistantText;
+            this.reasoning=reasoning==null || reasoning.isEmpty()?null:reasoning;
             this.speechTranscript=speechTranscript;this.speechTranscriptStatus=speechTranscriptStatus;
             this.status=status;this.completedAt=completedAt;this.mediaRef=mediaRef==null?"":mediaRef;
             this.untrustedDocumentContext=untrustedDocumentContext;
@@ -123,13 +131,17 @@ public final class ChatSession {
         }
     }
     public static final class RestoredMessage {
-        public final String role,text,turnId,turnStatus,mediaRef;
+        public final String role,text,turnId,turnStatus,mediaRef,reasoning;
         public RestoredMessage(String role,String text,String turnId,String turnStatus,String mediaRef) {
+            this(role,text,turnId,turnStatus,mediaRef,null);
+        }
+        public RestoredMessage(String role,String text,String turnId,String turnStatus,String mediaRef,String reasoning) {
             this.role=role==null?"":role;
             this.text=text==null?"":text;
             this.turnId=turnId;
             this.turnStatus=turnStatus==null?"":turnStatus;
             this.mediaRef=mediaRef;
+            this.reasoning=reasoning==null || reasoning.isEmpty()?null:reasoning;
         }
     }
     private static final class Message {
@@ -175,6 +187,7 @@ public final class ChatSession {
         final long id, handle;
         final String persistenceId, question;
         final boolean webSearch;
+        final ReasoningLevel reasoningLevel;
         final List<Attachment> media;
         final List<Attachment> documents;
         final String imagePath;
@@ -182,14 +195,16 @@ public final class ChatSession {
         final AtomicBoolean imageDeleted=new AtomicBoolean();
         volatile boolean cancelled,discarded,workerStarted,workerFinished;
         volatile long lastPartialSaveAt;
-        Turn(long id,long handle,boolean webSearch,String question,List<Attachment> media,List<Attachment> documents,List<String> imagePaths) {
+        Turn(long id,long handle,boolean webSearch,String question,List<Attachment> media,List<Attachment> documents,List<String> imagePaths,ReasoningLevel reasoningLevel) {
             this.id=id;this.handle=handle;this.webSearch=webSearch;this.question=question;
+            this.reasoningLevel=reasoningLevel==null?ReasoningLevel.AUTO:reasoningLevel;
             this.media=new ArrayList<>(media);
             this.documents=documents==null?Collections.emptyList():new ArrayList<>(documents);
             this.imagePaths=imagePaths==null?Collections.emptyList():new ArrayList<>(imagePaths);
             this.imagePath=this.imagePaths.isEmpty()?"":this.imagePaths.get(0);
             this.persistenceId=UUID.randomUUID().toString();
         }
+        boolean prefillsOpenThink() { return reasoningLevel.prefillsOpenThink(); }
     }
     private static final int PROMPT_HISTORY_WINDOW = 8;
     private static final int COMPACT_KEEP_RECENT = 4;
@@ -212,6 +227,7 @@ public final class ChatSession {
     private volatile ToolHost toolHost;
     private volatile ProcessingTelemetry telemetry;
     private volatile java.util.function.Supplier<String> resourceBadgeSupplier;
+    private volatile java.util.function.Supplier<ReasoningLevel> reasoningSupplier = () -> ReasoningLevel.AUTO;
     private final List<Message> messages=new ArrayList<>();
     private final List<Attachment> activeDocuments=new ArrayList<>();
     private final List<Attachment> activeImages=new ArrayList<>();
@@ -255,6 +271,20 @@ public final class ChatSession {
         this.telemetry=telemetry;
         this.resourceBadgeSupplier=resourceBadgeSupplier;
     }
+    /** Installs a supplier for the current reasoning mode/level used on new turns. */
+    public void setReasoningSupplier(java.util.function.Supplier<ReasoningLevel> supplier) {
+        this.reasoningSupplier = supplier == null ? () -> ReasoningLevel.AUTO : supplier;
+    }
+    /** Convenience setter for a fixed reasoning mode/level (used by tests). */
+    public void setReasoningLevel(ReasoningLevel level) {
+        ReasoningLevel selected = level == null ? ReasoningLevel.AUTO : level;
+        this.reasoningSupplier = () -> selected;
+    }
+    private ReasoningLevel currentReasoningLevel() {
+        java.util.function.Supplier<ReasoningLevel> supplier = reasoningSupplier;
+        ReasoningLevel level = supplier == null ? null : supplier.get();
+        return level == null ? ReasoningLevel.AUTO : level;
+    }
     /** Latest structured snapshot (immutable). Safe for UI / tests after emit. */
     public synchronized ChatSnapshot snapshot() { return latestSnapshot; }
     public synchronized boolean isGenerating() { return active!=null; }
@@ -296,7 +326,18 @@ public final class ChatSession {
                 refs=Collections.singletonList(new ChatSnapshot.AttachmentRef(
                         "PHOTO","Photo",row.mediaRef,"",""));
             }
-            messages.add(new Message(row.role,row.text,null,Collections.emptyList(),
+            String restoredText=row.text;
+            String restoredReasoning=null;
+            if("assistant".equals(row.role)) {
+                if(row.reasoning!=null && !row.reasoning.isEmpty()) {
+                    restoredReasoning=row.reasoning;
+                } else if(ThinkingSanitizer.containsRawMarkers(row.text)) {
+                    ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(row.text);
+                    restoredText=cleaned.answer;
+                    restoredReasoning=cleaned.reasoning;
+                }
+            }
+            messages.add(new Message(row.role,restoredText,restoredReasoning,Collections.emptyList(),
                     interrupted && "assistant".equals(row.role),row.turnId,row.mediaRef,null,refs));
             if("user".equals(row.role) && row.mediaRef!=null && !row.mediaRef.isEmpty()) {
                 activeImages.clear();
@@ -456,7 +497,7 @@ public final class ChatSession {
         messages.add(new Message("user",visibleQuestion.toString(),null,Collections.emptyList(),
                 false,null,primaryImage.isEmpty()?null:primaryImage,null,turnRefs));
         List<Message> history=new ArrayList<>(messages);
-        Turn turn=new Turn(++epoch,model.getAsLong(),useSearch,question,turnMedia,new ArrayList<>(activeDocuments),turnImagePaths);active=turn;
+        Turn turn=new Turn(++epoch,model.getAsLong(),useSearch,question,turnMedia,new ArrayList<>(activeDocuments),turnImagePaths,currentReasoningLevel());active=turn;
         pending.setLength(0);partial.setLength(0);scheduled=false;
         final boolean includeVoice=voiceRecording;
         // Persist on the worker before inference (Room forbids main-thread writes).
@@ -471,7 +512,7 @@ public final class ChatSession {
             if(!active.workerStarted || active.workerFinished) {
                 drain();
                 if(partial.length()>0) {
-                    ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(partial.toString());
+                    ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(partial.toString(),active.prefillsOpenThink());
                     if(!cleaned.answer.isEmpty() || cleaned.reasoning!=null) {
                         messages.add(new Message("assistant",cleaned.answer,cleaned.reasoning,Collections.emptyList()));
                     }
@@ -722,7 +763,8 @@ public final class ChatSession {
                     engine.resetStop();
                     if(turn.cancelled) engine.stop();
                     ProgressSink progressSink=createProgressSink(turn,useSearch);
-                    try { error=engine.generateWithMedia(turn.handle,prompt(replyHistory,sources,turn.documents,mediaPaths.length),
+                    try { error=engine.generateWithMedia(turn.handle,
+                            prompt(replyHistory,sources,turn.documents,mediaPaths.length,turn.reasoningLevel),
                             mediaPaths,maxTokens,progressSink); }
                     catch(Throwable e) { error=safeFailureMessage(e); }
                     progressSink.finishSummary(error);
@@ -754,7 +796,7 @@ public final class ChatSession {
                         if(turn.cancelled) engine.stop();
                         String[] stepMedia=step==0?mediaPaths:new String[0];
                         String stepPrompt=promptWithTools(replyHistory,sources,turn.documents,stepMedia.length,
-                                caps,locale,toolTrace.toString());
+                                caps,locale,toolTrace.toString(),turn.reasoningLevel);
                         String grammar=LfmToolGrammar.build(activeTools.values());
                         ProgressSink progressSink=createProgressSink(turn,useSearch);
                         try { error=engine.generateWithMediaAndGrammar(turn.handle,stepPrompt,stepMedia,maxTokens,
@@ -762,7 +804,7 @@ public final class ChatSession {
                         catch(Throwable e) { error=safeFailureMessage(e); }
                         progressSink.finishSummary(error);
                         if(error!=null || turn.cancelled || !current(turn)) break;
-                        String rawStep=ThinkingSanitizer.clean(partialFor(turn)).answer;
+                        String rawStep=ThinkingSanitizer.clean(partialFor(turn),turn.prefillsOpenThink()).answer;
                         ToolRegistry.Parsed parsed=ModelToolBridge.parseFromAssistant(host.registry(),rawStep);
                         if(parsed==null) {
                             if(ModelToolBridge.containsToolMarkup(rawStep) && errorRetries<1 && step+1<MAX_TOOL_STEPS) {
@@ -848,12 +890,13 @@ public final class ChatSession {
         final String failure=error,searchFailure=searchException;
         TerminalState terminal=failure!=null?TerminalState.FAILED
                 :turn.cancelled||turn.discarded?TerminalState.CANCELLED:TerminalState.COMPLETED;
-        String rawFinal=ThinkingSanitizer.clean(partialFor(turn)).answer;
+        ThinkingSanitizer.Cleaned cleanedFinal=ThinkingSanitizer.clean(partialFor(turn),turn.prefillsOpenThink());
+        String rawFinal=cleanedFinal.answer;
         String answer=overrideVisibleAnswer!=null
                 ? overrideVisibleAnswer
                 : (useToolLoop ? ModelToolBridge.stripToolCallMarkup(rawFinal) : rawFinal);
         if(failure!=null && answer.isEmpty()) answer="Could not finish this reply: "+failure;
-        String saveFailure=persistTerminal(turn,question,answer,speechTranscript,speechTranscriptStatus,terminal,toolHandledInLoop);
+        String saveFailure=persistTerminal(turn,question,answer,cleanedFinal.reasoning,speechTranscript,speechTranscriptStatus,terminal,toolHandledInLoop);
         final String historyFailure=saveFailure;
         final String finalOverride=overrideVisibleAnswer;
         final boolean stripMarkup=useToolLoop;
@@ -862,14 +905,14 @@ public final class ChatSession {
     }
     private String persistTerminal(Turn turn,String question,String answer,String speechTranscript,
                                    String speechTranscriptStatus,TerminalState terminal) {
-        return persistTerminal(turn,question,answer,speechTranscript,speechTranscriptStatus,terminal,false);
+        return persistTerminal(turn,question,answer,null,speechTranscript,speechTranscriptStatus,terminal,false);
     }
-    private String persistTerminal(Turn turn,String question,String answer,String speechTranscript,
+    private String persistTerminal(Turn turn,String question,String answer,String reasoning,String speechTranscript,
                                    String speechTranscriptStatus,TerminalState terminal,boolean toolHandledInLoop) {
         boolean docContext=turn.documents!=null && !turn.documents.isEmpty();
         if(turn.discarded && terminal==TerminalState.CANCELLED) {
             try {
-                persistence.save(new CompletedTurn(turn.persistenceId,question,answer==null?"":answer,
+                persistence.save(new CompletedTurn(turn.persistenceId,question,answer==null?"":answer,reasoning,
                         speechTranscript,speechTranscriptStatus,terminal,System.currentTimeMillis(),turn.imagePath,docContext,toolHandledInLoop));
             } catch(Exception e) {
                 return e.getMessage()==null?e.toString():e.getMessage();
@@ -878,7 +921,7 @@ public final class ChatSession {
         }
         if(!turn.discarded) {
             try {
-                persistence.save(new CompletedTurn(turn.persistenceId,question,answer==null?"":answer,
+                persistence.save(new CompletedTurn(turn.persistenceId,question,answer==null?"":answer,reasoning,
                         speechTranscript,speechTranscriptStatus,terminal,System.currentTimeMillis(),turn.imagePath,docContext,toolHandledInLoop));
             } catch(Exception e) {
                 return e.getMessage()==null?e.toString():e.getMessage();
@@ -954,8 +997,8 @@ public final class ChatSession {
         if(now-turn.lastPartialSaveAt>=PARTIAL_SAVE_INTERVAL_MS) {
             turn.lastPartialSaveAt=now;
             String snapshot=partial.toString()+pending.toString();
-            String cleaned=ThinkingSanitizer.clean(snapshot).answer;
-            try { persistence.updatePartial(turn.persistenceId,cleaned,now); }
+            ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(snapshot,turn.prefillsOpenThink());
+            try { persistence.updatePartial(turn.persistenceId,cleaned.answer,cleaned.reasoning,now); }
             catch(Exception ignored) { }
         }
         if(scheduled) return;
@@ -1009,7 +1052,7 @@ public final class ChatSession {
         drain();
         if(partial.length()>0 || failure!=null || overrideVisibleAnswer!=null) {
             String raw=partial.toString();
-            ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(raw);
+            ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(raw,turn.prefillsOpenThink());
             String answer=overrideVisibleAnswer!=null
                     ? overrideVisibleAnswer
                     : (stripToolMarkup ? ModelToolBridge.stripToolCallMarkup(cleaned.answer) : cleaned.answer);
@@ -1018,6 +1061,7 @@ public final class ChatSession {
             // Preserve exact raw model output for clean replies (no <think>, no template/tool markup)
             // so whitespace trimming does not break llama.cpp KV prefix matching on the next turn.
             String rawForPrompt=(failure==null && overrideVisibleAnswer==null && cleaned.reasoning==null
+                    && !turn.prefillsOpenThink()
                     && !raw.isEmpty() && !ThinkingSanitizer.containsRawMarkers(raw)
                     && !ModelToolBridge.containsToolMarkup(raw)) ? raw : null;
             messages.add(new Message("assistant",answer,cleaned.reasoning,sources,false,null,null,rawForPrompt));
@@ -1189,7 +1233,7 @@ public final class ChatSession {
                     message.attachments));
         }
         if(active!=null) {
-            ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(partial.toString());
+            ThinkingSanitizer.Cleaned cleaned=ThinkingSanitizer.clean(partial.toString(),active.prefillsOpenThink());
             String visible=toolHost!=null ? ModelToolBridge.stripToolCallMarkup(cleaned.answer) : cleaned.answer;
             turns.add(new ChatSnapshot.Turn("assistant",visible,cleaned.reasoning,
                     Collections.emptyList(),true));
@@ -1326,11 +1370,22 @@ public final class ChatSession {
     }
 
     String prompt(List<Message> history,List<WebSearch.Source> sources,List<Attachment> documents,int mediaCount) {
-        return promptWithTools(history,sources,documents,mediaCount,null,null,"");
+        return prompt(history,sources,documents,mediaCount,currentReasoningLevel());
+    }
+
+    String prompt(List<Message> history,List<WebSearch.Source> sources,List<Attachment> documents,
+                  int mediaCount,ReasoningLevel reasoningLevel) {
+        return promptWithTools(history,sources,documents,mediaCount,null,null,"",reasoningLevel);
     }
 
     String promptWithTools(List<Message> history,List<WebSearch.Source> sources,List<Attachment> documents,
                            int mediaCount,LfmToolCatalog.Capabilities capabilities,Locale locale,String toolTrace) {
+        return promptWithTools(history,sources,documents,mediaCount,capabilities,locale,toolTrace,currentReasoningLevel());
+    }
+
+    String promptWithTools(List<Message> history,List<WebSearch.Source> sources,List<Attachment> documents,
+                           int mediaCount,LfmToolCatalog.Capabilities capabilities,Locale locale,String toolTrace,
+                           ReasoningLevel reasoningLevel) {
         StringBuilder out=new StringBuilder("<|startoftext|><|im_start|>system\n");
         if(capabilities!=null) {
             out.append(LfmToolCatalog.systemPrompt(capabilities,locale)).append('\n');
@@ -1388,7 +1443,8 @@ public final class ChatSession {
         if(toolTrace!=null && !toolTrace.isEmpty()) {
             out.append(toolTrace);
         }
-        return out.append("<|im_start|>assistant\n").toString();
+        ReasoningLevel level=reasoningLevel==null?ReasoningLevel.AUTO:reasoningLevel;
+        return out.append("<|im_start|>assistant\n").append(level.promptPrefix()).toString();
     }
     private static String safeDocumentName(String name) {
         if(name==null || name.trim().isEmpty()) return "document";

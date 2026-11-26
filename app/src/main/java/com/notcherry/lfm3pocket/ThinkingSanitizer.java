@@ -29,9 +29,21 @@ public final class ThinkingSanitizer {
     private ThinkingSanitizer() {}
 
     public static Cleaned clean(String raw) {
+        return clean(raw, false);
+    }
+
+    /**
+     * Cleans raw assistant output. When {@code prefilledThink} is true, the prompt itself opened
+     * {@code <think>} before generation began, so tokens up to the first {@code </think>} (or all
+     * streamed tokens until {@code </think>} arrives) are extracted as reasoning.
+     */
+    public static Cleaned clean(String raw, boolean prefilledThink) {
         if (raw == null || raw.isEmpty()) return new Cleaned("", null);
         StringBuilder reasoning = new StringBuilder();
         String work = raw;
+        if (prefilledThink && !startsWithThinkOpen(work)) {
+            work = THINK_OPEN + work;
+        }
 
         Matcher closed = CLOSED_THINK.matcher(work);
         StringBuffer withoutClosed = new StringBuffer();
@@ -53,6 +65,12 @@ public final class ThinkingSanitizer {
 
         String reason = reasoning.toString().trim();
         return new Cleaned(work, reason.isEmpty() ? null : reason);
+    }
+
+    private static boolean startsWithThinkOpen(String value) {
+        int i = 0;
+        while (i < value.length() && Character.isWhitespace(value.charAt(i))) i++;
+        return value.startsWith(THINK_OPEN, i);
     }
 
     /** True if the visible answer still contains thinking or known special-token markers. */
