@@ -1184,8 +1184,20 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                 saveTurn(turn);
             }
         };
+        ChatSession.Search runtimeSearch = new ChatSession.Search() {
+            @Override public java.util.List<WebSearch.Source> search(String endpoint, String question) throws Exception {
+                return search(endpoint, question, "");
+            }
+            @Override public java.util.List<WebSearch.Source> search(String endpoint, String question, String timeRange) throws Exception {
+                SearchConfig cfg = SearchConfig.fromPreferences(preferences.raw());
+                if (cfg.provider == SearchProvider.SEARXNG && endpoint != null && !endpoint.trim().isEmpty()) {
+                    cfg = new SearchConfig(SearchProvider.SEARXNG, endpoint, cfg.apiKey, true);
+                }
+                return WebSearch.search(cfg, question, timeRange);
+            }
+        };
         session = new ChatSession(engine, worker, (task, delay) -> main.postDelayed(task, delay),
-                this::handle, WebSearch::search, persistence,
+                this::handle, runtimeSearch, persistence,
                 path -> HistoryMediaCleanup.deleteAttachment(app, path),
                 (text, status, running) -> {
                     if (born != sessionEpoch) return;
@@ -1201,7 +1213,13 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
     private ChatSession.ToolHost createChatToolHost() {
         return new ChatSession.ToolHost() {
             @Override public LfmToolCatalog.Capabilities capabilities(boolean useSearch, String searchEndpoint) {
-                boolean webReady = useSearch && SearchEndpointPolicy.enabled(true, searchEndpoint);
+                SearchConfig searchCfg = SearchConfig.fromPreferences(preferences.raw());
+                boolean webReady = useSearch && (searchCfg.provider == SearchProvider.SEARXNG
+                        ? SearchEndpointPolicy.enabled(true, SearchProvider.SEARXNG,
+                                searchEndpoint != null && !searchEndpoint.trim().isEmpty()
+                                        ? searchEndpoint : searchCfg.endpoint,
+                                searchCfg.apiKey)
+                        : searchCfg.isConfigured());
                 boolean weatherReady = preferences.networkToolsEnabled();
                 boolean calRead = app.checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
                         == android.content.pm.PackageManager.PERMISSION_GRANTED;
@@ -1242,9 +1260,7 @@ public final class ModelRuntime implements ModelRuntimeVoiceCallbacks.Host {
                     case WEATHER:
                         return preferences.networkToolsEnabled();
                     case WEB_SEARCH:
-                        return SearchEndpointPolicy.enabled(
-                                preferences.raw().getBoolean("search_enabled", false),
-                                preferences.raw().getString("search_endpoint", ""));
+                        return SearchConfig.fromPreferences(preferences.raw()).isReady();
                     case LIST_EVENTS:
                         return app.checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
                                 == android.content.pm.PackageManager.PERMISSION_GRANTED;

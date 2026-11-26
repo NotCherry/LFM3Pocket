@@ -262,9 +262,7 @@ public final class VoiceActionRuntime implements VoiceSpokenOutput.Host, AutoClo
         if (app == null) return LfmToolCatalog.Capabilities.offlineDefaults();
         try {
             RuntimePreferences prefs = new RuntimePreferences(app);
-            boolean webReady = SearchEndpointPolicy.enabled(
-                    prefs.raw().getBoolean("search_enabled", false),
-                    prefs.raw().getString("search_endpoint", ""));
+            boolean webReady = SearchConfig.fromPreferences(prefs.raw()).isReady();
             boolean weatherReady = prefs.networkToolsEnabled();
             boolean calRead = app.checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
                     == android.content.pm.PackageManager.PERMISSION_GRANTED;

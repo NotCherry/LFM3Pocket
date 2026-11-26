@@ -208,12 +208,26 @@ com.whatsapp</string>
     <string name="calendar_no_calendars">No calendars found on this device.</string>
     <string name="calendar_no_writable_calendars">No writable calendars found on this device.</string>
     <string name="calendar_pick_title">Pick a calendar</string>
+    <string name="search_heading">WEB SEARCH</string>
+    <string name="search_provider_searxng">SearXNG</string>
+    <string name="search_provider_wikipedia">Wikipedia</string>
+    <string name="search_provider_brave">Brave Search</string>
+    <string name="search_provider_tavily">Tavily</string>
+    <string name="search_help_searxng">Self-hosted SearXNG with JSON enabled (HTTPS or http://127.0.0.1). Public instances usually block JSON API requests with HTTP 429/403.</string>
+    <string name="search_help_wikipedia">Official Wikipedia API — free, no API key needed. Uses your device language with automatic English fallback.</string>
+    <string name="search_help_brave">Brave Search API (HTTPS). Requires an API key from api-dashboard.search.brave.com.</string>
+    <string name="search_help_tavily">Tavily Search API (HTTPS), built for AI assistants. Requires an API key from app.tavily.com.</string>
+    <string name="search_token_hint_searxng">Optional Bearer token (for private instances)</string>
+    <string name="search_key_hint_brave">Brave API key (X-Subscription-Token)</string>
+    <string name="search_key_hint_tavily">Tavily API key (tvly-…)</string>
     <string name="search_test_button">Test search</string>
     <string name="search_testing">Testing SearXNG endpoint…</string>
+    <string name="search_testing_provider">Testing %1$s…</string>
+    <string name="search_saved">Web search saved (%1$s).</string>
     <string name="search_test_ok">Search OK · %1$d results (%2$d ms)</string>
     <string name="search_test_empty">Connected (%1$d ms), but search returned 0 results.</string>
     <string name="search_test_failed">Search test failed: %1$s</string>
-    <string name="search_help">Configure an HTTPS SearXNG instance with JSON format enabled. When on, Hanami can call web_search when needed.</string>
+    <string name="search_help">Choose a web search provider (self-hosted SearXNG, keyless Wikipedia, Brave Search, or Tavily). When on, Hanami can call web_search when needed.</string>
 
     <!-- Home & About -->
     <string name="home_on_device">ON DEVICE</string>

@@ -208,9 +208,7 @@ public class Lfm3PocketApplication extends Application {
                 }
                 if (request.tool == ToolRegistry.Tool.WEB_SEARCH) {
                     android.content.SharedPreferences prefs = new RuntimePreferences(Lfm3PocketApplication.this).raw();
-                    return SearchEndpointPolicy.enabled(
-                            prefs.getBoolean("search_enabled", false),
-                            prefs.getString("search_endpoint", ""));
+                    return SearchConfig.fromPreferences(prefs).isReady();
                 }
                 if (request.tool == ToolRegistry.Tool.LIST_NOTIFICATIONS) {
                     // Policy is enforced in the executor so callers get specific, testable error states.
@@ -265,7 +263,7 @@ public class Lfm3PocketApplication extends Application {
             @Override public String denialMessage(ToolRegistry.Request request) {
                 if (request == null) return "Required permission or policy is unavailable.";
                 if (request.tool == ToolRegistry.Tool.WEB_SEARCH) {
-                    return "Configure an HTTPS SearXNG endpoint and enable Web search in Settings.";
+                    return "Configure a web search provider and enable Web search in Settings.";
                 }
                 if (request.tool == ToolRegistry.Tool.FS_LIST || request.tool == ToolRegistry.Tool.FS_SEARCH
                         || request.tool == ToolRegistry.Tool.FS_READ || request.tool == ToolRegistry.Tool.NOTE_CREATE
@@ -394,8 +392,7 @@ public class Lfm3PocketApplication extends Application {
         AndroidActionExecutor builtins = new BuiltinToolsExecutor(
                 () -> new RuntimePreferences(this).networkToolsEnabled(),
                 OpenMeteoWeather.httpTransport(),
-                () -> new RuntimePreferences(this).raw().getBoolean("search_enabled", false),
-                () -> new RuntimePreferences(this).raw().getString("search_endpoint", ""),
+                () -> SearchConfig.fromPreferences(new RuntimePreferences(this).raw()),
                 WebSearch::search);
         AndroidActionExecutor notifications = new NotificationListActionExecutor(
                 () -> new RuntimePreferences(this),

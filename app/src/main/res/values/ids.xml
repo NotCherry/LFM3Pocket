@@ -47,7 +47,12 @@
     <item name="image_size_caption" type="id"/>
     <item name="image_remove" type="id"/>
     <item name="web_search" type="id"/>
+    <item name="search_provider_searxng" type="id"/>
+    <item name="search_provider_wikipedia" type="id"/>
+    <item name="search_provider_brave" type="id"/>
+    <item name="search_provider_tavily" type="id"/>
     <item name="search_endpoint" type="id"/>
+    <item name="search_api_key" type="id"/>
     <item name="search_enabled" type="id"/>
     <item name="search_test" type="id"/>
     <item name="search_test_status" type="id"/>
