@@ -501,7 +501,7 @@ private fun HistoryScreen(
                             val turn = ChatSnapshot.Turn(
                                 message.role,
                                 cleaned?.answer ?: message.text,
-                                cleaned?.reasoning,
+                                message.reasoning?.takeIf { it.isNotBlank() } ?: cleaned?.reasoning,
                                 emptyList(),
                                 false,
                             )

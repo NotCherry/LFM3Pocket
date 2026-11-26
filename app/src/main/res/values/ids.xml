@@ -19,6 +19,12 @@
     <item name="settings_threads" type="id"/>
     <item name="settings_tokens" type="id"/>
     <item name="settings_prompt_lookup" type="id"/>
+    <item name="settings_reasoning_level" type="id"/>
+    <item name="settings_reasoning_auto" type="id"/>
+    <item name="settings_reasoning_off" type="id"/>
+    <item name="settings_reasoning_low" type="id"/>
+    <item name="settings_reasoning_medium" type="id"/>
+    <item name="settings_reasoning_high" type="id"/>
     <item name="settings_bench_run" type="id"/>
     <item name="settings_bench_result" type="id"/>
     <item name="settings_bench_copy" type="id"/>

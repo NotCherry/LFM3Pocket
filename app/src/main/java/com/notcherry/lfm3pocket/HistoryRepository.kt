@@ -50,11 +50,12 @@ class HistoryRepository(private val database: HistoryDatabase) {
         val toolExecution: ToolExecution? = null,
         val speechTranscriptStatus: String? = null,
         val mediaRef: String? = null,
+        val reasoning: String? = null,
     ) {
         init {
             require(id.isNotBlank() && conversationId.isNotBlank() && title.isNotBlank())
             require(completedAt >= 0)
-            require(status != Status.COMPLETED || assistantText.isNotBlank())
+            require(status != Status.COMPLETED || assistantText.isNotBlank() || !reasoning.isNullOrBlank())
             require(status != Status.GENERATING)
             require(speechTranscriptStatus == null || speechTranscriptStatus in setOf("AVAILABLE", "UNAVAILABLE"))
             require(speechTranscriptStatus != "AVAILABLE" || !speechTranscript.isNullOrBlank())
@@ -62,7 +63,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
         }
     }
 
-    data class StoredMessage(
+    data class StoredMessage @JvmOverloads constructor(
         val role: String,
         val text: String,
         val turnId: String?,
@@ -70,6 +71,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
         val mediaRef: String?,
         val speechTranscript: String?,
         val speechTranscriptStatus: String?,
+        val reasoning: String? = null,
     )
 
     data class ConversationSummary(
@@ -100,11 +102,15 @@ class HistoryRepository(private val database: HistoryDatabase) {
 
     /** Streams a partial assistant reply into storage. No-op when the turn is already terminal. */
     fun updateTurnPartial(turnId: String, assistantText: String, at: Long): Boolean =
+        updateTurnPartial(turnId, assistantText, null, at)
+
+    /** Streams a partial assistant reply and optional reasoning into storage. No-op when terminal. */
+    fun updateTurnPartial(turnId: String, assistantText: String, reasoning: String?, at: Long): Boolean =
         database.runInTransaction(Callable {
             val dao = database.history()
             val existing = dao.messageForTurn(turnId) ?: return@Callable false
             if (existing.turnStatus != Status.GENERATING.storedValue) return@Callable false
-            dao.updateTurnText(turnId, assistantText)
+            dao.updateTurnText(turnId, assistantText, reasoning?.takeIf { it.isNotBlank() })
             dao.touchConversation(existing.conversationId, at)
             true
         })
@@ -115,6 +121,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
      */
     fun completeTurn(turn: Turn): Boolean = database.runInTransaction(Callable {
         val dao = database.history()
+        val storedReasoning = turn.reasoning?.takeIf { it.isNotBlank() }
         val existing = dao.messageForTurn(turn.id)
         if (existing != null) {
             if (existing.turnStatus != Status.GENERATING.storedValue
@@ -122,7 +129,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
                 return@Callable false
             }
             ensureConversation(dao, turn.conversationId, turn.title, turn.completedAt)
-            dao.updateTurn(turn.id, turn.assistantText, turn.status.storedValue)
+            dao.updateTurn(turn.id, turn.assistantText, storedReasoning, turn.status.storedValue)
             val user = dao.messageAt(existing.conversationId, existing.sequence - 1L)
             if (user != null && user.role == "user") {
                 dao.updateSpeech(user.id, turn.speechTranscript, turn.speechTranscriptStatus)
@@ -151,7 +158,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
         ))
         dao.insertMessage(HistoryMessage(
             assistantId, turn.conversationId, firstSequence + 1L, "assistant", turn.assistantText,
-            null, turn.completedAt, turn.id, turn.status.storedValue,
+            null, turn.completedAt, turn.id, turn.status.storedValue, null, null, storedReasoning,
         ))
         turn.toolExecution?.let { execution ->
             dao.insertToolOutcome(HistoryToolOutcome(
@@ -179,7 +186,7 @@ class HistoryRepository(private val database: HistoryDatabase) {
         database.history().messages(conversationId).map {
             StoredMessage(
                 it.role, it.text, it.turnId, it.turnStatus, it.mediaRef,
-                it.speechTranscript, it.speechTranscriptStatus,
+                it.speechTranscript, it.speechTranscriptStatus, it.reasoning,
             )
         }
 

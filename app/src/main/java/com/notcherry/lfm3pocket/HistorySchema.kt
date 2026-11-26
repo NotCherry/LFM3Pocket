@@ -32,6 +32,7 @@ data class HistoryMessage @JvmOverloads constructor(
     val turnStatus:String="COMPLETED",
     val speechTranscriptStatus:String?=null,
     val mediaRef:String?=null,
+    val reasoning:String?=null,
 ) {
     init {
         require(id.isNotBlank() && conversationId.isNotBlank() && sequence>=0 && createdAt>=0)
@@ -69,10 +70,10 @@ interface HistoryDao {
     @Query("SELECT * FROM messages WHERE conversationId=:id AND role='assistant' ORDER BY sequence DESC LIMIT 1") fun latestAssistant(id:String):HistoryMessage?
     @Query("SELECT * FROM messages WHERE conversationId=:conversationId AND sequence=:sequence LIMIT 1")
     fun messageAt(conversationId:String,sequence:Long):HistoryMessage?
-    @Query("UPDATE messages SET text=:text, turnStatus=:status WHERE turnId=:turnId")
-    fun updateTurn(turnId:String,text:String,status:String):Int
-    @Query("UPDATE messages SET text=:text WHERE turnId=:turnId")
-    fun updateTurnText(turnId:String,text:String):Int
+    @Query("UPDATE messages SET text=:text, reasoning=:reasoning, turnStatus=:status WHERE turnId=:turnId")
+    fun updateTurn(turnId:String,text:String,reasoning:String?,status:String):Int
+    @Query("UPDATE messages SET text=:text, reasoning=:reasoning WHERE turnId=:turnId")
+    fun updateTurnText(turnId:String,text:String,reasoning:String?):Int
     @Query("UPDATE messages SET speechTranscript=:transcript, speechTranscriptStatus=:speechStatus WHERE id=:id")
     fun updateSpeech(id:String,transcript:String?,speechStatus:String?):Int
     @Query("UPDATE messages SET turnStatus='INTERRUPTED', text=CASE WHEN length(trim(text))=0 THEN :placeholder ELSE text END WHERE role='assistant' AND turnStatus='GENERATING' AND createdAt < :cutoffAt")
@@ -87,7 +88,7 @@ interface HistoryDao {
     fun toolOutcomes(id:String):List<HistoryToolOutcome>
 }
 
-@Database(entities=[HistoryConversation::class,HistoryMessage::class,HistoryToolOutcome::class],version=6,exportSchema=true)
+@Database(entities=[HistoryConversation::class,HistoryMessage::class,HistoryToolOutcome::class],version=7,exportSchema=true)
 abstract class HistoryDatabase:RoomDatabase() {
     abstract fun history():HistoryDao
     companion object {
@@ -123,9 +124,14 @@ abstract class HistoryDatabase:RoomDatabase() {
                 db.execSQL("ALTER TABLE `conversations` ADD COLUMN `summarizedMessageCount` INTEGER NOT NULL DEFAULT 0")
             }
         }
+        @JvmField val MIGRATION_6_7:Migration=object:Migration(6,7){
+            override fun migrate(db:SupportSQLiteDatabase){
+                db.execSQL("ALTER TABLE `messages` ADD COLUMN `reasoning` TEXT")
+            }
+        }
         @JvmStatic fun get(context:Context):HistoryDatabase=instance ?: synchronized(this){
             instance ?: Room.databaseBuilder(context.applicationContext,HistoryDatabase::class.java,NAME)
-                .addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5,MIGRATION_5_6).build().also { instance=it }
+                .addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7).build().also { instance=it }
         }
     }
 }
