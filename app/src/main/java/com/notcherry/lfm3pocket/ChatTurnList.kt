@@ -104,6 +104,7 @@ fun ChatTurnList(
     onOpenSettings: () -> Unit = {},
     onSuggest: (String) -> Unit = {},
     onRetryInterrupted: (String) -> Unit = {},
+    onOpenAttachment: (ChatSnapshot.AttachmentRef) -> Unit = {},
 ) {
     val scroll = rememberScrollState()
     val space = MaterialTheme.atlasSpacing
@@ -130,6 +131,7 @@ fun ChatTurnList(
                     userMessageTag = userMessageTag,
                     assistantMessageTag = assistantMessageTag,
                     onRetryInterrupted = onRetryInterrupted,
+                    onOpenAttachment = onOpenAttachment,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = space.space2, vertical = space.turnY),
@@ -155,6 +157,7 @@ fun ChatTurn(
     userMessageTag: String? = null,
     assistantMessageTag: String? = null,
     onRetryInterrupted: (String) -> Unit = {},
+    onOpenAttachment: (ChatSnapshot.AttachmentRef) -> Unit = {},
 ) {
     val atlas = MaterialTheme.atlasColors
     val type = MaterialTheme.atlasTypography
@@ -175,6 +178,15 @@ fun ChatTurn(
         Spacer(Modifier.height(space.space2))
         if (isUser) {
             val parsed = remember(turn.text) { parseUserTurnAttachments(turn.text) }
+            val attachmentRefs = remember(turn.attachments, parsed.attachments) {
+                if (turn.attachments.isNotEmpty()) {
+                    turn.attachments
+                } else {
+                    parsed.attachments.map { badge ->
+                        ChatSnapshot.AttachmentRef(badge.kind, badge.label, "", "", "")
+                    }
+                }
+            }
             SelectionContainer {
                 Text(
                     text = parsed.body.ifBlank { turn.text },
@@ -195,7 +207,7 @@ fun ChatTurn(
                         .semantics { contentDescription = turn.text },
                 )
             }
-            if (parsed.attachments.isNotEmpty()) {
+            if (attachmentRefs.isNotEmpty()) {
                 Spacer(Modifier.height(space.space2))
                 FlowRow(
                     modifier = Modifier
@@ -204,22 +216,24 @@ fun ChatTurn(
                     horizontalArrangement = Arrangement.spacedBy(space.space2),
                     verticalArrangement = Arrangement.spacedBy(space.space1),
                 ) {
-                    parsed.attachments.forEach { badge ->
+                    attachmentRefs.forEach { ref ->
+                        val openable = ref.path.isNotEmpty() || ref.sourceUri.isNotEmpty() || ref.fallbackText.isNotEmpty()
                         Row(
                             modifier = Modifier
                                 .background(atlas.surfaceRaised, MaterialTheme.shapes.small)
-                                .border(1.dp, atlas.borderStrong, MaterialTheme.shapes.small)
-                                .padding(horizontal = space.space2, vertical = 4.dp)
+                                .border(1.dp, if (openable) atlas.accent.copy(alpha = 0.6f) else atlas.borderStrong, MaterialTheme.shapes.small)
+                                .clickable { onOpenAttachment(ref) }
+                                .padding(horizontal = space.space2, vertical = 5.dp)
                                 .testTag("$packageName:id/turn_attachment_chip"),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = badge.kind,
+                                text = ref.kind,
                                 style = type.mono,
                                 color = atlas.accent,
                             )
                             Text(
-                                text = " · ${badge.label}",
+                                text = " · ${ref.label}" + if (openable) " ↗" else "",
                                 style = type.bodySmall,
                                 color = atlas.ink,
                                 maxLines = 1,

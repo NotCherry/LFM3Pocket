@@ -22,19 +22,25 @@ final class DocumentAttachmentReader {
         final String displayName;
         final String text;
         final String error;
+        final boolean noExtractableText;
 
-        private Result(String displayName, String text, String error) {
+        private Result(String displayName, String text, String error, boolean noExtractableText) {
             this.displayName = displayName == null ? "document" : displayName;
             this.text = text;
             this.error = error;
+            this.noExtractableText = noExtractableText;
         }
 
         static Result ok(String displayName, String text) {
-            return new Result(displayName, text, null);
+            return new Result(displayName, text, null, false);
         }
 
         static Result error(String displayName, String error) {
-            return new Result(displayName, null, error);
+            return new Result(displayName, null, error, false);
+        }
+
+        static Result noExtractablePdfText(String displayName, String error) {
+            return new Result(displayName, null, error, true);
         }
 
         boolean isOk() { return error == null; }
@@ -67,8 +73,8 @@ final class DocumentAttachmentReader {
                     return Result.error(name, "Document import cancelled.");
                 }
                 if (extracted == null || extracted.trim().isEmpty()) {
-                    return Result.error(name,
-                            "No extractable text found in this PDF (it may be scanned, image-only, or encrypted). Attach a text file or screenshot instead.");
+                    return Result.noExtractablePdfText(name,
+                            "No extractable text found in this PDF (it may be scanned, image-only, or encrypted). Attach a text file or render pages as images for vision.");
                 }
                 return Result.ok(name, extracted.trim());
             } catch (IOException e) {

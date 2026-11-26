@@ -22,6 +22,23 @@ public final class ChatSnapshot {
         }
     }
 
+    /** Clickable attachment metadata carried from ChatSession into ChatTurnList / ChatPanel. */
+    public static final class AttachmentRef {
+        public final String kind;
+        public final String label;
+        public final String path;
+        public final String sourceUri;
+        public final String fallbackText;
+
+        public AttachmentRef(String kind, String label, String path, String sourceUri, String fallbackText) {
+            this.kind = kind == null ? "OTHER" : kind;
+            this.label = label == null ? "" : label;
+            this.path = path == null ? "" : path;
+            this.sourceUri = sourceUri == null ? "" : sourceUri;
+            this.fallbackText = fallbackText == null ? "" : fallbackText;
+        }
+    }
+
     /**
      * One visible turn. {@code role} is {@code "user"} or {@code "assistant"}.
      * {@code reasoning} is optional cleaned think-block text for the Reasoning rail (never in answer body).
@@ -36,13 +53,20 @@ public final class ChatSnapshot {
         public final boolean interrupted;
         /** Persistence id for interrupted retries; null otherwise. */
         public final String turnId;
+        /** Clickable attachment references for this turn (photos, PDF pages, documents, voice). */
+        public final List<AttachmentRef> attachments;
 
         public Turn(String role, String text, String reasoning, List<Source> sources, boolean streaming) {
-            this(role, text, reasoning, sources, streaming, false, null);
+            this(role, text, reasoning, sources, streaming, false, null, Collections.emptyList());
         }
 
         public Turn(String role, String text, String reasoning, List<Source> sources, boolean streaming,
                     boolean interrupted, String turnId) {
+            this(role, text, reasoning, sources, streaming, interrupted, turnId, Collections.emptyList());
+        }
+
+        public Turn(String role, String text, String reasoning, List<Source> sources, boolean streaming,
+                    boolean interrupted, String turnId, List<AttachmentRef> attachments) {
             this.role = Objects.requireNonNull(role, "role");
             this.text = text == null ? "" : text;
             this.reasoning = reasoning == null || reasoning.isEmpty() ? null : reasoning;
@@ -51,6 +75,9 @@ public final class ChatSnapshot {
             this.streaming = streaming;
             this.interrupted = interrupted;
             this.turnId = turnId == null || turnId.isEmpty() ? null : turnId;
+            this.attachments = attachments == null || attachments.isEmpty()
+                    ? Collections.emptyList()
+                    : Collections.unmodifiableList(new ArrayList<>(attachments));
         }
     }
 
@@ -59,13 +86,23 @@ public final class ChatSnapshot {
     public final boolean generating;
     public final List<String> activeDocumentNames;
     public final List<String> traceLines;
+    public final List<AttachmentRef> activeDocuments;
+    public final List<AttachmentRef> activeImages;
 
     public ChatSnapshot(List<Turn> turns, String status, boolean generating) {
-        this(turns, status, generating, Collections.emptyList(), Collections.emptyList());
+        this(turns, status, generating, Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList());
     }
 
     public ChatSnapshot(List<Turn> turns, String status, boolean generating,
                         List<String> activeDocumentNames, List<String> traceLines) {
+        this(turns, status, generating, activeDocumentNames, traceLines,
+                Collections.emptyList(), Collections.emptyList());
+    }
+
+    public ChatSnapshot(List<Turn> turns, String status, boolean generating,
+                        List<String> activeDocumentNames, List<String> traceLines,
+                        List<AttachmentRef> activeDocuments, List<AttachmentRef> activeImages) {
         List<Turn> copy = turns == null ? Collections.emptyList() : new ArrayList<>(turns);
         this.turns = Collections.unmodifiableList(copy);
         this.status = status == null ? "" : status;
@@ -74,5 +111,9 @@ public final class ChatSnapshot {
                 ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(activeDocumentNames));
         this.traceLines = traceLines == null
                 ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(traceLines));
+        this.activeDocuments = activeDocuments == null || activeDocuments.isEmpty()
+                ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(activeDocuments));
+        this.activeImages = activeImages == null || activeImages.isEmpty()
+                ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(activeImages));
     }
 }

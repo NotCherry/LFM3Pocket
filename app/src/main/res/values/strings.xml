@@ -360,4 +360,18 @@ com.whatsapp</string>
     <string name="settings_diag_lan_hint">Open this URL in a browser on the same Wi-Fi (tap to copy):\n%1$s</string>
     <string name="settings_diag_lan_stopped">Wi-Fi log viewer stopped.</string>
     <string name="settings_diag_lan_copied">Copied Wi-Fi log viewer URL to clipboard.</string>
+    <string name="attachment_no_viewer">No app installed on this device can open this attachment.</string>
+    <string name="attachment_unavailable">Attachment file is no longer cached on this device.</string>
+    <string name="photo_active_context_heading">Active photo:</string>
+    <string name="pdf_mode_dialog_title">Attach PDF</string>
+    <string name="pdf_mode_dialog_message">Choose how to process %1$s:\n\n• Text only: extracts selectable text (fast, works without vision projector)\n• As images (vision): renders up to %2$d pages for the multimodal projector</string>
+    <string name="pdf_mode_text_only">Text only</string>
+    <string name="pdf_mode_as_images">As images (vision)</string>
+    <string name="pdf_no_text_dialog_title">No selectable text in PDF</string>
+    <string name="pdf_no_text_dialog_message">%1$s looks scanned or image-only. Render up to %2$d pages as images for the multimodal vision projector instead?</string>
+    <string name="pdf_render_as_images_action">Attach as images</string>
+    <string name="pdf_rendering_pages_status">Rendering PDF pages: %1$s…</string>
+    <string name="pdf_images_attached_status">Attached %1$d PDF page(s) as images (vision). Add a question and press Send.</string>
+    <string name="pdf_images_truncated_status">Attached first %1$d of %2$d PDF pages as images (vision). Add a question and press Send.</string>
+    <string name="status_details_title">Status details</string>
 </resources>
