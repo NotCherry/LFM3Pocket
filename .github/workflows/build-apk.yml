@@ -67,8 +67,10 @@ jobs:
           python3 .github/scripts/assert-release-ci-gate.py --self-test
           python3 .github/scripts/assert-dizione-jni-in-apk.py --self-test
           python3 .github/scripts/assert-cactus-runtime-in-apk.py --self-test
+          python3 .github/scripts/assert-apk-android-compat.py --self-test
           python3 .github/scripts/antigravity-pr-review.py --self-test
           bash -n scripts/fetch-cactus.sh
+          bash -n scripts/build-dizione-jni.sh
       - name: Verify Stage 1 acceptance matrix completeness
         run: python3 .github/scripts/check-acceptance-matrix.py
       - name: Verify UI color tokens (no ad-hoc hex in UI packages)
@@ -240,7 +242,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             app/src/main/rust/hanami_dizione/target
-          key: cargo-jni-${{ runner.os }}-${{ hashFiles('app/src/main/rust/hanami_dizione/Cargo.lock', 'app/src/main/rust/hanami_dizione/Cargo.toml', 'vendor/VOCA_COMMIT') }}
+          key: cargo-jni-${{ runner.os }}-${{ hashFiles('app/src/main/rust/hanami_dizione/Cargo.lock', 'app/src/main/rust/hanami_dizione/Cargo.toml', 'vendor/VOCA_COMMIT', 'scripts/build-dizione-jni.sh') }}
           restore-keys: |
             cargo-jni-${{ runner.os }}-
       - name: Assemble emulator app and instrumentation APKs
@@ -252,6 +254,8 @@ jobs:
           ccache -s || true
       - name: Assert smoke APK packages dizione JNI (x86_64)
         run: python3 .github/scripts/assert-dizione-jni-in-apk.py app/build/outputs/apk/smoke/debug/app-smoke-debug.apk --abis x86_64
+      - name: Assert smoke APK Android 15-17 compatibility (16 KB ELF + ZIP + manifest)
+        run: python3 .github/scripts/assert-apk-android-compat.py --require-aapt2 app/build/outputs/apk/smoke/debug/app-smoke-debug.apk
       - name: Enable KVM access for Android emulator
         run: |
           test -e /dev/kvm
@@ -404,7 +408,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             app/src/main/rust/hanami_dizione/target
-          key: cargo-jni-arm64-${{ runner.os }}-${{ hashFiles('app/src/main/rust/hanami_dizione/Cargo.lock', 'app/src/main/rust/hanami_dizione/Cargo.toml', 'vendor/VOCA_COMMIT') }}
+          key: cargo-jni-arm64-${{ runner.os }}-${{ hashFiles('app/src/main/rust/hanami_dizione/Cargo.lock', 'app/src/main/rust/hanami_dizione/Cargo.toml', 'vendor/VOCA_COMMIT', 'scripts/build-dizione-jni.sh') }}
           restore-keys: |
             cargo-jni-arm64-${{ runner.os }}-
       - name: Build ARM64 APK
@@ -423,6 +427,8 @@ jobs:
         run: |
           python3 .github/scripts/assert-cactus-runtime-in-apk.py --self-test
           python3 .github/scripts/assert-cactus-runtime-in-apk.py app/build/outputs/apk/phone/debug/app-phone-debug.apk
+      - name: Assert phone APK Android 15-17 compatibility (16 KB ELF + ZIP + manifest)
+        run: python3 .github/scripts/assert-apk-android-compat.py --require-aapt2 app/build/outputs/apk/phone/debug/app-phone-debug.apk
       - name: Verify effective native CPU optimization
         run: |
           python3 .github/scripts/assert-native-optimization.py --self-test

@@ -163,6 +163,9 @@ final class IntegrationsSettingsSection {
         });
         notifCard.addView(notificationAccessBox);
         StillwaterUi.settingsHelp(notifCard, host.getString(R.string.notification_access_help));
+        if (AndroidPermissionGate.hasRestrictedSideloadNotificationSettings(android.os.Build.VERSION.SDK_INT)) {
+            StillwaterUi.settingsHelp(notifCard, host.getString(R.string.notification_access_restricted_settings_hint));
+        }
 
         Button openNotificationAccessSettings = host.button(host.getString(R.string.notification_access_open_settings));
         openNotificationAccessSettings.setId(R.id.settings_notification_open_system);

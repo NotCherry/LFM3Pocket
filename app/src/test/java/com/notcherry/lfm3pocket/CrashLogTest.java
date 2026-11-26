@@ -79,6 +79,24 @@ public final class CrashLogTest {
         assertEquals(500L, CrashLog.recordNewExits(null, 500L, Collections.emptyList()));
     }
 
+    @Test public void annotatesAndroid17MemoryLimiterExits() throws Exception {
+        File dir = Files.createTempDirectory("hanami-crash-memlimit").toFile();
+        File log = new File(dir, CrashLog.FILE_NAME);
+        try {
+            CrashLog.ExitEntry entry = new CrashLog.ExitEntry(
+                    "OTHER", 0, 100, 4_000L, "MemoryLimiter:AnonSwap rss=3800MB", null);
+            CrashLog.recordNewExits(log, 0L, Collections.singletonList(entry));
+            String body = CrashLog.readFile(log);
+            assertTrue(body.contains("MemoryLimiter:AnonSwap"));
+            assertTrue(body.contains("Android 17 MemoryLimiter"));
+        } finally {
+            //noinspection ResultOfMethodCallIgnored
+            log.delete();
+            //noinspection ResultOfMethodCallIgnored
+            dir.delete();
+        }
+    }
+
     private static int countOccurrences(String text, String sub) {
         int count = 0;
         int idx = 0;

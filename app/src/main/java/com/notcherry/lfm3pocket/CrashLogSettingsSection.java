@@ -82,16 +82,69 @@ final class CrashLogSettingsSection {
                 + ", promptLookup=" + limits.promptLookup;
         String abis = Build.SUPPORTED_ABIS == null ? "" : String.join(", ", Arrays.asList(Build.SUPPORTED_ABIS));
         String modelLabel = Build.MANUFACTURER + " " + Build.MODEL;
+        int pageSizeBytes = queryPageSizeBytes();
         return new DiagnosticsReportBuilder.DeviceInfo(
                 appVersion,
                 modelLabel.trim(),
                 Build.VERSION.SDK_INT,
+                Build.VERSION.RELEASE == null ? "" : Build.VERSION.RELEASE,
+                pageSizeBytes,
                 abis,
                 nativeBuild,
                 modelPath,
                 projectorLoaded,
                 limitSummary,
                 DeviceResourceMonitor.sample(activity));
+    }
+
+    static int queryPageSizeBytes() {
+        try {
+            long sz = android.system.Os.sysconf(android.system.OsConstants._SC_PAGESIZE);
+            return sz > 0 && sz <= Integer.MAX_VALUE ? (int) sz : 0;
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    static void showGitHubIssueChooser(Activity activity,
+                                       DiagnosticsReportBuilder.DeviceInfo deviceInfo,
+                                       Consumer<CharSequence> statusSink) {
+        if (activity == null) return;
+        final CharSequence[] options = new CharSequence[] {
+                activity.getString(R.string.settings_diag_issue_type_idea),
+                activity.getString(R.string.settings_diag_issue_type_bug),
+                activity.getString(R.string.settings_diag_issue_type_device),
+                activity.getString(R.string.settings_diag_issue_type_blank),
+        };
+        final GitHubIssueUrlBuilder.IssueKind[] kinds = new GitHubIssueUrlBuilder.IssueKind[] {
+                GitHubIssueUrlBuilder.IssueKind.FEATURE_IDEA,
+                GitHubIssueUrlBuilder.IssueKind.BUG_DEVICE_INFO,
+                GitHubIssueUrlBuilder.IssueKind.DEVICE_COMPATIBILITY,
+                GitHubIssueUrlBuilder.IssueKind.BLANK,
+        };
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity)
+                .setTitle(R.string.settings_diag_issue_picker_title)
+                .setItems(options, (dialog, which) -> {
+                    if (which < 0 || which >= kinds.length) return;
+                    String url = GitHubIssueUrlBuilder.buildUrl(kinds[which], deviceInfo, null);
+                    openBrowserUrl(activity, url, statusSink);
+                    if (statusSink != null) {
+                        statusSink.accept(activity.getString(R.string.settings_diag_github_opened));
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null);
+        StillwaterUi.showDialog(builder);
+    }
+
+    private static void openBrowserUrl(Activity activity, String url, Consumer<CharSequence> statusSink) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            activity.startActivity(intent);
+        } catch (Throwable e) {
+            if (statusSink != null) {
+                statusSink.accept("Could not open browser: " + e.getMessage());
+            }
+        }
     }
 
     void mount(LinearLayout configuration, int ink, int inkMuted) {
@@ -112,6 +165,17 @@ final class CrashLogSettingsSection {
         StillwaterUi.outlined(viewCrashLog);
         viewCrashLog.setOnClickListener(v -> crashLogText.setText(buildDiagnosticsReport()));
 
+        Button copyCrashLog = ui.button(ui.getString(R.string.settings_diag_copy_log));
+        copyCrashLog.setId(R.id.settings_diag_copy_log);
+        StillwaterUi.outlined(copyCrashLog);
+        copyCrashLog.setOnClickListener(v -> {
+            String report = buildDiagnosticsReport();
+            copyToClipboard("Hanami diagnostics report", report);
+            deps.chatStatus.accept(ui.getString(R.string.settings_diag_copied));
+        });
+        StillwaterReadable.addFlexibleButtonRow(card, ui.settingsActivity(), 48,
+                viewCrashLog, copyCrashLog);
+
         Button exportCrashLog = ui.button(ui.getString(R.string.settings_crash_log_export));
         exportCrashLog.setId(R.id.settings_crash_log_export);
         StillwaterUi.outlined(exportCrashLog);
@@ -125,13 +189,12 @@ final class CrashLogSettingsSection {
                     ui.getString(R.string.settings_crash_log_export)));
             deps.chatStatus.accept(ui.getString(R.string.settings_crash_log_exported));
         });
-        StillwaterReadable.addFlexibleButtonRow(card, ui.settingsActivity(), 48,
-                viewCrashLog, exportCrashLog);
+        StillwaterReadable.addFlexibleFullWidth(card, exportCrashLog, 48);
 
         Button githubIssue = ui.button(ui.getString(R.string.settings_diag_github_issue));
         githubIssue.setId(R.id.settings_diag_github_issue);
         StillwaterUi.accentOutlined(githubIssue);
-        githubIssue.setOnClickListener(v -> openGitHubIssueDirect());
+        githubIssue.setOnClickListener(v -> openGitHubIssueChooser());
 
         Button pasteAndIssue = ui.button(ui.getString(R.string.settings_diag_paste_issue));
         pasteAndIssue.setId(R.id.settings_diag_paste_issue);
@@ -190,16 +253,14 @@ final class CrashLogSettingsSection {
         return DiagnosticsReportBuilder.buildMarkdown(info, traces, ndjson, crash);
     }
 
-    private void openGitHubIssueDirect() {
-        String report = buildDiagnosticsReport();
-        copyToClipboard("Hanami diagnostics report", report);
-        String url = DiagnosticsReportBuilder.buildGitHubIssueUrl(null, report, null);
-        openBrowserUrl(url);
-        deps.chatStatus.accept(ui.getString(R.string.settings_diag_github_opened));
+    private void openGitHubIssueChooser() {
+        DiagnosticsReportBuilder.DeviceInfo info = deps.deviceInfo == null ? null : deps.deviceInfo.get();
+        showGitHubIssueChooser(ui.settingsActivity(), info, deps.chatStatus);
     }
 
     private void confirmAndUploadPaste(Button triggerButton) {
         String report = buildDiagnosticsReport();
+        DiagnosticsReportBuilder.DeviceInfo info = deps.deviceInfo == null ? null : deps.deviceInfo.get();
         String preview = report.length() > 1400 ? report.substring(0, 1400) + "\n…(truncated preview)" : report;
         AlertDialog.Builder builder = new AlertDialog.Builder(ui.settingsActivity())
                 .setTitle(R.string.settings_diag_paste_confirm_title)
@@ -227,8 +288,9 @@ final class CrashLogSettingsSection {
                                 return;
                             }
                             copyToClipboard("Hanami diagnostics URL", uploadedUrl);
-                            String issueUrl = DiagnosticsReportBuilder.buildGitHubIssueUrl(null, report, uploadedUrl);
-                            openBrowserUrl(issueUrl);
+                            String issueUrl = GitHubIssueUrlBuilder.buildUrl(
+                                    GitHubIssueUrlBuilder.IssueKind.BUG_WITH_PASTE, info, uploadedUrl);
+                            openBrowserUrl(ui.settingsActivity(), issueUrl, deps.chatStatus);
                             deps.chatStatus.accept(ui.settingsActivity().getString(
                                     R.string.settings_diag_paste_uploaded, uploadedUrl));
                         });
@@ -270,14 +332,5 @@ final class CrashLogSettingsSection {
             ClipboardManager cm = (ClipboardManager) ui.settingsActivity().getSystemService(Context.CLIPBOARD_SERVICE);
             if (cm != null) cm.setPrimaryClip(ClipData.newPlainText(label, text));
         } catch (Throwable ignored) {}
-    }
-
-    private void openBrowserUrl(String url) {
-        try {
-            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-            ui.settingsActivity().startActivity(intent);
-        } catch (Throwable e) {
-            deps.chatStatus.accept("Could not open browser: " + e.getMessage());
-        }
     }
 }

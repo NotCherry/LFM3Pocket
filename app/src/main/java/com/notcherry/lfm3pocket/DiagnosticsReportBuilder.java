@@ -23,6 +23,8 @@ public final class DiagnosticsReportBuilder {
         public final String appVersion;
         public final String deviceModel;
         public final int androidSdk;
+        public final String androidRelease;
+        public final int pageSizeBytes;
         public final String supportedAbis;
         public final String nativeBuildInfo;
         public final String modelBasename;
@@ -33,9 +35,19 @@ public final class DiagnosticsReportBuilder {
         public DeviceInfo(String appVersion, String deviceModel, int androidSdk, String supportedAbis,
                           String nativeBuildInfo, String modelBasename, boolean projectorLoaded,
                           String inferenceSummary, DeviceResourceMonitor.Snapshot resources) {
+            this(appVersion, deviceModel, androidSdk, "", 0, supportedAbis,
+                    nativeBuildInfo, modelBasename, projectorLoaded, inferenceSummary, resources);
+        }
+
+        public DeviceInfo(String appVersion, String deviceModel, int androidSdk, String androidRelease,
+                          int pageSizeBytes, String supportedAbis, String nativeBuildInfo,
+                          String modelBasename, boolean projectorLoaded, String inferenceSummary,
+                          DeviceResourceMonitor.Snapshot resources) {
             this.appVersion = nonNull(appVersion);
             this.deviceModel = nonNull(deviceModel);
             this.androidSdk = androidSdk;
+            this.androidRelease = nonNull(androidRelease);
+            this.pageSizeBytes = Math.max(0, pageSizeBytes);
             this.supportedAbis = nonNull(supportedAbis);
             this.nativeBuildInfo = nonNull(nativeBuildInfo);
             this.modelBasename = basenameOnly(modelBasename);
@@ -65,9 +77,17 @@ public final class DiagnosticsReportBuilder {
         if (info != null) {
             out.append("### Environment\n");
             out.append("- **App version:** ").append(safeOr(info.appVersion, "unknown")).append('\n');
-            out.append("- **Device:** ").append(safeOr(info.deviceModel, "unknown"))
-                    .append(" (Android SDK ").append(info.androidSdk).append(")\n");
+            out.append("- **Device:** ").append(safeOr(info.deviceModel, "unknown"));
+            if (!info.androidRelease.trim().isEmpty()) {
+                out.append(" (Android ").append(info.androidRelease.trim())
+                        .append(", SDK ").append(info.androidSdk).append(")\n");
+            } else {
+                out.append(" (Android SDK ").append(info.androidSdk).append(")\n");
+            }
             out.append("- **ABIs:** ").append(safeOr(info.supportedAbis, "unknown")).append('\n');
+            if (info.pageSizeBytes > 0) {
+                out.append("- **Page size:** ").append(info.pageSizeBytes / 1024).append(" KB\n");
+            }
             out.append("- **RAM:** ").append(info.resources.availRamMb).append(" MB free / ")
                     .append(info.resources.totalRamMb).append(" MB total (app RSS ")
                     .append(info.resources.appRssMb).append(" MB, lowMemory=")

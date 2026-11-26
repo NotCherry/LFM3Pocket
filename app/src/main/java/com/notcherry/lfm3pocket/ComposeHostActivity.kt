@@ -106,8 +106,10 @@ class ComposeHostActivity : ComponentActivity() {
             )
             runtime.preloadSavedModel()
         }
-        window.statusBarColor = StillwaterUi.SURFACE
-        window.navigationBarColor = StillwaterUi.SURFACE
+        if (AndroidPermissionGate.usesLegacySystemBarColorApis(android.os.Build.VERSION.SDK_INT)) {
+            window.statusBarColor = StillwaterUi.SURFACE
+            window.navigationBarColor = StillwaterUi.SURFACE
+        }
         val insetsController = WindowCompat.getInsetsController(window, window.decorView)
         insetsController.isAppearanceLightStatusBars = false
         insetsController.isAppearanceLightNavigationBars = false
@@ -313,6 +315,39 @@ private fun StillwaterAbout(onBack: () -> Unit) {
                 style = type.body,
                 color = atlas.inkSoft,
             )
+            Spacer(Modifier.height(space.space5))
+            HorizontalDivider(color = atlas.border, thickness = 1.dp)
+            Spacer(Modifier.height(space.space5))
+            Text(
+                stringResource(R.string.about_feedback_title),
+                style = type.label,
+                color = atlas.inkMuted,
+            )
+            Spacer(Modifier.height(space.space2))
+            Text(
+                stringResource(R.string.about_feedback_body),
+                style = type.body,
+                color = atlas.inkSoft,
+            )
+            Spacer(Modifier.height(space.space3))
+            OutlinedButton(
+                onClick = {
+                    val activity = context as? android.app.Activity ?: return@OutlinedButton
+                    val prefs = context.getSharedPreferences(RuntimePreferences.FILE, Context.MODE_PRIVATE)
+                    val modelPath = prefs.getString("model", "").orEmpty()
+                    val info = CrashLogSettingsSection.collectDeviceInfo(activity, modelPath, false, null)
+                    CrashLogSettingsSection.showGitHubIssueChooser(activity, info, null)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .heightIn(min = 48.dp),
+                shape = MaterialTheme.shapes.medium,
+                border = androidx.compose.foundation.BorderStroke(1.dp, atlas.borderStrong),
+                colors = StillwaterControls.outlinedColors(),
+            ) {
+                Text(stringResource(R.string.about_feedback_action), style = type.body)
+            }
             Spacer(Modifier.height(space.space6))
         }
     }

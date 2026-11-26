@@ -94,12 +94,14 @@ public final class ModelRuntimeService extends Service {
 
     private boolean promote(Notification notification, RuntimeNotice notice) {
         final boolean ok;
-        if (Build.VERSION.SDK_INT >= 34) {
-            int requestedType = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
-            if (notice != null) {
-                if (notice.mediaPlayback) requestedType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK;
-                if (notice.microphoneCapture) requestedType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
-            }
+        if (AndroidPermissionGate.requiresExplicitForegroundServiceType(Build.VERSION.SDK_INT)) {
+            boolean mediaPlayback = notice != null && notice.mediaPlayback;
+            boolean micCapture = notice != null && notice.microphoneCapture;
+            int requestedType = AndroidPermissionGate.computeRuntimeFgsTypeMask(
+                    Build.VERSION.SDK_INT,
+                    mediaPlayback,
+                    micCapture,
+                    AndroidPermissionGate.hasRecordAudioPermission(this));
             ok = promoteWithFallback(
                     Build.VERSION.SDK_INT,
                     requestedType,

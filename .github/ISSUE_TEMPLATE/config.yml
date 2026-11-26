@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Android 12-17 & Xiaomi Sideloading Guide
+    url: https://github.com/NotCherry/LFM3Pocket/blob/main/docs/ANDROID_COMPATIBILITY.md
+    about: Troubleshooting APK install errors, 16 KB page sizes, HyperOS Security, and Android 13-17 permissions.

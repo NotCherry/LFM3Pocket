@@ -1,0 +1,27 @@
+name: Idea / Feature request
+description: Suggest an idea, UX improvement, or new capability for Hanami.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What is your idea or suggestion?
+      description: Describe the feature, workflow, or improvement you would like to see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Why does it help?
+      description: Share the use case or pain point this solves (offline-first / on-device constraints welcome).
+    validations:
+      required: false
+
+  - type: input
+    id: app_version
+    attributes:
+      label: Hanami version (optional)
+      placeholder: e.g., 0.20.4
+    validations:
+      required: false

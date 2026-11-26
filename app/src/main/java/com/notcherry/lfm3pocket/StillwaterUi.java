@@ -74,8 +74,10 @@ final class StillwaterUi {
                                         int baseLeftPx, int baseTopPx, int baseRightPx, int baseBottomPx) {
         Window window = activity.getWindow();
         if (window != null) {
-            window.setStatusBarColor(SURFACE);
-            window.setNavigationBarColor(SURFACE);
+            if (AndroidPermissionGate.usesLegacySystemBarColorApis(android.os.Build.VERSION.SDK_INT)) {
+                window.setStatusBarColor(SURFACE);
+                window.setNavigationBarColor(SURFACE);
+            }
             WindowInsetsControllerCompat controller =
                     WindowCompat.getInsetsController(window, window.getDecorView());
             controller.setAppearanceLightStatusBars(false);

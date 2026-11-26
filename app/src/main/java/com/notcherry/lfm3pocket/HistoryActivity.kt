@@ -117,8 +117,10 @@ class HistoryActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = StillwaterUi.SURFACE
-        window.navigationBarColor = StillwaterUi.SURFACE
+        if (AndroidPermissionGate.usesLegacySystemBarColorApis(android.os.Build.VERSION.SDK_INT)) {
+            window.statusBarColor = StillwaterUi.SURFACE
+            window.navigationBarColor = StillwaterUi.SURFACE
+        }
         val insetsController = WindowCompat.getInsetsController(window, window.decorView)
         insetsController.isAppearanceLightStatusBars = false
         insetsController.isAppearanceLightNavigationBars = false

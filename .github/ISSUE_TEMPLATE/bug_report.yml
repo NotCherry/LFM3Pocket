@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a bug, crash, or performance problem in Hanami.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: Describe the issue and what you expected instead.
+      placeholder: e.g., Attached a 4 MB PDF and generation stalled during prefill.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Hanami and load model ...
+        2. Tap ...
+        3. Observe ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Device & app environment
+      description: Pre-filled automatically when opened from Hanami (device specs only, no chat contents).
+      placeholder: |
+        - App version:
+        - Device & Android version:
+        - Model (GGUF):
+    validations:
+      required: false
+
+  - type: input
+    id: diagnostics_url
+    attributes:
+      label: Sanitized diagnostics paste link (optional)
+      description: Optional HTTPS link from "Upload Log (Paste) & Bug", or paste a sanitized log snippet below.
+      placeholder: https://dpaste.org/...
+    validations:
+      required: false
