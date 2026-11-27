@@ -47,5 +47,4 @@ Physical qualification for F01 / AT-04. DeviceCheck package
 ## Minimal reproducers
 
 Text / image / audio / mismatch use `RealOmniProbeTest` with `-e realOmni true`
-as documented in `docs/ARM64_OMNI_TEST_PROTOCOL.md`. Full session notes:
-`device-evidence/reports/arm64-session.md`.
+as documented in `docs/ARM64_OMNI_TEST_PROTOCOL.md`.

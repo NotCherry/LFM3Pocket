@@ -1,7 +1,6 @@
 package com.notcherry.lfm3pocket;
 
 import android.content.Intent;
-import android.os.Bundle;
 import android.os.RemoteException;
 import android.speech.RecognitionService;
 

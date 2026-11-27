@@ -2,7 +2,6 @@ package com.notcherry.lfm3pocket;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.regex.Pattern;
 
 /** Sentence/chunk rules aligned with tiny-voca {@code infer.sentences} / web worker.js. */

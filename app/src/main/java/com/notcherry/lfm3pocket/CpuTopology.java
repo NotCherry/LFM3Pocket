@@ -109,10 +109,6 @@ public final class CpuTopology {
         return f.contains("dotprod") || f.contains("asimddp");
     }
 
-    public static boolean hasI8mm() {
-        return cpuFeatures().toLowerCase(Locale.ROOT).contains("i8mm");
-    }
-
     static List<Integer> readMaxFrequencies() {
         List<Integer> freqs = new ArrayList<>();
         File cpuRoot = new File("/sys/devices/system/cpu");

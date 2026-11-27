@@ -1,11 +1,8 @@
 package com.notcherry.lfm3pocket;
 
-import android.app.Activity;
 import android.os.Handler;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.TextView;
 
 /**
  * Settings-scroll hooks the section controllers need from {@link MainActivity},

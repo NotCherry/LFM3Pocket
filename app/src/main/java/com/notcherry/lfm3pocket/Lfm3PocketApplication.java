@@ -325,10 +325,6 @@ public class Lfm3PocketApplication extends Application {
         return actionExecutor;
     }
 
-    public final InferenceEngine newInferenceSession() {
-        return createInferenceEngine();
-    }
-
     public final synchronized ModelRuntime modelRuntime() {
         if (modelRuntime == null) modelRuntime = new ModelRuntime(this);
         return modelRuntime;

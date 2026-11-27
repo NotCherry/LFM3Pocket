@@ -146,24 +146,6 @@ public final class ExternalModelStore {
         revokeEvicted(previous, next, protectedUris);
     }
 
-    /** Removes an entry and revokes its persisted read grant when not protected. */
-    public synchronized void forget(String uri, java.util.Set<String> protectedUris) {
-        if (uri == null || uri.isEmpty()) return;
-        List<Entry> previous = list();
-        ArrayList<Entry> next = new ArrayList<>();
-        for (Entry entry : previous) {
-            if (!entry.uri.equals(uri)) next.add(entry);
-        }
-        if (next.size() == previous.size()) return;
-        save(next);
-        java.util.Set<String> single = java.util.Collections.singleton(uri);
-        // Revoke only this URI (if not protected) now that it is no longer listed.
-        if (protectedUris == null || !protectedUris.contains(uri)) {
-            releasePersistablePermission(uri);
-        }
-        // Also revoke any other entries that might have become inconsistent (defensive no-op here).
-    }
-
     private void revokeEvicted(List<Entry> previous, List<Entry> next, java.util.Set<String> protectedUris) {
         java.util.HashSet<String> kept = new java.util.HashSet<>();
         for (Entry entry : next) kept.add(entry.uri);

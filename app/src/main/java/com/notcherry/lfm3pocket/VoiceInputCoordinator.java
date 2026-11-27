@@ -152,10 +152,6 @@ final class VoiceInputCoordinator {
         return transcribingVoiceInput;
     }
 
-    void cancelPendingStt() {
-        voiceSttCancelled.set(true);
-    }
-
     void cancelAllOnClear() {
         voiceSttCancelled.set(true);
         transcribingVoiceInput = false;

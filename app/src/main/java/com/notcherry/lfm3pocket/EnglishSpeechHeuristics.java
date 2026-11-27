@@ -1,6 +1,5 @@
 package com.notcherry.lfm3pocket;
 
-import java.util.Locale;
 import java.util.regex.Pattern;
 
 /** Heuristic gate for optional English-only on-device tiny-voca TTS. */
@@ -27,9 +26,5 @@ public final class EnglishSpeechHeuristics {
             return LikelyLanguage.ENGLISH;
         }
         return LikelyLanguage.NON_ENGLISH;
-    }
-
-    public static String normalizeForTts(String reply) {
-        return SpeechPrompt.spokenText(reply == null ? "" : reply);
     }
 }

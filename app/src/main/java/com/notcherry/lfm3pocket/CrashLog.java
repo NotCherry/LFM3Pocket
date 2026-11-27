@@ -180,18 +180,6 @@ public final class CrashLog {
         clearFile(file(context));
     }
 
-    /** Writes a shareable copy under cache and returns it. */
-    public static File exportCopy(Context context) throws Exception {
-        String body = read(context);
-        if (body.isEmpty()) body = "No crash evidence recorded yet.\n";
-        File out = new File(context.getCacheDir(), "hanami-crash-log.txt");
-        try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(out, false),
-                StandardCharsets.UTF_8)) {
-            writer.write(body);
-        }
-        return out;
-    }
-
     static void recordUncaught(Context context, Thread thread, Throwable error) {
         recordUncaught(file(context), thread, error);
     }

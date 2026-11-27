@@ -7,7 +7,6 @@ import android.os.Build;
 import android.provider.Settings;
 import android.widget.Button;
 import android.widget.LinearLayout;
-import android.widget.TextView;
 
 import java.util.function.Consumer;
 

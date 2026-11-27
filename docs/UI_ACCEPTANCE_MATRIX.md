@@ -4,7 +4,7 @@ This is the **UI** test-to-requirement map for the Atlas redesign epic (tracker 
 
 Stage 1 product capability remains governed by [`ACCEPTANCE_MATRIX.md`](ACCEPTANCE_MATRIX.md) (AT-01..AT-09) and tracker #4. **Atlas screenshots never flip AT rows to VERIFIED.**
 
-Style guide: [`DESIGN.md`](DESIGN.md). E2E ID / flat-transcript contract: [`UI_E2E_CONTRACT.md`](UI_E2E_CONTRACT.md). Device visual protocol: [`device-evidence/reports/ui-atlas/`](../device-evidence/reports/ui-atlas/).
+Style guide: [`DESIGN.md`](DESIGN.md). E2E ID / flat-transcript contract: [`UI_E2E_CONTRACT.md`](UI_E2E_CONTRACT.md).
 
 ## Evidence levels
 
@@ -12,7 +12,7 @@ Style guide: [`DESIGN.md`](DESIGN.md). E2E ID / flat-transcript contract: [`UI_E
 | --- | --- |
 | **JVM** | Pure unit contracts (parser, sanitizer, flat formatter, session snapshot). |
 | **EMU-FAKE** | API 30 x86_64 emulator, real UI + deterministic fake; proves integration and stable IDs. |
-| **Device visual** | Physical device screenshots/notes under `device-evidence/reports/ui-atlas/` (U16). Signs Atlas look for UT rows only. |
+| **Device visual** | Physical device visual verification (U16). Signs Atlas look for UT rows only. |
 | **MISSING** | Owner identified; no qualifying evidence yet. |
 | **PARTIAL** | Some evidence exists; full UT requirement not satisfied. |
 | **VERIFIED** | Every stated UT condition has linked qualifying evidence (UI epic only — still does not imply AT VERIFIED). |

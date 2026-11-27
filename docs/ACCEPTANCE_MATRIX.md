@@ -1,4 +1,4 @@
-﻿# Stage 1 acceptance matrix
+# Stage 1 acceptance matrix
 
 This is the authoritative **test-to-requirement map**, not a feature-completion claim. It tracks issue #4 and uses nine acceptance IDs (AT-01..AT-09). Those IDs do not cover automatic long-term AI memory. Local notification reminders ([ADR 0007](adr/0007-voice-reminders-workmanager.md)) are a later tool, not an AT row. Stage 1 stores ordinary local conversation transcripts.
 

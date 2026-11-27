@@ -90,16 +90,4 @@ public final class TinyVocaPhonemizerBridge {
 
     /** int64[2][]: ids, stress */
     private static native long[][] nativePhonemize(String text);
-
-    /** JVM-only seam for unit tests (no dizione). */
-    static volatile PhonemizerTestHook testHook;
-
-    interface PhonemizerTestHook {
-        TinyVocaPhonemes phonemize(String text);
-    }
-
-    static TinyVocaPhonemes phonemizeForTest(String text) {
-        if (testHook != null) return testHook.phonemize(text);
-        return phonemize(text);
-    }
 }

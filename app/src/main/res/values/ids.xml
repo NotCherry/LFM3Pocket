@@ -37,7 +37,6 @@
     <item name="tool_result" type="id"/>
     <item name="tool_approve" type="id"/>
     <item name="tool_reject" type="id"/>
-    <item name="settings_open" type="id"/>
     <item name="settings_back" type="id"/>
     <item name="chat_overflow" type="id"/>
     <item name="chat_new_chat" type="id"/>
@@ -52,7 +51,6 @@
     <item name="image_preview" type="id"/>
     <item name="image_size_caption" type="id"/>
     <item name="image_remove" type="id"/>
-    <item name="web_search" type="id"/>
     <item name="search_provider_searxng" type="id"/>
     <item name="search_provider_wikipedia" type="id"/>
     <item name="search_provider_brave" type="id"/>

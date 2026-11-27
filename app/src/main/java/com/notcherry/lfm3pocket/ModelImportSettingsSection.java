@@ -2,7 +2,6 @@ package com.notcherry.lfm3pocket;
 
 import android.widget.Button;
 import android.widget.LinearLayout;
-import android.widget.TextView;
 
 /** Settings scroll section for GGUF import/open controls and {@link ModelManagerPanel}. */
 final class ModelImportSettingsSection {

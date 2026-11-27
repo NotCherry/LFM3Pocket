@@ -10,6 +10,5 @@
     <color name="still_disabled">#A39E92</color>
     <color name="still_candle">#E6C27A</color>
     <color name="still_candle_ink">#1C1508</color>
-    <color name="still_danger">#E08A78</color>
     <color name="still_highlight">#66E6C27A</color>
 </resources>

@@ -6,7 +6,6 @@ import java.util.List;
 
 /** Splits extracted document text into bounded prompt chunks. */
 final class DocumentChunker {
-    static final int DEFAULT_MAX_CHUNK_CHARS = 2000;
     static final int DEFAULT_MAX_TOTAL_CHARS = 12000;
 
     private DocumentChunker() {}

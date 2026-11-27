@@ -14,10 +14,6 @@ public final class ModelDownloadCoordinator {
 
     private ModelDownloadCoordinator() {}
 
-    public static boolean isInFlight() {
-        return IN_FLIGHT.get();
-    }
-
     public static boolean isQueued(ModelDownloadKind kind) {
         return Boolean.TRUE.equals(QUEUED.get(kind));
     }
