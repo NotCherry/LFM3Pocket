@@ -56,19 +56,12 @@
     <string name="photo_attached_status">zdjęcie załączone. Dodaj pytanie i naciśnij Wyślij.</string>
     <string name="attach_document">Dokument</string>
     <string name="attach_document_talkback">Załącz pliki dokumentów</string>
-    <string name="document_attached">Załączono dokument</string>
-    <string name="document_remove">Usuń dokument</string>
     <string name="documents_attached_status">Załączono dokumenty: %1$d. Dodaj pytanie i naciśnij Wyślij.</string>
     <string name="importing_document">Czytanie dokumentu…</string>
-    <string name="document_too_large">Ten plik jest za duży, aby go załączyć.</string>
-    <string name="document_unsupported">Nieobsługiwany typ pliku. Załącz plik tekstowy.</string>
     <string name="back_to_chat">Wróć do czatu</string>
     <string name="settings_title">Ustawienia</string>
     <string name="save">Zapisz</string>
     <string name="save_search">Zapisz wyszukiwanie</string>
-    <string name="web_search_on">Wyszukiwanie w sieci: włączone</string>
-    <string name="web_search_off">Wyszukiwanie w sieci: wyłączone</string>
-    <string name="mode_web_search">Wyszukiwanie w sieci + lokalny model</string>
     <string name="mode_local">Tryb · Lokalny / offline</string>
     <string name="starting">Uruchamianie…</string>
     <string name="inference_heading">INFERENCJA</string>
@@ -146,12 +139,10 @@
     <string name="voice_thinking">Myślę…</string>
     <string name="assistant_voice_needs_model">Załaduj model LFM3-Omni z projektorem, aby korzystać z sesji głosowej asystenta.</string>
     <string name="voice_no_audio_model">Ten model nie słyszy audio — załaduj LFM3-Omni z pasującym projektorem mmproj.</string>
-    <string name="speech_input_heading">WEJŚCIE MOWY</string>
     <string name="speech_input_mode_label">Wejście mowy</string>
     <string name="speech_input_mode_help">Wybierz sposób lokalnej transkrypcji mowy. LFM3-Omni używa załadowanego modelu multimodalnego. Cactus Whistle to opcjonalne lekkie STT, które przekazuje rozpoznany tekst do zwykłego potoku tekstowego. Audio ani transkrypcje nie są wysyłane.</string>
     <string name="speech_input_omni">Audio LFM3-Omni</string>
     <string name="speech_input_cactus_whistle">Cactus Whistle STT</string>
-    <string name="speech_input_cactus_model">Model Whistle (.cact)</string>
     <string name="speech_input_cactus_model_none">Nie wybrano modelu Cactus Whistle</string>
     <string name="speech_input_cactus_pick">Wybierz model Whistle</string>
     <string name="speech_input_cactus_download">Pobierz model Whistle</string>
@@ -166,7 +157,6 @@
     <string name="speech_input_cactus_status_ready">Cactus Whistle STT gotowe</string>
     <string name="speech_input_cactus_ready_select_mode">Gotowe — stuknij Cactus Whistle STT powyżej, aby używać w czacie</string>
     <string name="speech_input_cactus_status_missing">Cactus Whistle STT nieskonfigurowane</string>
-    <string name="voice_system_tts_fallback">Głos systemowy (oznaczony TTS)</string>
     <string name="voice_mic_required">Do funkcji Mów potrzebne jest uprawnienie mikrofonu.</string>
     <string name="voice_talk_reply_running">Zakończ bieżącą odpowiedź, zanim użyjesz funkcji Mów.</string>
     <string name="voice_record_talkback">Polecenie głosowe. Dwukrotne stuknięcie włącza lub wyłącza nasłuch; można też przytrzymać.</string>
@@ -187,7 +177,6 @@
     <string name="settings_crash_log_clear">Wyczyść dziennik awarii</string>
     <string name="settings_crash_log_empty">Brak zapisanych informacji o awarii.</string>
     <string name="settings_crash_log_exported">Dziennik awarii gotowy do udostępnienia z tego telefonu.</string>
-    <string name="compact_conversation">Kompaktuj rozmowę</string>
     <string name="compact_short">Kompaktuj</string>
     <string name="default_assistant_heading">ASYSTENT</string>
     <string name="chat_interrupted_retry">Przerwano — Ponów</string>
@@ -212,7 +201,6 @@ com.whatsapp</string>
     <string name="calendar_pick_button">Wybierz kalendarz</string>
     <string name="calendar_clear_button">Wyczyść kalendarz</string>
     <string name="calendar_permission_needed">Do korzystania z akcji kalendarza potrzebne są uprawnienia odczytu i zapisu Kalendarza.</string>
-    <string name="calendar_no_calendars">Na tym urządzeniu nie znaleziono kalendarzy.</string>
     <string name="calendar_no_writable_calendars">Na tym urządzeniu nie znaleziono kalendarzy z uprawnieniami zapisu.</string>
     <string name="calendar_pick_title">Wybierz kalendarz</string>
     <string name="search_heading">WYSZUKIWANIE W SIECI</string>
@@ -228,13 +216,11 @@ com.whatsapp</string>
     <string name="search_key_hint_brave">Klucz API Brave (X-Subscription-Token)</string>
     <string name="search_key_hint_tavily">Klucz API Tavily (tvly-…)</string>
     <string name="search_test_button">Testuj wyszukiwanie</string>
-    <string name="search_testing">Testowanie punktu końcowego SearXNG…</string>
     <string name="search_testing_provider">Testowanie: %1$s…</string>
     <string name="search_saved">Zapisano wyszukiwanie (%1$s).</string>
     <string name="search_test_ok">Wyszukiwanie działa · %1$d wyników (%2$d ms)</string>
     <string name="search_test_empty">Połączono (%1$d ms), ale wyszukiwanie zwróciło 0 wyników.</string>
     <string name="search_test_failed">Test wyszukiwania nie powiódł się: %1$s</string>
-    <string name="search_help">Wybierz dostawcę wyszukiwania (własny SearXNG, darmowa Wikipedia bez klucza, Brave Search lub Tavily). Po włączeniu Hanami może wywoływać web_search, gdy to potrzebne.</string>
 
     <!-- Home & About -->
     <string name="home_on_device">NA URZĄDZENIU</string>
@@ -252,7 +238,6 @@ com.whatsapp</string>
     <string name="about_section_actions_body">Proponowane przez model minutniki, alarmy, przypomnienia i wpisy kalendarza nigdy nie wykonują się po cichu — wrażliwe akcje wymagają jednorazowego zatwierdzenia.</string>
 
     <!-- Chat Shell, Composer, Transcript & Empty State -->
-    <string name="mode_local_short">Lokalnie · offline</string>
     <string name="mode_web_search_short">Sieć · lokalny model</string>
     <string name="mode_composer_web_search">Tryb · Wyszukiwanie w sieci + lokalny model</string>
     <string name="chat_more_options">Więcej opcji</string>

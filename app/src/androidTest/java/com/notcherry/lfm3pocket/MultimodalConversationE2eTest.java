@@ -24,7 +24,6 @@ import org.junit.runner.RunWith;
 
 import java.io.File;
 import java.util.Arrays;
-import java.util.List;
 import java.util.regex.Pattern;
 
 /**

@@ -329,4 +329,3 @@ existing benchmark controls (`settings_bench_run` / `settings_bench_result`).
 | [`adr/0005-prepare-vision-images.md`](adr/0005-prepare-vision-images.md) | Prepare vision images before the projector |
 | [`adr/0022-background-model-downloads.md`](adr/0022-background-model-downloads.md) | Background downloads for optional pinned models |
 | [`adr/0024-settings-section-controllers.md`](adr/0024-settings-section-controllers.md) | Settings sections behind a settings section host |
-| [`ui-audit.md`](ui-audit.md) | Phase 1 usability / styling audit and backlog |

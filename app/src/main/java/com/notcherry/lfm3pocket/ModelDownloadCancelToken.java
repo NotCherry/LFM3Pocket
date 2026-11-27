@@ -34,25 +34,17 @@ public final class ModelDownloadCancelToken {
     void resetForTests() {
         cancelled.set(false);
         userCancel.set(false);
-        interruptHooks = null;
         activeConnection = null;
     }
 
     private volatile java.net.HttpURLConnection activeConnection;
-    private Runnable interruptHooks;
 
     void bindHttpConnection(java.net.HttpURLConnection connection) {
         activeConnection = connection;
     }
 
-    void setInterruptHookForTests(Runnable hook) {
-        interruptHooks = hook;
-    }
-
     private void fireInterruptHooks() {
         java.net.HttpURLConnection connection = activeConnection;
         if (connection != null) connection.disconnect();
-        Runnable hook = interruptHooks;
-        if (hook != null) hook.run();
     }
 }

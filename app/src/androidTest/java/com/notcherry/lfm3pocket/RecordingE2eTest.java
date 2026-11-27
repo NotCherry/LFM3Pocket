@@ -1,6 +1,5 @@
 package com.notcherry.lfm3pocket;
 
-import android.Manifest;
 import android.content.Context;
 import androidx.lifecycle.Lifecycle;
 import androidx.test.core.app.ActivityScenario;

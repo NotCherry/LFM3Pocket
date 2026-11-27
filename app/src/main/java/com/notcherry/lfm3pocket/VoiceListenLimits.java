@@ -10,7 +10,6 @@ public final class VoiceListenLimits {
     public static final int MAX_ACTION_SAMPLES = SAMPLE_RATE_HZ * MAX_ACTION_SECONDS;
     /** Confirm listen window (~2 s target cap). */
     public static final int MAX_CONFIRM_SECONDS = 3;
-    public static final int MAX_CONFIRM_SAMPLES = SAMPLE_RATE_HZ * MAX_CONFIRM_SECONDS;
 
     private VoiceListenLimits() {}
 }

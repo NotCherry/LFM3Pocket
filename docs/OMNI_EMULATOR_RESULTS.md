@@ -12,7 +12,7 @@ These are real production-JNI runs with the published LFM3-Omni model/projector 
 - Image fixture: generated red square on the left and blue circle on the right; SHA-256 `796bc9c7f2335eafa1adcf90838d8686ec33bf9874f19d87cf7bf960592427f8`.
 - Audio fixture: generated English speech, “The secret animal is a blue cat. The number is seven.”; SHA-256 `6fb91169177f97113009f31a8c664ccb3342c8eca53b61943b5fba8426c708d3`.
 - Polish ASR probe fixture: eSpeak NG 1.52.0 local synthetic voice, “Moje hasło testowe to niebieski kot. Jaki kolor i jakie zwierzę wymieniłem?”; converted to 16 kHz mono PCM WAV; SHA-256 `f03cd65fa9e3fe54c760fb9778210bd6a362410915b3672cd979b40797a9d954`.
-- Full device reports: [text](evidence/omni-emulator/text.json), [image](evidence/omni-emulator/image.json), [audio](evidence/omni-emulator/audio.json). Reports record the exact prompt, native output and phase timings. `quality` remains `REQUIRES_REVIEW`; the probe does not award quality scores.
+- Full probe outputs (exact prompt, native output, and phase timings) are summarized in the table below. `quality` remains `REQUIRES_REVIEW`; the probe does not award quality scores.
 - To repeat an ASR-only probe with the fixture installed as `files/models/speech.wav`, pass the pinned LFM3 ASR template as the user-turn prompt:
 
   ```bash

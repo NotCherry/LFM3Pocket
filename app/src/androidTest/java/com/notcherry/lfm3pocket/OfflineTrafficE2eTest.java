@@ -23,7 +23,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.io.File;
-import java.io.IOException;
 
 /** Isolated system-mutating offline proof: airplane/radio toggles with strict restoration. */
 @RunWith(AndroidJUnit4.class)

@@ -165,11 +165,6 @@ class ChatPanel @JvmOverloads constructor(
         searchModeEnabled = searchEnabled
     }
 
-    fun setModelReady(ready: Boolean) {
-        modelReadyState = ready
-        if (ready) modelLoadingState = false
-    }
-
     @JvmOverloads
     fun setModelState(ready: Boolean, loading: Boolean, selectedModel: String = "") {
         modelReadyState = ready

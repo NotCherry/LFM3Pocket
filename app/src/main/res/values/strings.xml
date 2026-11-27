@@ -57,19 +57,12 @@
     <string name="photo_attached_status">photo attached. Add a question and press Send.</string>
     <string name="attach_document">Document</string>
     <string name="attach_document_talkback">Attach document files</string>
-    <string name="document_attached">Document attached</string>
-    <string name="document_remove">Remove document</string>
     <string name="documents_attached_status">%1$d document(s) attached. Add a question and press Send.</string>
     <string name="importing_document">Reading document…</string>
-    <string name="document_too_large">This file is too large to attach.</string>
-    <string name="document_unsupported">Unsupported file type. Attach a plain text file.</string>
     <string name="back_to_chat">Back to chat</string>
     <string name="settings_title">Settings</string>
     <string name="save">Save</string>
     <string name="save_search">Save search</string>
-    <string name="web_search_on">Web search: on</string>
-    <string name="web_search_off">Web search: off</string>
-    <string name="mode_web_search">Web search + local model</string>
     <string name="mode_local">Mode · Local / offline</string>
     <string name="starting">Starting…</string>
     <string name="inference_heading">INFERENCE</string>
@@ -159,12 +152,10 @@ com.whatsapp</string>
     <string name="voice_thinking">Thinking…</string>
     <string name="assistant_voice_needs_model">Load an LFM3-Omni model with its projector to use the assistant voice session.</string>
     <string name="voice_no_audio_model">This model cannot hear audio — load LFM3-Omni with a matching mmproj projector.</string>
-    <string name="speech_input_heading">SPEECH INPUT</string>
     <string name="speech_input_mode_label">Speech input</string>
     <string name="speech_input_mode_help">Choose how voice input is transcribed on-device. LFM3-Omni uses the loaded multimodal model. Cactus Whistle is an optional lightweight STT that sends recognized text to the normal text pipeline. No audio or transcript is uploaded.</string>
     <string name="speech_input_omni">LFM3-Omni audio</string>
     <string name="speech_input_cactus_whistle">Cactus Whistle STT</string>
-    <string name="speech_input_cactus_model">Whistle model (.cact)</string>
     <string name="speech_input_cactus_model_none">No Cactus Whistle model selected</string>
     <string name="speech_input_cactus_pick">Select Whistle model</string>
     <string name="speech_input_cactus_download">Download Whistle model</string>
@@ -179,7 +170,6 @@ com.whatsapp</string>
     <string name="speech_input_cactus_status_ready">Cactus Whistle STT ready</string>
     <string name="speech_input_cactus_ready_select_mode">Ready — tap Cactus Whistle STT above to use in chat</string>
     <string name="speech_input_cactus_status_missing">Cactus Whistle STT not configured</string>
-    <string name="voice_system_tts_fallback">System voice (labelled TTS)</string>
     <string name="voice_mic_required">Microphone permission is required for Talk.</string>
     <string name="voice_talk_reply_running">Finish the current reply before using Talk.</string>
     <string name="voice_record_talkback">Voice command. Double tap to start or stop listening; or press and hold.</string>
@@ -200,7 +190,6 @@ com.whatsapp</string>
     <string name="settings_crash_log_clear">Clear crash log</string>
     <string name="settings_crash_log_empty">No crash evidence recorded yet.</string>
     <string name="settings_crash_log_exported">Crash log ready to share from this phone.</string>
-    <string name="compact_conversation">Compact conversation</string>
     <string name="compact_short">Compact</string>
     <string name="default_assistant_heading">ASSISTANT</string>
     <string name="chat_interrupted_retry">Interrupted — Retry</string>
@@ -212,7 +201,6 @@ com.whatsapp</string>
     <string name="calendar_pick_button">Pick calendar</string>
     <string name="calendar_clear_button">Clear calendar</string>
     <string name="calendar_permission_needed">Read and write Calendar permissions are needed to use calendar actions.</string>
-    <string name="calendar_no_calendars">No calendars found on this device.</string>
     <string name="calendar_no_writable_calendars">No writable calendars found on this device.</string>
     <string name="calendar_pick_title">Pick a calendar</string>
     <string name="search_heading">WEB SEARCH</string>
@@ -228,13 +216,11 @@ com.whatsapp</string>
     <string name="search_key_hint_brave">Brave API key (X-Subscription-Token)</string>
     <string name="search_key_hint_tavily">Tavily API key (tvly-…)</string>
     <string name="search_test_button">Test search</string>
-    <string name="search_testing">Testing SearXNG endpoint…</string>
     <string name="search_testing_provider">Testing %1$s…</string>
     <string name="search_saved">Web search saved (%1$s).</string>
     <string name="search_test_ok">Search OK · %1$d results (%2$d ms)</string>
     <string name="search_test_empty">Connected (%1$d ms), but search returned 0 results.</string>
     <string name="search_test_failed">Search test failed: %1$s</string>
-    <string name="search_help">Choose a web search provider (self-hosted SearXNG, keyless Wikipedia, Brave Search, or Tavily). When on, Hanami can call web_search when needed.</string>
 
     <!-- Home & About -->
     <string name="home_on_device">ON DEVICE</string>
@@ -252,7 +238,6 @@ com.whatsapp</string>
     <string name="about_section_actions_body">Model-proposed timers, alarms, reminders, and calendar updates never execute silently — sensitive actions require explicit one-shot approval.</string>
 
     <!-- Chat Shell, Composer, Transcript & Empty State -->
-    <string name="mode_local_short">Local · offline</string>
     <string name="mode_web_search_short">Web search · local model</string>
     <string name="mode_composer_web_search">Mode · Web search + local model</string>
     <string name="chat_more_options">More options</string>

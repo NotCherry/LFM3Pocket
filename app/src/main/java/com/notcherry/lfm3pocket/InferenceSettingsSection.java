@@ -1,7 +1,6 @@
 package com.notcherry.lfm3pocket;
 
 import android.content.Context;
-import android.graphics.drawable.GradientDrawable;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;

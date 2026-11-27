@@ -4,7 +4,6 @@ import android.content.Context;
 
 import org.json.JSONObject;
 
-import java.io.File;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,10 +23,6 @@ public final class TinyVocaOnnxRuntime implements AutoCloseable {
         this.session = session;
         this.maxTokens = maxTokens;
         this.sampleRate = sampleRate;
-    }
-
-    public static boolean isNativePhonemizerAvailable() {
-        return TinyVocaPhonemizerBridge.isAvailable();
     }
 
     public static TinyVocaOnnxRuntime open(Context context) throws Exception {

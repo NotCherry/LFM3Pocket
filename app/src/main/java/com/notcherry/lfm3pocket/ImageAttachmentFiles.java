@@ -14,10 +14,6 @@ final class ImageAttachmentFiles {
 
     private ImageAttachmentFiles() {}
 
-    static boolean isReadableImage(File file) {
-        return validationError(file) == null;
-    }
-
     static String validationError(File file) {
         if (file == null || !file.isFile() || file.length() == 0)
             return "Selected file is not a readable image.";

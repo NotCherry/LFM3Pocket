@@ -48,15 +48,6 @@ public final class HanamiNotificationListenerService extends NotificationListene
         return current == null ? Collections.emptyList() : current;
     }
 
-    static void setConnectedForTest(boolean value) {
-        connected = value;
-    }
-
-    static void setSnapshotForTest(List<NotificationAccess.Entry> entries) {
-        if (entries == null) SNAPSHOT.set(Collections.emptyList());
-        else SNAPSHOT.set(Collections.unmodifiableList(new ArrayList<>(entries)));
-    }
-
     static void clearForTest() {
         connected = false;
         SNAPSHOT.set(Collections.emptyList());

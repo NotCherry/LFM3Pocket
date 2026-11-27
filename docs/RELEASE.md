@@ -111,6 +111,5 @@ The Atlas redesign (tracker [#135](https://github.com/NotCherry/LFM3Pocket/issue
 | [`DESIGN.md`](DESIGN.md) | Atlas style guide (tokens, components, anti-patterns) |
 | [`UI_ACCEPTANCE_MATRIX.md`](UI_ACCEPTANCE_MATRIX.md) | UT-01..UT-08 evidence map (JVM / EMU-FAKE / device visual) |
 | [`UI_E2E_CONTRACT.md`](UI_E2E_CONTRACT.md) | Stable chat IDs + flat transcript + Settings navigation for automators |
-| `device-evidence/reports/ui-atlas/` | Device visual checklist + operator report (U16) |
 
 Green UT rows or Atlas screenshots **never** flip AT-01..AT-09 to VERIFIED. Stage 1 product capability remains governed by `ACCEPTANCE_MATRIX.md` and tracker #4.

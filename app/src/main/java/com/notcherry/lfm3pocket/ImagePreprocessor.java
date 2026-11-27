@@ -94,11 +94,6 @@ public final class ImagePreprocessor {
         return new Result(prepared, outWidth, outHeight, true);
     }
 
-    /** Human-readable caption for an already-known result size. */
-    public static String captionFor(int width, int height, boolean prepared) {
-        return prepared ? "Prepared " + width + "×" + height : "Original " + width + "×" + height;
-    }
-
     private static String visionFileName(String sourceName) {
         String base = sourceName == null ? "photo" : sourceName;
         int dot = base.lastIndexOf('.');

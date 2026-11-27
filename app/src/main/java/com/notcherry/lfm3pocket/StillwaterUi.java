@@ -192,13 +192,6 @@ final class StillwaterUi {
         }
     }
 
-    static void dangerQuiet(Button button) {
-        Context context = button.getContext();
-        quiet(button);
-        button.setTextColor(enabledTextColors(DANGER, MUTED));
-        button.setTypeface(sansMedium(context));
-    }
-
     /** Outlined destructive/reset control whose disabled state drops cleanly to muted charcoal. */
     static void dangerOutlined(Button button) {
         Context context = button.getContext();
@@ -212,10 +205,6 @@ final class StillwaterUi {
         button.setTextColor(enabledTextColors(DANGER, MUTED));
         button.setTypeface(sansMedium(context));
         StillwaterReadable.setTextSizeSp(button, 14.5f);
-    }
-
-    static void tintIcon(Button button, int color) {
-        button.setCompoundDrawableTintList(ColorStateList.valueOf(color));
     }
 
     static void tintStatefulIcon(Button button) {
